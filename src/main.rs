@@ -1,8 +1,10 @@
-use serde::{Deserialize, Serialize};
-use once_cell::sync::Lazy;
-use libp2p::PeerId;
 use libp2p::floodsub::Topic;
 use libp2p::identity;
+use libp2p::PeerId;
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
+use log::{info};
+use tokio::sync::mpsc;
 
 const STORAGE_FILE_PATH: &str = "./data.json";
 
@@ -22,13 +24,11 @@ struct Story {
     public: bool,
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 enum ListMode {
     ALL,
     One(String),
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ListRequest {
@@ -47,6 +47,11 @@ enum EventType {
     Input(String),
 }
 
-fn main() {
-    println!("Hello, world!");
+#[tokio::main]
+async fn main(){
+    pretty_env_logger::init();
+
+    info!("Peer id: {}", PEER_ID.clone());
+    let (response_sender, response_rcv) : (tokio::sync::mpsc::UnboundedSender<ListResult>, tokio::sync::mpsc::UnboundedReceiver<ListResult>)  = mpsc::unbounded_channel();
 }
+
