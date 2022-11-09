@@ -12,6 +12,8 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use log::{info};
 use tokio::sync::mpsc;
+use libp2p::mdns::TokioMdns;
+use libp2p::floodsub::Floodsub;
 
 const STORAGE_FILE_PATH: &str = "./data.json";
 
@@ -67,12 +69,21 @@ async fn main(){
         .expect("can create auth keys");
     
     // Lets create the transport layer
-    let tcp = GenTcpConfig::new().nodelay(true);
-    let transport = tcp::TokioTcpTransport::new(tcp);
-    let dns = dns::TokioDnsConfig::system(transport)?;
+    let tcp = GenTcpConfig::new().nodelay(true); // The TCP Config
+    let transport = tcp::TokioTcpTransport::new(tcp); // The transport layer
+    let dns = dns::TokioDnsConfig::system(transport)?; // DNS
+    // Upgrade the connection to use noise for secure comms
+    // using NoiceConfig::xx because it will work with other libp2p apps
+    // Use multiplex to have multiple connections
     dns.upgrade(upgrade::Version::V1)
-        .authenticate(NoiseConfig::xx(auth_keys).into_authenticated())
+        .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) 
         .multiplex(mplex::MplexConfig::new())
         .boxed();
+
+    let mut behaviour = RecipeBehaviour {
+        floodsub: Floodsub::new(PEER_ID.clone()),
+        mdns: TokioMdns::new().expect("can create mdns"),
+        response_sender,
+    };
 }
 
