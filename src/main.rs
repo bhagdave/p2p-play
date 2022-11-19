@@ -23,7 +23,7 @@ const STORAGE_FILE_PATH: &str = "./stories.json";
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
 type Stories = Vec<Story>;
 
-static KEYS: Lazy<identity::Keypair> = Lazy::new(|| identity::Keypair::generate_ed25519());
+static KEYS: Lazy<identity::Keypair> = Lazy::new(identity::Keypair::generate_ed25519);
 static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 
@@ -168,7 +168,7 @@ async fn main() {
         .boxed();
 
     let mut behaviour = StoryBehaviour {
-        floodsub: Floodsub::new(PEER_ID.clone()),
+        floodsub: Floodsub::new(*PEER_ID),
         mdns: Mdns::new(Default::default())
             .await
             .expect("can create mdns"),
@@ -177,7 +177,7 @@ async fn main() {
 
     behaviour.floodsub.subscribe(TOPIC.clone());
 
-    let mut swarm = SwarmBuilder::new(transp, behaviour, PEER_ID.clone())
+    let mut swarm = SwarmBuilder::new(transp, behaviour, *PEER_ID)
         .executor(Box::new(|fut| {
             tokio::spawn(fut);
         }))
@@ -331,7 +331,7 @@ async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
 
 async fn handle_create_stories(cmd: &str) {
     if let Some(rest) = cmd.strip_prefix("create s") {
-        let elements: Vec<&str> = rest.split("|").collect();
+        let elements: Vec<&str> = rest.split('|').collect();
         if elements.len() < 3 {
             info!("too few arguments - Format: name|header|body");
         } else {
