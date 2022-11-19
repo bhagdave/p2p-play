@@ -87,46 +87,6 @@ impl From<MdnsEvent> for StoryBehaviourEvent {
     }
 }
 
-//impl NetworkBehaviourEventProcess<FloodsubEvent> for StoryBehaviour {
-//    fn inject_event(&mut self, event: FloodsubEvent) {
-//        match event {
-//            FloodsubEvent::Message(msg) => {
-//                if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
-//                    if resp.receiver == PEER_ID.to_string() {
-//                        info!("Response from {}:", msg.source);
-//                        resp.data.iter().for_each(|r| info!("{:?}", r));
-//                    }
-//                } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
-//                    match req.mode {
-//                        ListMode::ALL => {
-//                            info!("Received ALL req: {:?} from {:?}", req, msg.source);
-//                            respond_with_public_stories(
-//                                self.response_sender.clone(),
-//                                msg.source.to_string(),
-//                            );
-//                        }
-//                        ListMode::One(ref peer_id) => {
-//                            if peer_id == &PEER_ID.to_string() {
-//                                info!("Received req: {:?} from {:?}", req, msg.source);
-//                                respond_with_public_stories(
-//                                    self.response_sender.clone(),
-//                                    msg.source.to_string(),
-//                                );
-//                            }
-//                        }
-//                    }
-//                }
-//            }
-//            _ => (),
-//        }
-//    }
-//}
-//impl NetworkBehaviourEventProcess<MdnsEvent> for StoryBehaviour {
-//    fn inject_event(&mut self, event: MdnsEvent) {
-//    }
-//}
-
-
 fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, receiver: String) {
     tokio::spawn(async move {
         match read_local_stories().await {
@@ -268,8 +228,8 @@ async fn main() {
                     cmd if cmd.starts_with("publish s") => handle_publish_story(cmd).await,
                     _ => error!("unknown command"),
                 },
-                EventType::MdnsEvent(MdnsEvent) => {
-                    match MdnsEvent {
+                EventType::MdnsEvent(mdns_event) => {
+                    match mdns_event {
                         MdnsEvent::Discovered(discovered_list) => {
                             for (peer, _addr) in discovered_list {
                                 swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
@@ -284,8 +244,39 @@ async fn main() {
                         }
                     }
                 },
-                EventType::FloodsubEvent(FloodsubEvent) => {
-
+                EventType::FloodsubEvent(floodsub_event) => {
+                    match floodsub_event {
+                        FloodsubEvent::Message(msg) => {
+                            if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
+                                if resp.receiver == PEER_ID.to_string() {
+                                    info!("Response from {}:", msg.source);
+                                    resp.data.iter().for_each(|r| info!("{:?}", r));
+                                }
+                            } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
+                                match req.mode {
+                                    ListMode::ALL => {
+                                        info!("Received ALL req: {:?} from {:?}", req, msg.source);
+                                        respond_with_public_stories(
+                                            swarm.behaviour_mut().response_sender.clone(),
+                                            msg.source.to_string(),
+                                        );
+                                    }
+                                    ListMode::One(ref peer_id) => {
+                                        if peer_id == &PEER_ID.to_string() {
+                                            info!("Received req: {:?} from {:?}", req, msg.source);
+                                            respond_with_public_stories(
+                                                swarm.behaviour_mut().response_sender.clone(),
+                                                msg.source.to_string(),
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            info!("Subscription events");
+                        }
+                    }
                 }
             }
         }
