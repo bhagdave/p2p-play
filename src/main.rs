@@ -7,13 +7,14 @@ use libp2p::{
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
     swarm::{NetworkBehaviourEventProcess, Swarm, SwarmBuilder},
-    tcp::TokioTcpConfig,
+    tcp::TokioTcpTransport,
     NetworkBehaviour, PeerId, Transport,
 };
 use log::{error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use libp2p::tcp::GenTcpConfig;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
@@ -194,7 +195,7 @@ async fn main() {
         .into_authentic(&KEYS)
         .expect("can create auth keys");
 
-    let transp = TokioTcpConfig::new()
+    let transp = TokioTcpTransport::new(GenTcpConfig::default().nodelay(true))
         .upgrade(upgrade::Version::V1)
         .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
         .multiplex(mplex::MplexConfig::new())
