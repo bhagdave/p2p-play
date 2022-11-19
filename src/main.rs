@@ -1,3 +1,5 @@
+use libp2p::swarm::SwarmEvent;
+use libp2p::tcp::GenTcpConfig;
 use libp2p::{
     core::upgrade,
     floodsub::{Floodsub, FloodsubEvent, Topic},
@@ -6,7 +8,7 @@ use libp2p::{
     mdns::{Mdns, MdnsEvent},
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
-    swarm::{ Swarm, SwarmBuilder},
+    swarm::{Swarm, SwarmBuilder},
     tcp::TokioTcpTransport,
     NetworkBehaviour, PeerId, Transport,
 };
@@ -14,8 +16,6 @@ use log::{error, info};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use libp2p::swarm::SwarmEvent;
-use libp2p::tcp::GenTcpConfig;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
@@ -58,7 +58,7 @@ enum EventType {
     Response(ListResponse),
     Input(String),
     FloodsubEvent(FloodsubEvent),
-    MdnsEvent(MdnsEvent)
+    MdnsEvent(MdnsEvent),
 }
 
 #[derive(NetworkBehaviour)]
@@ -227,56 +227,58 @@ async fn main() {
                     cmd if cmd.starts_with("publish s") => handle_publish_story(cmd).await,
                     _ => error!("unknown command"),
                 },
-                EventType::MdnsEvent(mdns_event) => {
-                    match mdns_event {
-                        MdnsEvent::Discovered(discovered_list) => {
-                            for (peer, _addr) in discovered_list {
-                                swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
-                            }
+                EventType::MdnsEvent(mdns_event) => match mdns_event {
+                    MdnsEvent::Discovered(discovered_list) => {
+                        for (peer, _addr) in discovered_list {
+                            swarm
+                                .behaviour_mut()
+                                .floodsub
+                                .add_node_to_partial_view(peer);
                         }
-                        MdnsEvent::Expired(expired_list) => {
-                            for (peer, _addr) in expired_list {
-                                if !swarm.behaviour_mut().mdns.has_node(&peer) {
-                                    swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer);
-                                }
+                    }
+                    MdnsEvent::Expired(expired_list) => {
+                        for (peer, _addr) in expired_list {
+                            if !swarm.behaviour_mut().mdns.has_node(&peer) {
+                                swarm
+                                    .behaviour_mut()
+                                    .floodsub
+                                    .remove_node_from_partial_view(&peer);
                             }
                         }
                     }
                 },
-                EventType::FloodsubEvent(floodsub_event) => {
-                    match floodsub_event {
-                        FloodsubEvent::Message(msg) => {
-                            if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
-                                if resp.receiver == PEER_ID.to_string() {
-                                    info!("Response from {}:", msg.source);
-                                    resp.data.iter().for_each(|r| info!("{:?}", r));
+                EventType::FloodsubEvent(floodsub_event) => match floodsub_event {
+                    FloodsubEvent::Message(msg) => {
+                        if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
+                            if resp.receiver == PEER_ID.to_string() {
+                                info!("Response from {}:", msg.source);
+                                resp.data.iter().for_each(|r| info!("{:?}", r));
+                            }
+                        } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
+                            match req.mode {
+                                ListMode::ALL => {
+                                    info!("Received ALL req: {:?} from {:?}", req, msg.source);
+                                    respond_with_public_stories(
+                                        swarm.behaviour_mut().response_sender.clone(),
+                                        msg.source.to_string(),
+                                    );
                                 }
-                            } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
-                                match req.mode {
-                                    ListMode::ALL => {
-                                        info!("Received ALL req: {:?} from {:?}", req, msg.source);
+                                ListMode::One(ref peer_id) => {
+                                    if peer_id == &PEER_ID.to_string() {
+                                        info!("Received req: {:?} from {:?}", req, msg.source);
                                         respond_with_public_stories(
                                             swarm.behaviour_mut().response_sender.clone(),
                                             msg.source.to_string(),
                                         );
                                     }
-                                    ListMode::One(ref peer_id) => {
-                                        if peer_id == &PEER_ID.to_string() {
-                                            info!("Received req: {:?} from {:?}", req, msg.source);
-                                            respond_with_public_stories(
-                                                swarm.behaviour_mut().response_sender.clone(),
-                                                msg.source.to_string(),
-                                            );
-                                        }
-                                    }
                                 }
                             }
                         }
-                        _ => {
-                            info!("Subscription events");
-                        }
                     }
-                }
+                    _ => {
+                        info!("Subscription events");
+                    }
+                },
             }
         }
     }
