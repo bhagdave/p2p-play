@@ -269,16 +269,16 @@ async fn main() {
                     _ => error!("unknown command"),
                 },
                 EventType::MdnsEvent(MdnsEvent) => {
-                    match event {
+                    match MdnsEvent {
                         MdnsEvent::Discovered(discovered_list) => {
                             for (peer, _addr) in discovered_list {
-                                behaviour.floodsub.add_node_to_partial_view(peer);
+                                swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
                             }
                         }
                         MdnsEvent::Expired(expired_list) => {
                             for (peer, _addr) in expired_list {
-                                if !behaviour.mdns.has_node(&peer) {
-                                    behaviour.floodsub.remove_node_from_partial_view(&peer);
+                                if !swarm.behaviour_mut().mdns.has_node(&peer) {
+                                    swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer);
                                 }
                             }
                         }
