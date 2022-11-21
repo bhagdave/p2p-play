@@ -230,6 +230,7 @@ async fn main() {
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
                     MdnsEvent::Discovered(discovered_list) => {
                         for (peer, _addr) in discovered_list {
+                            info!("Disocvered a peer:{} at {}", peer, _addr);
                             swarm
                                 .behaviour_mut()
                                 .floodsub
@@ -238,7 +239,8 @@ async fn main() {
                     }
                     MdnsEvent::Expired(expired_list) => {
                         for (peer, _addr) in expired_list {
-                            if !swarm.behaviour_mut().mdns.has_node(&peer) {
+                            info!("Expired a peer:{} at {}", peer, _addr);
+                            if swarm.behaviour_mut().mdns.has_node(&peer) {
                                 swarm
                                     .behaviour_mut()
                                     .floodsub
