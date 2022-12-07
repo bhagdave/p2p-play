@@ -66,8 +66,6 @@ enum EventType {
 struct StoryBehaviour {
     floodsub: Floodsub,
     mdns: Mdns,
-    #[behaviour(ignore)]
-    response_sender: mpsc::UnboundedSender<ListResponse>,
 }
 #[derive(Debug)]
 enum StoryBehaviourEvent {
@@ -172,7 +170,6 @@ async fn main() {
         mdns: Mdns::new(Default::default())
             .await
             .expect("can create mdns"),
-        response_sender,
     };
 
     behaviour.floodsub.subscribe(TOPIC.clone());
@@ -261,7 +258,7 @@ async fn main() {
                                 ListMode::ALL => {
                                     info!("Received ALL req: {:?} from {:?}", req, msg.source);
                                     respond_with_public_stories(
-                                        swarm.behaviour_mut().response_sender.clone(),
+                                        response_sender.clone(),
                                         msg.source.to_string(),
                                     );
                                 }
@@ -269,7 +266,7 @@ async fn main() {
                                     if peer_id == &PEER_ID.to_string() {
                                         info!("Received req: {:?} from {:?}", req, msg.source);
                                         respond_with_public_stories(
-                                            swarm.behaviour_mut().response_sender.clone(),
+                                            response_sender.clone(),
                                             msg.source.to_string(),
                                         );
                                     }
