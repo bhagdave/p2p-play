@@ -237,7 +237,7 @@ async fn main() {
                     MdnsEvent::Expired(expired_list) => {
                         for (peer, _addr) in expired_list {
                             info!("Expired a peer:{} at {}", peer, _addr);
-                            if swarm.behaviour_mut().mdns.has_node(&peer) {
+                            if !swarm.behaviour_mut().mdns.has_node(&peer) {
                                 swarm
                                     .behaviour_mut()
                                     .floodsub
