@@ -2829,7 +2829,7 @@ dependencies = [
  "pin-project-lite 0.2.9",
  "socket2",
  "tokio-macros",
- "windows-sys",
+ "windows-sys 0.42.0",
 ]
 
 [[package]]
