@@ -166,7 +166,7 @@ async fn main() {
         .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
         .multiplex(mplex::MplexConfig::new())
         .boxed();
-    let ping = crate::ping::Ping::new(PingConfig::new().with_keep_alive(true));
+    let _ping = crate::ping::Ping::new(PingConfig::new().with_keep_alive(true));
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
         mdns: Mdns::new(Default::default())
