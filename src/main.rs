@@ -8,6 +8,7 @@ use libp2p::{
     mdns::{Mdns, MdnsEvent},
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
+    ping,
     swarm::{Swarm, SwarmBuilder},
     tcp::TokioTcpTransport,
     NetworkBehaviour, PeerId, Transport,
@@ -17,6 +18,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
+use crate::ping::PingConfig;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
 
@@ -164,7 +166,7 @@ async fn main() {
         .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
         .multiplex(mplex::MplexConfig::new())
         .boxed();
-
+    let ping = crate::ping::Ping::new(PingConfig::new().with_keep_alive(true));
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
         mdns: Mdns::new(Default::default())
