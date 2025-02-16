@@ -1,5 +1,6 @@
 use libp2p::swarm::SwarmEvent;
 use libp2p::tcp::Config;
+use libp2p::tcp;
 use libp2p::{
     core::upgrade,
     floodsub::{Floodsub, FloodsubEvent, Topic},
@@ -9,8 +10,7 @@ use libp2p::{
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
     ping,
-    swarm::{Swarm, SwarmBuilder, NetworkBehaviour},
-    tcp::TokioTcpTransport,
+    swarm::{Swarm, NetworkBehaviour},
     PeerId, Transport,
 };
 use log::{error, info};
@@ -18,7 +18,6 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
-use crate::mdns::Mdns;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
 
@@ -161,25 +160,21 @@ async fn main() {
         .into_authentic(&KEYS)
         .expect("can create auth keys");
 
-    let transp = TokioTcpTransport::new(Config::default().nodelay(true))
+    let transp = tcp::tokio::Transport::new(Config::default().nodelay(true))
         .upgrade(upgrade::Version::V1)
         .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
         .multiplex(mplex::MplexConfig::new())
         .boxed();
-    let _ping = crate::ping::Behaviour::new(libp2p::ping::Config::new().with_keep_alive(true));
+    let _ping = crate::ping::Behaviour::new(libp2p::ping::Config::new());
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
-        mdns: Mdns::new(Default::default())
+        mdns: mdns::Behaviour::new(Default::default())
             .expect("can create mdns"),
     };
 
     behaviour.floodsub.subscribe(TOPIC.clone());
 
-    let mut swarm = SwarmBuilder::new(transp, behaviour, *PEER_ID)
-        .executor(Box::new(|fut| {
-            tokio::spawn(fut);
-        }))
-        .build();
+    let mut swarm = Swarm::with_tokio_executor(transp, behaviour, *PEER_ID);
 
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
 
