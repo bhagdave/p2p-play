@@ -170,7 +170,6 @@ async fn main() {
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
         mdns: Mdns::new(Default::default())
-            .await
             .expect("can create mdns"),
     };
 
