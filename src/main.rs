@@ -9,9 +9,9 @@ use libp2p::{
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
     ping,
-    swarm::{Swarm, SwarmBuilder},
+    swarm::{Swarm, SwarmBuilder, NetworkBehaviour},
     tcp::TokioTcpTransport,
-    NetworkBehaviour, PeerId, Transport,
+    PeerId, Transport,
 };
 use log::{error, info};
 use once_cell::sync::Lazy;
