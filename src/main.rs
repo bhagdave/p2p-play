@@ -1,11 +1,11 @@
 use libp2p::swarm::SwarmEvent;
-use libp2p::tcp::GenTcpConfig;
+use libp2p::tcp::Config;
 use libp2p::{
     core::upgrade,
     floodsub::{Floodsub, FloodsubEvent, Topic},
     futures::StreamExt,
     identity,
-    mdns::{Mdns, MdnsEvent},
+    mdns,
     mplex,
     noise::{Keypair, NoiseConfig, X25519Spec},
     ping,
@@ -18,6 +18,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
+use crate::mdns::Mdns;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
 
@@ -59,19 +60,19 @@ enum EventType {
     Response(ListResponse),
     Input(String),
     FloodsubEvent(FloodsubEvent),
-    MdnsEvent(MdnsEvent),
+    MdnsEvent(mdns::Event),
 }
 
 #[derive(NetworkBehaviour)]
 #[behaviour(out_event = "StoryBehaviourEvent")]
 struct StoryBehaviour {
     floodsub: Floodsub,
-    mdns: Mdns,
+    mdns: mdns::async_io::Behaviour,
 }
 #[derive(Debug)]
 enum StoryBehaviourEvent {
     Floodsub(FloodsubEvent),
-    Mdns(MdnsEvent),
+    Mdns(mdns::Event),
 }
 
 impl From<FloodsubEvent> for StoryBehaviourEvent {
@@ -80,8 +81,8 @@ impl From<FloodsubEvent> for StoryBehaviourEvent {
     }
 }
 
-impl From<MdnsEvent> for StoryBehaviourEvent {
-    fn from(event: MdnsEvent) -> Self {
+impl From<mdns::Event> for StoryBehaviourEvent {
+    fn from(event: mdns::Event) -> Self {
         StoryBehaviourEvent::Mdns(event)
     }
 }
@@ -160,7 +161,7 @@ async fn main() {
         .into_authentic(&KEYS)
         .expect("can create auth keys");
 
-    let transp = TokioTcpTransport::new(GenTcpConfig::default().nodelay(true))
+    let transp = TokioTcpTransport::new(Config::default().nodelay(true))
         .upgrade(upgrade::Version::V1)
         .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
         .multiplex(mplex::MplexConfig::new())
@@ -225,7 +226,7 @@ async fn main() {
                     _ => error!("unknown command"),
                 },
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
-                    MdnsEvent::Discovered(discovered_list) => {
+                    mdns::Event::Discovered(discovered_list) => {
                         for (peer, _addr) in discovered_list {
                             info!("Disocvered a peer:{} at {}", peer, _addr);
                             swarm
@@ -234,7 +235,7 @@ async fn main() {
                                 .add_node_to_partial_view(peer);
                         }
                     }
-                    MdnsEvent::Expired(expired_list) => {
+                    mdns::Event::Expired(expired_list) => {
                         for (peer, _addr) in expired_list {
                             info!("Expired a peer:{} at {}", peer, _addr);
                             if !swarm.behaviour_mut().mdns.has_node(&peer) {
