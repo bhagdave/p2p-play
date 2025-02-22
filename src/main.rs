@@ -66,7 +66,7 @@ enum EventType {
 #[behaviour(out_event = "StoryBehaviourEvent")]
 struct StoryBehaviour {
     floodsub: Floodsub,
-    mdns: mdns::async_io::Behaviour,
+    mdns: mdns::tokio::Behaviour,
 }
 #[derive(Debug)]
 enum StoryBehaviourEvent {
@@ -168,7 +168,7 @@ async fn main() {
     let _ping = crate::ping::Behaviour::new(libp2p::ping::Config::new());
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
-        mdns: mdns::Behaviour::new(Default::default())
+        mdns: mdns::tokio::Behaviour::new(Default::default())
             .expect("can create mdns"),
     };
 
