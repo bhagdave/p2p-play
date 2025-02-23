@@ -18,10 +18,11 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
+use std::error::Error;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
 
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
+//type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
 type Stories = Vec<Story>;
 
 static KEYS: Lazy<identity::Keypair> = Lazy::new(identity::Keypair::generate_ed25519);
@@ -104,7 +105,7 @@ fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, rece
     });
 }
 
-async fn create_new_story(name: &str, header: &str, body: &str) -> Result<()> {
+async fn create_new_story(name: &str, header: &str, body: &str) -> Result<(), Box<dyn Error>> {
     let mut local_stories = read_local_stories().await?;
     let new_id = match local_stories.iter().max_by_key(|r| r.id) {
         Some(v) => v.id + 1,
@@ -127,7 +128,7 @@ async fn create_new_story(name: &str, header: &str, body: &str) -> Result<()> {
     Ok(())
 }
 
-async fn publish_story(id: usize) -> Result<()> {
+async fn publish_story(id: usize) -> Result<(), Box<dyn Error>> {
     let mut local_stories = read_local_stories().await?;
     local_stories
         .iter_mut()
@@ -137,13 +138,13 @@ async fn publish_story(id: usize) -> Result<()> {
     Ok(())
 }
 
-async fn read_local_stories() -> Result<Stories> {
+async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
     let content = fs::read(STORAGE_FILE_PATH).await?;
     let result = serde_json::from_slice(&content)?;
     Ok(result)
 }
 
-async fn write_local_stories(stories: &Stories) -> Result<()> {
+async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>> {
     let json = serde_json::to_string(&stories)?;
     fs::write(STORAGE_FILE_PATH, &json).await?;
     Ok(())
@@ -168,7 +169,7 @@ async fn main() {
     let _ping = crate::ping::Behaviour::new(libp2p::ping::Config::new());
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
-        mdns: mdns::tokio::Behaviour::new(Default::default())
+        mdns: mdns::tokio::Behaviour::new(Default::default(), PEER_ID.clone())
             .expect("can create mdns"),
     };
 
