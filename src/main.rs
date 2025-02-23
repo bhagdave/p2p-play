@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
 use std::error::Error;
+use bytes::Bytes;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
 
@@ -211,10 +212,11 @@ async fn main() {
             match event {
                 EventType::Response(resp) => {
                     let json = serde_json::to_string(&resp).expect("can jsonify response");
+		    let json_bytes = Bytes::from(json.into_bytes());
                     swarm
                         .behaviour_mut()
                         .floodsub
-                        .publish(TOPIC.clone(), json.as_bytes());
+                        .publish(TOPIC.clone(), json_bytes);
                 }
                 EventType::Input(line) => match line.as_str() {
                     "ls p" => handle_list_peers(&mut swarm).await,
@@ -300,20 +302,22 @@ async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
                 mode: ListMode::ALL,
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
+	    let json_bytes = Bytes::from(json.into_bytes());		
             swarm
                 .behaviour_mut()
                 .floodsub
-                .publish(TOPIC.clone(), json.as_bytes());
+                .publish(TOPIC.clone(), json_bytes);
         }
         Some(story_peer_id) => {
             let req = ListRequest {
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
+	    let json_bytes = Bytes::from(json.into_bytes());		
             swarm
                 .behaviour_mut()
                 .floodsub
-                .publish(TOPIC.clone(), json.as_bytes());
+                .publish(TOPIC.clone(), json_bytes);
         }
         None => {
             match read_local_stories().await {
