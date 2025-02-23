@@ -10,7 +10,7 @@ use libp2p::{
     yamux,
     noise,
     ping,
-    swarm::{Swarm, NetworkBehaviour},
+    swarm::{Swarm, NetworkBehaviour, Config as SwarmConfig},
     PeerId, Transport,
 };
 use log::{error, info};
@@ -64,7 +64,7 @@ enum EventType {
 }
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "StoryBehaviourEvent")]
+#[behaviour(to_swarm = "StoryBehaviourEvent")]
 struct StoryBehaviour {
     floodsub: Floodsub,
     mdns: mdns::tokio::Behaviour,
@@ -177,7 +177,7 @@ async fn main() {
 
     behaviour.floodsub.subscribe(TOPIC.clone());
 
-    let mut swarm = Swarm::with_tokio_executor(transp, behaviour, *PEER_ID);
+    let mut swarm = Swarm::<StoryBehaviour>::new(transp, behaviour, *PEER_ID, SwarmConfig::with_tokio_executor());
 
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
 
