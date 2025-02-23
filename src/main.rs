@@ -7,8 +7,8 @@ use libp2p::{
     futures::StreamExt,
     identity,
     mdns,
-    mplex,
-    noise::{Keypair, NoiseConfig, X25519Spec},
+    yamux,
+    noise,
     ping,
     swarm::{Swarm, NetworkBehaviour},
     PeerId, Transport,
@@ -157,14 +157,16 @@ async fn main() {
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
 
-    let auth_keys = Keypair::<X25519Spec>::new()
-        .into_authentic(&KEYS)
-        .expect("can create auth keys");
+//    let auth_keys = noise::Config::<X25519Spec>::new()
+//        .into_authentic(&KEYS)
+//        .expect("can create auth keys");
+	
+    let auth_keys = identity::Keypair::generate_ed25519();
 
     let transp = tcp::tokio::Transport::new(Config::default().nodelay(true))
         .upgrade(upgrade::Version::V1)
-        .authenticate(NoiseConfig::xx(auth_keys).into_authenticated()) // XX Handshake pattern, IX exists as well and IK - only XX currently provides interop with other libp2p impls
-        .multiplex(mplex::MplexConfig::new())
+        .authenticate(noise::Config::new(&auth_keys).unwrap())
+        .multiplex(yamux::Config::default())
         .boxed();
     let _ping = crate::ping::Behaviour::new(libp2p::ping::Config::new());
     let mut behaviour = StoryBehaviour {
