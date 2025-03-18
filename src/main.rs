@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
 use std::error::Error;
+use std::process;
 use bytes::Bytes;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
@@ -157,10 +158,6 @@ async fn main() {
 
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
-
-//    let auth_keys = noise::Config::<X25519Spec>::new()
-//        .into_authentic(&KEYS)
-//        .expect("can create auth keys");
 	
     let auth_keys = identity::Keypair::generate_ed25519();
 
@@ -223,6 +220,8 @@ async fn main() {
                     cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, &mut swarm).await,
                     cmd if cmd.starts_with("create s") => handle_create_stories(cmd).await,
                     cmd if cmd.starts_with("publish s") => handle_publish_story(cmd).await,
+	            cmd if cmd.starts_with("help") => handle_help(cmd).await,
+	            cmd if cmd.starts_with("quit") => process::exit(0),
                     _ => error!("unknown command"),
                 },
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
@@ -360,4 +359,12 @@ async fn handle_publish_story(cmd: &str) {
             Err(e) => error!("invalid id: {}, {}", rest.trim(), e),
         };
     }
+}
+
+async fn handle_help(cmd: &str) {
+    println!("ls p to list peers");
+    println!("ls s to list stories");
+    println!("create s to create story");
+    println!("publish s to publish story");
+    println!("quit to quit");
 }
