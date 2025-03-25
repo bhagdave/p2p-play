@@ -243,6 +243,7 @@ async fn main() {
                         },
                         SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                             info!("Connection established to {} via {:?}", peer_id, endpoint);
+                            swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
                             None
                         },
                         SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
@@ -457,12 +458,27 @@ async fn handle_help(_cmd: &str) {
 }
 
 async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr_str: &str) {
-    use libp2p::Multiaddr;
-    match addr_str.parse::<Multiaddr>() {
+    match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
             info!("Manually dialing address: {}", addr);
             match swarm.dial(addr) {
-                Ok(_) => info!("Dialing initiated successfully"),
+                Ok(_) => {
+                    info!("Dialing initiated successfully");
+                    
+                    
+                    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
+                    info!("Number of connected peers: {}", connected_peers.len());
+                    
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    let connected_peers_after: Vec<_> = swarm.connected_peers().cloned().collect();
+                    info!("Number of connected peers after 2 seconds: {}", connected_peers_after.len());
+                    for peer in connected_peers {
+                        info!("Connected to peer: {}", peer);
+                        
+                        info!("Adding peer to floodsub: {}", peer);
+                        swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
+                    }
+                },
                 Err(e) => error!("Failed to dial: {}", e),
             }
         },
