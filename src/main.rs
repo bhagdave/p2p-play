@@ -29,18 +29,40 @@ type Stories = Vec<Story>;
 
 static KEYS: Lazy<identity::Keypair> = Lazy::new(|| {
     match std::fs::read("peer_key") {
-        Ok(bytes) => match identity::Keypair::from_protobuf_encoding(&bytes) {
-            Ok(keypair) => keypair,
-            Err(_) => generate_and_save_keypair(),
+        Ok(bytes) => {
+            println!("Found existing peer key file, attempting to load");
+            match identity::Keypair::from_protobuf_encoding(&bytes) {
+                Ok(keypair) => {
+                    let peer_id = PeerId::from(keypair.public());
+                    println!("Successfully loaded keypair with PeerId: {}", peer_id);
+                    keypair
+                },
+                Err(e) => {
+                    println!("Error loading keypair: {}, generating new one", e);
+                    generate_and_save_keypair()
+                },
+            }
         },
-        Err(_) => generate_and_save_keypair(),
+        Err(e) => {
+            println!("No existing key file found ({}), generating new one", e);
+            generate_and_save_keypair()
+        },
     }
 });
 
 fn generate_and_save_keypair() -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
-    if let Ok(bytes) = keypair.to_protobuf_encoding() {
-        let _ = std::fs::write("peer_key", bytes);
+    let peer_id = PeerId::from(keypair.public());
+    println!("Generated new keypair with PeerId: {}", peer_id);
+    
+    match keypair.to_protobuf_encoding() {
+        Ok(bytes) => {
+            match std::fs::write("peer_key", bytes) {
+                Ok(_) => println!("Successfully saved keypair to file"),
+                Err(e) => println!("Failed to save keypair: {}", e),
+            }
+        },
+        Err(e) => println!("Failed to encode keypair: {}", e),
     }
     keypair
 }
@@ -185,9 +207,9 @@ async fn main() {
         .boxed();
     let _ping = crate::ping::Behaviour::new(libp2p::ping::Config::new());
     let mut behaviour = StoryBehaviour {
-        floodsub: Floodsub::new(*PEER_ID),
-        mdns: mdns::tokio::Behaviour::new(Default::default(), PEER_ID.clone())
-            .expect("can create mdns"),
+    floodsub: Floodsub::new(*PEER_ID),
+    mdns: mdns::tokio::Behaviour::new(Default::default(), PEER_ID.clone())
+        .expect("can create mdns"),
     };
 
     info!("Created floodsub with peer id: {:?}", PEER_ID.clone());
@@ -268,6 +290,11 @@ async fn main() {
                     cmd if cmd.starts_with("publish s") => handle_publish_story(cmd).await,
                     cmd if cmd.starts_with("help") => handle_help(cmd).await,
                     cmd if cmd.starts_with("quit") => process::exit(0),
+                    cmd if cmd.starts_with("connect ") => {
+                        if let Some(addr) = cmd.strip_prefix("connect ") {
+                            establish_direct_connection(&mut swarm, addr).await;
+                        }
+                    },
                     _ => error!("unknown command"),
                 },
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
@@ -286,7 +313,8 @@ async fn main() {
                         info!("Expired Peers event");
                         for (peer, _addr) in expired_list {
                             info!("Expired a peer:{} at {}", peer, _addr);
-                            if !swarm.behaviour_mut().mdns.has_node(&peer) {
+                            let discovered_nodes : Vec<_> = swarm.behaviour().mdns.discovered_nodes().collect();
+                            if !discovered_nodes.iter().any(|&n| n == &peer) {
                                 info!("Removing peer from partial view: {}", peer);
                                 swarm
                                     .behaviour_mut()
@@ -426,4 +454,18 @@ async fn handle_help(_cmd: &str) {
     println!("create s to create story");
     println!("publish s to publish story");
     println!("quit to quit");
+}
+
+async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr_str: &str) {
+    use libp2p::Multiaddr;
+    match addr_str.parse::<Multiaddr>() {
+        Ok(addr) => {
+            info!("Manually dialing address: {}", addr);
+            match swarm.dial(addr) {
+                Ok(_) => info!("Dialing initiated successfully"),
+                Err(e) => error!("Failed to dial: {}", e),
+            }
+        },
+        Err(e) => error!("Failed to parse address: {}", e),
+    }
 }
