@@ -173,6 +173,7 @@ async fn main() {
             .expect("can create mdns"),
     };
 
+    info!("Subscribing to topic: {:?}", TOPIC.clone());
     behaviour.floodsub.subscribe(TOPIC.clone());
 
     let mut swarm = Swarm::<StoryBehaviour>::new(transp, behaviour, *PEER_ID, SwarmConfig::with_tokio_executor());
@@ -206,10 +207,12 @@ async fn main() {
         };
 
         if let Some(event) = evt {
+            info!("Event Received");
             match event {
                 EventType::Response(resp) => {
+                    info!("Response received");
                     let json = serde_json::to_string(&resp).expect("can jsonify response");
-		    let json_bytes = Bytes::from(json.into_bytes());
+                    let json_bytes = Bytes::from(json.into_bytes());
                     swarm
                         .behaviour_mut()
                         .floodsub
@@ -220,14 +223,16 @@ async fn main() {
                     cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, &mut swarm).await,
                     cmd if cmd.starts_with("create s") => handle_create_stories(cmd).await,
                     cmd if cmd.starts_with("publish s") => handle_publish_story(cmd).await,
-	            cmd if cmd.starts_with("help") => handle_help(cmd).await,
-	            cmd if cmd.starts_with("quit") => process::exit(0),
+                    cmd if cmd.starts_with("help") => handle_help(cmd).await,
+                    cmd if cmd.starts_with("quit") => process::exit(0),
                     _ => error!("unknown command"),
                 },
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
                     mdns::Event::Discovered(discovered_list) => {
+                        info!("Discovered Peers event");
                         for (peer, _addr) in discovered_list {
                             info!("Disocvered a peer:{} at {}", peer, _addr);
+                            info!("Adding peer to partial view: {}", peer);
                             swarm
                                 .behaviour_mut()
                                 .floodsub
@@ -235,9 +240,11 @@ async fn main() {
                         }
                     }
                     mdns::Event::Expired(expired_list) => {
+                        info!("Expired Peers event");
                         for (peer, _addr) in expired_list {
                             info!("Expired a peer:{} at {}", peer, _addr);
                             if !swarm.behaviour_mut().mdns.has_node(&peer) {
+                                info!("Removing peer from partial view: {}", peer);
                                 swarm
                                     .behaviour_mut()
                                     .floodsub
@@ -248,6 +255,8 @@ async fn main() {
                 },
                 EventType::FloodsubEvent(floodsub_event) => match floodsub_event {
                     FloodsubEvent::Message(msg) => {
+                        info!("Message event received from {:?}", msg.source);
+                        info!("Message data: {:?}", msg.data);
                         if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
                             if resp.receiver == PEER_ID.to_string() {
                                 info!("Response from {}:", msg.source);
@@ -297,28 +306,34 @@ async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
     let rest = cmd.strip_prefix("ls s ");
     match rest {
         Some("all") => {
+            info!("Requesting all stories from all peers");
             let req = ListRequest {
                 mode: ListMode::ALL,
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-	    let json_bytes = Bytes::from(json.into_bytes());		
+            info!("JSON od request: {}", json);
+            let json_bytes = Bytes::from(json.into_bytes());		
+            info!("Publiishing to topic: {:?}", TOPIC.clone());
             swarm
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
         }
         Some(story_peer_id) => {
+            info!("Requesting all stories from peer: {}", story_peer_id);
             let req = ListRequest {
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-	    let json_bytes = Bytes::from(json.into_bytes());		
+            info!("JSON od request: {}", json);
+            let json_bytes = Bytes::from(json.into_bytes());		
             swarm
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
         }
         None => {
+            info!("Local stories:");
             match read_local_stories().await {
                 Ok(v) => {
                     info!("Local stories ({})", v.len());
@@ -361,7 +376,7 @@ async fn handle_publish_story(cmd: &str) {
     }
 }
 
-async fn handle_help(cmd: &str) {
+async fn handle_help(_cmd: &str) {
     println!("ls p to list peers");
     println!("ls s to list stories");
     println!("create s to create story");
