@@ -173,6 +173,7 @@ async fn main() {
             .expect("can create mdns"),
     };
 
+    info!("Created floodsub with peer id: {:?}", PEER_ID.clone());
     info!("Subscribing to topic: {:?}", TOPIC.clone());
     behaviour.floodsub.subscribe(TOPIC.clone());
 
@@ -197,6 +198,31 @@ async fn main() {
                     match event {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => Some(EventType::FloodsubEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => Some(EventType::MdnsEvent(event)),
+                        SwarmEvent::NewListenAddr { address, .. } => {
+                            info!("Local node is listening on {}", address);
+                            None
+                        },
+                        SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
+                            info!("Connection established to {} via {:?}", peer_id, endpoint);
+                            None
+                        },
+                        SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                            info!("Connection closed to {}: {:?}", peer_id, cause);
+                            None
+                        },
+                        SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
+                            error!("Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
+                            None
+                        },
+                        SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, connection_id, .. } => {
+                            error!("Failed incoming connection from {} to {} (connection id: {:?}): {}", 
+                                   send_back_addr, local_addr, connection_id, error);
+                            None
+                        },
+                        SwarmEvent::Dialing { peer_id, connection_id, .. } => {
+                            info!("Dialing peer: {:?} (connection id: {:?})", peer_id, connection_id);
+                            None
+                        },
                         _ => {
                             info!("Unhandled Swarm Event: {:?}", event);
                             None
@@ -313,11 +339,12 @@ async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
             let json = serde_json::to_string(&req).expect("can jsonify request");
             info!("JSON od request: {}", json);
             let json_bytes = Bytes::from(json.into_bytes());		
-            info!("Publiishing to topic: {:?}", TOPIC.clone());
+            info!("Publiishing to topic: {:?} from peer:{:?}", TOPIC.clone(), PEER_ID.clone());
             swarm
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
+            info!("Published request");
         }
         Some(story_peer_id) => {
             info!("Requesting all stories from peer: {}", story_peer_id);
