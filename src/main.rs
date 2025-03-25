@@ -27,7 +27,24 @@ const STORAGE_FILE_PATH: &str = "./stories.json";
 //type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
 type Stories = Vec<Story>;
 
-static KEYS: Lazy<identity::Keypair> = Lazy::new(identity::Keypair::generate_ed25519);
+static KEYS: Lazy<identity::Keypair> = Lazy::new(|| {
+    match std::fs::read("peer_key") {
+        Ok(bytes) => match identity::Keypair::from_protobuf_encoding(&bytes) {
+            Ok(keypair) => keypair,
+            Err(_) => generate_and_save_keypair(),
+        },
+        Err(_) => generate_and_save_keypair(),
+    }
+});
+
+fn generate_and_save_keypair() -> identity::Keypair {
+    let keypair = identity::Keypair::generate_ed25519();
+    if let Ok(bytes) = keypair.to_protobuf_encoding() {
+        let _ = std::fs::write("peer_key", bytes);
+    }
+    keypair
+}
+
 static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 
