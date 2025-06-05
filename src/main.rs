@@ -21,6 +21,8 @@ use tokio::{fs, io::AsyncBufReadExt, sync::mpsc};
 use std::error::Error;
 use std::process;
 use bytes::Bytes;
+mod types;
+use types::Story;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
 
@@ -70,14 +72,6 @@ fn generate_and_save_keypair() -> identity::Keypair {
 static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct Story {
-    id: usize,
-    name: String,
-    header: String,
-    body: String,
-    public: bool,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 enum ListMode {
@@ -142,7 +136,7 @@ fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, rece
                 let resp = ListResponse {
                     mode: ListMode::ALL,
                     receiver,
-                    data: stories.into_iter().filter(|r| r.public).collect(),
+                    data: stories.into_iter().filter(|r| r.is_public()).collect(),
                 };
                 if let Err(e) = sender.send(resp) {
                     error!("error sending response via channel, {}", e);
@@ -155,17 +149,17 @@ fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, rece
 
 async fn create_new_story(name: &str, header: &str, body: &str) -> Result<(), Box<dyn Error>> {
     let mut local_stories = read_local_stories().await?;
-    let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-        Some(v) => v.id + 1,
+    let new_id = match local_stories.iter().max_by_key(|r| r.id()) {
+        Some(v) => v.id() + 1,
         None => 0,
     };
-    local_stories.push(Story {
-        id: new_id,
-        name: name.to_owned(),
-        header: header.to_owned(),
-        body: body.to_owned(),
-        public: false,
-    });
+    local_stories.push(Story::new( 
+        new_id,
+        name.to_owned(),
+        header.to_owned(),
+        body.to_owned(),
+        false,
+    ));
     write_local_stories(&local_stories).await?;
 
     info!("Created story:");
@@ -181,8 +175,8 @@ async fn publish_story(id: usize, sender: mpsc::UnboundedSender<Story>) -> Resul
     let mut published_story = None;
     
     for story in local_stories.iter_mut() {
-        if story.id == id {
-            story.public = true;
+        if story.id() == id {
+            story.set_public(true);
             published_story = Some(story.clone());
             break;
         }
@@ -219,17 +213,17 @@ async fn save_received_story(mut story: Story) -> Result<(), Box<dyn Error>> {
     
     // Check if story already exists (by name and content to avoid duplicates)
     let already_exists = local_stories.iter().any(|s| 
-        s.name == story.name && s.header == story.header && s.body == story.body
+        s.name() == story.name() && s.header() == story.header() && s.body() == story.body()
     );
     
     if !already_exists {
         // Assign new local ID
-        let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-            Some(v) => v.id + 1,
+        let new_id = match local_stories.iter().max_by_key(|r| r.id()) {
+            Some(v) => v.id() + 1,
             None => 0,
         };
-        story.id = new_id;
-        story.public = true; // Mark as public since it was published
+        story.set_id(new_id);
+        story.set_public(true); // Mark as public since it was published
         
         local_stories.push(story);
         write_local_stories(&local_stories).await?;
@@ -338,7 +332,7 @@ async fn main() {
                         .publish(TOPIC.clone(), json_bytes);
                 }
                 EventType::PublishStory(story) => {
-                    info!("Broadcasting published story: {}", story.name);
+                    info!("Broadcasting published story: {}", story.name());
                     let published_story = PublishedStory {
                         story,
                         publisher: PEER_ID.to_string(),
@@ -404,7 +398,7 @@ async fn main() {
                             }
                         } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                             if published.publisher != PEER_ID.to_string() {
-                                info!("Received published story '{}' from {}", published.story.name, msg.source);
+                                info!("Received published story '{}' from {}", published.story.name(), msg.source);
                                 info!("Story: {:?}", published.story);
                                 
                                 // Save received story to local storage asynchronously
