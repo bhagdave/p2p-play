@@ -219,11 +219,9 @@ async fn main() {
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
     let (story_sender, mut story_rcv) = mpsc::unbounded_channel();
 	
-    let auth_keys = identity::Keypair::generate_ed25519();
-
     let transp = tcp::tokio::Transport::new(Config::default().nodelay(true))
         .upgrade(upgrade::Version::V1)
-        .authenticate(noise::Config::new(&auth_keys).unwrap())
+        .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux::Config::default())
         .boxed();
     let _ping = crate::ping::Behaviour::new(libp2p::ping::Config::new());
