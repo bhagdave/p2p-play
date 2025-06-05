@@ -211,6 +211,36 @@ async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+async fn save_received_story(mut story: Story) -> Result<(), Box<dyn Error>> {
+    let mut local_stories = match read_local_stories().await {
+        Ok(stories) => stories,
+        Err(_) => Vec::new(), // Create empty vec if no file exists
+    };
+    
+    // Check if story already exists (by name and content to avoid duplicates)
+    let already_exists = local_stories.iter().any(|s| 
+        s.name == story.name && s.header == story.header && s.body == story.body
+    );
+    
+    if !already_exists {
+        // Assign new local ID
+        let new_id = match local_stories.iter().max_by_key(|r| r.id) {
+            Some(v) => v.id + 1,
+            None => 0,
+        };
+        story.id = new_id;
+        story.public = true; // Mark as public since it was published
+        
+        local_stories.push(story);
+        write_local_stories(&local_stories).await?;
+        info!("Saved received story to local storage with ID: {}", new_id);
+    } else {
+        info!("Story already exists locally, skipping save");
+    }
+    
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
@@ -371,6 +401,11 @@ async fn main() {
                             if published.publisher != PEER_ID.to_string() {
                                 info!("Received published story '{}' from {}", published.story.name, msg.source);
                                 info!("Story: {:?}", published.story);
+                                
+                                // Save received story to local storage
+                                if let Err(e) = save_received_story(published.story).await {
+                                    error!("Failed to save received story: {}", e);
+                                }
                             }
                         } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                             match req.mode {
