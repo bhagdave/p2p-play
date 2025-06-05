@@ -365,12 +365,17 @@ async fn main() {
                     mdns::Event::Discovered(discovered_list) => {
                         info!("Discovered Peers event");
                         for (peer, _addr) in discovered_list {
-                            info!("Disocvered a peer:{} at {}", peer, _addr);
-                            info!("Adding peer to partial view: {}", peer);
-                            swarm
-                                .behaviour_mut()
-                                .floodsub
-                                .add_node_to_partial_view(peer);
+                            info!("Discovered a peer:{} at {}", peer, _addr);
+                            // Only add to partial view if not already connected
+                            if !swarm.is_connected(&peer) {
+                                info!("Adding peer to partial view: {}", peer);
+                                swarm
+                                    .behaviour_mut()
+                                    .floodsub
+                                    .add_node_to_partial_view(peer);
+                            } else {
+                                info!("Peer {} already connected, skipping", peer);
+                            }
                         }
                     }
                     mdns::Event::Expired(expired_list) => {
@@ -402,10 +407,13 @@ async fn main() {
                                 info!("Received published story '{}' from {}", published.story.name, msg.source);
                                 info!("Story: {:?}", published.story);
                                 
-                                // Save received story to local storage
-                                if let Err(e) = save_received_story(published.story).await {
-                                    error!("Failed to save received story: {}", e);
-                                }
+                                // Save received story to local storage asynchronously
+                                let story_to_save = published.story.clone();
+                                tokio::spawn(async move {
+                                    if let Err(e) = save_received_story(story_to_save).await {
+                                        error!("Failed to save received story: {}", e);
+                                    }
+                                });
                             }
                         } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                             match req.mode {
