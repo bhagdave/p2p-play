@@ -293,11 +293,14 @@ async fn main() {
                         },
                         SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                             info!("Connection established to {} via {:?}", peer_id, endpoint);
+                            info!("Adding peer {} to floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
                             None
                         },
                         SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                             info!("Connection closed to {}: {:?}", peer_id, cause);
+                            info!("Removing peer {} from floodsub partial view", peer_id);
+                            swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
                             None
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
@@ -364,17 +367,14 @@ async fn main() {
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
                     mdns::Event::Discovered(discovered_list) => {
                         info!("Discovered Peers event");
-                        for (peer, _addr) in discovered_list {
-                            info!("Discovered a peer:{} at {}", peer, _addr);
-                            // Only add to partial view if not already connected
+                        for (peer, addr) in discovered_list {
+                            info!("Discovered a peer:{} at {}", peer, addr);
+                            // Let libp2p handle the connection naturally
                             if !swarm.is_connected(&peer) {
-                                info!("Adding peer to partial view: {}", peer);
-                                swarm
-                                    .behaviour_mut()
-                                    .floodsub
-                                    .add_node_to_partial_view(peer);
-                            } else {
-                                info!("Peer {} already connected, skipping", peer);
+                                info!("Attempting to dial peer: {}", peer);
+                                if let Err(e) = swarm.dial(peer) {
+                                    error!("Failed to initiate dial to {}: {}", peer, e);
+                                }
                             }
                         }
                     }
