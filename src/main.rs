@@ -70,7 +70,7 @@ fn generate_and_save_keypair() -> identity::Keypair {
 static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct Story {
     id: usize,
     name: String,
@@ -97,11 +97,18 @@ struct ListResponse {
     receiver: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+struct PublishedStory {
+    story: Story,
+    publisher: String,
+}
+
 enum EventType {
     Response(ListResponse),
     Input(String),
     FloodsubEvent(FloodsubEvent),
     MdnsEvent(mdns::Event),
+    PublishStory(Story),
 }
 
 #[derive(NetworkBehaviour)]
@@ -169,13 +176,26 @@ async fn create_new_story(name: &str, header: &str, body: &str) -> Result<(), Bo
     Ok(())
 }
 
-async fn publish_story(id: usize) -> Result<(), Box<dyn Error>> {
+async fn publish_story(id: usize, sender: mpsc::UnboundedSender<Story>) -> Result<(), Box<dyn Error>> {
     let mut local_stories = read_local_stories().await?;
-    local_stories
-        .iter_mut()
-        .filter(|r| r.id == id)
-        .for_each(|r| r.public = true);
+    let mut published_story = None;
+    
+    for story in local_stories.iter_mut() {
+        if story.id == id {
+            story.public = true;
+            published_story = Some(story.clone());
+            break;
+        }
+    }
+    
     write_local_stories(&local_stories).await?;
+    
+    if let Some(story) = published_story {
+        if let Err(e) = sender.send(story) {
+            error!("error sending story for broadcast: {}", e);
+        }
+    }
+    
     Ok(())
 }
 
@@ -197,6 +217,7 @@ async fn main() {
 
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
+    let (story_sender, mut story_rcv) = mpsc::unbounded_channel();
 	
     let auth_keys = identity::Keypair::generate_ed25519();
 
@@ -233,6 +254,7 @@ async fn main() {
             tokio::select! {
                 line = stdin.next_line() => Some(EventType::Input(line.expect("can get line").expect("can read line from stdin"))),
                 response = response_rcv.recv() => Some(EventType::Response(response.expect("response exists"))),
+                story = story_rcv.recv() => Some(EventType::PublishStory(story.expect("story exists"))),
                 event = swarm.select_next_some() => {
                     match event {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => Some(EventType::FloodsubEvent(event)),
@@ -284,11 +306,24 @@ async fn main() {
                         .floodsub
                         .publish(TOPIC.clone(), json_bytes);
                 }
+                EventType::PublishStory(story) => {
+                    info!("Broadcasting published story: {}", story.name);
+                    let published_story = PublishedStory {
+                        story,
+                        publisher: PEER_ID.to_string(),
+                    };
+                    let json = serde_json::to_string(&published_story).expect("can jsonify published story");
+                    let json_bytes = Bytes::from(json.into_bytes());
+                    swarm
+                        .behaviour_mut()
+                        .floodsub
+                        .publish(TOPIC.clone(), json_bytes);
+                }
                 EventType::Input(line) => match line.as_str() {
                     "ls p" => handle_list_peers(&mut swarm).await,
                     cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, &mut swarm).await,
                     cmd if cmd.starts_with("create s") => handle_create_stories(cmd).await,
-                    cmd if cmd.starts_with("publish s") => handle_publish_story(cmd).await,
+                    cmd if cmd.starts_with("publish s") => handle_publish_story(cmd, story_sender.clone()).await,
                     cmd if cmd.starts_with("help") => handle_help(cmd).await,
                     cmd if cmd.starts_with("quit") => process::exit(0),
                     cmd if cmd.starts_with("connect ") => {
@@ -333,6 +368,11 @@ async fn main() {
                             if resp.receiver == PEER_ID.to_string() {
                                 info!("Response from {}:", msg.source);
                                 resp.data.iter().for_each(|r| info!("{:?}", r));
+                            }
+                        } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
+                            if published.publisher != PEER_ID.to_string() {
+                                info!("Received published story '{}' from {}", published.story.name, msg.source);
+                                info!("Story: {:?}", published.story);
                             }
                         } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                             match req.mode {
@@ -434,11 +474,11 @@ async fn handle_create_stories(cmd: &str) {
     }
 }
 
-async fn handle_publish_story(cmd: &str) {
+async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender<Story>) {
     if let Some(rest) = cmd.strip_prefix("publish s") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
-                if let Err(e) = publish_story(id).await {
+                if let Err(e) = publish_story(id, story_sender).await {
                     info!("error publishing story with id {}, {}", id, e)
                 } else {
                     info!("Published story with id: {}", id);
