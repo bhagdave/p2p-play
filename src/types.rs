@@ -47,3 +47,55 @@ impl Story {
         self.public = public;
     }
 }
+
+pub type Stories = Vec<Story>;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ListMode {
+    ALL,
+    One(String),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListRequest {
+    mode: ListMode,
+}
+
+impl ListRequest {
+    pub fn new(mode: ListMode) -> Self {
+        Self { mode }
+    }
+
+    pub fn mode(&self) -> &ListMode {
+        &self.mode
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ListResponse {
+    mode: ListMode,
+    data: Stories,
+    receiver: String,
+}
+
+impl ListResponse {
+    pub fn new(mode: ListMode, data: Stories, receiver: String) -> Self {
+        Self {
+            mode,
+            data,
+            receiver,
+        }
+    }
+
+    pub fn mode(&self) -> &ListMode {
+        &self.mode
+    }
+
+    pub fn data(&self) -> &Stories {
+        &self.data
+    }
+
+    pub fn receiver(&self) -> &str {
+        &self.receiver
+    }
+}

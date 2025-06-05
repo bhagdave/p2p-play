@@ -23,11 +23,14 @@ use std::process;
 use bytes::Bytes;
 mod types;
 use types::Story;
+use types::ListMode;
+use types::ListRequest;
+use types::ListResponse;
+use types::Stories;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
 
 //type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync + 'static>>;
-type Stories = Vec<Story>;
 
 static KEYS: Lazy<identity::Keypair> = Lazy::new(|| {
     match std::fs::read("peer_key") {
@@ -73,23 +76,7 @@ static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 
 
-#[derive(Debug, Serialize, Deserialize)]
-enum ListMode {
-    ALL,
-    One(String),
-}
 
-#[derive(Debug, Serialize, Deserialize)]
-struct ListRequest {
-    mode: ListMode,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ListResponse {
-    mode: ListMode,
-    data: Stories,
-    receiver: String,
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PublishedStory {
@@ -133,11 +120,11 @@ fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, rece
     tokio::spawn(async move {
         match read_local_stories().await {
             Ok(stories) => {
-                let resp = ListResponse {
-                    mode: ListMode::ALL,
+                let resp = ListResponse::new(
+                    ListMode::ALL,
                     receiver,
-                    data: stories.into_iter().filter(|r| r.is_public()).collect(),
-                };
+                    stories.into_iter().filter(|r| r.is_public()).collect(),
+                );
                 if let Err(e) = sender.send(resp) {
                     error!("error sending response via channel, {}", e);
                 }
@@ -392,9 +379,9 @@ async fn main() {
                         info!("Message event received from {:?}", msg.source);
                         info!("Message data: {:?}", msg.data);
                         if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
-                            if resp.receiver == PEER_ID.to_string() {
+                            if resp.receiver() == PEER_ID.to_string() {
                                 info!("Response from {}:", msg.source);
-                                resp.data.iter().for_each(|r| info!("{:?}", r));
+                                resp.data().iter().for_each(|r| info!("{:?}", r));
                             }
                         } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                             if published.publisher != PEER_ID.to_string() {
@@ -410,7 +397,7 @@ async fn main() {
                                 });
                             }
                         } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
-                            match req.mode {
+                            match req.mode() {
                                 ListMode::ALL => {
                                     info!("Received ALL req: {:?} from {:?}", req, msg.source);
                                     respond_with_public_stories(
@@ -418,7 +405,7 @@ async fn main() {
                                         msg.source.to_string(),
                                     );
                                 }
-                                ListMode::One(ref peer_id) => {
+                                ListMode::One(peer_id) => {
                                     if peer_id == &PEER_ID.to_string() {
                                         info!("Received req: {:?} from {:?}", req, msg.source);
                                         respond_with_public_stories(
