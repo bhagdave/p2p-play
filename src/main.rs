@@ -362,6 +362,7 @@ async fn main() {
                 }
                 EventType::Input(line) => match line.as_str() {
                     "ls p" => handle_list_peers(&mut swarm).await,
+                    "ls c" => handle_list_connections(&mut swarm).await,
                     cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, &mut swarm).await,
                     cmd if cmd.starts_with("create s") => handle_create_stories(cmd).await,
                     cmd if cmd.starts_with("publish s") => handle_publish_story(cmd, story_sender.clone()).await,
@@ -379,16 +380,13 @@ async fn main() {
                         info!("Discovered Peers event");
                         for (peer, addr) in discovered_list {
                             info!("Discovered a peer:{} at {}", peer, addr);
-                            // Only dial if our peer ID is "smaller" to avoid race conditions
-                            if !swarm.is_connected(&peer) && PEER_ID.to_string() < peer.to_string() {
-                                info!("Attempting to dial peer: {} (we have smaller peer ID)", peer);
+                            if !swarm.is_connected(&peer) {
+                                info!("Attempting to dial peer: {}", peer);
                                 if let Err(e) = swarm.dial(peer) {
                                     error!("Failed to initiate dial to {}: {}", peer, e);
                                 }
-                            } else if swarm.is_connected(&peer) {
-                                info!("Already connected to peer: {}", peer);
                             } else {
-                                info!("Not dialing peer: {} (they should dial us)", peer);
+                                info!("Already connected to peer: {}", peer);
                             }
                         }
                     }
@@ -469,6 +467,14 @@ async fn handle_list_peers(swarm: &mut Swarm<StoryBehaviour>) {
     unique_peers.iter().for_each(|p| info!("{}", p));
 }
 
+async fn handle_list_connections(swarm: &mut Swarm<StoryBehaviour>) {
+    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
+    info!("Connected Peers: {}", connected_peers.len());
+    for peer in connected_peers {
+        info!("Connected to: {}", peer);
+    }
+}
+
 async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
     let rest = cmd.strip_prefix("ls s ");
     match rest {
@@ -545,7 +551,8 @@ async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender<Sto
 }
 
 async fn handle_help(_cmd: &str) {
-    println!("ls p to list peers");
+    println!("ls p to list discovered peers");
+    println!("ls c to list connected peers");  
     println!("ls s to list stories");
     println!("create s to create story");
     println!("publish s to publish story");
