@@ -339,16 +339,26 @@ async fn main() {
                 }
                 EventType::PublishStory(story) => {
                     info!("Broadcasting published story: {}", story.name);
+                    
+                    // Debug: Show connected peers and floodsub state
+                    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
+                    info!("Currently connected peers: {}", connected_peers.len());
+                    for peer in &connected_peers {
+                        info!("Connected to: {}", peer);
+                    }
+                    
                     let published_story = PublishedStory {
                         story,
                         publisher: PEER_ID.to_string(),
                     };
                     let json = serde_json::to_string(&published_story).expect("can jsonify published story");
                     let json_bytes = Bytes::from(json.into_bytes());
+                    info!("Publishing {} bytes to topic {:?}", json_bytes.len(), TOPIC.clone());
                     swarm
                         .behaviour_mut()
                         .floodsub
                         .publish(TOPIC.clone(), json_bytes);
+                    info!("Story broadcast completed");
                 }
                 EventType::Input(line) => match line.as_str() {
                     "ls p" => handle_list_peers(&mut swarm).await,
@@ -369,12 +379,16 @@ async fn main() {
                         info!("Discovered Peers event");
                         for (peer, addr) in discovered_list {
                             info!("Discovered a peer:{} at {}", peer, addr);
-                            // Let libp2p handle the connection naturally
-                            if !swarm.is_connected(&peer) {
-                                info!("Attempting to dial peer: {}", peer);
+                            // Only dial if our peer ID is "smaller" to avoid race conditions
+                            if !swarm.is_connected(&peer) && PEER_ID.to_string() < peer.to_string() {
+                                info!("Attempting to dial peer: {} (we have smaller peer ID)", peer);
                                 if let Err(e) = swarm.dial(peer) {
                                     error!("Failed to initiate dial to {}: {}", peer, e);
                                 }
+                            } else if swarm.is_connected(&peer) {
+                                info!("Already connected to peer: {}", peer);
+                            } else {
+                                info!("Not dialing peer: {} (they should dial us)", peer);
                             }
                         }
                     }
@@ -396,7 +410,7 @@ async fn main() {
                 EventType::FloodsubEvent(floodsub_event) => match floodsub_event {
                     FloodsubEvent::Message(msg) => {
                         info!("Message event received from {:?}", msg.source);
-                        info!("Message data: {:?}", msg.data);
+                        info!("Message data length: {} bytes", msg.data.len());
                         if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
                             if resp.receiver == PEER_ID.to_string() {
                                 info!("Response from {}:", msg.source);
