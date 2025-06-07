@@ -36,7 +36,7 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
             let json = serde_json::to_string(&req).expect("can jsonify request");
             info!("JSON od request: {}", json);
             let json_bytes = Bytes::from(json.into_bytes());		
-            info!("Publiishing to topic: {:?} from peer:{:?}", TOPIC.clone(), PEER_ID.clone());
+            info!("Publishing to topic: {:?} from peer:{:?}", TOPIC.clone(), PEER_ID.clone());
             swarm
                 .behaviour_mut()
                 .floodsub
