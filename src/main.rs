@@ -145,6 +145,9 @@ async fn main() {
                     // Pre-publish connection check and reconnection
                     maintain_connections(&mut swarm).await;
                     
+                    // Allow connections to stabilize
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    
                     // Debug: Show connected peers and floodsub state
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
                     info!("Currently connected peers: {}", connected_peers.len());
