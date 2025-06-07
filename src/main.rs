@@ -1,17 +1,17 @@
-mod types;
-mod storage;
-mod network;
 mod handlers;
+mod network;
+mod storage;
+mod types;
 
-use types::{EventType, ListMode, ListRequest, ListResponse, PublishedStory};
-use storage::save_received_story;
-use network::{create_swarm, StoryBehaviourEvent, PEER_ID, TOPIC};
 use handlers::*;
+use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
+use storage::save_received_story;
+use types::{EventType, ListMode, ListRequest, ListResponse, PublishedStory};
 
-use libp2p::swarm::SwarmEvent;
-use libp2p::{futures::StreamExt, Swarm};
-use log::{error, info};
 use bytes::Bytes;
+use libp2p::swarm::SwarmEvent;
+use libp2p::{Swarm, futures::StreamExt};
+use log::{error, info};
 use std::process;
 use tokio::{io::AsyncBufReadExt, sync::mpsc};
 
@@ -36,10 +36,13 @@ fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, rece
 async fn maintain_connections(swarm: &mut Swarm<network::StoryBehaviour>) {
     let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-    
-    info!("Connection maintenance: {} discovered, {} connected", 
-          discovered_peers.len(), connected_peers.len());
-    
+
+    info!(
+        "Connection maintenance: {} discovered, {} connected",
+        discovered_peers.len(),
+        connected_peers.len()
+    );
+
     // Try to connect to discovered peers that aren't connected
     for peer in discovered_peers {
         if !swarm.is_connected(&peer) {
@@ -58,9 +61,10 @@ async fn main() {
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
     let (story_sender, mut story_rcv) = mpsc::unbounded_channel();
-    
+
     // Create a timer for periodic connection maintenance
-    let mut connection_maintenance_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+    let mut connection_maintenance_interval =
+        tokio::time::interval(tokio::time::Duration::from_secs(30));
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
@@ -110,7 +114,7 @@ async fn main() {
                             None
                         },
                         SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, connection_id, .. } => {
-                            error!("Failed incoming connection from {} to {} (connection id: {:?}): {}", 
+                            error!("Failed incoming connection from {} to {} (connection id: {:?}): {}",
                                    send_back_addr, local_addr, connection_id, error);
                             None
                         },
@@ -141,31 +145,36 @@ async fn main() {
                 }
                 EventType::PublishStory(story) => {
                     info!("Broadcasting published story: {}", story.name);
-                    
+
                     // Pre-publish connection check and reconnection
                     maintain_connections(&mut swarm).await;
-                    
+
                     // Allow connections to stabilize
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    
+
                     // Debug: Show connected peers and floodsub state
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
                     info!("Currently connected peers: {}", connected_peers.len());
                     for peer in &connected_peers {
                         info!("Connected to: {}", peer);
                     }
-                    
+
                     if connected_peers.is_empty() {
                         error!("No connected peers available for story broadcast!");
                     }
-                    
+
                     let published_story = PublishedStory {
                         story,
                         publisher: PEER_ID.to_string(),
                     };
-                    let json = serde_json::to_string(&published_story).expect("can jsonify published story");
+                    let json = serde_json::to_string(&published_story)
+                        .expect("can jsonify published story");
                     let json_bytes = Bytes::from(json.into_bytes());
-                    info!("Publishing {} bytes to topic {:?}", json_bytes.len(), TOPIC.clone());
+                    info!(
+                        "Publishing {} bytes to topic {:?}",
+                        json_bytes.len(),
+                        TOPIC.clone()
+                    );
                     swarm
                         .behaviour_mut()
                         .floodsub
@@ -177,14 +186,16 @@ async fn main() {
                     "ls c" => handle_list_connections(&mut swarm).await,
                     cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, &mut swarm).await,
                     cmd if cmd.starts_with("create s") => handle_create_stories(cmd).await,
-                    cmd if cmd.starts_with("publish s") => handle_publish_story(cmd, story_sender.clone()).await,
+                    cmd if cmd.starts_with("publish s") => {
+                        handle_publish_story(cmd, story_sender.clone()).await
+                    }
                     cmd if cmd.starts_with("help") => handle_help(cmd).await,
                     cmd if cmd.starts_with("quit") => process::exit(0),
                     cmd if cmd.starts_with("connect ") => {
                         if let Some(addr) = cmd.strip_prefix("connect ") {
                             establish_direct_connection(&mut swarm, addr).await;
                         }
-                    },
+                    }
                     _ => error!("unknown command"),
                 },
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
@@ -206,7 +217,8 @@ async fn main() {
                         info!("Expired Peers event");
                         for (peer, _addr) in expired_list {
                             info!("Expired a peer:{} at {}", peer, _addr);
-                            let discovered_nodes : Vec<_> = swarm.behaviour().mdns.discovered_nodes().collect();
+                            let discovered_nodes: Vec<_> =
+                                swarm.behaviour().mdns.discovered_nodes().collect();
                             if !discovered_nodes.iter().any(|&n| n == &peer) {
                                 info!("Removing peer from partial view: {}", peer);
                                 swarm
@@ -226,11 +238,16 @@ async fn main() {
                                 info!("Response from {}:", msg.source);
                                 resp.data.iter().for_each(|r| info!("{:?}", r));
                             }
-                        } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
+                        } else if let Ok(published) =
+                            serde_json::from_slice::<PublishedStory>(&msg.data)
+                        {
                             if published.publisher != PEER_ID.to_string() {
-                                info!("Received published story '{}' from {}", published.story.name, msg.source);
+                                info!(
+                                    "Received published story '{}' from {}",
+                                    published.story.name, msg.source
+                                );
                                 info!("Story: {:?}", published.story);
-                                
+
                                 // Save received story to local storage asynchronously
                                 let story_to_save = published.story.clone();
                                 tokio::spawn(async move {
@@ -282,7 +299,7 @@ async fn main() {
                             error!("Ping to {} failed: {}", peer, failure);
                         }
                     }
-                },
+                }
             }
         }
     }

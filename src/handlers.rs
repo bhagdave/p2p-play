@@ -1,4 +1,4 @@
-use crate::network::{StoryBehaviour, PEER_ID, TOPIC};
+use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{create_new_story, publish_story, read_local_stories};
 use crate::types::{ListMode, ListRequest, Story};
 use bytes::Bytes;
@@ -35,8 +35,12 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
             info!("JSON od request: {}", json);
-            let json_bytes = Bytes::from(json.into_bytes());		
-            info!("Publishing to topic: {:?} from peer:{:?}", TOPIC.clone(), PEER_ID.clone());
+            let json_bytes = Bytes::from(json.into_bytes());
+            info!(
+                "Publishing to topic: {:?} from peer:{:?}",
+                TOPIC.clone(),
+                PEER_ID.clone()
+            );
             swarm
                 .behaviour_mut()
                 .floodsub
@@ -50,7 +54,7 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
             info!("JSON od request: {}", json);
-            let json_bytes = Bytes::from(json.into_bytes());		
+            let json_bytes = Bytes::from(json.into_bytes());
             swarm
                 .behaviour_mut()
                 .floodsub
@@ -102,7 +106,7 @@ pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender
 
 pub async fn handle_help(_cmd: &str) {
     println!("ls p to list discovered peers");
-    println!("ls c to list connected peers");  
+    println!("ls c to list connected peers");
     println!("ls s to list stories");
     println!("create s to create story");
     println!("publish s to publish story");
@@ -116,23 +120,29 @@ pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr
             match swarm.dial(addr) {
                 Ok(_) => {
                     info!("Dialing initiated successfully");
-                    
+
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
                     info!("Number of connected peers: {}", connected_peers.len());
-                    
+
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                     let connected_peers_after: Vec<_> = swarm.connected_peers().cloned().collect();
-                    info!("Number of connected peers after 2 seconds: {}", connected_peers_after.len());
+                    info!(
+                        "Number of connected peers after 2 seconds: {}",
+                        connected_peers_after.len()
+                    );
                     for peer in connected_peers {
                         info!("Connected to peer: {}", peer);
-                        
+
                         info!("Adding peer to floodsub: {}", peer);
-                        swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
+                        swarm
+                            .behaviour_mut()
+                            .floodsub
+                            .add_node_to_partial_view(peer);
                     }
-                },
+                }
                 Err(e) => error!("Failed to dial: {}", e),
             }
-        },
+        }
         Err(e) => error!("Failed to parse address: {}", e),
     }
 }
