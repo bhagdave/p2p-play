@@ -35,7 +35,7 @@ pub async fn create_new_story(name: &str, header: &str, body: &str) -> Result<()
     info!("Created story:");
     info!("Name: {}", name);
     info!("Header: {}", header);
-    info!("Body:: {}", body);
+    info!("Body: {}", body);
 
     Ok(())
 }
