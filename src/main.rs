@@ -33,6 +33,24 @@ fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, rece
     });
 }
 
+async fn maintain_connections(swarm: &mut Swarm<network::StoryBehaviour>) {
+    let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
+    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
+    
+    info!("Connection maintenance: {} discovered, {} connected", 
+          discovered_peers.len(), connected_peers.len());
+    
+    // Try to connect to discovered peers that aren't connected
+    for peer in discovered_peers {
+        if !swarm.is_connected(&peer) {
+            info!("Reconnecting to discovered peer: {}", peer);
+            if let Err(e) = swarm.dial(peer) {
+                error!("Failed to dial peer {}: {}", peer, e);
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
@@ -40,6 +58,9 @@ async fn main() {
     info!("Peer Id: {}", PEER_ID.clone());
     let (response_sender, mut response_rcv) = mpsc::unbounded_channel();
     let (story_sender, mut story_rcv) = mpsc::unbounded_channel();
+    
+    // Create a timer for periodic connection maintenance
+    let mut connection_maintenance_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
@@ -58,10 +79,16 @@ async fn main() {
                 line = stdin.next_line() => Some(EventType::Input(line.expect("can get line").expect("can read line from stdin"))),
                 response = response_rcv.recv() => Some(EventType::Response(response.expect("response exists"))),
                 story = story_rcv.recv() => Some(EventType::PublishStory(story.expect("story exists"))),
+                _ = connection_maintenance_interval.tick() => {
+                    // Periodic connection maintenance
+                    maintain_connections(&mut swarm).await;
+                    None
+                },
                 event = swarm.select_next_some() => {
                     match event {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => Some(EventType::FloodsubEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => Some(EventType::MdnsEvent(event)),
+                        SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(event)) => Some(EventType::PingEvent(event)),
                         SwarmEvent::NewListenAddr { address, .. } => {
                             info!("Local node is listening on {}", address);
                             None
@@ -225,6 +252,25 @@ async fn main() {
                     }
                     _ => {
                         info!("Subscription events");
+                    }
+                },
+                EventType::PingEvent(ping_event) => {
+                    // Handle ping events for connection monitoring
+                    match ping_event {
+                        libp2p::ping::Event {
+                            peer,
+                            result: Ok(rtt),
+                            ..
+                        } => {
+                            info!("Ping to {} successful: {}ms", peer, rtt.as_millis());
+                        }
+                        libp2p::ping::Event {
+                            peer,
+                            result: Err(failure),
+                            ..
+                        } => {
+                            error!("Ping to {} failed: {}", peer, failure);
+                        }
                     }
                 },
             }

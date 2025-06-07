@@ -1,6 +1,6 @@
 use libp2p::floodsub::{Floodsub, FloodsubEvent, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
-use libp2p::{identity, mdns, PeerId};
+use libp2p::{identity, mdns, ping, PeerId};
 use log::info;
 use once_cell::sync::Lazy;
 use std::fs;
@@ -53,12 +53,14 @@ fn generate_and_save_keypair() -> identity::Keypair {
 pub struct StoryBehaviour {
     pub floodsub: Floodsub,
     pub mdns: mdns::tokio::Behaviour,
+    pub ping: ping::Behaviour,
 }
 
 #[derive(Debug)]
 pub enum StoryBehaviourEvent {
     Floodsub(FloodsubEvent),
     Mdns(mdns::Event),
+    Ping(ping::Event),
 }
 
 impl From<FloodsubEvent> for StoryBehaviourEvent {
@@ -70,6 +72,12 @@ impl From<FloodsubEvent> for StoryBehaviourEvent {
 impl From<mdns::Event> for StoryBehaviourEvent {
     fn from(event: mdns::Event) -> Self {
         StoryBehaviourEvent::Mdns(event)
+    }
+}
+
+impl From<ping::Event> for StoryBehaviourEvent {
+    fn from(event: ping::Event) -> Self {
+        StoryBehaviourEvent::Ping(event)
     }
 }
 
@@ -87,6 +95,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
         floodsub: Floodsub::new(*PEER_ID),
         mdns: mdns::tokio::Behaviour::new(Default::default(), PEER_ID.clone())
             .expect("can create mdns"),
+        ping: ping::Behaviour::new(ping::Config::new()),
     };
 
     info!("Created floodsub with peer id: {:?}", PEER_ID.clone());
