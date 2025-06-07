@@ -51,6 +51,37 @@ async fn maintain_connections(swarm: &mut Swarm<network::StoryBehaviour>) {
     }
 }
 
+async fn ensure_connections_for_publish(swarm: &mut Swarm<network::StoryBehaviour>) {
+    let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
+    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
+    
+    info!("Pre-publish check: {} discovered, {} connected", 
+          discovered_peers.len(), connected_peers.len());
+    
+    if connected_peers.len() < discovered_peers.len() {
+        info!("Attempting to reconnect to all discovered peers before publishing...");
+        
+        // Attempt to connect to all discovered peers
+        for peer in discovered_peers {
+            if !swarm.is_connected(&peer) {
+                info!("Connecting to peer {} for story broadcast", peer);
+                if let Err(e) = swarm.dial(peer) {
+                    error!("Failed to dial peer {}: {}", peer, e);
+                }
+            }
+        }
+        
+        // Give connections a moment to establish
+        info!("Waiting 2 seconds for connections to establish...");
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        
+        let final_connected: Vec<_> = swarm.connected_peers().cloned().collect();
+        info!("After reconnection attempt: {} peers connected", final_connected.len());
+    } else {
+        info!("All discovered peers already connected, proceeding with publish");
+    }
+}
+
 #[tokio::main]
 async fn main() {
     pretty_env_logger::init();
@@ -142,11 +173,18 @@ async fn main() {
                 EventType::PublishStory(story) => {
                     info!("Broadcasting published story: {}", story.name);
                     
+                    // Pre-publish connection check and reconnection
+                    ensure_connections_for_publish(&mut swarm).await;
+                    
                     // Debug: Show connected peers and floodsub state
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
                     info!("Currently connected peers: {}", connected_peers.len());
                     for peer in &connected_peers {
                         info!("Connected to: {}", peer);
+                    }
+                    
+                    if connected_peers.is_empty() {
+                        error!("No connected peers available for story broadcast!");
                     }
                     
                     let published_story = PublishedStory {
