@@ -37,6 +37,12 @@ pub struct PublishedStory {
     pub publisher: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct PeerName {
+    pub peer_id: String,
+    pub name: String,
+}
+
 pub enum EventType {
     Response(ListResponse),
     Input(String),
@@ -44,6 +50,7 @@ pub enum EventType {
     MdnsEvent(mdns::Event),
     PingEvent(ping::Event),
     PublishStory(Story),
+    PeerName(PeerName),
 }
 
 impl Story {
@@ -93,6 +100,12 @@ impl ListResponse {
 impl PublishedStory {
     pub fn new(story: Story, publisher: String) -> Self {
         Self { story, publisher }
+    }
+}
+
+impl PeerName {
+    pub fn new(peer_id: String, name: String) -> Self {
+        Self { peer_id, name }
     }
 }
 
@@ -231,5 +244,21 @@ mod tests {
         let json = serde_json::to_string(&published).unwrap();
         let deserialized: PublishedStory = serde_json::from_str(&json).unwrap();
         assert_eq!(published, deserialized);
+    }
+
+    #[test]
+    fn test_peer_name_creation() {
+        let peer_name = PeerName::new("12D3KooWTest".to_string(), "Alice".to_string());
+        assert_eq!(peer_name.peer_id, "12D3KooWTest");
+        assert_eq!(peer_name.name, "Alice");
+    }
+
+    #[test]
+    fn test_peer_name_serialization() {
+        let peer_name = PeerName::new("12D3KooWTest".to_string(), "Bob".to_string());
+        
+        let json = serde_json::to_string(&peer_name).unwrap();
+        let deserialized: PeerName = serde_json::from_str(&json).unwrap();
+        assert_eq!(peer_name, deserialized);
     }
 }

@@ -1,27 +1,32 @@
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{create_new_story, publish_story, read_local_stories};
-use crate::types::{ListMode, ListRequest, Story};
+use crate::types::{ListMode, ListRequest, Story, PeerName};
 use bytes::Bytes;
 use libp2p::swarm::Swarm;
+use libp2p::PeerId;
 use log::{error, info};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
-pub async fn handle_list_peers(swarm: &mut Swarm<StoryBehaviour>) {
+pub async fn handle_list_peers(swarm: &mut Swarm<StoryBehaviour>, peer_names: &HashMap<PeerId, String>) {
     info!("Discovered Peers:");
     let nodes = swarm.behaviour().mdns.discovered_nodes();
     let mut unique_peers = HashSet::new();
     for peer in nodes {
         unique_peers.insert(peer);
     }
-    unique_peers.iter().for_each(|p| info!("{}", p));
+    unique_peers.iter().for_each(|p| {
+        let name = peer_names.get(p).map(|n| format!(" ({})", n)).unwrap_or_default();
+        info!("{}{}", p, name);
+    });
 }
 
-pub async fn handle_list_connections(swarm: &mut Swarm<StoryBehaviour>) {
+pub async fn handle_list_connections(swarm: &mut Swarm<StoryBehaviour>, peer_names: &HashMap<PeerId, String>) {
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
     info!("Connected Peers: {}", connected_peers.len());
     for peer in connected_peers {
-        info!("Connected to: {}", peer);
+        let name = peer_names.get(&peer).map(|n| format!(" ({})", n)).unwrap_or_default();
+        info!("Connected to: {}{}", peer, name);
     }
 }
 
@@ -110,7 +115,27 @@ pub async fn handle_help(_cmd: &str) {
     println!("ls s to list stories");
     println!("create s to create story");
     println!("publish s to publish story");
+    println!("name <alias> to set your peer name");
     println!("quit to quit");
+}
+
+pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) -> Option<PeerName> {
+    if let Some(name) = cmd.strip_prefix("name ") {
+        let name = name.trim();
+        if name.is_empty() {
+            error!("Name cannot be empty");
+            return None;
+        }
+        
+        *local_peer_name = Some(name.to_string());
+        info!("Set local peer name to: {}", name);
+        
+        // Return a PeerName message to broadcast to connected peers
+        Some(PeerName::new(PEER_ID.to_string(), name.to_string()))
+    } else {
+        error!("Usage: name <alias>");
+        None
+    }
 }
 
 pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr_str: &str) {
