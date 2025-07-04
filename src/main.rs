@@ -230,7 +230,7 @@ async fn main() {
                             establish_direct_connection(&mut swarm, addr).await;
                         }
                     }
-                    _ => error!("unknown command"),
+                    _ => eprintln!("unknown command"),
                 },
                 EventType::MdnsEvent(mdns_event) => match mdns_event {
                     libp2p::mdns::Event::Discovered(discovered_list) => {
