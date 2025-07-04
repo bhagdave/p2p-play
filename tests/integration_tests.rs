@@ -301,20 +301,20 @@ async fn test_peer_name_functionality() {
     // Test PeerName struct creation and serialization
     let peer_id = "12D3KooWTestPeer123456789".to_string();
     let name = "Alice's Node".to_string();
-    
+
     let peer_name = PeerName::new(peer_id.clone(), name.clone());
-    
+
     // Verify creation
     assert_eq!(peer_name.peer_id, peer_id);
     assert_eq!(peer_name.name, name);
-    
+
     // Test serialization/deserialization (simulating network transmission)
     let json = serde_json::to_string(&peer_name).unwrap();
     let deserialized: PeerName = serde_json::from_str(&json).unwrap();
-    
+
     assert_eq!(deserialized.peer_id, peer_id);
     assert_eq!(deserialized.name, name);
-    
+
     // Test that different peer names are not equal
     let different_peer_name = PeerName::new("DifferentPeer".to_string(), "Bob".to_string());
     assert_ne!(peer_name, different_peer_name);

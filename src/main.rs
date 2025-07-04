@@ -6,11 +6,11 @@ mod types;
 use handlers::*;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::save_received_story;
-use types::{EventType, ListMode, ListRequest, ListResponse, PublishedStory, PeerName};
+use types::{EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory};
 
 use bytes::Bytes;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{Swarm, futures::StreamExt, PeerId};
+use libp2p::{PeerId, Swarm, futures::StreamExt};
 use log::{error, info};
 use std::collections::HashMap;
 use std::process;
@@ -69,7 +69,7 @@ async fn main() {
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
-    
+
     // Storage for peer names (peer_id -> alias)
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
     let mut local_peer_name: Option<String> = None;
@@ -106,7 +106,7 @@ async fn main() {
                             info!("Connection established to {} via {:?}", peer_id, endpoint);
                             info!("Adding peer {} to floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
-                            
+
                             // If we have a local peer name set, broadcast it to the newly connected peer
                             if let Some(ref name) = local_peer_name {
                                 let peer_name = PeerName::new(PEER_ID.to_string(), name.clone());
@@ -115,19 +115,19 @@ async fn main() {
                                 swarm.behaviour_mut().floodsub.publish(TOPIC.clone(), json_bytes);
                                 info!("Sent local peer name '{}' to newly connected peer {}", name, peer_id);
                             }
-                            
+
                             None
                         },
                         SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                             info!("Connection closed to {}: {:?}", peer_id, cause);
                             info!("Removing peer {} from floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
-                            
+
                             // Remove the peer name when connection is closed
                             if let Some(name) = peer_names.remove(&peer_id) {
                                 info!("Removed peer name '{}' for disconnected peer {}", name, peer_id);
                             }
-                            
+
                             None
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
@@ -215,9 +215,13 @@ async fn main() {
                     cmd if cmd.starts_with("name ") => {
                         if let Some(peer_name) = handle_set_name(cmd, &mut local_peer_name).await {
                             // Broadcast the peer name to connected peers
-                            let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
+                            let json =
+                                serde_json::to_string(&peer_name).expect("can jsonify peer name");
                             let json_bytes = Bytes::from(json.into_bytes());
-                            swarm.behaviour_mut().floodsub.publish(TOPIC.clone(), json_bytes);
+                            swarm
+                                .behaviour_mut()
+                                .floodsub
+                                .publish(TOPIC.clone(), json_bytes);
                             info!("Broadcasted peer name to connected peers");
                         }
                     }
@@ -249,7 +253,7 @@ async fn main() {
                             info!("Expired a peer:{} at {}", peer, _addr);
                             let discovered_nodes: Vec<_> =
                                 swarm.behaviour().mdns.discovered_nodes().collect();
-                            if !discovered_nodes.iter().any(|&n| n == &peer) {
+                            if !discovered_nodes.contains(&(&peer)) {
                                 info!("Removing peer from partial view: {}", peer);
                                 swarm
                                     .behaviour_mut()
@@ -286,10 +290,14 @@ async fn main() {
                                     }
                                 });
                             }
-                        } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
+                        } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data)
+                        {
                             if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
                                 if peer_id != *PEER_ID {
-                                    info!("Received peer name '{}' from {}", peer_name.name, peer_id);
+                                    info!(
+                                        "Received peer name '{}' from {}",
+                                        peer_name.name, peer_id
+                                    );
                                     peer_names.insert(peer_id, peer_name.name);
                                 }
                             }
@@ -340,7 +348,10 @@ async fn main() {
                 EventType::PeerName(peer_name) => {
                     // This shouldn't happen since PeerName events are created from floodsub messages
                     // but we'll handle it just in case
-                    info!("Received PeerName event: {} -> {}", peer_name.peer_id, peer_name.name);
+                    info!(
+                        "Received PeerName event: {} -> {}",
+                        peer_name.peer_id, peer_name.name
+                    );
                 }
             }
         }

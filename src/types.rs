@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn test_peer_name_serialization() {
         let peer_name = PeerName::new("12D3KooWTest".to_string(), "Bob".to_string());
-        
+
         let json = serde_json::to_string(&peer_name).unwrap();
         let deserialized: PeerName = serde_json::from_str(&json).unwrap();
         assert_eq!(peer_name, deserialized);

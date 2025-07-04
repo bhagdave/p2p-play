@@ -1,14 +1,17 @@
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{create_new_story, publish_story, read_local_stories};
-use crate::types::{ListMode, ListRequest, Story, PeerName};
+use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
-use libp2p::swarm::Swarm;
 use libp2p::PeerId;
+use libp2p::swarm::Swarm;
 use log::{error, info};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
-pub async fn handle_list_peers(swarm: &mut Swarm<StoryBehaviour>, peer_names: &HashMap<PeerId, String>) {
+pub async fn handle_list_peers(
+    swarm: &mut Swarm<StoryBehaviour>,
+    peer_names: &HashMap<PeerId, String>,
+) {
     info!("Discovered Peers:");
     let nodes = swarm.behaviour().mdns.discovered_nodes();
     let mut unique_peers = HashSet::new();
@@ -16,16 +19,25 @@ pub async fn handle_list_peers(swarm: &mut Swarm<StoryBehaviour>, peer_names: &H
         unique_peers.insert(peer);
     }
     unique_peers.iter().for_each(|p| {
-        let name = peer_names.get(p).map(|n| format!(" ({})", n)).unwrap_or_default();
+        let name = peer_names
+            .get(p)
+            .map(|n| format!(" ({})", n))
+            .unwrap_or_default();
         info!("{}{}", p, name);
     });
 }
 
-pub async fn handle_list_connections(swarm: &mut Swarm<StoryBehaviour>, peer_names: &HashMap<PeerId, String>) {
+pub async fn handle_list_connections(
+    swarm: &mut Swarm<StoryBehaviour>,
+    peer_names: &HashMap<PeerId, String>,
+) {
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
     info!("Connected Peers: {}", connected_peers.len());
     for peer in connected_peers {
-        let name = peer_names.get(&peer).map(|n| format!(" ({})", n)).unwrap_or_default();
+        let name = peer_names
+            .get(&peer)
+            .map(|n| format!(" ({})", n))
+            .unwrap_or_default();
         info!("Connected to: {}{}", peer, name);
     }
 }
@@ -84,7 +96,7 @@ pub async fn handle_create_stories(cmd: &str) {
         if elements.len() < 3 {
             info!("too few arguments - Format: name|header|body");
         } else {
-            let name = elements.get(0).expect("name is there");
+            let name = elements.first().expect("name is there");
             let header = elements.get(1).expect("header is there");
             let body = elements.get(2).expect("body is there");
             if let Err(e) = create_new_story(name, header, body).await {
@@ -126,10 +138,10 @@ pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) ->
             error!("Name cannot be empty");
             return None;
         }
-        
+
         *local_peer_name = Some(name.to_string());
         info!("Set local peer name to: {}", name);
-        
+
         // Return a PeerName message to broadcast to connected peers
         Some(PeerName::new(PEER_ID.to_string(), name.to_string()))
     } else {
