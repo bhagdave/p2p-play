@@ -253,7 +253,7 @@ async fn main() {
                             info!("Expired a peer:{} at {}", peer, _addr);
                             let discovered_nodes: Vec<_> =
                                 swarm.behaviour().mdns.discovered_nodes().collect();
-                            if !discovered_nodes.iter().any(|&n| n == &peer) {
+                            if !discovered_nodes.contains(&(&peer)) {
                                 info!("Removing peer from partial view: {}", peer);
                                 swarm
                                     .behaviour_mut()

@@ -96,7 +96,7 @@ pub async fn handle_create_stories(cmd: &str) {
         if elements.len() < 3 {
             info!("too few arguments - Format: name|header|body");
         } else {
-            let name = elements.get(0).expect("name is there");
+            let name = elements.first().expect("name is there");
             let header = elements.get(1).expect("header is there");
             let body = elements.get(2).expect("body is there");
             if let Err(e) = create_new_story(name, header, body).await {

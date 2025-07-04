@@ -89,7 +89,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
-        mdns: mdns::tokio::Behaviour::new(Default::default(), PEER_ID.clone())
+        mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID)
             .expect("can create mdns"),
         ping: ping::Behaviour::new(ping::Config::new()),
     };
