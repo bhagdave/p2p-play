@@ -6,12 +6,13 @@ mod types;
 use handlers::*;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::save_received_story;
-use types::{EventType, ListMode, ListRequest, ListResponse, PublishedStory};
+use types::{EventType, ListMode, ListRequest, ListResponse, PublishedStory, PeerName};
 
 use bytes::Bytes;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{Swarm, futures::StreamExt};
+use libp2p::{Swarm, futures::StreamExt, PeerId};
 use log::{error, info};
+use std::collections::HashMap;
 use std::process;
 use tokio::{io::AsyncBufReadExt, sync::mpsc};
 
@@ -68,6 +69,10 @@ async fn main() {
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
     let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+    
+    // Storage for peer names (peer_id -> alias)
+    let mut peer_names: HashMap<PeerId, String> = HashMap::new();
+    let mut local_peer_name: Option<String> = None;
 
     Swarm::listen_on(
         &mut swarm,
@@ -101,12 +106,28 @@ async fn main() {
                             info!("Connection established to {} via {:?}", peer_id, endpoint);
                             info!("Adding peer {} to floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
+                            
+                            // If we have a local peer name set, broadcast it to the newly connected peer
+                            if let Some(ref name) = local_peer_name {
+                                let peer_name = PeerName::new(PEER_ID.to_string(), name.clone());
+                                let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
+                                let json_bytes = Bytes::from(json.into_bytes());
+                                swarm.behaviour_mut().floodsub.publish(TOPIC.clone(), json_bytes);
+                                info!("Sent local peer name '{}' to newly connected peer {}", name, peer_id);
+                            }
+                            
                             None
                         },
                         SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                             info!("Connection closed to {}: {:?}", peer_id, cause);
                             info!("Removing peer {} from floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
+                            
+                            // Remove the peer name when connection is closed
+                            if let Some(name) = peer_names.remove(&peer_id) {
+                                info!("Removed peer name '{}' for disconnected peer {}", name, peer_id);
+                            }
+                            
                             None
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
@@ -182,8 +203,8 @@ async fn main() {
                     info!("Story broadcast completed");
                 }
                 EventType::Input(line) => match line.as_str() {
-                    "ls p" => handle_list_peers(&mut swarm).await,
-                    "ls c" => handle_list_connections(&mut swarm).await,
+                    "ls p" => handle_list_peers(&mut swarm, &peer_names).await,
+                    "ls c" => handle_list_connections(&mut swarm, &peer_names).await,
                     cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, &mut swarm).await,
                     cmd if cmd.starts_with("create s") => handle_create_stories(cmd).await,
                     cmd if cmd.starts_with("publish s") => {
@@ -191,6 +212,15 @@ async fn main() {
                     }
                     cmd if cmd.starts_with("help") => handle_help(cmd).await,
                     cmd if cmd.starts_with("quit") => process::exit(0),
+                    cmd if cmd.starts_with("name ") => {
+                        if let Some(peer_name) = handle_set_name(cmd, &mut local_peer_name).await {
+                            // Broadcast the peer name to connected peers
+                            let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
+                            let json_bytes = Bytes::from(json.into_bytes());
+                            swarm.behaviour_mut().floodsub.publish(TOPIC.clone(), json_bytes);
+                            info!("Broadcasted peer name to connected peers");
+                        }
+                    }
                     cmd if cmd.starts_with("connect ") => {
                         if let Some(addr) = cmd.strip_prefix("connect ") {
                             establish_direct_connection(&mut swarm, addr).await;
@@ -256,6 +286,13 @@ async fn main() {
                                     }
                                 });
                             }
+                        } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
+                            if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
+                                if peer_id != *PEER_ID {
+                                    info!("Received peer name '{}' from {}", peer_name.name, peer_id);
+                                    peer_names.insert(peer_id, peer_name.name);
+                                }
+                            }
                         } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                             match req.mode {
                                 ListMode::ALL => {
@@ -299,6 +336,11 @@ async fn main() {
                             error!("Ping to {} failed: {}", peer, failure);
                         }
                     }
+                }
+                EventType::PeerName(peer_name) => {
+                    // This shouldn't happen since PeerName events are created from floodsub messages
+                    // but we'll handle it just in case
+                    info!("Received PeerName event: {} -> {}", peer_name.peer_id, peer_name.name);
                 }
             }
         }
