@@ -4,7 +4,7 @@ use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
-use log::{error, info};
+use log::info;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
@@ -12,7 +12,7 @@ pub async fn handle_list_peers(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &HashMap<PeerId, String>,
 ) {
-    info!("Discovered Peers:");
+    println!("Discovered Peers:");
     let nodes = swarm.behaviour().mdns.discovered_nodes();
     let mut unique_peers = HashSet::new();
     for peer in nodes {
@@ -23,7 +23,7 @@ pub async fn handle_list_peers(
             .get(p)
             .map(|n| format!(" ({})", n))
             .unwrap_or_default();
-        info!("{}{}", p, name);
+        println!("{}{}", p, name);
     });
 }
 
@@ -32,13 +32,13 @@ pub async fn handle_list_connections(
     peer_names: &HashMap<PeerId, String>,
 ) {
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-    info!("Connected Peers: {}", connected_peers.len());
+    println!("Connected Peers: {}", connected_peers.len());
     for peer in connected_peers {
         let name = peer_names
             .get(&peer)
             .map(|n| format!(" ({})", n))
             .unwrap_or_default();
-        info!("Connected to: {}{}", peer, name);
+        println!("Connected to: {}{}", peer, name);
     }
 }
 
@@ -46,7 +46,7 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
     let rest = cmd.strip_prefix("ls s ");
     match rest {
         Some("all") => {
-            info!("Requesting all stories from all peers");
+            println!("Requesting all stories from all peers");
             let req = ListRequest {
                 mode: ListMode::ALL,
             };
@@ -65,7 +65,7 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
             info!("Published request");
         }
         Some(story_peer_id) => {
-            info!("Requesting all stories from peer: {}", story_peer_id);
+            println!("Requesting all stories from peer: {}", story_peer_id);
             let req = ListRequest {
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
@@ -78,13 +78,13 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
                 .publish(TOPIC.clone(), json_bytes);
         }
         None => {
-            info!("Local stories:");
+            println!("Local stories:");
             match read_local_stories().await {
                 Ok(v) => {
-                    info!("Local stories ({})", v.len());
-                    v.iter().for_each(|r| info!("{:?}", r));
+                    println!("Local stories ({})", v.len());
+                    v.iter().for_each(|r| println!("{:?}", r));
                 }
-                Err(e) => error!("error fetching local stories: {}", e),
+                Err(e) => eprintln!("error fetching local stories: {}", e),
             };
         }
     };
@@ -94,13 +94,15 @@ pub async fn handle_create_stories(cmd: &str) {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let elements: Vec<&str> = rest.split('|').collect();
         if elements.len() < 3 {
-            info!("too few arguments - Format: name|header|body");
+            println!("too few arguments - Format: name|header|body");
         } else {
             let name = elements.first().expect("name is there");
             let header = elements.get(1).expect("header is there");
             let body = elements.get(2).expect("body is there");
             if let Err(e) = create_new_story(name, header, body).await {
-                error!("error creating story: {}", e);
+                eprintln!("error creating story: {}", e);
+            } else {
+                println!("Story created successfully");
             };
         }
     }
@@ -111,41 +113,41 @@ pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender
         match rest.trim().parse::<usize>() {
             Ok(id) => {
                 if let Err(e) = publish_story(id, story_sender).await {
-                    info!("error publishing story with id {}, {}", id, e)
+                    eprintln!("error publishing story with id {}, {}", id, e)
                 } else {
-                    info!("Published story with id: {}", id);
+                    println!("Published story with id: {}", id);
                 }
             }
-            Err(e) => error!("invalid id: {}, {}", rest.trim(), e),
+            Err(e) => eprintln!("invalid id: {}, {}", rest.trim(), e),
         };
     }
 }
 
 pub async fn handle_help(_cmd: &str) {
-    info!("ls p to list discovered peers");
-    info!("ls c to list connected peers");
-    info!("ls s to list stories");
-    info!("create s to create story");
-    info!("publish s to publish story");
-    info!("name <alias> to set your peer name");
-    info!("quit to quit");
+    println!("ls p to list discovered peers");
+    println!("ls c to list connected peers");
+    println!("ls s to list stories");
+    println!("create s to create story");
+    println!("publish s to publish story");
+    println!("name <alias> to set your peer name");
+    println!("quit to quit");
 }
 
 pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) -> Option<PeerName> {
     if let Some(name) = cmd.strip_prefix("name ") {
         let name = name.trim();
         if name.is_empty() {
-            error!("Name cannot be empty");
+            eprintln!("Name cannot be empty");
             return None;
         }
 
         *local_peer_name = Some(name.to_string());
-        info!("Set local peer name to: {}", name);
+        println!("Set local peer name to: {}", name);
 
         // Return a PeerName message to broadcast to connected peers
         Some(PeerName::new(PEER_ID.to_string(), name.to_string()))
     } else {
-        error!("Usage: name <alias>");
+        eprintln!("Usage: name <alias>");
         None
     }
 }
@@ -153,10 +155,10 @@ pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) ->
 pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr_str: &str) {
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
-            info!("Manually dialing address: {}", addr);
+            println!("Manually dialing address: {}", addr);
             match swarm.dial(addr) {
                 Ok(_) => {
-                    info!("Dialing initiated successfully");
+                    println!("Dialing initiated successfully");
 
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
                     info!("Number of connected peers: {}", connected_peers.len());
@@ -177,9 +179,9 @@ pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr
                             .add_node_to_partial_view(peer);
                     }
                 }
-                Err(e) => error!("Failed to dial: {}", e),
+                Err(e) => eprintln!("Failed to dial: {}", e),
             }
         }
-        Err(e) => error!("Failed to parse address: {}", e),
+        Err(e) => eprintln!("Failed to parse address: {}", e),
     }
 }
