@@ -110,13 +110,13 @@ pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender
 }
 
 pub async fn handle_help(_cmd: &str) {
-    println!("ls p to list discovered peers");
-    println!("ls c to list connected peers");
-    println!("ls s to list stories");
-    println!("create s to create story");
-    println!("publish s to publish story");
-    println!("name <alias> to set your peer name");
-    println!("quit to quit");
+    info!("ls p to list discovered peers");
+    info!("ls c to list connected peers");
+    info!("ls s to list stories");
+    info!("create s to create story");
+    info!("publish s to publish story");
+    info!("name <alias> to set your peer name");
+    info!("quit to quit");
 }
 
 pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) -> Option<PeerName> {
