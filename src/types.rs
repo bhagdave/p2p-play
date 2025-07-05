@@ -261,4 +261,99 @@ mod tests {
         let deserialized: PeerName = serde_json::from_str(&json).unwrap();
         assert_eq!(peer_name, deserialized);
     }
+
+    #[test]
+    fn test_story_equality() {
+        let story1 = Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), true);
+        let story2 = Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), true);
+        let story3 = Story::new(2, "Test".to_string(), "Header".to_string(), "Body".to_string(), true);
+        
+        assert_eq!(story1, story2);
+        assert_ne!(story1, story3);
+    }
+
+    #[test]
+    fn test_peer_name_equality() {
+        let peer1 = PeerName::new("peer1".to_string(), "Alice".to_string());
+        let peer2 = PeerName::new("peer1".to_string(), "Alice".to_string());
+        let peer3 = PeerName::new("peer2".to_string(), "Alice".to_string());
+        
+        assert_eq!(peer1, peer2);
+        assert_ne!(peer1, peer3);
+    }
+
+    #[test]
+    fn test_list_mode_equality() {
+        let mode1 = ListMode::ALL;
+        let mode2 = ListMode::ALL;
+        let mode3 = ListMode::One("peer123".to_string());
+        let mode4 = ListMode::One("peer123".to_string());
+        let mode5 = ListMode::One("peer456".to_string());
+        
+        assert_eq!(mode1, mode2);
+        assert_eq!(mode3, mode4);
+        assert_ne!(mode1, mode3);
+        assert_ne!(mode3, mode5);
+    }
+
+    #[test]
+    fn test_published_story_fields() {
+        let story = Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), true);
+        let published = PublishedStory::new(story.clone(), "publisher123".to_string());
+        
+        assert_eq!(published.story, story);
+        assert_eq!(published.publisher, "publisher123");
+    }
+
+    #[test]
+    fn test_list_response_fields() {
+        let stories = vec![
+            Story::new(1, "Story1".to_string(), "H1".to_string(), "B1".to_string(), true),
+            Story::new(2, "Story2".to_string(), "H2".to_string(), "B2".to_string(), true),
+        ];
+        let response = ListResponse::new(ListMode::ALL, "receiver".to_string(), stories.clone());
+        
+        assert_eq!(response.mode, ListMode::ALL);
+        assert_eq!(response.receiver, "receiver");
+        assert_eq!(response.data, stories);
+    }
+
+    #[test]
+    fn test_empty_story_collections() {
+        let empty_stories: Stories = vec![];
+        let response = ListResponse::new(ListMode::ALL, "receiver".to_string(), empty_stories.clone());
+        
+        assert_eq!(response.data.len(), 0);
+        assert!(response.data.is_empty());
+    }
+
+    #[test]
+    fn test_story_with_empty_strings() {
+        let story = Story::new(0, "".to_string(), "".to_string(), "".to_string(), false);
+        
+        assert_eq!(story.id, 0);
+        assert_eq!(story.name, "");
+        assert_eq!(story.header, "");
+        assert_eq!(story.body, "");
+        assert!(!story.public);
+    }
+
+    #[test]
+    fn test_story_with_large_id() {
+        let large_id = usize::MAX;
+        let story = Story::new(large_id, "Test".to_string(), "Header".to_string(), "Body".to_string(), true);
+        
+        assert_eq!(story.id, large_id);
+    }
+
+    #[test]
+    fn test_story_clone() {
+        let story1 = Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), true);
+        let story2 = story1.clone();
+        
+        assert_eq!(story1, story2);
+        // Ensure they are separate instances
+        assert_eq!(story1.id, story2.id);
+        assert_eq!(story1.name, story2.name);
+    }
 }

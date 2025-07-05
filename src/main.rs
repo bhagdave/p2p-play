@@ -371,3 +371,96 @@ async fn main() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+    use crate::types::{ListResponse, Story};
+
+    #[test]
+    fn test_respond_with_public_stories() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let (sender, mut receiver) = mpsc::unbounded_channel::<ListResponse>();
+            let receiver_name = "test_receiver".to_string();
+            
+            // Test the function (it will read from default stories file)
+            respond_with_public_stories(sender, receiver_name.clone());
+            
+            // Try to receive a response (may timeout if no stories file exists)
+            // This mainly tests that the function doesn't panic
+            tokio::time::timeout(
+                tokio::time::Duration::from_millis(100),
+                receiver.recv()
+            ).await.ok();
+        });
+    }
+
+    #[test] 
+    fn test_event_type_variants() {
+        use crate::types::{EventType, PeerName, ListResponse, ListMode};
+        use libp2p::floodsub::FloodsubEvent;
+        use libp2p::mdns::Event as MdnsEvent;
+        use libp2p::ping::Event as PingEvent;
+        use std::time::Duration;
+        use bytes::Bytes;
+
+        // Test all EventType variants can be created
+        let _input_event = EventType::Input("test input".to_string());
+        
+        let list_response = ListResponse::new(
+            ListMode::ALL,
+            "test".to_string(),
+            vec![]
+        );
+        let _response_event = EventType::Response(list_response);
+        
+        let story = Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), true);
+        let _publish_event = EventType::PublishStory(story);
+        
+        let peer_name = PeerName::new("peer123".to_string(), "Alice".to_string());
+        let _peer_name_event = EventType::PeerName(peer_name);
+        
+        // Test floodsub event
+        let mock_message = libp2p::floodsub::FloodsubMessage {
+            source: *PEER_ID,
+            data: Bytes::from("test"),
+            sequence_number: b"seq123".to_vec(),
+            topics: vec![TOPIC.clone()],
+        };
+        let floodsub_event = FloodsubEvent::Message(mock_message);
+        let _floodsub_event_type = EventType::FloodsubEvent(floodsub_event);
+        
+        // Test mDNS event
+        let mdns_event = MdnsEvent::Discovered(
+            std::iter::once((*PEER_ID, "/ip4/127.0.0.1/tcp/8080".parse().unwrap())).collect()
+        );
+        let _mdns_event_type = EventType::MdnsEvent(mdns_event);
+        
+        // Test ping event
+        let ping_event = PingEvent {
+            peer: *PEER_ID,
+            connection: libp2p::swarm::ConnectionId::new_unchecked(1),
+            result: Ok(Duration::from_millis(50)),
+        };
+        let _ping_event_type = EventType::PingEvent(ping_event);
+    }
+
+    #[test]
+    fn test_peer_id_consistency() {
+        // Test that PEER_ID is consistent in main module
+        let peer_id_1 = *PEER_ID;
+        let peer_id_2 = *PEER_ID;
+        assert_eq!(peer_id_1, peer_id_2);
+    }
+
+    #[test]
+    fn test_topic_consistency() {
+        // Test that TOPIC is accessible from main module
+        let topic = TOPIC.clone();
+        let topic_str = format!("{:?}", topic);
+        assert!(topic_str.contains("stories"));
+    }
+}
