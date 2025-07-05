@@ -9,7 +9,6 @@ Please provide a summary of the changes and the related issue. Include motivatio
 ## Checklist
 
 - [ ] I have updated the `CHANGELOG.md` to reflect my changes.
-- [ ] I have updated `Cargo.toml` if version/code/metadata changed.
 - [ ] I have tested these changes locally.
 - [ ] I have added tests that prove my fix is effective or that my feature works.
 - [ ] I have assigned reviewers if needed.
