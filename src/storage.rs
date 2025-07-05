@@ -4,6 +4,7 @@ use std::error::Error;
 use tokio::fs;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
+const PEER_NAME_FILE_PATH: &str = "./peer_name.json";
 
 pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
     let content = fs::read(STORAGE_FILE_PATH).await?;
@@ -184,6 +185,22 @@ pub async fn save_received_story_to_path(
             .find(|s| s.name == story.name && s.header == story.header && s.body == story.body)
             .unwrap();
         Ok(existing.id)
+    }
+}
+
+pub async fn save_local_peer_name(name: &str) -> Result<(), Box<dyn Error>> {
+    let json = serde_json::to_string(name)?;
+    fs::write(PEER_NAME_FILE_PATH, &json).await?;
+    Ok(())
+}
+
+pub async fn load_local_peer_name() -> Result<Option<String>, Box<dyn Error>> {
+    match fs::read(PEER_NAME_FILE_PATH).await {
+        Ok(content) => {
+            let name: String = serde_json::from_slice(&content)?;
+            Ok(Some(name))
+        }
+        Err(_) => Ok(None), // File doesn't exist or can't be read, return None
     }
 }
 
@@ -419,5 +436,43 @@ mod tests {
 
         let result = read_local_stories_from_path(path).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_save_and_load_peer_name() {
+        // Save a peer name
+        let test_name = "TestPeer";
+        save_local_peer_name(test_name).await.unwrap();
+
+        // Load it back
+        let loaded_name = load_local_peer_name().await.unwrap();
+        assert_eq!(loaded_name, Some(test_name.to_string()));
+
+        // Clean up - remove the file
+        let _ = fs::remove_file(PEER_NAME_FILE_PATH).await;
+    }
+
+    #[tokio::test]
+    async fn test_load_peer_name_no_file() {
+        // Make sure the file doesn't exist first
+        let _ = fs::remove_file(PEER_NAME_FILE_PATH).await;
+
+        // Should return None when file doesn't exist
+        let loaded_name = load_local_peer_name().await.unwrap();
+        assert_eq!(loaded_name, None);
+    }
+
+    #[tokio::test]
+    async fn test_save_empty_peer_name() {
+        // Save an empty peer name
+        let empty_name = "";
+        save_local_peer_name(empty_name).await.unwrap();
+
+        // Load it back
+        let loaded_name = load_local_peer_name().await.unwrap();
+        assert_eq!(loaded_name, Some(empty_name.to_string()));
+
+        // Clean up
+        let _ = fs::remove_file(PEER_NAME_FILE_PATH).await;
     }
 }

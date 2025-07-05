@@ -1,5 +1,5 @@
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
-use crate::storage::{create_new_story, publish_story, read_local_stories};
+use crate::storage::{create_new_story, publish_story, read_local_stories, save_local_peer_name};
 use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
@@ -143,6 +143,11 @@ pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) ->
 
         *local_peer_name = Some(name.to_string());
         println!("Set local peer name to: {}", name);
+
+        // Save the peer name to storage for persistence across restarts
+        if let Err(e) = save_local_peer_name(name).await {
+            eprintln!("Warning: Failed to save peer name: {}", e);
+        }
 
         // Return a PeerName message to broadcast to connected peers
         Some(PeerName::new(PEER_ID.to_string(), name.to_string()))
