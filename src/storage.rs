@@ -420,4 +420,91 @@ mod tests {
         let result = read_local_stories_from_path(path).await;
         assert!(result.is_err());
     }
+
+    #[tokio::test]
+    async fn test_file_permissions() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create a story first
+        let stories = vec![Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), false)];
+        write_local_stories_to_path(&stories, path).await.unwrap();
+
+        // Verify we can read it back
+        let read_stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(read_stories.len(), 1);
+        assert_eq!(read_stories[0].name, "Test");
+    }
+
+    #[tokio::test]
+    async fn test_large_story_content() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create a story with large content
+        let large_content = "A".repeat(1000);
+        let _id = create_new_story_in_path(
+            "Large Story",
+            &large_content,
+            &large_content,
+            path
+        ).await.unwrap();
+
+        let stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(stories.len(), 1);
+        assert_eq!(stories[0].header.len(), 1000);
+        assert_eq!(stories[0].body.len(), 1000);
+    }
+
+    #[tokio::test]
+    async fn test_story_with_special_characters() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create a story with special characters
+        let special_content = "Hello 🌍! \"Quotes\" & <tags>";
+        let _id = create_new_story_in_path(
+            special_content,
+            special_content,
+            special_content,
+            path
+        ).await.unwrap();
+
+        let stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(stories.len(), 1);
+        assert_eq!(stories[0].name, special_content);
+        assert_eq!(stories[0].header, special_content);
+        assert_eq!(stories[0].body, special_content);
+    }
+
+    #[tokio::test]
+    async fn test_publish_all_stories() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create multiple stories
+        let mut story_ids = vec![];
+        for i in 0..3 {
+            let id = create_new_story_in_path(
+                &format!("Story {}", i),
+                &format!("Header {}", i),
+                &format!("Body {}", i),
+                path
+            ).await.unwrap();
+            story_ids.push(id);
+        }
+
+        // Publish all stories
+        for id in story_ids {
+            let result = publish_story_in_path(id, path).await.unwrap();
+            assert!(result.is_some());
+        }
+
+        // Verify all are public
+        let stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(stories.len(), 3);
+        for story in stories {
+            assert!(story.public);
+        }
+    }
 }
