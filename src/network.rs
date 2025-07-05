@@ -106,3 +106,117 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     );
     Ok(swarm)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_static_peer_id_consistency() {
+        // Test that PEER_ID is consistent across multiple accesses
+        let peer_id_1 = *PEER_ID;
+        let peer_id_2 = *PEER_ID;
+        assert_eq!(peer_id_1, peer_id_2);
+    }
+    
+    #[test]
+    fn test_static_topic_creation() {
+        // Test that TOPIC is properly created
+        let topic = TOPIC.clone();
+        let topic_str = format!("{:?}", topic);
+        assert!(topic_str.contains("stories"));
+    }
+    
+    #[test]
+    fn test_story_behaviour_event_from_floodsub() {
+        use libp2p::floodsub::{FloodsubEvent, FloodsubMessage};
+        use bytes::Bytes;
+        
+        // Create a mock floodsub event
+        let mock_message = FloodsubMessage {
+            source: *PEER_ID,
+            data: Bytes::from("test data"),
+            sequence_number: b"seq123".to_vec(),
+            topics: vec![TOPIC.clone()],
+        };
+        let floodsub_event = FloodsubEvent::Message(mock_message);
+        
+        // Test conversion
+        let story_event = StoryBehaviourEvent::from(floodsub_event);
+        match story_event {
+            StoryBehaviourEvent::Floodsub(event) => {
+                // We can't easily compare the exact content due to the enum structure,
+                // but we can verify the conversion worked
+                assert!(matches!(event, FloodsubEvent::Message(_)));
+            }
+            _ => panic!("Expected Floodsub event"),
+        }
+    }
+    
+    #[test] 
+    fn test_story_behaviour_event_from_mdns() {
+        use libp2p::mdns::Event as MdnsEvent;
+        
+        // Create a mock mDNS event - using the Discovered variant
+        let mdns_event = MdnsEvent::Discovered(std::iter::once((*PEER_ID, "/ip4/127.0.0.1/tcp/8080".parse().unwrap())).collect());
+        
+        // Test conversion
+        let story_event = StoryBehaviourEvent::from(mdns_event);
+        match story_event {
+            StoryBehaviourEvent::Mdns(_) => {
+                // Conversion worked
+            }
+            _ => panic!("Expected Mdns event"),
+        }
+    }
+    
+    #[test]
+    fn test_story_behaviour_event_from_ping() {
+        use libp2p::ping::Event as PingEvent;
+        use std::time::Duration;
+        
+        // Create a mock ping event - use a minimal struct for testing
+        let ping_event = PingEvent {
+            peer: *PEER_ID,
+            connection: libp2p::swarm::ConnectionId::new_unchecked(1),
+            result: Ok(Duration::from_millis(50)),
+        };
+        
+        // Test conversion
+        let story_event = StoryBehaviourEvent::from(ping_event);
+        match story_event {
+            StoryBehaviourEvent::Ping(_) => {
+                // Conversion worked
+            }
+            _ => panic!("Expected Ping event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_swarm_success() {
+        // Test that swarm can be created successfully
+        let result = create_swarm();
+        assert!(result.is_ok());
+        
+        let swarm = result.unwrap();
+        assert_eq!(swarm.local_peer_id(), &*PEER_ID);
+    }
+
+    #[test]
+    fn test_story_behaviour_event_debug() {
+        use libp2p::ping::Event as PingEvent;
+        use std::time::Duration;
+        
+        // Test that StoryBehaviourEvent implements Debug properly
+        let ping_event = PingEvent {
+            peer: *PEER_ID,
+            connection: libp2p::swarm::ConnectionId::new_unchecked(1),
+            result: Ok(Duration::from_millis(50)),
+        };
+        let story_event = StoryBehaviourEvent::from(ping_event);
+        
+        // This should not panic - tests that Debug is properly derived
+        let debug_str = format!("{:?}", story_event);
+        assert!(debug_str.contains("Ping"));
+    }
+}
