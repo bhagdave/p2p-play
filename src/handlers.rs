@@ -1,5 +1,5 @@
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
-use crate::storage::{create_new_story, publish_story, read_local_stories};
+use crate::storage::{create_new_story, publish_story, read_local_stories, save_local_peer_name};
 use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
@@ -206,6 +206,11 @@ pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) ->
         *local_peer_name = Some(name.to_string());
         println!("Set local peer name to: {}", name);
 
+        // Save the peer name to storage for persistence across restarts
+        if let Err(e) = save_local_peer_name(name).await {
+            eprintln!("Warning: Failed to save peer name: {}", e);
+        }
+
         // Return a PeerName message to broadcast to connected peers
         Some(PeerName::new(PEER_ID.to_string(), name.to_string()))
     } else {
@@ -245,5 +250,149 @@ pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr
             }
         }
         Err(e) => eprintln!("Failed to parse address: {}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::sync::mpsc;
+    use crate::types::Story;
+
+    #[tokio::test]
+    async fn test_handle_set_name_valid() {
+        let mut local_peer_name = None;
+        
+        // Test setting a valid name
+        let result = handle_set_name("name Alice", &mut local_peer_name).await;
+        
+        assert!(result.is_some());
+        assert_eq!(local_peer_name, Some("Alice".to_string()));
+        
+        let peer_name = result.unwrap();
+        assert_eq!(peer_name.name, "Alice");
+        assert_eq!(peer_name.peer_id, PEER_ID.to_string());
+    }
+
+    #[tokio::test] 
+    async fn test_handle_set_name_empty() {
+        let mut local_peer_name = None;
+        
+        // Test setting an empty name
+        let result = handle_set_name("name ", &mut local_peer_name).await;
+        
+        assert!(result.is_none());
+        assert_eq!(local_peer_name, None);
+    }
+
+    #[tokio::test]
+    async fn test_handle_set_name_invalid_format() {
+        let mut local_peer_name = None;
+        
+        // Test invalid command format
+        let result = handle_set_name("invalid command", &mut local_peer_name).await;
+        
+        assert!(result.is_none());
+        assert_eq!(local_peer_name, None);
+    }
+
+    #[tokio::test]
+    async fn test_handle_set_name_with_spaces() {
+        let mut local_peer_name = None;
+        
+        // Test name with spaces
+        let result = handle_set_name("name Alice Smith", &mut local_peer_name).await;
+        
+        assert!(result.is_some());
+        assert_eq!(local_peer_name, Some("Alice Smith".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_handle_help() {
+        // This function just prints help text, we'll test it doesn't panic
+        handle_help("help").await;
+        // If we get here without panicking, the test passes
+    }
+
+    #[test]
+    fn test_handle_create_stories_valid() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        
+        // Note: This will try to create actual files, but we're testing the parsing logic
+        rt.block_on(async {
+            // Test valid create story command format
+            handle_create_stories("create sTest Story|Test Header|Test Body").await;
+            // The function will try to create a story but may fail due to file system issues
+            // We're mainly testing that the parsing doesn't panic
+        });
+    }
+
+    #[test]
+    fn test_handle_create_stories_invalid() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            // Test invalid format (too few arguments)
+            handle_create_stories("create sTest|Header").await;
+            
+            // Test completely invalid format
+            handle_create_stories("invalid command").await;
+        });
+    }
+
+    #[test]
+    fn test_handle_publish_story_valid_id() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let (sender, _receiver) = mpsc::unbounded_channel::<Story>();
+            
+            // Test with valid ID format
+            handle_publish_story("publish s123", sender).await;
+            // The function will try to publish but may fail due to file system issues
+            // We're testing the parsing logic
+        });
+    }
+
+    #[test]
+    fn test_handle_publish_story_invalid_id() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        
+        rt.block_on(async {
+            let (sender, _receiver) = mpsc::unbounded_channel::<Story>();
+            
+            // Test with invalid ID format
+            handle_publish_story("publish sabc", sender).await;
+            
+            // Test with invalid command format - use a new sender
+            let (sender2, _receiver2) = mpsc::unbounded_channel::<Story>();
+            handle_publish_story("invalid command", sender2).await;
+        });
+    }
+
+    #[test]
+    fn test_command_parsing_edge_cases() {
+        // Test various edge cases in command parsing
+        
+        // Test commands with extra whitespace
+        assert_eq!("ls s all".strip_prefix("ls s "), Some("all"));
+        assert_eq!("create s".strip_prefix("create s"), Some(""));
+        assert_eq!("name   Alice   ".strip_prefix("name "), Some("  Alice   "));
+        
+        // Test commands that don't match expected prefixes  
+        assert_eq!("invalid".strip_prefix("ls s "), None);
+        assert_eq!("list stories".strip_prefix("ls s "), None);
+    }
+
+    #[test]
+    fn test_multiaddr_parsing() {
+        // Test address parsing logic used in establish_direct_connection
+        let valid_addr = "/ip4/127.0.0.1/tcp/8080";
+        let parsed = valid_addr.parse::<libp2p::Multiaddr>();
+        assert!(parsed.is_ok());
+        
+        let invalid_addr = "not-a-valid-address";
+        let parsed_invalid = invalid_addr.parse::<libp2p::Multiaddr>();
+        assert!(parsed_invalid.is_err());
     }
 }

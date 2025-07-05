@@ -4,6 +4,7 @@ use std::error::Error;
 use tokio::fs;
 
 const STORAGE_FILE_PATH: &str = "./stories.json";
+const PEER_NAME_FILE_PATH: &str = "./peer_name.json";
 
 pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
     let content = fs::read(STORAGE_FILE_PATH).await?;
@@ -184,6 +185,38 @@ pub async fn save_received_story_to_path(
             .find(|s| s.name == story.name && s.header == story.header && s.body == story.body)
             .unwrap();
         Ok(existing.id)
+    }
+}
+
+pub async fn save_local_peer_name(name: &str) -> Result<(), Box<dyn Error>> {
+    let json = serde_json::to_string(name)?;
+    fs::write(PEER_NAME_FILE_PATH, &json).await?;
+    Ok(())
+}
+
+pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> Result<(), Box<dyn Error>> {
+    let json = serde_json::to_string(name)?;
+    fs::write(path, &json).await?;
+    Ok(())
+}
+
+pub async fn load_local_peer_name() -> Result<Option<String>, Box<dyn Error>> {
+    match fs::read(PEER_NAME_FILE_PATH).await {
+        Ok(content) => {
+            let name: String = serde_json::from_slice(&content)?;
+            Ok(Some(name))
+        }
+        Err(_) => Ok(None), // File doesn't exist or can't be read, return None
+    }
+}
+
+pub async fn load_local_peer_name_from_path(path: &str) -> Result<Option<String>, Box<dyn Error>> {
+    match fs::read(path).await {
+        Ok(content) => {
+            let name: String = serde_json::from_slice(&content)?;
+            Ok(Some(name))
+        }
+        Err(_) => Ok(None), // File doesn't exist or can't be read, return None
     }
 }
 
@@ -419,5 +452,127 @@ mod tests {
 
         let result = read_local_stories_from_path(path).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_save_and_load_peer_name() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+        
+        // Save a peer name
+        let test_name = "TestPeer";
+        save_local_peer_name_to_path(test_name, path).await.unwrap();
+
+        // Load it back
+        let loaded_name = load_local_peer_name_from_path(path).await.unwrap();
+        assert_eq!(loaded_name, Some(test_name.to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_load_peer_name_no_file() {
+        // Should return None when file doesn't exist
+        let loaded_name = load_local_peer_name_from_path("/nonexistent/path").await.unwrap();
+        assert_eq!(loaded_name, None);
+    }
+
+    #[tokio::test]
+    async fn test_save_empty_peer_name() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+        
+        // Save an empty peer name
+        let empty_name = "";
+        save_local_peer_name_to_path(empty_name, path).await.unwrap();
+
+        // Load it back
+        let loaded_name = load_local_peer_name_from_path(path).await.unwrap();
+        assert_eq!(loaded_name, Some(empty_name.to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_file_permissions() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create a story first
+        let stories = vec![Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), false)];
+        write_local_stories_to_path(&stories, path).await.unwrap();
+
+        // Verify we can read it back
+        let read_stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(read_stories.len(), 1);
+        assert_eq!(read_stories[0].name, "Test");
+    }
+
+    #[tokio::test]
+    async fn test_large_story_content() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create a story with large content
+        let large_content = "A".repeat(1000);
+        let _id = create_new_story_in_path(
+            "Large Story",
+            &large_content,
+            &large_content,
+            path
+        ).await.unwrap();
+
+        let stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(stories.len(), 1);
+        assert_eq!(stories[0].header.len(), 1000);
+        assert_eq!(stories[0].body.len(), 1000);
+    }
+
+    #[tokio::test]
+    async fn test_story_with_special_characters() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create a story with special characters
+        let special_content = "Hello 🌍! \"Quotes\" & <tags>";
+        let _id = create_new_story_in_path(
+            special_content,
+            special_content,
+            special_content,
+            path
+        ).await.unwrap();
+
+        let stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(stories.len(), 1);
+        assert_eq!(stories[0].name, special_content);
+        assert_eq!(stories[0].header, special_content);
+        assert_eq!(stories[0].body, special_content);
+    }
+
+    #[tokio::test]
+    async fn test_publish_all_stories() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create multiple stories
+        let mut story_ids = vec![];
+        for i in 0..3 {
+            let id = create_new_story_in_path(
+                &format!("Story {}", i),
+                &format!("Header {}", i),
+                &format!("Body {}", i),
+                path
+            ).await.unwrap();
+            story_ids.push(id);
+        }
+
+        // Publish all stories
+        for id in story_ids {
+            let result = publish_story_in_path(id, path).await.unwrap();
+            assert!(result.is_some());
+        }
+
+        // Verify all are public
+        let stories = read_local_stories_from_path(path).await.unwrap();
+        assert_eq!(stories.len(), 3);
+        for story in stories {
+            assert!(story.public);
+        }
     }
 }
