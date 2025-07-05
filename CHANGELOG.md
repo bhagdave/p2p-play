@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [0.3.4] - 2025-07-05
+## [0.3.5] - 2025-07-05
 
 ### Added
 - Interactive story creation mode: Users can now create stories by typing `create s` and being prompted for each element (name, header, body)
