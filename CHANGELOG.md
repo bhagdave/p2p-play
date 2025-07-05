@@ -2,6 +2,9 @@
 
 All changes to this project will be documented in this file.
 
+### Added
+- Creates stories.json file on startup on stories
+
 ## [0.3.5] - 2025-07-05
 
 ### Added

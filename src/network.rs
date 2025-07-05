@@ -89,8 +89,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     let mut behaviour = StoryBehaviour {
         floodsub: Floodsub::new(*PEER_ID),
-        mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID)
-            .expect("can create mdns"),
+        mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
         ping: ping::Behaviour::new(ping::Config::new()),
     };
 
@@ -110,7 +109,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_static_peer_id_consistency() {
         // Test that PEER_ID is consistent across multiple accesses
@@ -118,7 +117,7 @@ mod tests {
         let peer_id_2 = *PEER_ID;
         assert_eq!(peer_id_1, peer_id_2);
     }
-    
+
     #[test]
     fn test_static_topic_creation() {
         // Test that TOPIC is properly created
@@ -126,12 +125,12 @@ mod tests {
         let topic_str = format!("{:?}", topic);
         assert!(topic_str.contains("stories"));
     }
-    
+
     #[test]
     fn test_story_behaviour_event_from_floodsub() {
-        use libp2p::floodsub::{FloodsubEvent, FloodsubMessage};
         use bytes::Bytes;
-        
+        use libp2p::floodsub::{FloodsubEvent, FloodsubMessage};
+
         // Create a mock floodsub event
         let mock_message = FloodsubMessage {
             source: *PEER_ID,
@@ -140,7 +139,7 @@ mod tests {
             topics: vec![TOPIC.clone()],
         };
         let floodsub_event = FloodsubEvent::Message(mock_message);
-        
+
         // Test conversion
         let story_event = StoryBehaviourEvent::from(floodsub_event);
         match story_event {
@@ -152,14 +151,16 @@ mod tests {
             _ => panic!("Expected Floodsub event"),
         }
     }
-    
-    #[test] 
+
+    #[test]
     fn test_story_behaviour_event_from_mdns() {
         use libp2p::mdns::Event as MdnsEvent;
-        
+
         // Create a mock mDNS event - using the Discovered variant
-        let mdns_event = MdnsEvent::Discovered(std::iter::once((*PEER_ID, "/ip4/127.0.0.1/tcp/8080".parse().unwrap())).collect());
-        
+        let mdns_event = MdnsEvent::Discovered(
+            std::iter::once((*PEER_ID, "/ip4/127.0.0.1/tcp/8080".parse().unwrap())).collect(),
+        );
+
         // Test conversion
         let story_event = StoryBehaviourEvent::from(mdns_event);
         match story_event {
@@ -169,19 +170,19 @@ mod tests {
             _ => panic!("Expected Mdns event"),
         }
     }
-    
+
     #[test]
     fn test_story_behaviour_event_from_ping() {
         use libp2p::ping::Event as PingEvent;
         use std::time::Duration;
-        
+
         // Create a mock ping event - use a minimal struct for testing
         let ping_event = PingEvent {
             peer: *PEER_ID,
             connection: libp2p::swarm::ConnectionId::new_unchecked(1),
             result: Ok(Duration::from_millis(50)),
         };
-        
+
         // Test conversion
         let story_event = StoryBehaviourEvent::from(ping_event);
         match story_event {
@@ -197,7 +198,7 @@ mod tests {
         // Test that swarm can be created successfully
         let result = create_swarm();
         assert!(result.is_ok());
-        
+
         let swarm = result.unwrap();
         assert_eq!(swarm.local_peer_id(), &*PEER_ID);
     }
@@ -206,7 +207,7 @@ mod tests {
     fn test_story_behaviour_event_debug() {
         use libp2p::ping::Event as PingEvent;
         use std::time::Duration;
-        
+
         // Test that StoryBehaviourEvent implements Debug properly
         let ping_event = PingEvent {
             peer: *PEER_ID,
@@ -214,7 +215,7 @@ mod tests {
             result: Ok(Duration::from_millis(50)),
         };
         let story_event = StoryBehaviourEvent::from(ping_event);
-        
+
         // This should not panic - tests that Debug is properly derived
         let debug_str = format!("{:?}", story_event);
         assert!(debug_str.contains("Ping"));
