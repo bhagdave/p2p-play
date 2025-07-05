@@ -487,6 +487,9 @@ mod tests {
         // Load it back
         let loaded_name = load_local_peer_name_from_path(path).await.unwrap();
         assert_eq!(loaded_name, Some(empty_name.to_string()));
+    }
+
+    #[tokio::test]
     async fn test_file_permissions() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path().to_str().unwrap();
