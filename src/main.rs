@@ -362,7 +362,7 @@ async fn main() {
 mod tests {
     use super::*;
     use tokio::sync::mpsc;
-    use crate::types::{ListResponse, ListMode, Story};
+    use crate::types::{ListResponse, Story};
 
     #[test]
     fn test_respond_with_public_stories() {
