@@ -2,6 +2,17 @@
 
 All changes to this project will be documented in this file.
 
+## [0.3.4] - 2025-07-05
+
+### Added
+- Interactive story creation mode: Users can now create stories by typing `create s` and being prompted for each element (name, header, body)
+- Input validation for story creation with clear error messages for empty inputs
+- Updated help text to show both interactive and legacy creation modes
+
+### Changed
+- Enhanced `create s` command to support both interactive mode (no arguments) and legacy pipe-separated format (with arguments)
+- Improved user experience with guided prompts for story elements
+
 ## [0.3.3] - 2025-01-04
 
 ### Fixed
