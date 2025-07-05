@@ -7,6 +7,7 @@ use libp2p::swarm::Swarm;
 use log::info;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
+use tokio::io::{AsyncBufReadExt, BufReader};
 
 pub async fn handle_list_peers(
     swarm: &mut Swarm<StoryBehaviour>,
@@ -90,20 +91,80 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
     };
 }
 
+async fn prompt_for_input(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
+    println!("{}", prompt);
+    let mut stdin = BufReader::new(tokio::io::stdin());
+    let mut input = String::new();
+    stdin.read_line(&mut input).await?;
+    Ok(input.trim().to_string())
+}
+
 pub async fn handle_create_stories(cmd: &str) {
     if let Some(rest) = cmd.strip_prefix("create s") {
-        let elements: Vec<&str> = rest.split('|').collect();
-        if elements.len() < 3 {
-            println!("too few arguments - Format: name|header|body");
-        } else {
-            let name = elements.first().expect("name is there");
-            let header = elements.get(1).expect("header is there");
-            let body = elements.get(2).expect("body is there");
-            if let Err(e) = create_new_story(name, header, body).await {
+        let rest = rest.trim();
+        
+        // Check if user wants interactive mode (no arguments provided)
+        if rest.is_empty() {
+            println!("Creating a new story interactively...");
+            
+            // Prompt for each element
+            let name = match prompt_for_input("Enter story name:").await {
+                Ok(input) if !input.is_empty() => input,
+                Ok(_) => {
+                    println!("Story name cannot be empty. Story creation cancelled.");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("Error reading input: {}. Story creation cancelled.", e);
+                    return;
+                }
+            };
+            
+            let header = match prompt_for_input("Enter story header:").await {
+                Ok(input) if !input.is_empty() => input,
+                Ok(_) => {
+                    println!("Story header cannot be empty. Story creation cancelled.");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("Error reading input: {}. Story creation cancelled.", e);
+                    return;
+                }
+            };
+            
+            let body = match prompt_for_input("Enter story body:").await {
+                Ok(input) if !input.is_empty() => input,
+                Ok(_) => {
+                    println!("Story body cannot be empty. Story creation cancelled.");
+                    return;
+                }
+                Err(e) => {
+                    eprintln!("Error reading input: {}. Story creation cancelled.", e);
+                    return;
+                }
+            };
+            
+            if let Err(e) = create_new_story(&name, &header, &body).await {
                 eprintln!("error creating story: {}", e);
             } else {
                 println!("Story created successfully");
-            };
+            }
+        } else {
+            // Legacy mode: parse pipe-separated arguments
+            let elements: Vec<&str> = rest.split('|').collect();
+            if elements.len() < 3 {
+                println!("too few arguments - Format: name|header|body");
+                println!("Alternatively, use 'create s' for interactive mode");
+            } else {
+                let name = elements.first().expect("name is there");
+                let header = elements.get(1).expect("header is there");
+                let body = elements.get(2).expect("body is there");
+                if let Err(e) = create_new_story(name, header, body).await {
+                    eprintln!("error creating story: {}", e);
+                } else {
+                    println!("Story created successfully");
+                };
+            }
         }
     }
 }
@@ -127,7 +188,8 @@ pub async fn handle_help(_cmd: &str) {
     println!("ls p to list discovered peers");
     println!("ls c to list connected peers");
     println!("ls s to list stories");
-    println!("create s to create story");
+    println!("create s to create story (interactive mode)");
+    println!("create s name|header|body to create story (quick mode)");
     println!("publish s to publish story");
     println!("name <alias> to set your peer name");
     println!("quit to quit");
