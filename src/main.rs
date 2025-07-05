@@ -5,7 +5,7 @@ mod types;
 
 use handlers::*;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
-use storage::save_received_story;
+use storage::{save_received_story, load_local_peer_name};
 use types::{EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory};
 
 use bytes::Bytes;
@@ -72,7 +72,21 @@ async fn main() {
 
     // Storage for peer names (peer_id -> alias)
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
-    let mut local_peer_name: Option<String> = None;
+    
+    // Load saved peer name if it exists
+    let mut local_peer_name: Option<String> = match load_local_peer_name().await {
+        Ok(saved_name) => {
+            if let Some(ref name) = saved_name {
+                info!("Loaded saved peer name: {}", name);
+                println!("Loaded saved peer name: {}", name);
+            }
+            saved_name
+        }
+        Err(e) => {
+            error!("Failed to load saved peer name: {}", e);
+            None
+        }
+    };
 
     Swarm::listen_on(
         &mut swarm,
