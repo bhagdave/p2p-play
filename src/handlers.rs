@@ -6,8 +6,8 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use log::info;
 use std::collections::{HashMap, HashSet};
-use tokio::sync::mpsc;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
 
 pub async fn handle_list_peers(
     swarm: &mut Swarm<StoryBehaviour>,
@@ -102,11 +102,11 @@ async fn prompt_for_input(prompt: &str) -> Result<String, Box<dyn std::error::Er
 pub async fn handle_create_stories(cmd: &str) {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
-        
+
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
             println!("Creating a new story interactively...");
-            
+
             // Prompt for each element
             let name = match prompt_for_input("Enter story name:").await {
                 Ok(input) if !input.is_empty() => input,
@@ -119,7 +119,7 @@ pub async fn handle_create_stories(cmd: &str) {
                     return;
                 }
             };
-            
+
             let header = match prompt_for_input("Enter story header:").await {
                 Ok(input) if !input.is_empty() => input,
                 Ok(_) => {
@@ -131,7 +131,7 @@ pub async fn handle_create_stories(cmd: &str) {
                     return;
                 }
             };
-            
+
             let body = match prompt_for_input("Enter story body:").await {
                 Ok(input) if !input.is_empty() => input,
                 Ok(_) => {
@@ -143,7 +143,7 @@ pub async fn handle_create_stories(cmd: &str) {
                     return;
                 }
             };
-            
+
             if let Err(e) = create_new_story(&name, &header, &body).await {
                 eprintln!("error creating story: {}", e);
             } else {
@@ -256,31 +256,31 @@ pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
     use crate::types::Story;
+    use tokio::sync::mpsc;
 
     #[tokio::test]
     async fn test_handle_set_name_valid() {
         let mut local_peer_name = None;
-        
+
         // Test setting a valid name
         let result = handle_set_name("name Alice", &mut local_peer_name).await;
-        
+
         assert!(result.is_some());
         assert_eq!(local_peer_name, Some("Alice".to_string()));
-        
+
         let peer_name = result.unwrap();
         assert_eq!(peer_name.name, "Alice");
         assert_eq!(peer_name.peer_id, PEER_ID.to_string());
     }
 
-    #[tokio::test] 
+    #[tokio::test]
     async fn test_handle_set_name_empty() {
         let mut local_peer_name = None;
-        
+
         // Test setting an empty name
         let result = handle_set_name("name ", &mut local_peer_name).await;
-        
+
         assert!(result.is_none());
         assert_eq!(local_peer_name, None);
     }
@@ -288,10 +288,10 @@ mod tests {
     #[tokio::test]
     async fn test_handle_set_name_invalid_format() {
         let mut local_peer_name = None;
-        
+
         // Test invalid command format
         let result = handle_set_name("invalid command", &mut local_peer_name).await;
-        
+
         assert!(result.is_none());
         assert_eq!(local_peer_name, None);
     }
@@ -299,10 +299,10 @@ mod tests {
     #[tokio::test]
     async fn test_handle_set_name_with_spaces() {
         let mut local_peer_name = None;
-        
+
         // Test name with spaces
         let result = handle_set_name("name Alice Smith", &mut local_peer_name).await;
-        
+
         assert!(result.is_some());
         assert_eq!(local_peer_name, Some("Alice Smith".to_string()));
     }
@@ -317,7 +317,7 @@ mod tests {
     #[test]
     fn test_handle_create_stories_valid() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        
+
         // Note: This will try to create actual files, but we're testing the parsing logic
         rt.block_on(async {
             // Test valid create story command format
@@ -330,11 +330,11 @@ mod tests {
     #[test]
     fn test_handle_create_stories_invalid() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        
+
         rt.block_on(async {
             // Test invalid format (too few arguments)
             handle_create_stories("create sTest|Header").await;
-            
+
             // Test completely invalid format
             handle_create_stories("invalid command").await;
         });
@@ -343,10 +343,10 @@ mod tests {
     #[test]
     fn test_handle_publish_story_valid_id() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        
+
         rt.block_on(async {
             let (sender, _receiver) = mpsc::unbounded_channel::<Story>();
-            
+
             // Test with valid ID format
             handle_publish_story("publish s123", sender).await;
             // The function will try to publish but may fail due to file system issues
@@ -357,13 +357,13 @@ mod tests {
     #[test]
     fn test_handle_publish_story_invalid_id() {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        
+
         rt.block_on(async {
             let (sender, _receiver) = mpsc::unbounded_channel::<Story>();
-            
+
             // Test with invalid ID format
             handle_publish_story("publish sabc", sender).await;
-            
+
             // Test with invalid command format - use a new sender
             let (sender2, _receiver2) = mpsc::unbounded_channel::<Story>();
             handle_publish_story("invalid command", sender2).await;
@@ -373,13 +373,13 @@ mod tests {
     #[test]
     fn test_command_parsing_edge_cases() {
         // Test various edge cases in command parsing
-        
+
         // Test commands with extra whitespace
         assert_eq!("ls s all".strip_prefix("ls s "), Some("all"));
         assert_eq!("create s".strip_prefix("create s"), Some(""));
         assert_eq!("name   Alice   ".strip_prefix("name "), Some("  Alice   "));
-        
-        // Test commands that don't match expected prefixes  
+
+        // Test commands that don't match expected prefixes
         assert_eq!("invalid".strip_prefix("ls s "), None);
         assert_eq!("list stories".strip_prefix("ls s "), None);
     }
@@ -390,7 +390,7 @@ mod tests {
         let valid_addr = "/ip4/127.0.0.1/tcp/8080";
         let parsed = valid_addr.parse::<libp2p::Multiaddr>();
         assert!(parsed.is_ok());
-        
+
         let invalid_addr = "not-a-valid-address";
         let parsed_invalid = invalid_addr.parse::<libp2p::Multiaddr>();
         assert!(parsed_invalid.is_err());

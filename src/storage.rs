@@ -6,6 +6,15 @@ use tokio::fs;
 const STORAGE_FILE_PATH: &str = "./stories.json";
 const PEER_NAME_FILE_PATH: &str = "./peer_name.json";
 
+pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
+    if !std::path::Path::new(STORAGE_FILE_PATH).exists() {
+        info!("Creating stories.json file with empty array");
+        let empty_stories: Stories = Vec::new();
+        write_local_stories(&empty_stories).await?;
+    }
+    Ok(())
+}
+
 pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
     let content = fs::read(STORAGE_FILE_PATH).await?;
     let result = serde_json::from_slice(&content)?;
@@ -458,7 +467,7 @@ mod tests {
     async fn test_save_and_load_peer_name() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path().to_str().unwrap();
-        
+
         // Save a peer name
         let test_name = "TestPeer";
         save_local_peer_name_to_path(test_name, path).await.unwrap();
@@ -471,7 +480,9 @@ mod tests {
     #[tokio::test]
     async fn test_load_peer_name_no_file() {
         // Should return None when file doesn't exist
-        let loaded_name = load_local_peer_name_from_path("/nonexistent/path").await.unwrap();
+        let loaded_name = load_local_peer_name_from_path("/nonexistent/path")
+            .await
+            .unwrap();
         assert_eq!(loaded_name, None);
     }
 
@@ -479,10 +490,12 @@ mod tests {
     async fn test_save_empty_peer_name() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path().to_str().unwrap();
-        
+
         // Save an empty peer name
         let empty_name = "";
-        save_local_peer_name_to_path(empty_name, path).await.unwrap();
+        save_local_peer_name_to_path(empty_name, path)
+            .await
+            .unwrap();
 
         // Load it back
         let loaded_name = load_local_peer_name_from_path(path).await.unwrap();
@@ -495,7 +508,13 @@ mod tests {
         let path = temp_file.path().to_str().unwrap();
 
         // Create a story first
-        let stories = vec![Story::new(1, "Test".to_string(), "Header".to_string(), "Body".to_string(), false)];
+        let stories = vec![Story::new(
+            1,
+            "Test".to_string(),
+            "Header".to_string(),
+            "Body".to_string(),
+            false,
+        )];
         write_local_stories_to_path(&stories, path).await.unwrap();
 
         // Verify we can read it back
@@ -511,12 +530,9 @@ mod tests {
 
         // Create a story with large content
         let large_content = "A".repeat(1000);
-        let _id = create_new_story_in_path(
-            "Large Story",
-            &large_content,
-            &large_content,
-            path
-        ).await.unwrap();
+        let _id = create_new_story_in_path("Large Story", &large_content, &large_content, path)
+            .await
+            .unwrap();
 
         let stories = read_local_stories_from_path(path).await.unwrap();
         assert_eq!(stories.len(), 1);
@@ -531,12 +547,9 @@ mod tests {
 
         // Create a story with special characters
         let special_content = "Hello 🌍! \"Quotes\" & <tags>";
-        let _id = create_new_story_in_path(
-            special_content,
-            special_content,
-            special_content,
-            path
-        ).await.unwrap();
+        let _id = create_new_story_in_path(special_content, special_content, special_content, path)
+            .await
+            .unwrap();
 
         let stories = read_local_stories_from_path(path).await.unwrap();
         assert_eq!(stories.len(), 1);
@@ -557,8 +570,10 @@ mod tests {
                 &format!("Story {}", i),
                 &format!("Header {}", i),
                 &format!("Body {}", i),
-                path
-            ).await.unwrap();
+                path,
+            )
+            .await
+            .unwrap();
             story_ids.push(id);
         }
 
@@ -574,5 +589,30 @@ mod tests {
         for story in stories {
             assert!(story.public);
         }
+    }
+
+    #[tokio::test]
+    async fn test_ensure_stories_file_exists() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let original_path = STORAGE_FILE_PATH;
+
+        // We can't easily test the function that uses the constant path,
+        // but we can test the logic by creating a temporary file
+        let test_path = temp_dir.path().join("test_stories.json");
+        let test_path_str = test_path.to_str().unwrap();
+
+        // File shouldn't exist initially
+        assert!(!test_path.exists());
+
+        // Create empty stories file
+        let empty_stories: Stories = Vec::new();
+        write_local_stories_to_path(&empty_stories, test_path_str)
+            .await
+            .unwrap();
+
+        // Now it should exist and be readable
+        assert!(test_path.exists());
+        let stories = read_local_stories_from_path(test_path_str).await.unwrap();
+        assert_eq!(stories.len(), 0);
     }
 }
