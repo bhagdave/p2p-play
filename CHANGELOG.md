@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [0.3.7] - 2025-07-06
+## [0.3.7] - Scheduled
 
 ### Added
 - Direct messaging functionality between peers using alias names
