@@ -2,8 +2,13 @@
 
 All changes to this project will be documented in this file.
 
+## [0.3.6] - 2025-07-06
+
 ### Added
 - Creates stories.json file on startup on stories
+
+### Changed
+- Refactored the large event handling logic in main.rs by extracting it into a dedicated event_handlers.rs module
 
 ## [0.3.5] - 2025-07-05
 
