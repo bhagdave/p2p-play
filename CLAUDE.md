@@ -62,12 +62,14 @@ cargo machete
 - **Story**: Main content structure with id, name, header, body, and public flag
 - **PublishedStory**: Wrapper for stories with publisher information
 - **PeerName**: Peer alias mapping for human-readable names
+- **DirectMessage**: Structure for peer-to-peer direct messaging with sender/receiver info and timestamp
 - **EventType**: Unified event system for handling user input, network events, and responses
 
 ### Network Architecture
 - Uses libp2p with floodsub for message broadcasting
 - mDNS for automatic peer discovery on local network
 - Ping protocol for connection monitoring
+- Direct messaging between peers using floodsub with broadcast + filtering
 - Persistent peer key storage in `peer_key` file
 - Peer name persistence in `peer_name.json`
 
@@ -86,6 +88,7 @@ The application runs interactively with these commands:
 - `create s` - Create a new story interactively
 - `publish s <story_id>` - Publish a story to the network
 - `name <alias>` - Set local peer name
+- `msg <peer_alias> <message>` - Send direct message to a peer by their alias name
 - `connect <multiaddr>` - Connect to a specific peer
 - `help` - Show available commands
 - `quit` - Exit application

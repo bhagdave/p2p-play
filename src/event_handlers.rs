@@ -1,7 +1,9 @@
 use crate::handlers::*;
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::save_received_story;
-use crate::types::{EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory};
+use crate::types::{
+    DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
+};
 
 use bytes::Bytes;
 use libp2p::{PeerId, Swarm};
@@ -98,6 +100,9 @@ pub async fn handle_input_event(
                 establish_direct_connection(swarm, addr).await;
             }
         }
+        cmd if cmd.starts_with("msg ") => {
+            handle_direct_message(cmd, swarm, peer_names, local_peer_name).await;
+        }
         _ => eprintln!("unknown command"),
     }
 }
@@ -141,6 +146,7 @@ pub async fn handle_floodsub_event(
     floodsub_event: libp2p::floodsub::FloodsubEvent,
     response_sender: mpsc::UnboundedSender<ListResponse>,
     peer_names: &mut HashMap<PeerId, String>,
+    local_peer_name: &Option<String>,
 ) {
     match floodsub_event {
         libp2p::floodsub::FloodsubEvent::Message(msg) => {
@@ -166,6 +172,22 @@ pub async fn handle_floodsub_event(
                             error!("Failed to save received story: {}", e);
                         }
                     });
+                }
+            } else if let Ok(direct_msg) = serde_json::from_slice::<DirectMessage>(&msg.data) {
+                if direct_msg.from_peer_id != PEER_ID.to_string() {
+                    // Check if this message is for us by our local name
+                    if let Some(local_name) = local_peer_name {
+                        if &direct_msg.to_name == local_name {
+                            println!(
+                                "\n📨 Direct message from {}: {}",
+                                direct_msg.from_name, direct_msg.message
+                            );
+                            info!(
+                                "Received direct message from {} ({}): {}",
+                                direct_msg.from_name, direct_msg.from_peer_id, direct_msg.message
+                            );
+                        }
+                    }
                 }
             } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
                 if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
@@ -231,6 +253,16 @@ pub async fn handle_peer_name_event(peer_name: PeerName) {
     );
 }
 
+/// Handle direct message events
+pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
+    // This shouldn't happen since DirectMessage events are processed in floodsub handler
+    // but we'll handle it just in case
+    info!(
+        "Received DirectMessage event: {} -> {}: {}",
+        direct_msg.from_name, direct_msg.to_name, direct_msg.message
+    );
+}
+
 /// Main event dispatcher that routes events to appropriate handlers
 pub async fn handle_event(
     event: EventType,
@@ -255,13 +287,17 @@ pub async fn handle_event(
             handle_mdns_event(mdns_event, swarm).await;
         }
         EventType::FloodsubEvent(floodsub_event) => {
-            handle_floodsub_event(floodsub_event, response_sender, peer_names).await;
+            handle_floodsub_event(floodsub_event, response_sender, peer_names, local_peer_name)
+                .await;
         }
         EventType::PingEvent(ping_event) => {
             handle_ping_event(ping_event).await;
         }
         EventType::PeerName(peer_name) => {
             handle_peer_name_event(peer_name).await;
+        }
+        EventType::DirectMessage(direct_msg) => {
+            handle_direct_message_event(direct_msg).await;
         }
     }
 }

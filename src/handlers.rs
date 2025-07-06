@@ -1,6 +1,6 @@
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{create_new_story, publish_story, read_local_stories, save_local_peer_name};
-use crate::types::{ListMode, ListRequest, PeerName, Story};
+use crate::types::{DirectMessage, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -192,6 +192,7 @@ pub async fn handle_help(_cmd: &str) {
     println!("create s name|header|body to create story (quick mode)");
     println!("publish s to publish story");
     println!("name <alias> to set your peer name");
+    println!("msg <peer_alias> <message> to send direct message");
     println!("quit to quit");
 }
 
@@ -216,6 +217,70 @@ pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) ->
     } else {
         eprintln!("Usage: name <alias>");
         None
+    }
+}
+
+pub async fn handle_direct_message(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    peer_names: &HashMap<PeerId, String>,
+    local_peer_name: &Option<String>,
+) {
+    if let Some(rest) = cmd.strip_prefix("msg ") {
+        let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+        if parts.len() < 2 {
+            eprintln!("Usage: msg <peer_alias> <message>");
+            return;
+        }
+
+        let to_name = parts[0].trim();
+        let message = parts[1].trim();
+
+        if to_name.is_empty() || message.is_empty() {
+            eprintln!("Both peer alias and message must be non-empty");
+            return;
+        }
+
+        let from_name = match local_peer_name {
+            Some(name) => name.clone(),
+            None => {
+                eprintln!("You must set your name first using 'name <alias>'");
+                return;
+            }
+        };
+
+        // Check if the target peer exists
+        let peer_exists = peer_names.values().any(|name| name == to_name);
+        if !peer_exists {
+            eprintln!(
+                "Peer '{}' not found. Use 'ls p' to see available peers.",
+                to_name
+            );
+            return;
+        }
+
+        let direct_msg = DirectMessage::new(
+            PEER_ID.to_string(),
+            from_name,
+            to_name.to_string(),
+            message.to_string(),
+        );
+
+        let json = serde_json::to_string(&direct_msg).expect("can jsonify direct message");
+        let json_bytes = Bytes::from(json.into_bytes());
+
+        swarm
+            .behaviour_mut()
+            .floodsub
+            .publish(TOPIC.clone(), json_bytes);
+
+        println!("Direct message sent to {}: {}", to_name, message);
+        info!(
+            "Sent direct message to {} from {}",
+            to_name, direct_msg.from_name
+        );
+    } else {
+        eprintln!("Usage: msg <peer_alias> <message>");
     }
 }
 
@@ -394,5 +459,55 @@ mod tests {
         let invalid_addr = "not-a-valid-address";
         let parsed_invalid = invalid_addr.parse::<libp2p::Multiaddr>();
         assert!(parsed_invalid.is_err());
+    }
+
+    #[test]
+    fn test_direct_message_command_parsing() {
+        // Test parsing of direct message commands
+        let valid_cmd = "msg Alice Hello there!";
+        assert_eq!(valid_cmd.strip_prefix("msg "), Some("Alice Hello there!"));
+
+        let parts: Vec<&str> = "Alice Hello there!".splitn(2, ' ').collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0], "Alice");
+        assert_eq!(parts[1], "Hello there!");
+
+        // Test edge cases
+        let no_message = "msg Alice";
+        let parts: Vec<&str> = "Alice".splitn(2, ' ').collect();
+        assert_eq!(parts.len(), 1);
+
+        let no_space = "msgAlice";
+        assert_eq!(no_space.strip_prefix("msg "), None);
+    }
+
+    #[tokio::test]
+    async fn test_handle_direct_message_no_local_name() {
+        use crate::network::create_swarm;
+        use std::collections::HashMap;
+
+        let mut swarm = create_swarm().expect("Failed to create swarm");
+        let peer_names = HashMap::new();
+        let local_peer_name = None;
+
+        // This should print an error message about needing to set name first
+        handle_direct_message("msg Alice Hello", &mut swarm, &peer_names, &local_peer_name).await;
+        // Test passes if it doesn't panic
+    }
+
+    #[tokio::test]
+    async fn test_handle_direct_message_invalid_format() {
+        use crate::network::create_swarm;
+        use std::collections::HashMap;
+
+        let mut swarm = create_swarm().expect("Failed to create swarm");
+        let peer_names = HashMap::new();
+        let local_peer_name = Some("Bob".to_string());
+
+        // Test invalid command formats
+        handle_direct_message("msg Alice", &mut swarm, &peer_names, &local_peer_name).await;
+        handle_direct_message("msg", &mut swarm, &peer_names, &local_peer_name).await;
+        handle_direct_message("invalid command", &mut swarm, &peer_names, &local_peer_name).await;
+        // Test passes if it doesn't panic
     }
 }
