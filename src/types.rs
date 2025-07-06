@@ -43,6 +43,15 @@ pub struct PeerName {
     pub name: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct DirectMessage {
+    pub from_peer_id: String,
+    pub from_name: String,
+    pub to_name: String,
+    pub message: String,
+    pub timestamp: u64,
+}
+
 pub enum EventType {
     Response(ListResponse),
     Input(String),
@@ -51,6 +60,7 @@ pub enum EventType {
     PingEvent(ping::Event),
     PublishStory(Story),
     PeerName(PeerName),
+    DirectMessage(DirectMessage),
 }
 
 impl Story {
@@ -106,6 +116,23 @@ impl PublishedStory {
 impl PeerName {
     pub fn new(peer_id: String, name: String) -> Self {
         Self { peer_id, name }
+    }
+}
+
+impl DirectMessage {
+    pub fn new(from_peer_id: String, from_name: String, to_name: String, message: String) -> Self {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            from_peer_id,
+            from_name,
+            to_name,
+            message,
+            timestamp,
+        }
     }
 }
 
@@ -404,5 +431,64 @@ mod tests {
         // Ensure they are separate instances
         assert_eq!(story1.id, story2.id);
         assert_eq!(story1.name, story2.name);
+    }
+
+    #[test]
+    fn test_direct_message_creation() {
+        let dm = DirectMessage::new(
+            "peer123".to_string(),
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Hello Bob!".to_string(),
+        );
+
+        assert_eq!(dm.from_peer_id, "peer123");
+        assert_eq!(dm.from_name, "Alice");
+        assert_eq!(dm.to_name, "Bob");
+        assert_eq!(dm.message, "Hello Bob!");
+        assert!(dm.timestamp > 0);
+    }
+
+    #[test]
+    fn test_direct_message_serialization() {
+        let dm = DirectMessage::new(
+            "peer456".to_string(),
+            "Charlie".to_string(),
+            "David".to_string(),
+            "Test message with special chars: 🌍!".to_string(),
+        );
+
+        let json = serde_json::to_string(&dm).unwrap();
+        let deserialized: DirectMessage = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(dm, deserialized);
+    }
+
+    #[test]
+    fn test_direct_message_equality() {
+        let dm1 = DirectMessage {
+            from_peer_id: "peer1".to_string(),
+            from_name: "Alice".to_string(),
+            to_name: "Bob".to_string(),
+            message: "Hello".to_string(),
+            timestamp: 1234567890,
+        };
+        let dm2 = DirectMessage {
+            from_peer_id: "peer1".to_string(),
+            from_name: "Alice".to_string(),
+            to_name: "Bob".to_string(),
+            message: "Hello".to_string(),
+            timestamp: 1234567890,
+        };
+        let dm3 = DirectMessage {
+            from_peer_id: "peer1".to_string(),
+            from_name: "Alice".to_string(),
+            to_name: "Bob".to_string(),
+            message: "Different message".to_string(),
+            timestamp: 1234567890,
+        };
+
+        assert_eq!(dm1, dm2);
+        assert_ne!(dm1, dm3);
     }
 }
