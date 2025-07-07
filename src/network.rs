@@ -1,4 +1,4 @@
-use libp2p::floodsub::{Floodsub, FloodsubEvent, Topic};
+use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, identity, mdns, ping};
 use log::info;
@@ -47,20 +47,20 @@ fn generate_and_save_keypair() -> identity::Keypair {
 #[derive(NetworkBehaviour)]
 #[behaviour(to_swarm = "StoryBehaviourEvent")]
 pub struct StoryBehaviour {
-    pub floodsub: Floodsub,
+    pub floodsub: Behaviour,
     pub mdns: mdns::tokio::Behaviour,
     pub ping: ping::Behaviour,
 }
 
 #[derive(Debug)]
 pub enum StoryBehaviourEvent {
-    Floodsub(FloodsubEvent),
+    Floodsub(Event),
     Mdns(mdns::Event),
     Ping(ping::Event),
 }
 
-impl From<FloodsubEvent> for StoryBehaviourEvent {
-    fn from(event: FloodsubEvent) -> Self {
+impl From<Event> for StoryBehaviourEvent {
+    fn from(event: Event) -> Self {
         StoryBehaviourEvent::Floodsub(event)
     }
 }
@@ -88,7 +88,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
         .boxed();
 
     let mut behaviour = StoryBehaviour {
-        floodsub: Floodsub::new(*PEER_ID),
+        floodsub: Behaviour::new(*PEER_ID),
         mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
         ping: ping::Behaviour::new(ping::Config::new()),
     };
@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn test_story_behaviour_event_from_floodsub() {
         use bytes::Bytes;
-        use libp2p::floodsub::{FloodsubEvent, FloodsubMessage};
+        use libp2p::floodsub::{Event, FloodsubMessage};
 
         // Create a mock floodsub event
         let mock_message = FloodsubMessage {
@@ -138,7 +138,7 @@ mod tests {
             sequence_number: b"seq123".to_vec(),
             topics: vec![TOPIC.clone()],
         };
-        let floodsub_event = FloodsubEvent::Message(mock_message);
+        let floodsub_event = Event::Message(mock_message);
 
         // Test conversion
         let story_event = StoryBehaviourEvent::from(floodsub_event);
@@ -146,7 +146,7 @@ mod tests {
             StoryBehaviourEvent::Floodsub(event) => {
                 // We can't easily compare the exact content due to the enum structure,
                 // but we can verify the conversion worked
-                assert!(matches!(event, FloodsubEvent::Message(_)));
+                assert!(matches!(event, Event::Message(_)));
             }
             _ => panic!("Expected Floodsub event"),
         }
