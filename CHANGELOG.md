@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [0.3.7] - Scheduled
+## [0.4.0] - 2025-07-07
 
 ### Added
 - Direct messaging functionality between peers using alias names
@@ -21,6 +21,7 @@ All changes to this project will be documented in this file.
 - Enhanced floodsub event handler to process DirectMessage types
 - Extended event system to support direct message events
 - Updated libp2p dependencies to latest version
+- Removed unused dependencies and cleaned up Cargo.toml
 
 ### Technical Details
 - Uses broadcast + filtering approach for message delivery
