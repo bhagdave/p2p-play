@@ -45,21 +45,24 @@ const DATABASE_PATH: &str = "./stories.db";
 const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
 
 // Thread-safe database connection
-static DB_CONN: once_cell::sync::OnceCell<Arc<Mutex<Connection>>> = once_cell::sync::OnceCell::new();
+static DB_CONN: once_cell::sync::OnceCell<Arc<Mutex<Connection>>> =
+    once_cell::sync::OnceCell::new();
 
 async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
     if let Some(conn) = DB_CONN.get() {
         Ok(conn.clone())
     } else {
         info!("Creating new SQLite database connection: {}", DATABASE_PATH);
-        
+
         // Create the database file and connection
         let conn = Connection::open(DATABASE_PATH)?;
         let conn_arc = Arc::new(Mutex::new(conn));
-        
+
         // Initialize the connection in the static variable
-        DB_CONN.set(conn_arc.clone()).map_err(|_| "Failed to initialize database connection")?;
-        
+        DB_CONN
+            .set(conn_arc.clone())
+            .map_err(|_| "Failed to initialize database connection")?;
+
         info!("Successfully connected to SQLite database");
         Ok(conn_arc)
     }
@@ -68,14 +71,14 @@ async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
 async fn create_tables() -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     migrations::create_tables(&conn)?;
     Ok(())
 }
 
 pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
     info!("Initializing SQLite database at: {}", DATABASE_PATH);
-    
+
     // Ensure the directory exists for the database file
     if let Some(parent) = std::path::Path::new(DATABASE_PATH).parent() {
         if !parent.exists() {
@@ -83,7 +86,7 @@ pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
             tokio::fs::create_dir_all(parent).await?;
         }
     }
-    
+
     let _conn = get_db_connection().await?;
     create_tables().await?;
     info!("SQLite database and tables initialized");
@@ -93,8 +96,9 @@ pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
 pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
-    let mut stmt = conn.prepare("SELECT id, name, header, body, public FROM stories ORDER BY id")?;
+
+    let mut stmt =
+        conn.prepare("SELECT id, name, header, body, public FROM stories ORDER BY id")?;
     let story_iter = stmt.query_map([], |row| {
         Ok(Story {
             id: row.get::<_, i64>(0)? as usize,
@@ -104,12 +108,12 @@ pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
             public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
         })
     })?;
-    
+
     let mut stories = Vec::new();
     for story in story_iter {
         stories.push(story?);
     }
-    
+
     Ok(stories)
 }
 
@@ -122,8 +126,9 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
     } else {
         // Treat as SQLite database path - create a temporary connection
         let conn = Connection::open(path)?;
-        
-        let mut stmt = conn.prepare("SELECT id, name, header, body, public FROM stories ORDER BY id")?;
+
+        let mut stmt =
+            conn.prepare("SELECT id, name, header, body, public FROM stories ORDER BY id")?;
         let story_iter = stmt.query_map([], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
@@ -133,12 +138,12 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
                 public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
             })
         })?;
-        
+
         let mut stories = Vec::new();
         for story in story_iter {
             stories.push(story?);
         }
-        
+
         Ok(stories)
     }
 }
@@ -146,10 +151,10 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
 pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Clear existing stories and insert new ones
     conn.execute("DELETE FROM stories", [])?;
-    
+
     for story in stories {
         conn.execute(
             "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
@@ -158,11 +163,15 @@ pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>
                 &story.name,
                 &story.header,
                 &story.body,
-                &(if story.public { "1".to_string() } else { "0".to_string() }),
+                &(if story.public {
+                    "1".to_string()
+                } else {
+                    "0".to_string()
+                }),
             ],
         )?;
     }
-    
+
     Ok(())
 }
 
@@ -178,13 +187,13 @@ pub async fn write_local_stories_to_path(
     } else {
         // Treat as SQLite database path - create a temporary connection
         let conn = Connection::open(path)?;
-        
+
         // Create tables if they don't exist
         migrations::create_tables(&conn)?;
-        
+
         // Clear existing stories and insert new ones
         conn.execute("DELETE FROM stories", [])?;
-        
+
         for story in stories {
             conn.execute(
                 "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
@@ -193,11 +202,15 @@ pub async fn write_local_stories_to_path(
                     &story.name,
                     &story.header,
                     &story.body,
-                    &(if story.public { "1".to_string() } else { "0".to_string() }),
+                    &(if story.public {
+                        "1".to_string()
+                    } else {
+                        "0".to_string()
+                    }),
                 ],
             )?;
         }
-        
+
         Ok(())
     }
 }
@@ -205,11 +218,11 @@ pub async fn write_local_stories_to_path(
 pub async fn create_new_story(name: &str, header: &str, body: &str) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Get the next ID
     let mut stmt = conn.prepare("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM stories")?;
     let next_id: i64 = stmt.query_row([], |row| row.get(0))?;
-    
+
     // Insert the new story
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
@@ -261,16 +274,17 @@ pub async fn publish_story(
 ) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Update the story to be public
     let rows_affected = conn.execute(
         "UPDATE stories SET public = ? WHERE id = ?",
         [&"1".to_string(), &id.to_string()], // 1 = true
     )?;
-    
+
     if rows_affected > 0 {
         // Fetch the updated story to send it
-        let mut stmt = conn.prepare("SELECT id, name, header, body, public FROM stories WHERE id = ?")?;
+        let mut stmt =
+            conn.prepare("SELECT id, name, header, body, public FROM stories WHERE id = ?")?;
         let story_result = stmt.query_row([&id.to_string()], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
@@ -280,7 +294,7 @@ pub async fn publish_story(
                 public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
             })
         });
-            
+
         if let Ok(story) = story_result {
             if let Err(e) = sender.send(story) {
                 error!("error sending story for broadcast: {}", e);
@@ -310,20 +324,20 @@ pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story
 pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Check if story already exists (by name and content to avoid duplicates)
-    let mut stmt = conn.prepare(
-        "SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?"
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
     let existing = stmt.query_row([&story.name, &story.header, &story.body], |row| {
         Ok(row.get::<_, i64>(0)?)
     });
-    
-    if existing.is_err() { // Story doesn't exist
+
+    if existing.is_err() {
+        // Story doesn't exist
         // Get the next ID
         let mut stmt = conn.prepare("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM stories")?;
         let new_id: i64 = stmt.query_row([], |row| row.get(0))?;
-        
+
         // Insert the story with the new ID and mark as public
         conn.execute(
             "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
@@ -335,7 +349,7 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
                 "1", // Mark as public since it was published (1 = true)
             ],
         )?;
-        
+
         info!("Saved received story to local storage with ID: {}", new_id);
     } else {
         info!("Story already exists locally, skipping save");
@@ -382,10 +396,13 @@ pub async fn save_received_story_to_path(
 pub async fn save_local_peer_name(name: &str) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Insert or replace the peer name (there should only be one row)
-    conn.execute("INSERT OR REPLACE INTO peer_name (id, name) VALUES (1, ?)", [name])?;
-    
+    conn.execute(
+        "INSERT OR REPLACE INTO peer_name (id, name) VALUES (1, ?)",
+        [name],
+    )?;
+
     Ok(())
 }
 
@@ -399,12 +416,10 @@ pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> Result<(), 
 pub async fn load_local_peer_name() -> Result<Option<String>, Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     let mut stmt = conn.prepare("SELECT name FROM peer_name WHERE id = 1")?;
-    let result = stmt.query_row([], |row| {
-        Ok(row.get::<_, String>(0)?)
-    });
-    
+    let result = stmt.query_row([], |row| Ok(row.get::<_, String>(0)?));
+
     match result {
         Ok(name) => Ok(Some(name)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
