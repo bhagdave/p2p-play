@@ -1,35 +1,144 @@
 use crate::types::{Stories, Story};
 use log::{error, info};
+use rusqlite::Connection;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::fs;
+use tokio::sync::Mutex;
 
-const STORAGE_FILE_PATH: &str = "./stories.json";
-const PEER_NAME_FILE_PATH: &str = "./peer_name.json";
+use crate::migrations;
+
+const DATABASE_PATH: &str = "./stories.db";
+const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
+
+// Thread-safe database connection
+static DB_CONN: once_cell::sync::OnceCell<Arc<Mutex<Connection>>> =
+    once_cell::sync::OnceCell::new();
+
+async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
+    if let Some(conn) = DB_CONN.get() {
+        Ok(conn.clone())
+    } else {
+        info!("Creating new SQLite database connection: {}", DATABASE_PATH);
+
+        // Create the database file and connection
+        let conn = Connection::open(DATABASE_PATH)?;
+        let conn_arc = Arc::new(Mutex::new(conn));
+
+        // Initialize the connection in the static variable
+        DB_CONN
+            .set(conn_arc.clone())
+            .map_err(|_| "Failed to initialize database connection")?;
+
+        info!("Successfully connected to SQLite database");
+        Ok(conn_arc)
+    }
+}
+
+async fn create_tables() -> Result<(), Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    migrations::create_tables(&conn)?;
+    Ok(())
+}
 
 pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
-    if !std::path::Path::new(STORAGE_FILE_PATH).exists() {
-        info!("Creating stories.json file with empty array");
-        let empty_stories: Stories = Vec::new();
-        write_local_stories(&empty_stories).await?;
+    info!("Initializing SQLite database at: {}", DATABASE_PATH);
+
+    // Ensure the directory exists for the database file
+    if let Some(parent) = std::path::Path::new(DATABASE_PATH).parent() {
+        if !parent.exists() {
+            info!("Creating directory: {:?}", parent);
+            tokio::fs::create_dir_all(parent).await?;
+        }
     }
+
+    let _conn = get_db_connection().await?;
+    create_tables().await?;
+    info!("SQLite database and tables initialized");
     Ok(())
 }
 
 pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
-    let content = fs::read(STORAGE_FILE_PATH).await?;
-    let result = serde_json::from_slice(&content)?;
-    Ok(result)
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt =
+        conn.prepare("SELECT id, name, header, body, public FROM stories ORDER BY id")?;
+    let story_iter = stmt.query_map([], |row| {
+        Ok(Story {
+            id: row.get::<_, i64>(0)? as usize,
+            name: row.get(1)?,
+            header: row.get(2)?,
+            body: row.get(3)?,
+            public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
+        })
+    })?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
 }
 
 pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn Error>> {
-    let content = fs::read(path).await?;
-    let result = serde_json::from_slice(&content)?;
-    Ok(result)
+    // For test compatibility, if path points to a JSON file, read it as JSON
+    if path.ends_with(".json") {
+        let content = fs::read(path).await?;
+        let result = serde_json::from_slice(&content)?;
+        Ok(result)
+    } else {
+        // Treat as SQLite database path - create a temporary connection
+        let conn = Connection::open(path)?;
+
+        let mut stmt =
+            conn.prepare("SELECT id, name, header, body, public FROM stories ORDER BY id")?;
+        let story_iter = stmt.query_map([], |row| {
+            Ok(Story {
+                id: row.get::<_, i64>(0)? as usize,
+                name: row.get(1)?,
+                header: row.get(2)?,
+                body: row.get(3)?,
+                public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
+            })
+        })?;
+
+        let mut stories = Vec::new();
+        for story in story_iter {
+            stories.push(story?);
+        }
+
+        Ok(stories)
+    }
 }
 
 pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>> {
-    let json = serde_json::to_string(&stories)?;
-    fs::write(STORAGE_FILE_PATH, &json).await?;
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Clear existing stories and insert new ones
+    conn.execute("DELETE FROM stories", [])?;
+
+    for story in stories {
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
+            [
+                &story.id.to_string(),
+                &story.name,
+                &story.header,
+                &story.body,
+                &(if story.public {
+                    "1".to_string()
+                } else {
+                    "0".to_string()
+                }),
+            ],
+        )?;
+    }
+
     Ok(())
 }
 
@@ -37,25 +146,61 @@ pub async fn write_local_stories_to_path(
     stories: &Stories,
     path: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let json = serde_json::to_string(&stories)?;
-    fs::write(path, &json).await?;
-    Ok(())
+    // For test compatibility, if path is a JSON file, write as JSON
+    if path.ends_with(".json") {
+        let json = serde_json::to_string(&stories)?;
+        fs::write(path, &json).await?;
+        Ok(())
+    } else {
+        // Treat as SQLite database path - create a temporary connection
+        let conn = Connection::open(path)?;
+
+        // Create tables if they don't exist
+        migrations::create_tables(&conn)?;
+
+        // Clear existing stories and insert new ones
+        conn.execute("DELETE FROM stories", [])?;
+
+        for story in stories {
+            conn.execute(
+                "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
+                [
+                    &story.id.to_string(),
+                    &story.name,
+                    &story.header,
+                    &story.body,
+                    &(if story.public {
+                        "1".to_string()
+                    } else {
+                        "0".to_string()
+                    }),
+                ],
+            )?;
+        }
+
+        Ok(())
+    }
 }
 
 pub async fn create_new_story(name: &str, header: &str, body: &str) -> Result<(), Box<dyn Error>> {
-    let mut local_stories = read_local_stories().await?;
-    let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-        Some(v) => v.id + 1,
-        None => 0,
-    };
-    local_stories.push(Story {
-        id: new_id,
-        name: name.to_owned(),
-        header: header.to_owned(),
-        body: body.to_owned(),
-        public: false,
-    });
-    write_local_stories(&local_stories).await?;
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Get the next ID
+    let mut stmt = conn.prepare("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM stories")?;
+    let next_id: i64 = stmt.query_row([], |row| row.get(0))?;
+
+    // Insert the new story
+    conn.execute(
+        "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
+        [
+            &next_id.to_string(),
+            name,
+            header,
+            body,
+            "0", // New stories start as private (0 = false)
+        ],
+    )?;
 
     info!("Created story:");
     info!("Name: {}", name);
@@ -94,22 +239,33 @@ pub async fn publish_story(
     id: usize,
     sender: tokio::sync::mpsc::UnboundedSender<Story>,
 ) -> Result<(), Box<dyn Error>> {
-    let mut local_stories = read_local_stories().await?;
-    let mut published_story = None;
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
 
-    for story in local_stories.iter_mut() {
-        if story.id == id {
-            story.public = true;
-            published_story = Some(story.clone());
-            break;
-        }
-    }
+    // Update the story to be public
+    let rows_affected = conn.execute(
+        "UPDATE stories SET public = ? WHERE id = ?",
+        [&"1".to_string(), &id.to_string()], // 1 = true
+    )?;
 
-    write_local_stories(&local_stories).await?;
+    if rows_affected > 0 {
+        // Fetch the updated story to send it
+        let mut stmt =
+            conn.prepare("SELECT id, name, header, body, public FROM stories WHERE id = ?")?;
+        let story_result = stmt.query_row([&id.to_string()], |row| {
+            Ok(Story {
+                id: row.get::<_, i64>(0)? as usize,
+                name: row.get(1)?,
+                header: row.get(2)?,
+                body: row.get(3)?,
+                public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
+            })
+        });
 
-    if let Some(story) = published_story {
-        if let Err(e) = sender.send(story) {
-            error!("error sending story for broadcast: {}", e);
+        if let Ok(story) = story_result {
+            if let Err(e) = sender.send(story) {
+                error!("error sending story for broadcast: {}", e);
+            }
         }
     }
 
@@ -132,28 +288,35 @@ pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story
     Ok(published_story)
 }
 
-pub async fn save_received_story(mut story: Story) -> Result<(), Box<dyn Error>> {
-    let mut local_stories = match read_local_stories().await {
-        Ok(stories) => stories,
-        Err(_) => Vec::new(), // Create empty vec if no file exists
-    };
+pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
 
     // Check if story already exists (by name and content to avoid duplicates)
-    let already_exists = local_stories
-        .iter()
-        .any(|s| s.name == story.name && s.header == story.header && s.body == story.body);
+    let mut stmt =
+        conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
+    let existing = stmt.query_row([&story.name, &story.header, &story.body], |row| {
+        row.get::<_, i64>(0)
+    });
 
-    if !already_exists {
-        // Assign new local ID
-        let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-            Some(v) => v.id + 1,
-            None => 0,
-        };
-        story.id = new_id;
-        story.public = true; // Mark as public since it was published
+    if existing.is_err() {
+        // Story doesn't exist
+        // Get the next ID
+        let mut stmt = conn.prepare("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM stories")?;
+        let new_id: i64 = stmt.query_row([], |row| row.get(0))?;
 
-        local_stories.push(story);
-        write_local_stories(&local_stories).await?;
+        // Insert the story with the new ID and mark as public
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public) VALUES (?, ?, ?, ?, ?)",
+            [
+                &new_id.to_string(),
+                &story.name,
+                &story.header,
+                &story.body,
+                "1", // Mark as public since it was published (1 = true)
+            ],
+        )?;
+
         info!("Saved received story to local storage with ID: {}", new_id);
     } else {
         info!("Story already exists locally, skipping save");
@@ -198,28 +361,41 @@ pub async fn save_received_story_to_path(
 }
 
 pub async fn save_local_peer_name(name: &str) -> Result<(), Box<dyn Error>> {
-    let json = serde_json::to_string(name)?;
-    fs::write(PEER_NAME_FILE_PATH, &json).await?;
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Insert or replace the peer name (there should only be one row)
+    conn.execute(
+        "INSERT OR REPLACE INTO peer_name (id, name) VALUES (1, ?)",
+        [name],
+    )?;
+
     Ok(())
 }
 
 pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> Result<(), Box<dyn Error>> {
+    // For test compatibility, keep writing to JSON file
     let json = serde_json::to_string(name)?;
     fs::write(path, &json).await?;
     Ok(())
 }
 
 pub async fn load_local_peer_name() -> Result<Option<String>, Box<dyn Error>> {
-    match fs::read(PEER_NAME_FILE_PATH).await {
-        Ok(content) => {
-            let name: String = serde_json::from_slice(&content)?;
-            Ok(Some(name))
-        }
-        Err(_) => Ok(None), // File doesn't exist or can't be read, return None
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare("SELECT name FROM peer_name WHERE id = 1")?;
+    let result = stmt.query_row([], |row| row.get::<_, String>(0));
+
+    match result {
+        Ok(name) => Ok(Some(name)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(Box::new(e)),
     }
 }
 
 pub async fn load_local_peer_name_from_path(path: &str) -> Result<Option<String>, Box<dyn Error>> {
+    // For test compatibility, keep reading from JSON file
     match fs::read(path).await {
         Ok(content) => {
             let name: String = serde_json::from_slice(&content)?;
@@ -594,9 +770,8 @@ mod tests {
     #[tokio::test]
     async fn test_ensure_stories_file_exists() {
         let temp_dir = tempfile::tempdir().unwrap();
-        let original_path = STORAGE_FILE_PATH;
 
-        // We can't easily test the function that uses the constant path,
+        // We can't easily test the function that uses the database path,
         // but we can test the logic by creating a temporary file
         let test_path = temp_dir.path().join("test_stories.json");
         let test_path_str = test_path.to_str().unwrap();

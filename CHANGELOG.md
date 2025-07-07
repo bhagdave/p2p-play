@@ -14,6 +14,9 @@ All changes to this project will be documented in this file.
 - Comprehensive unit tests for direct messaging functionality
 
 ### Changed
+- Updated JSON storage of stories from json to sqlite
+- Refactored story management to use SQLite for persistent storage
+- Updated peer alias storage to use SQLite instead of JSON
 - Updated help text to include new messaging command
 - Enhanced floodsub event handler to process DirectMessage types
 - Extended event system to support direct message events
@@ -22,6 +25,7 @@ All changes to this project will be documented in this file.
 - Uses broadcast + filtering approach for message delivery
 - Messages are sent via existing floodsub infrastructure but only displayed to intended recipients
 - Future enhancement planned for true point-to-point messaging using libp2p request-response protocol
+- SQLite database schema includes tables for stories and peer aliases
 
 ## [0.3.6] - 2025-07-06
 
