@@ -329,7 +329,7 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
     let mut stmt =
         conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
     let existing = stmt.query_row([&story.name, &story.header, &story.body], |row| {
-        Ok(row.get::<_, i64>(0)?)
+        row.get::<_, i64>(0)
     });
 
     if existing.is_err() {
@@ -418,7 +418,7 @@ pub async fn load_local_peer_name() -> Result<Option<String>, Box<dyn Error>> {
     let conn = conn_arc.lock().await;
 
     let mut stmt = conn.prepare("SELECT name FROM peer_name WHERE id = 1")?;
-    let result = stmt.query_row([], |row| Ok(row.get::<_, String>(0)?));
+    let result = stmt.query_row([], |row| row.get::<_, String>(0));
 
     match result {
         Ok(name) => Ok(Some(name)),
