@@ -20,6 +20,7 @@ All changes to this project will be documented in this file.
 - Updated help text to include new messaging command
 - Enhanced floodsub event handler to process DirectMessage types
 - Extended event system to support direct message events
+- Updated libp2p dependencies to latest version
 
 ### Technical Details
 - Uses broadcast + filtering approach for message delivery
