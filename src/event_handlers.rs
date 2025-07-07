@@ -193,7 +193,22 @@ pub async fn handle_floodsub_event(
                 if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
                     if peer_id != *PEER_ID {
                         info!("Received peer name '{}' from {}", peer_name.name, peer_id);
-                        peer_names.insert(peer_id, peer_name.name);
+                        
+                        // Only update the peer name if it's new or has actually changed
+                        match peer_names.get(&peer_id) {
+                            Some(existing_name) => {
+                                if existing_name != &peer_name.name {
+                                    info!("Peer {} name changed from '{}' to '{}'", peer_id, existing_name, peer_name.name);
+                                    peer_names.insert(peer_id, peer_name.name);
+                                } else {
+                                    info!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
+                                }
+                            }
+                            None => {
+                                info!("Setting peer {} name to '{}' (first time)", peer_id, peer_name.name);
+                                peer_names.insert(peer_id, peer_name.name);
+                            }
+                        }
                     }
                 }
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
