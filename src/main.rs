@@ -1,5 +1,6 @@
 mod event_handlers;
 mod handlers;
+mod migrations;
 mod network;
 mod storage;
 mod types;
