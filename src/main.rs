@@ -178,7 +178,7 @@ mod tests {
     fn test_event_type_variants() {
         use crate::types::{EventType, ListMode, ListResponse, PeerName};
         use bytes::Bytes;
-        use libp2p::floodsub::FloodsubEvent;
+        use libp2p::floodsub::Event;
         use libp2p::mdns::Event as MdnsEvent;
         use libp2p::ping::Event as PingEvent;
         use std::time::Duration;
@@ -208,7 +208,7 @@ mod tests {
             sequence_number: b"seq123".to_vec(),
             topics: vec![TOPIC.clone()],
         };
-        let floodsub_event = FloodsubEvent::Message(mock_message);
+        let floodsub_event = Event::Message(mock_message);
         let _floodsub_event_type = EventType::FloodsubEvent(floodsub_event);
 
         // Test mDNS event

@@ -1,4 +1,4 @@
-use libp2p::floodsub::FloodsubEvent;
+use libp2p::floodsub::Event;
 use libp2p::{mdns, ping};
 use serde::{Deserialize, Serialize};
 
@@ -55,7 +55,7 @@ pub struct DirectMessage {
 pub enum EventType {
     Response(ListResponse),
     Input(String),
-    FloodsubEvent(FloodsubEvent),
+    FloodsubEvent(Event),
     MdnsEvent(mdns::Event),
     PingEvent(ping::Event),
     PublishStory(Story),
