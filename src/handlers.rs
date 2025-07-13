@@ -9,6 +9,41 @@ use std::collections::{HashMap, HashSet};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
 
+/// Cache for sorted peer names to avoid repeated sorting on every direct message
+pub struct SortedPeerNamesCache {
+    /// The sorted peer names by length (descending)
+    sorted_names: Vec<String>,
+    /// Version counter to track changes
+    version: u64,
+}
+
+impl SortedPeerNamesCache {
+    pub fn new() -> Self {
+        Self {
+            sorted_names: Vec::new(),
+            version: 0,
+        }
+    }
+
+    /// Update the cache with new peer names
+    pub fn update(&mut self, peer_names: &HashMap<PeerId, String>) {
+        let mut names: Vec<String> = peer_names.values().cloned().collect();
+        names.sort_by(|a, b| b.len().cmp(&a.len()));
+        self.sorted_names = names;
+        self.version += 1;
+    }
+
+    /// Get the sorted peer names
+    pub fn get_sorted_names(&self) -> &[String] {
+        &self.sorted_names
+    }
+
+    /// Check if the cache is empty
+    pub fn is_empty(&self) -> bool {
+        self.sorted_names.is_empty()
+    }
+}
+
 pub async fn handle_list_peers(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &HashMap<PeerId, String>,
@@ -223,14 +258,11 @@ pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) ->
 /// Parse a direct message command that may contain peer names with spaces
 fn parse_direct_message_command(
     rest: &str,
-    known_peer_names: &HashMap<PeerId, String>,
+    sorted_peer_names: &[String],
 ) -> Option<(String, String)> {
-    // Try to match against known peer names first (handles names with spaces)
-    // Sort by length in descending order to prioritize longer names
-    let mut peer_names: Vec<&String> = known_peer_names.values().collect();
-    peer_names.sort_by(|a, b| b.len().cmp(&a.len()));
-
-    for peer_name in peer_names {
+    // Try to match against sorted peer names first (handles names with spaces)
+    // Names are already sorted by length in descending order to prioritize longer names
+    for peer_name in sorted_peer_names {
         // Check if the rest starts with this peer name
         if rest.starts_with(peer_name) {
             let remaining = &rest[peer_name.len()..];
@@ -276,9 +308,10 @@ pub async fn handle_direct_message(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
+    sorted_peer_names_cache: &SortedPeerNamesCache,
 ) {
     if let Some(rest) = cmd.strip_prefix("msg ") {
-        let (to_name, message) = match parse_direct_message_command(rest, peer_names) {
+        let (to_name, message) = match parse_direct_message_command(rest, sorted_peer_names_cache.get_sorted_names()) {
             Some((name, msg)) => (name, msg),
             None => {
                 eprintln!("Usage: msg <peer_alias> <message>");
@@ -546,37 +579,41 @@ mod tests {
         peer_names.insert(peer_id2, "Alice Smith".to_string());
         peer_names.insert(peer_id3, "Bob Jones Jr".to_string());
 
+        // Create a cache and update it with peer names
+        let mut cache = SortedPeerNamesCache::new();
+        cache.update(&peer_names);
+
         // Test simple name without spaces
-        let result = parse_direct_message_command("Alice Hello there!", &peer_names);
+        let result = parse_direct_message_command("Alice Hello there!", cache.get_sorted_names());
         assert_eq!(
             result,
             Some(("Alice".to_string(), "Hello there!".to_string()))
         );
 
         // Test name with spaces
-        let result = parse_direct_message_command("Alice Smith Hello world", &peer_names);
+        let result = parse_direct_message_command("Alice Smith Hello world", cache.get_sorted_names());
         assert_eq!(
             result,
             Some(("Alice Smith".to_string(), "Hello world".to_string()))
         );
 
         // Test name with multiple spaces
-        let result = parse_direct_message_command("Bob Jones Jr How are you?", &peer_names);
+        let result = parse_direct_message_command("Bob Jones Jr How are you?", cache.get_sorted_names());
         assert_eq!(
             result,
             Some(("Bob Jones Jr".to_string(), "How are you?".to_string()))
         );
 
         // Test edge case - no message
-        let result = parse_direct_message_command("Alice Smith", &peer_names);
+        let result = parse_direct_message_command("Alice Smith", cache.get_sorted_names());
         assert_eq!(result, None);
 
         // Test edge case - no space after name
-        let result = parse_direct_message_command("Alice SmithHello", &peer_names);
+        let result = parse_direct_message_command("Alice SmithHello", cache.get_sorted_names());
         assert_eq!(result, None);
 
         // Test fallback to original parsing for simple names not in known peers
-        let result = parse_direct_message_command("Charlie Hello there", &peer_names);
+        let result = parse_direct_message_command("Charlie Hello there", cache.get_sorted_names());
         assert_eq!(
             result,
             Some(("Charlie".to_string(), "Hello there".to_string()))
@@ -591,9 +628,11 @@ mod tests {
         let mut swarm = create_swarm().expect("Failed to create swarm");
         let peer_names = HashMap::new();
         let local_peer_name = None;
+        let mut cache = SortedPeerNamesCache::new();
+        cache.update(&peer_names);
 
         // This should print an error message about needing to set name first
-        handle_direct_message("msg Alice Hello", &mut swarm, &peer_names, &local_peer_name).await;
+        handle_direct_message("msg Alice Hello", &mut swarm, &peer_names, &local_peer_name, &cache).await;
         // Test passes if it doesn't panic
     }
 
@@ -605,11 +644,13 @@ mod tests {
         let mut swarm = create_swarm().expect("Failed to create swarm");
         let peer_names = HashMap::new();
         let local_peer_name = Some("Bob".to_string());
+        let mut cache = SortedPeerNamesCache::new();
+        cache.update(&peer_names);
 
         // Test invalid command formats
-        handle_direct_message("msg Alice", &mut swarm, &peer_names, &local_peer_name).await;
-        handle_direct_message("msg", &mut swarm, &peer_names, &local_peer_name).await;
-        handle_direct_message("invalid command", &mut swarm, &peer_names, &local_peer_name).await;
+        handle_direct_message("msg Alice", &mut swarm, &peer_names, &local_peer_name, &cache).await;
+        handle_direct_message("msg", &mut swarm, &peer_names, &local_peer_name, &cache).await;
+        handle_direct_message("invalid command", &mut swarm, &peer_names, &local_peer_name, &cache).await;
         // Test passes if it doesn't panic
     }
 
@@ -625,6 +666,8 @@ mod tests {
         peer_names.insert(peer_id, "Alice Smith".to_string());
 
         let local_peer_name = Some("Bob".to_string());
+        let mut cache = SortedPeerNamesCache::new();
+        cache.update(&peer_names);
 
         // Test message to peer with spaces in name
         handle_direct_message(
@@ -632,8 +675,52 @@ mod tests {
             &mut swarm,
             &peer_names,
             &local_peer_name,
+            &cache,
         )
         .await;
         // Test passes if it doesn't panic and correctly parses the name
+    }
+
+    #[test]
+    fn test_sorted_peer_names_cache() {
+        use libp2p::PeerId;
+        use std::collections::HashMap;
+
+        let mut cache = SortedPeerNamesCache::new();
+        assert!(cache.get_sorted_names().is_empty());
+
+        // Create test peer names
+        let mut peer_names = HashMap::new();
+        let peer_id1 = PeerId::random();
+        let peer_id2 = PeerId::random();
+        let peer_id3 = PeerId::random();
+
+        peer_names.insert(peer_id1, "Alice".to_string());
+        peer_names.insert(peer_id2, "Alice Smith".to_string());
+        peer_names.insert(peer_id3, "Bob".to_string());
+
+        // Update cache
+        cache.update(&peer_names);
+
+        // Verify names are sorted by length (descending)
+        let sorted_names = cache.get_sorted_names();
+        assert_eq!(sorted_names.len(), 3);
+        assert_eq!(sorted_names[0], "Alice Smith"); // Longest first
+        assert_eq!(sorted_names[1], "Alice");
+        assert_eq!(sorted_names[2], "Bob");
+
+        // Test that parsing still works correctly with the sorted cache
+        let result = parse_direct_message_command("Alice Smith Hello world", sorted_names);
+        assert_eq!(
+            result,
+            Some(("Alice Smith".to_string(), "Hello world".to_string()))
+        );
+
+        // Test that longer names are preferred (should match "Alice Smith", not "Alice")
+        let result = parse_direct_message_command("Alice Smith test", sorted_names);
+        assert_eq!(
+            result,
+            Some(("Alice Smith".to_string(), "test".to_string()))
+        );
     }
 }

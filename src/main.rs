@@ -6,6 +6,7 @@ mod storage;
 mod types;
 
 use event_handlers::handle_event;
+use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{ensure_stories_file_exists, load_local_peer_name};
 use types::{EventType, PeerName};
@@ -41,6 +42,9 @@ async fn main() {
 
     // Storage for peer names (peer_id -> alias)
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
+    
+    // Cache for sorted peer names to avoid repeated sorting on every direct message
+    let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
     // Load saved peer name if it exists
     let mut local_peer_name: Option<String> = match load_local_peer_name().await {
@@ -109,6 +113,8 @@ async fn main() {
                             // Remove the peer name when connection is closed
                             if let Some(name) = peer_names.remove(&peer_id) {
                                 info!("Removed peer name '{}' for disconnected peer {}", name, peer_id);
+                                // Update the cache since peer names changed
+                                sorted_peer_names_cache.update(&peer_names);
                             }
 
                             None
@@ -143,6 +149,7 @@ async fn main() {
                 response_sender.clone(),
                 story_sender.clone(),
                 &mut local_peer_name,
+                &mut sorted_peer_names_cache,
             )
             .await;
         }
