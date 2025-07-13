@@ -143,13 +143,13 @@ pub async fn handle_mdns_event(mdns_event: libp2p::mdns::Event, swarm: &mut Swar
 
 /// Handle floodsub message events
 pub async fn handle_floodsub_event(
-    floodsub_event: libp2p::floodsub::FloodsubEvent,
+    floodsub_event: libp2p::floodsub::Event,
     response_sender: mpsc::UnboundedSender<ListResponse>,
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
 ) {
     match floodsub_event {
-        libp2p::floodsub::FloodsubEvent::Message(msg) => {
+        libp2p::floodsub::Event::Message(msg) => {
             info!("Message event received from {:?}", msg.source);
             info!("Message data length: {} bytes", msg.data.len());
             if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
