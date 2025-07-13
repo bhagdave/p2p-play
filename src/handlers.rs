@@ -274,7 +274,6 @@ fn parse_direct_message_command(
                 let message_words: Vec<&str> = message.split_whitespace().collect();
                 if message_words.len() >= 2 {
                     let first_word = message_words[0];
-                    let _second_word = message_words[1];
                     
                     // Pattern: "Unknown Person Hello" - reject because "Unknown Person" 
                     // looks like it could be a peer name (two capitalized words)
@@ -572,9 +571,8 @@ mod tests {
         if let Some(rest) = cmd_with_spaces.strip_prefix("msg ") {
             let parts: Vec<&str> = rest.splitn(2, ' ').collect();
             assert_eq!(parts.len(), 2);
-            // Current behavior (incorrect):
-            assert_eq!(parts[0], "Alice"); // Should be "Alice Smith"
-            assert_eq!(parts[1], "Smith Hello world"); // Should be "Hello world"
+            assert_eq!(parts[0], "Alice Smith");
+            assert_eq!(parts[1], "Hello world"); // Should be "Hello world"
         }
     }
 
