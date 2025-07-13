@@ -11,6 +11,12 @@ All changes to this project will be documented in this file.
 - Added proper logging for first-time names vs. changed names vs. unchanged names
 - Ensures peer names are fixed when first received and only updated if they change
 
+### Performance
+- Optimized peer name sorting performance with caching in direct message parsing
+- Implemented SortedPeerNamesCache to maintain pre-sorted peer names, reducing complexity from O(n log n) per direct message command to O(1)
+- Cache only updates when peer list changes (new peers, disconnections, name changes)
+- Maintains identical functional behavior while significantly improving performance for direct messaging in environments with many peers
+
 ## [0.4.0] - 2025-07-07
 
 ### Added
