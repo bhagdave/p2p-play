@@ -264,43 +264,11 @@ fn parse_direct_message_command(
         let message = parts[1].trim();
         
         if !to_name.is_empty() && !message.is_empty() {
-            // Check if there are any multi-word peer names in the known list
-            let has_multiword_peers = known_peer_names.values().any(|name| name.contains(' '));
-            
-            if has_multiword_peers {
-                // If there are multi-word peer names, be conservative about ambiguous cases
-                // Reject patterns that look like "ProperNoun ProperNoun ..." which could be
-                // intended as multi-word peer names
-                let message_words: Vec<&str> = message.split_whitespace().collect();
-                if message_words.len() >= 2 {
-                    let first_word = message_words[0];
-                    
-                    // Pattern: "Unknown Person Hello" - reject because "Unknown Person" 
-                    // looks like it could be a peer name (two capitalized words)
-                    if to_name.chars().next().map_or(false, |c| c.is_uppercase()) &&
-                       first_word.chars().next().map_or(false, |c| c.is_uppercase()) &&
-                       first_word.len() > 2 && // Not just a single letter
-                       !is_common_word(first_word) { // Not a common English word
-                        return None;
-                    }
-                }
-            }
-            
             return Some((to_name.to_string(), message.to_string()));
         }
     }
     
     None
-}
-
-// Helper function to identify common English words that are unlikely to be part of a peer name
-fn is_common_word(word: &str) -> bool {
-    matches!(word.to_lowercase().as_str(), 
-        "hello" | "hi" | "hey" | "how" | "what" | "when" | "where" | "why" | 
-        "who" | "yes" | "no" | "thanks" | "please" | "sorry" | "ok" | "okay" | "sure" |
-        "great" | "nice" | "cool" | "awesome" | "amazing" | "wonderful" | "terrible" |
-        "bad" | "good" | "better" | "best" | "worst" | "fine" | "alright" | "well"
-    )
 }
 
 pub async fn handle_direct_message(
