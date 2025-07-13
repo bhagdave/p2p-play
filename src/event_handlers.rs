@@ -72,6 +72,7 @@ pub async fn handle_input_event(
     peer_names: &HashMap<PeerId, String>,
     story_sender: mpsc::UnboundedSender<crate::types::Story>,
     local_peer_name: &mut Option<String>,
+    sorted_peer_names_cache: &SortedPeerNamesCache,
 ) {
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names).await,
@@ -101,7 +102,7 @@ pub async fn handle_input_event(
             }
         }
         cmd if cmd.starts_with("msg ") => {
-            handle_direct_message(cmd, swarm, peer_names, local_peer_name).await;
+            handle_direct_message(cmd, swarm, peer_names, local_peer_name, sorted_peer_names_cache).await;
         }
         _ => eprintln!("unknown command"),
     }
@@ -147,6 +148,7 @@ pub async fn handle_floodsub_event(
     response_sender: mpsc::UnboundedSender<ListResponse>,
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
+    sorted_peer_names_cache: &mut SortedPeerNamesCache,
 ) {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
@@ -195,17 +197,25 @@ pub async fn handle_floodsub_event(
                         info!("Received peer name '{}' from {}", peer_name.name, peer_id);
 
                         // Only update the peer name if it's new or has actually changed
+                        let mut names_changed = false;
                         peer_names.entry(peer_id).and_modify(|existing_name| {
                             if existing_name != &peer_name.name {
                                 info!("Peer {} name changed from '{}' to '{}'", peer_id, existing_name, peer_name.name);
                                 *existing_name = peer_name.name.clone();
+                                names_changed = true;
                             } else {
                                 info!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
                             }
                         }).or_insert_with(|| {
                             info!("Setting peer {} name to '{}' (first time)", peer_id, peer_name.name);
+                            names_changed = true;
                             peer_name.name.clone()
                         });
+                        
+                        // Update the cache if peer names changed
+                        if names_changed {
+                            sorted_peer_names_cache.update(peer_names);
+                        }
                     }
                 }
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
@@ -283,6 +293,7 @@ pub async fn handle_event(
     response_sender: mpsc::UnboundedSender<ListResponse>,
     story_sender: mpsc::UnboundedSender<crate::types::Story>,
     local_peer_name: &mut Option<String>,
+    sorted_peer_names_cache: &mut SortedPeerNamesCache,
 ) {
     info!("Event Received");
     match event {
@@ -293,13 +304,13 @@ pub async fn handle_event(
             handle_publish_story_event(story, swarm).await;
         }
         EventType::Input(line) => {
-            handle_input_event(line, swarm, peer_names, story_sender, local_peer_name).await;
+            handle_input_event(line, swarm, peer_names, story_sender, local_peer_name, sorted_peer_names_cache).await;
         }
         EventType::MdnsEvent(mdns_event) => {
             handle_mdns_event(mdns_event, swarm).await;
         }
         EventType::FloodsubEvent(floodsub_event) => {
-            handle_floodsub_event(floodsub_event, response_sender, peer_names, local_peer_name)
+            handle_floodsub_event(floodsub_event, response_sender, peer_names, local_peer_name, sorted_peer_names_cache)
                 .await;
         }
         EventType::PingEvent(ping_event) => {

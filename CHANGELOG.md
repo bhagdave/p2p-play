@@ -2,14 +2,23 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+### Performance
+- Optimized peer name sorting performance with caching in direct message parsing
+- Implemented SortedPeerNamesCache to maintain pre-sorted peer names, reducing complexity from O(n log n) per direct message command to O(1)
+- Cache only updates when peer list changes (new peers, disconnections, name changes)
+- Maintains identical functional behavior while significantly improving performance for direct messaging in environments with many peers
+
 
 ## [0.4.1] - 2025-07-13
+
 ### Changed
 - Addressed deprecation warnings that were appearing during compilation by replacing deprecated floodsub type aliases with their non-deprecated equivalents.
 - Fixed direct messaging failure when peer names contained spaces. The command msg Alice Smith Hello world was incorrectly parsed as sending "Smith Hello world" to peer "Alice" instead of sending "Hello world" to peer "Alice Smith".
 - Modified peer name handling in handle_floodsub_event to check if name has changed
 - Added proper logging for first-time names vs. changed names vs. unchanged names
 - Ensures peer names are fixed when first received and only updated if they change
+
 
 ## [0.4.0] - 2025-07-07
 
