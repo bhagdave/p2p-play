@@ -2,6 +2,15 @@
 
 All changes to this project will be documented in this file.
 
+
+## [0.4.1] - 2025-07-13
+### Changed
+- Addressed deprecation warnings that were appearing during compilation by replacing deprecated floodsub type aliases with their non-deprecated equivalents.
+- Fixed direct messaging failure when peer names contained spaces. The command msg Alice Smith Hello world was incorrectly parsed as sending "Smith Hello world" to peer "Alice" instead of sending "Hello world" to peer "Alice Smith".
+- Modified peer name handling in handle_floodsub_event to check if name has changed
+- Added proper logging for first-time names vs. changed names vs. unchanged names
+- Ensures peer names are fixed when first received and only updated if they change
+
 ## [0.4.0] - 2025-07-07
 
 ### Added
