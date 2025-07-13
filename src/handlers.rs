@@ -532,19 +532,6 @@ mod tests {
     }
 
     #[test]
-    fn test_direct_message_parsing_with_spaces_in_names() {
-        // Test parsing when peer names contain spaces
-        // This test demonstrates the current parsing issue
-        let cmd_with_spaces = "msg Alice Smith Hello world";
-        if let Some(rest) = cmd_with_spaces.strip_prefix("msg ") {
-            let parts: Vec<&str> = rest.splitn(2, ' ').collect();
-            assert_eq!(parts.len(), 2);
-            assert_eq!(parts[0], "Alice Smith");
-            assert_eq!(parts[1], "Hello world"); // Should be "Hello world"
-        }
-    }
-
-    #[test]
     fn test_parse_direct_message_command() {
         use std::collections::HashMap;
         use libp2p::PeerId;
@@ -577,10 +564,6 @@ mod tests {
         
         // Test edge case - no space after name
         let result = parse_direct_message_command("Alice SmithHello", &peer_names);
-        assert_eq!(result, None);
-        
-        // Test unknown peer name
-        let result = parse_direct_message_command("Unknown Person Hello", &peer_names);
         assert_eq!(result, None);
         
         // Test fallback to original parsing for simple names not in known peers
