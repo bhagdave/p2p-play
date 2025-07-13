@@ -6,8 +6,22 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use log::info;
 use std::collections::{HashMap, HashSet};
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::mpsc;
+
+/// Simple UI logger that can be passed around
+pub struct UILogger {
+    pub sender: mpsc::UnboundedSender<String>,
+}
+
+impl UILogger {
+    pub fn new(sender: mpsc::UnboundedSender<String>) -> Self {
+        Self { sender }
+    }
+
+    pub fn log(&self, message: String) {
+        let _ = self.sender.send(message);
+    }
+}
 
 /// Cache for sorted peer names to avoid repeated sorting on every direct message
 pub struct SortedPeerNamesCache {
@@ -47,8 +61,9 @@ impl SortedPeerNamesCache {
 pub async fn handle_list_peers(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &HashMap<PeerId, String>,
+    ui_logger: &UILogger,
 ) {
-    println!("Discovered Peers:");
+    ui_logger.log("Discovered Peers:".to_string());
     let nodes = swarm.behaviour().mdns.discovered_nodes();
     let mut unique_peers = HashSet::new();
     for peer in nodes {
@@ -59,30 +74,31 @@ pub async fn handle_list_peers(
             .get(p)
             .map(|n| format!(" ({})", n))
             .unwrap_or_default();
-        println!("{}{}", p, name);
+        ui_logger.log(format!("{}{}", p, name));
     });
 }
 
 pub async fn handle_list_connections(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &HashMap<PeerId, String>,
+    ui_logger: &UILogger,
 ) {
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-    println!("Connected Peers: {}", connected_peers.len());
+    ui_logger.log(format!("Connected Peers: {}", connected_peers.len()));
     for peer in connected_peers {
         let name = peer_names
             .get(&peer)
             .map(|n| format!(" ({})", n))
             .unwrap_or_default();
-        println!("Connected to: {}{}", peer, name);
+        ui_logger.log(format!("Connected to: {}{}", peer, name));
     }
 }
 
-pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
+pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
     let rest = cmd.strip_prefix("ls s ");
     match rest {
         Some("all") => {
-            println!("Requesting all stories from all peers");
+            ui_logger.log("Requesting all stories from all peers".to_string());
             let req = ListRequest {
                 mode: ListMode::ALL,
             };
@@ -101,7 +117,7 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
             info!("Published request");
         }
         Some(story_peer_id) => {
-            println!("Requesting all stories from peer: {}", story_peer_id);
+            ui_logger.log(format!("Requesting all stories from peer: {}", story_peer_id));
             let req = ListRequest {
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
@@ -114,143 +130,92 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>) {
                 .publish(TOPIC.clone(), json_bytes);
         }
         None => {
-            println!("Local stories:");
+            ui_logger.log("Local stories:".to_string());
             match read_local_stories().await {
                 Ok(v) => {
-                    println!("Local stories ({})", v.len());
-                    v.iter().for_each(|r| println!("{:?}", r));
+                    ui_logger.log(format!("Local stories ({})", v.len()));
+                    v.iter().for_each(|r| ui_logger.log(format!("{:?}", r)));
                 }
-                Err(e) => eprintln!("error fetching local stories: {}", e),
+                Err(e) => ui_logger.log(format!("error fetching local stories: {}", e)),
             };
         }
     };
 }
 
-async fn prompt_for_input(prompt: &str) -> Result<String, Box<dyn std::error::Error>> {
-    println!("{}", prompt);
-    let mut stdin = BufReader::new(tokio::io::stdin());
-    let mut input = String::new();
-    stdin.read_line(&mut input).await?;
-    Ok(input.trim().to_string())
-}
-
-pub async fn handle_create_stories(cmd: &str) {
+pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
-            println!("Creating a new story interactively...");
-
-            // Prompt for each element
-            let name = match prompt_for_input("Enter story name:").await {
-                Ok(input) if !input.is_empty() => input,
-                Ok(_) => {
-                    println!("Story name cannot be empty. Story creation cancelled.");
-                    return;
-                }
-                Err(e) => {
-                    eprintln!("Error reading input: {}. Story creation cancelled.", e);
-                    return;
-                }
-            };
-
-            let header = match prompt_for_input("Enter story header:").await {
-                Ok(input) if !input.is_empty() => input,
-                Ok(_) => {
-                    println!("Story header cannot be empty. Story creation cancelled.");
-                    return;
-                }
-                Err(e) => {
-                    eprintln!("Error reading input: {}. Story creation cancelled.", e);
-                    return;
-                }
-            };
-
-            let body = match prompt_for_input("Enter story body:").await {
-                Ok(input) if !input.is_empty() => input,
-                Ok(_) => {
-                    println!("Story body cannot be empty. Story creation cancelled.");
-                    return;
-                }
-                Err(e) => {
-                    eprintln!("Error reading input: {}. Story creation cancelled.", e);
-                    return;
-                }
-            };
-
-            if let Err(e) = create_new_story(&name, &header, &body).await {
-                eprintln!("error creating story: {}", e);
-            } else {
-                println!("Story created successfully");
-            }
+            ui_logger.log("Interactive story creation not yet supported in TUI mode.".to_string());
+            ui_logger.log("Use format: create s name|header|body".to_string());
+            return;
         } else {
             // Legacy mode: parse pipe-separated arguments
             let elements: Vec<&str> = rest.split('|').collect();
             if elements.len() < 3 {
-                println!("too few arguments - Format: name|header|body");
-                println!("Alternatively, use 'create s' for interactive mode");
+                ui_logger.log("too few arguments - Format: name|header|body".to_string());
             } else {
                 let name = elements.first().expect("name is there");
                 let header = elements.get(1).expect("header is there");
                 let body = elements.get(2).expect("body is there");
                 if let Err(e) = create_new_story(name, header, body).await {
-                    eprintln!("error creating story: {}", e);
+                    ui_logger.log(format!("error creating story: {}", e));
                 } else {
-                    println!("Story created successfully");
+                    ui_logger.log("Story created successfully".to_string());
                 };
             }
         }
     }
 }
 
-pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender<Story>) {
+pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender<Story>, ui_logger: &UILogger) {
     if let Some(rest) = cmd.strip_prefix("publish s") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
                 if let Err(e) = publish_story(id, story_sender).await {
-                    eprintln!("error publishing story with id {}, {}", id, e)
+                    ui_logger.log(format!("error publishing story with id {}, {}", id, e));
                 } else {
-                    println!("Published story with id: {}", id);
+                    ui_logger.log(format!("Published story with id: {}", id));
                 }
             }
-            Err(e) => eprintln!("invalid id: {}, {}", rest.trim(), e),
+            Err(e) => ui_logger.log(format!("invalid id: {}, {}", rest.trim(), e)),
         };
     }
 }
 
-pub async fn handle_help(_cmd: &str) {
-    println!("ls p to list discovered peers");
-    println!("ls c to list connected peers");
-    println!("ls s to list stories");
-    println!("create s to create story (interactive mode)");
-    println!("create s name|header|body to create story (quick mode)");
-    println!("publish s to publish story");
-    println!("name <alias> to set your peer name");
-    println!("msg <peer_alias> <message> to send direct message");
-    println!("quit to quit");
+pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
+    ui_logger.log("ls p to list discovered peers".to_string());
+    ui_logger.log("ls c to list connected peers".to_string());
+    ui_logger.log("ls s to list stories".to_string());
+    ui_logger.log("create s name|header|body to create story".to_string());
+    ui_logger.log("publish s to publish story".to_string());
+    ui_logger.log("name <alias> to set your peer name".to_string());
+    ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
+    ui_logger.log("quit to quit".to_string());
 }
 
-pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>) -> Option<PeerName> {
+pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>, ui_logger: &UILogger) -> Option<PeerName> {
     if let Some(name) = cmd.strip_prefix("name ") {
         let name = name.trim();
         if name.is_empty() {
-            eprintln!("Name cannot be empty");
+            ui_logger.log("Name cannot be empty".to_string());
             return None;
         }
 
         *local_peer_name = Some(name.to_string());
-        println!("Set local peer name to: {}", name);
+        ui_logger.log(format!("Set local peer name to: {}", name));
 
         // Save the peer name to storage for persistence across restarts
         if let Err(e) = save_local_peer_name(name).await {
-            eprintln!("Warning: Failed to save peer name: {}", e);
+            ui_logger.log(format!("Warning: Failed to save peer name: {}", e));
         }
 
         // Return a PeerName message to broadcast to connected peers
         Some(PeerName::new(PEER_ID.to_string(), name.to_string()))
     } else {
-        eprintln!("Usage: name <alias>");
+        ui_logger.log("Usage: name <alias>".to_string());
         None
     }
 }
@@ -309,25 +274,26 @@ pub async fn handle_direct_message(
     peer_names: &HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
     sorted_peer_names_cache: &SortedPeerNamesCache,
+    ui_logger: &UILogger,
 ) {
     if let Some(rest) = cmd.strip_prefix("msg ") {
         let (to_name, message) = match parse_direct_message_command(rest, sorted_peer_names_cache.get_sorted_names()) {
             Some((name, msg)) => (name, msg),
             None => {
-                eprintln!("Usage: msg <peer_alias> <message>");
+                ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
                 return;
             }
         };
 
         if to_name.is_empty() || message.is_empty() {
-            eprintln!("Both peer alias and message must be non-empty");
+            ui_logger.log("Both peer alias and message must be non-empty".to_string());
             return;
         }
 
         let from_name = match local_peer_name {
             Some(name) => name.clone(),
             None => {
-                eprintln!("You must set your name first using 'name <alias>'");
+                ui_logger.log("You must set your name first using 'name <alias>'".to_string());
                 return;
             }
         };
@@ -335,10 +301,10 @@ pub async fn handle_direct_message(
         // Check if the target peer exists
         let peer_exists = peer_names.values().any(|name| name == &to_name);
         if !peer_exists {
-            eprintln!(
+            ui_logger.log(format!(
                 "Peer '{}' not found. Use 'ls p' to see available peers.",
                 to_name
-            );
+            ));
             return;
         }
 
@@ -357,23 +323,23 @@ pub async fn handle_direct_message(
             .floodsub
             .publish(TOPIC.clone(), json_bytes);
 
-        println!("Direct message sent to {}: {}", to_name, message);
+        ui_logger.log(format!("Direct message sent to {}: {}", to_name, message));
         info!(
             "Sent direct message to {} from {}",
             to_name, direct_msg.from_name
         );
     } else {
-        eprintln!("Usage: msg <peer_alias> <message>");
+        ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
     }
 }
 
-pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr_str: &str) {
+pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr_str: &str, ui_logger: &UILogger) {
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
-            println!("Manually dialing address: {}", addr);
+            ui_logger.log(format!("Manually dialing address: {}", addr));
             match swarm.dial(addr) {
                 Ok(_) => {
-                    println!("Dialing initiated successfully");
+                    ui_logger.log("Dialing initiated successfully".to_string());
 
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
                     info!("Number of connected peers: {}", connected_peers.len());
@@ -394,10 +360,10 @@ pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr
                             .add_node_to_partial_view(peer);
                     }
                 }
-                Err(e) => eprintln!("Failed to dial: {}", e),
+                Err(e) => ui_logger.log(format!("Failed to dial: {}", e)),
             }
         }
-        Err(e) => eprintln!("Failed to parse address: {}", e),
+        Err(e) => ui_logger.log(format!("Failed to parse address: {}", e)),
     }
 }
 
@@ -410,9 +376,11 @@ mod tests {
     #[tokio::test]
     async fn test_handle_set_name_valid() {
         let mut local_peer_name = None;
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         // Test setting a valid name
-        let result = handle_set_name("name Alice", &mut local_peer_name).await;
+        let result = handle_set_name("name Alice", &mut local_peer_name, &ui_logger).await;
 
         assert!(result.is_some());
         assert_eq!(local_peer_name, Some("Alice".to_string()));
@@ -425,9 +393,11 @@ mod tests {
     #[tokio::test]
     async fn test_handle_set_name_empty() {
         let mut local_peer_name = None;
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         // Test setting an empty name
-        let result = handle_set_name("name ", &mut local_peer_name).await;
+        let result = handle_set_name("name ", &mut local_peer_name, &ui_logger).await;
 
         assert!(result.is_none());
         assert_eq!(local_peer_name, None);
@@ -436,9 +406,11 @@ mod tests {
     #[tokio::test]
     async fn test_handle_set_name_invalid_format() {
         let mut local_peer_name = None;
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         // Test invalid command format
-        let result = handle_set_name("invalid command", &mut local_peer_name).await;
+        let result = handle_set_name("invalid command", &mut local_peer_name, &ui_logger).await;
 
         assert!(result.is_none());
         assert_eq!(local_peer_name, None);
@@ -447,9 +419,11 @@ mod tests {
     #[tokio::test]
     async fn test_handle_set_name_with_spaces() {
         let mut local_peer_name = None;
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         // Test name with spaces
-        let result = handle_set_name("name Alice Smith", &mut local_peer_name).await;
+        let result = handle_set_name("name Alice Smith", &mut local_peer_name, &ui_logger).await;
 
         assert!(result.is_some());
         assert_eq!(local_peer_name, Some("Alice Smith".to_string()));
@@ -457,19 +431,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_help() {
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+        
         // This function just prints help text, we'll test it doesn't panic
-        handle_help("help").await;
+        handle_help("help", &ui_logger).await;
         // If we get here without panicking, the test passes
     }
 
     #[test]
     fn test_handle_create_stories_valid() {
         let rt = tokio::runtime::Runtime::new().unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         // Note: This will try to create actual files, but we're testing the parsing logic
         rt.block_on(async {
             // Test valid create story command format
-            handle_create_stories("create sTest Story|Test Header|Test Body").await;
+            handle_create_stories("create sTest Story|Test Header|Test Body", &ui_logger).await;
             // The function will try to create a story but may fail due to file system issues
             // We're mainly testing that the parsing doesn't panic
         });
@@ -478,25 +457,29 @@ mod tests {
     #[test]
     fn test_handle_create_stories_invalid() {
         let rt = tokio::runtime::Runtime::new().unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         rt.block_on(async {
             // Test invalid format (too few arguments)
-            handle_create_stories("create sTest|Header").await;
+            handle_create_stories("create sTest|Header", &ui_logger).await;
 
             // Test completely invalid format
-            handle_create_stories("invalid command").await;
+            handle_create_stories("invalid command", &ui_logger).await;
         });
     }
 
     #[test]
     fn test_handle_publish_story_valid_id() {
         let rt = tokio::runtime::Runtime::new().unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         rt.block_on(async {
-            let (sender, _receiver) = mpsc::unbounded_channel::<Story>();
+            let (story_sender, _story_receiver) = mpsc::unbounded_channel::<Story>();
 
             // Test with valid ID format
-            handle_publish_story("publish s123", sender).await;
+            handle_publish_story("publish s123", story_sender, &ui_logger).await;
             // The function will try to publish but may fail due to file system issues
             // We're testing the parsing logic
         });
@@ -505,16 +488,18 @@ mod tests {
     #[test]
     fn test_handle_publish_story_invalid_id() {
         let rt = tokio::runtime::Runtime::new().unwrap();
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         rt.block_on(async {
-            let (sender, _receiver) = mpsc::unbounded_channel::<Story>();
+            let (story_sender, _story_receiver) = mpsc::unbounded_channel::<Story>();
 
             // Test with invalid ID format
-            handle_publish_story("publish sabc", sender).await;
+            handle_publish_story("publish sabc", story_sender, &ui_logger).await;
 
             // Test with invalid command format - use a new sender
-            let (sender2, _receiver2) = mpsc::unbounded_channel::<Story>();
-            handle_publish_story("invalid command", sender2).await;
+            let (story_sender2, _story_receiver2) = mpsc::unbounded_channel::<Story>();
+            handle_publish_story("invalid command", story_sender2, &ui_logger).await;
         });
     }
 
@@ -624,6 +609,8 @@ mod tests {
     async fn test_handle_direct_message_no_local_name() {
         use crate::network::create_swarm;
         use std::collections::HashMap;
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         let mut swarm = create_swarm().expect("Failed to create swarm");
         let peer_names = HashMap::new();
@@ -632,7 +619,7 @@ mod tests {
         cache.update(&peer_names);
 
         // This should print an error message about needing to set name first
-        handle_direct_message("msg Alice Hello", &mut swarm, &peer_names, &local_peer_name, &cache).await;
+        handle_direct_message("msg Alice Hello", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
         // Test passes if it doesn't panic
     }
 
@@ -640,6 +627,8 @@ mod tests {
     async fn test_handle_direct_message_invalid_format() {
         use crate::network::create_swarm;
         use std::collections::HashMap;
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         let mut swarm = create_swarm().expect("Failed to create swarm");
         let peer_names = HashMap::new();
@@ -648,9 +637,9 @@ mod tests {
         cache.update(&peer_names);
 
         // Test invalid command formats
-        handle_direct_message("msg Alice", &mut swarm, &peer_names, &local_peer_name, &cache).await;
-        handle_direct_message("msg", &mut swarm, &peer_names, &local_peer_name, &cache).await;
-        handle_direct_message("invalid command", &mut swarm, &peer_names, &local_peer_name, &cache).await;
+        handle_direct_message("msg Alice", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
+        handle_direct_message("msg", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
+        handle_direct_message("invalid command", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
         // Test passes if it doesn't panic
     }
 
@@ -659,6 +648,8 @@ mod tests {
         use crate::network::create_swarm;
         use libp2p::PeerId;
         use std::collections::HashMap;
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
 
         let mut swarm = create_swarm().expect("Failed to create swarm");
         let mut peer_names = HashMap::new();
@@ -676,6 +667,7 @@ mod tests {
             &peer_names,
             &local_peer_name,
             &cache,
+            &ui_logger,
         )
         .await;
         // Test passes if it doesn't panic and correctly parses the name
