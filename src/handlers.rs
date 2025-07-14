@@ -142,7 +142,7 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, u
     };
 }
 
-pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) {
+pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) -> Option<()> {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
@@ -150,7 +150,7 @@ pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) {
         if rest.is_empty() {
             ui_logger.log("Interactive story creation not yet supported in TUI mode.".to_string());
             ui_logger.log("Use format: create s name|header|body".to_string());
-            return;
+            return None;
         } else {
             // Legacy mode: parse pipe-separated arguments
             let elements: Vec<&str> = rest.split('|').collect();
@@ -164,10 +164,12 @@ pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) {
                     ui_logger.log(format!("error creating story: {}", e));
                 } else {
                     ui_logger.log("Story created successfully".to_string());
+                    return Some(()); // Signal that stories need to be refreshed
                 };
             }
         }
     }
+    None
 }
 
 pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender<Story>, ui_logger: &UILogger) {

@@ -144,8 +144,10 @@ impl App {
 
     pub fn add_to_log(&mut self, message: String) {
         self.output_log.push(message);
-        // Auto-scroll to bottom when new messages are added
-        self.scroll_to_bottom();
+        // Only auto-scroll to bottom if user is already at the bottom
+        if self.scroll_offset >= self.output_log.len().saturating_sub(1) {
+            self.scroll_to_bottom();
+        }
     }
 
     pub fn update_peers(&mut self, peers: HashMap<PeerId, String>) {
@@ -185,7 +187,8 @@ impl App {
     }
 
     fn scroll_down(&mut self) {
-        if self.scroll_offset < self.output_log.len().saturating_sub(1) {
+        let max_scroll = self.output_log.len().saturating_sub(1);
+        if self.scroll_offset < max_scroll {
             self.scroll_offset += 1;
         }
     }
@@ -240,11 +243,19 @@ impl App {
                 .split(chunks[1]);
 
             // Output log
-            let visible_start = self.scroll_offset;
-            let visible_end = std::cmp::min(
-                visible_start + (main_chunks[0].height as usize).saturating_sub(2),
-                self.output_log.len()
-            );
+            let log_height = (main_chunks[0].height as usize).saturating_sub(2);
+            let total_lines = self.output_log.len();
+            
+            // Calculate what portion of the log to display
+            let visible_start = if total_lines <= log_height {
+                0
+            } else {
+                // Show a window from scroll_offset
+                let max_scroll = total_lines.saturating_sub(log_height);
+                self.scroll_offset.min(max_scroll)
+            };
+            
+            let visible_end = std::cmp::min(visible_start + log_height, total_lines);
             
             let visible_log: Vec<Line> = self.output_log[visible_start..visible_end]
                 .iter()
@@ -332,7 +343,8 @@ pub async fn handle_ui_events(
     app: &mut App,
     ui_sender: mpsc::UnboundedSender<AppEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if event::poll(std::time::Duration::from_millis(50))? {
+    // Use a shorter poll duration for more responsive input
+    if event::poll(std::time::Duration::from_millis(16))? {
         if let Some(app_event) = app.handle_event(event::read()?) {
             ui_sender.send(app_event)?;
         }

@@ -80,6 +80,18 @@ async fn main() {
         }
     };
 
+    // Load initial stories and update UI
+    match storage::read_local_stories().await {
+        Ok(stories) => {
+            info!("Loaded {} local stories", stories.len());
+            app.update_local_stories(stories);
+        }
+        Err(e) => {
+            error!("Failed to load local stories: {}", e);
+            app.add_to_log(format!("Failed to load local stories: {}", e));
+        }
+    }
+
     Swarm::listen_on(
         &mut swarm,
         "/ip4/0.0.0.0/tcp/0"
@@ -104,6 +116,9 @@ async fn main() {
         if app.should_quit {
             break;
         }
+
+        // Add a small yield to prevent blocking
+        tokio::task::yield_now().await;
 
         let evt = {
             tokio::select! {
@@ -226,7 +241,7 @@ async fn main() {
         };
 
         if let Some(event) = evt {
-            handle_event(
+            if let Some(()) = handle_event(
                 event,
                 &mut swarm,
                 &mut peer_names,
@@ -236,7 +251,18 @@ async fn main() {
                 &mut sorted_peer_names_cache,
                 &ui_logger,
             )
-            .await;
+            .await {
+                // Stories were updated, refresh them
+                match storage::read_local_stories().await {
+                    Ok(stories) => {
+                        info!("Refreshed {} stories", stories.len());
+                        app.update_local_stories(stories);
+                    }
+                    Err(e) => {
+                        error!("Failed to refresh stories: {}", e);
+                    }
+                }
+            }
 
             // Update UI with the latest peer names
             app.update_peers(peer_names.clone());
