@@ -5,6 +5,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use libp2p::PeerId;
+use log::info;
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -61,10 +62,10 @@ impl App {
             should_quit: false,
             input: String::new(),
             output_log: vec![
-                "P2P-Play Terminal UI".to_string(),
-                "Type 'help' for available commands".to_string(),
-                "Press 'i' to enter input mode, 'Esc' to exit input mode".to_string(),
-                "Press 'q' to quit".to_string(),
+                "🎯 P2P-Play Terminal UI - Ready!".to_string(),
+                "📝 Press 'i' to enter input mode, 'Esc' to exit input mode".to_string(),
+                "🔧 Type 'help' for available commands".to_string(),
+                "❌ Press 'q' to quit".to_string(),
                 "".to_string(),
             ],
             peers: HashMap::new(),
@@ -90,6 +91,7 @@ impl App {
                     InputMode::Normal => match key.code {
                         KeyCode::Char('q') => {
                             self.should_quit = true;
+                            info!("Quit command received, setting should_quit to true");
                             return Some(AppEvent::Quit);
                         }
                         KeyCode::Char('i') => {
@@ -262,8 +264,15 @@ impl App {
                 .map(|msg| Line::from(msg.clone()))
                 .collect();
 
+            // Create title with scroll indicator
+            let title = if total_lines > log_height {
+                format!("Output [{}/{}]", visible_start + 1, total_lines)
+            } else {
+                "Output".to_string()
+            };
+
             let output = Paragraph::new(visible_log)
-                .block(Block::default().borders(Borders::ALL).title("Output"))
+                .block(Block::default().borders(Borders::ALL).title(title))
                 .wrap(Wrap { trim: true });
             f.render_widget(output, main_chunks[0]);
 
@@ -316,7 +325,7 @@ impl App {
             };
 
             let input_text = match self.input_mode {
-                InputMode::Normal => "Press 'i' to enter input mode, 'q' to quit".to_string(),
+                InputMode::Normal => "Press 'i' to enter input mode, ↑/↓ to scroll, 'q' to quit".to_string(),
                 InputMode::Editing => format!("Command: {}", self.input),
             };
 

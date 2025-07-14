@@ -122,6 +122,10 @@ async fn main() {
 
         let evt = {
             tokio::select! {
+                // Add a timeout to ensure the loop doesn't get stuck
+                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                    None
+                }
                 ui_log_msg = ui_log_rcv.recv() => {
                     if let Some(msg) = ui_log_msg {
                         app.add_to_log(msg);
@@ -133,6 +137,7 @@ async fn main() {
                         match event {
                             AppEvent::Input(line) => Some(EventType::Input(line)),
                             AppEvent::Quit => {
+                                info!("Quit event received in main loop");
                                 app.should_quit = true;
                                 break;
                             }
@@ -184,7 +189,10 @@ async fn main() {
                         },
                         SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                             info!("Connection established to {} via {:?}", peer_id, endpoint);
-                            app.add_to_log(format!("Connection established to {}", peer_id));
+                            // Only log connection establishment once per session to reduce noise
+                            if !peer_names.contains_key(&peer_id) {
+                                app.add_to_log(format!("Connected to new peer: {}", peer_id));
+                            }
                             info!("Adding peer {} to floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
 
@@ -201,7 +209,10 @@ async fn main() {
                         },
                         SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                             info!("Connection closed to {}: {:?}", peer_id, cause);
-                            app.add_to_log(format!("Connection closed to {}", peer_id));
+                            // Only log disconnections if the peer had a name (was established)
+                            if let Some(name) = peer_names.get(&peer_id) {
+                                app.add_to_log(format!("Disconnected from {}: {}", name, peer_id));
+                            }
                             info!("Removing peer {} from floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
 
@@ -217,18 +228,21 @@ async fn main() {
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
                             error!("Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
-                            app.add_to_log(format!("Failed to connect to {:?}: {}", peer_id, error));
+                            // Only log connection errors that matter to the user
+                            if let Some(peer_id) = peer_id {
+                                app.add_to_log(format!("Failed to connect to {}: {}", peer_id, error));
+                            }
                             None
                         },
                         SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, connection_id, .. } => {
                             error!("Failed incoming connection from {} to {} (connection id: {:?}): {}",
                                    send_back_addr, local_addr, connection_id, error);
-                            app.add_to_log(format!("Failed incoming connection from {}: {}", send_back_addr, error));
+                            // Don't log incoming connection errors to reduce noise
                             None
                         },
                         SwarmEvent::Dialing { peer_id, connection_id, .. } => {
                             info!("Dialing peer: {:?} (connection id: {:?})", peer_id, connection_id);
-                            app.add_to_log(format!("Dialing peer: {:?}", peer_id));
+                            // Don't log dialing attempts to reduce noise
                             None
                         },
                         _ => {
