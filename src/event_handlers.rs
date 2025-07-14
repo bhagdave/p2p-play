@@ -73,19 +73,27 @@ pub async fn handle_input_event(
     story_sender: mpsc::UnboundedSender<crate::types::Story>,
     local_peer_name: &mut Option<String>,
     sorted_peer_names_cache: &SortedPeerNamesCache,
-) {
+    ui_logger: &UILogger,
+) -> Option<()> {
     match line.as_str() {
-        "ls p" => handle_list_peers(swarm, peer_names).await,
-        "ls c" => handle_list_connections(swarm, peer_names).await,
-        cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, swarm).await,
-        cmd if cmd.starts_with("create s") => handle_create_stories(cmd).await,
-        cmd if cmd.starts_with("publish s") => {
-            handle_publish_story(cmd, story_sender.clone()).await
+        "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
+        "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
+        cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, swarm, ui_logger).await,
+        cmd if cmd.starts_with("create s") => {
+            if let Some(()) = handle_create_stories(cmd, ui_logger).await {
+                return Some(());
+            }
         }
-        cmd if cmd.starts_with("help") => handle_help(cmd).await,
+        cmd if cmd.starts_with("publish s") => {
+            handle_publish_story(cmd, story_sender.clone(), ui_logger).await
+        }
+        cmd if cmd.starts_with("show story") => {
+            handle_show_story(cmd, ui_logger).await
+        }
+        cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
         cmd if cmd.starts_with("quit") => process::exit(0),
         cmd if cmd.starts_with("name ") => {
-            if let Some(peer_name) = handle_set_name(cmd, local_peer_name).await {
+            if let Some(peer_name) = handle_set_name(cmd, local_peer_name, ui_logger).await {
                 // Broadcast the peer name to connected peers
                 let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
                 let json_bytes = Bytes::from(json.into_bytes());
@@ -98,14 +106,15 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("connect ") => {
             if let Some(addr) = cmd.strip_prefix("connect ") {
-                establish_direct_connection(swarm, addr).await;
+                establish_direct_connection(swarm, addr, ui_logger).await;
             }
         }
         cmd if cmd.starts_with("msg ") => {
-            handle_direct_message(cmd, swarm, peer_names, local_peer_name, sorted_peer_names_cache).await;
+            handle_direct_message(cmd, swarm, peer_names, local_peer_name, sorted_peer_names_cache, ui_logger).await;
         }
-        _ => eprintln!("unknown command"),
+        _ => ui_logger.log("unknown command".to_string()),
     }
+    None
 }
 
 /// Handle mDNS discovery events
@@ -149,7 +158,8 @@ pub async fn handle_floodsub_event(
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
-) {
+    ui_logger: &UILogger,
+) -> Option<()> {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
             info!("Message event received from {:?}", msg.source);
@@ -166,6 +176,10 @@ pub async fn handle_floodsub_event(
                         published.story.name, msg.source
                     );
                     info!("Story: {:?}", published.story);
+                    ui_logger.log(format!(
+                        "📖 Received story '{}' from {}",
+                        published.story.name, msg.source
+                    ));
 
                     // Save received story to local storage asynchronously
                     let story_to_save = published.story.clone();
@@ -174,16 +188,19 @@ pub async fn handle_floodsub_event(
                             error!("Failed to save received story: {}", e);
                         }
                     });
+                    
+                    // Signal that stories need to be refreshed
+                    return Some(());
                 }
             } else if let Ok(direct_msg) = serde_json::from_slice::<DirectMessage>(&msg.data) {
                 if direct_msg.from_peer_id != PEER_ID.to_string() {
                     // Check if this message is for us by our local name
                     if let Some(local_name) = local_peer_name {
                         if &direct_msg.to_name == local_name {
-                            println!(
-                                "\n📨 Direct message from {}: {}",
+                            ui_logger.log(format!(
+                                "📨 Direct message from {}: {}",
                                 direct_msg.from_name, direct_msg.message
-                            );
+                            ));
                             info!(
                                 "Received direct message from {} ({}): {}",
                                 direct_msg.from_name, direct_msg.from_peer_id, direct_msg.message
@@ -215,6 +232,7 @@ pub async fn handle_floodsub_event(
                         // Update the cache if peer names changed
                         if names_changed {
                             sorted_peer_names_cache.update(peer_names);
+                            ui_logger.log(format!("Peer {} set name to '{}'", peer_id, peer_name.name));
                         }
                     }
                 }
@@ -243,6 +261,7 @@ pub async fn handle_floodsub_event(
             info!("Subscription events");
         }
     }
+    None
 }
 
 /// Handle ping events for connection monitoring
@@ -294,7 +313,8 @@ pub async fn handle_event(
     story_sender: mpsc::UnboundedSender<crate::types::Story>,
     local_peer_name: &mut Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
-) {
+    ui_logger: &UILogger,
+) -> Option<()> {
     info!("Event Received");
     match event {
         EventType::Response(resp) => {
@@ -304,14 +324,19 @@ pub async fn handle_event(
             handle_publish_story_event(story, swarm).await;
         }
         EventType::Input(line) => {
-            handle_input_event(line, swarm, peer_names, story_sender, local_peer_name, sorted_peer_names_cache).await;
+            if let Some(()) = handle_input_event(line, swarm, peer_names, story_sender, local_peer_name, sorted_peer_names_cache, ui_logger).await {
+                return Some(());
+            }
         }
         EventType::MdnsEvent(mdns_event) => {
             handle_mdns_event(mdns_event, swarm).await;
         }
         EventType::FloodsubEvent(floodsub_event) => {
-            handle_floodsub_event(floodsub_event, response_sender, peer_names, local_peer_name, sorted_peer_names_cache)
-                .await;
+            if let Some(()) = handle_floodsub_event(floodsub_event, response_sender, peer_names, local_peer_name, sorted_peer_names_cache, ui_logger)
+                .await {
+                // Stories were updated, refresh them
+                return Some(());
+            }
         }
         EventType::PingEvent(ping_event) => {
             handle_ping_event(ping_event).await;
@@ -323,6 +348,7 @@ pub async fn handle_event(
             handle_direct_message_event(direct_msg).await;
         }
     }
+    None
 }
 
 // Helper function that needs to be accessible - copied from main.rs
