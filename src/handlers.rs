@@ -187,12 +187,43 @@ pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender
     }
 }
 
+pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger) {
+    if let Some(rest) = cmd.strip_prefix("show story ") {
+        match rest.trim().parse::<usize>() {
+            Ok(id) => {
+                // Read local stories to find the story with the given ID
+                match read_local_stories().await {
+                    Ok(stories) => {
+                        if let Some(story) = stories.iter().find(|s| s.id == id) {
+                            ui_logger.log(format!("📖 Story {}: {}", story.id, story.name));
+                            ui_logger.log(format!("Header: {}", story.header));
+                            ui_logger.log(format!("Body: {}", story.body));
+                            ui_logger.log(format!("Public: {}", if story.public { "Yes" } else { "No" }));
+                        } else {
+                            ui_logger.log(format!("Story with id {} not found", id));
+                        }
+                    }
+                    Err(e) => {
+                        ui_logger.log(format!("Error reading stories: {}", e));
+                    }
+                }
+            }
+            Err(e) => {
+                ui_logger.log(format!("Invalid story id '{}': {}", rest.trim(), e));
+            }
+        }
+    } else {
+        ui_logger.log("Usage: show story <id>".to_string());
+    }
+}
+
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls p to list discovered peers".to_string());
     ui_logger.log("ls c to list connected peers".to_string());
     ui_logger.log("ls s to list stories".to_string());
     ui_logger.log("create s name|header|body to create story".to_string());
     ui_logger.log("publish s to publish story".to_string());
+    ui_logger.log("show story <id> to show story details".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
     ui_logger.log("quit to quit".to_string());
@@ -433,12 +464,53 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_help() {
-        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
         
         // This function just prints help text, we'll test it doesn't panic
         handle_help("help", &ui_logger).await;
-        // If we get here without panicking, the test passes
+        
+        // Verify help messages are sent to the logger
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        
+        assert!(!messages.is_empty());
+        assert!(messages.iter().any(|m| m.contains("ls p")));
+        assert!(messages.iter().any(|m| m.contains("create s")));
+        assert!(messages.iter().any(|m| m.contains("show story")));
+        assert!(messages.iter().any(|m| m.contains("quit")));
+    }
+
+    #[tokio::test]
+    async fn test_handle_show_story() {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+
+        // Test invalid command format
+        handle_show_story("show story", &ui_logger).await;
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        assert!(messages.iter().any(|m| m.contains("Usage: show story <id>")));
+
+        // Test invalid story ID
+        handle_show_story("show story abc", &ui_logger).await;
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        assert!(messages.iter().any(|m| m.contains("Invalid story id")));
+
+        // Test non-existent story ID
+        handle_show_story("show story 999", &ui_logger).await;
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        assert!(messages.iter().any(|m| m.contains("not found") || m.contains("Error reading stories")));
     }
 
     #[test]

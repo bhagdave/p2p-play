@@ -87,6 +87,9 @@ pub async fn handle_input_event(
         cmd if cmd.starts_with("publish s") => {
             handle_publish_story(cmd, story_sender.clone(), ui_logger).await
         }
+        cmd if cmd.starts_with("show story") => {
+            handle_show_story(cmd, ui_logger).await
+        }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
         cmd if cmd.starts_with("quit") => process::exit(0),
         cmd if cmd.starts_with("name ") => {

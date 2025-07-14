@@ -3,6 +3,13 @@
 All changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Added
+- Added Terminal User Interface (TUI) built with ratatui for improved user experience
+- Multi-panel layout with status bar, output log, connected peers panel, and stories panel
+- Interactive controls with keyboard navigation and visual feedback
+- Real-time connection status updates and story sharing notifications
+- Added "show story <id>" command to display full story details including header, body, and public status
+
 ### Performance
 - Optimized peer name sorting performance with caching in direct message parsing
 - Implemented SortedPeerNamesCache to maintain pre-sorted peer names, reducing complexity from O(n log n) per direct message command to O(1)
