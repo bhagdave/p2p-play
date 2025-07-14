@@ -2,7 +2,8 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.5.0] - 2025-07-14
+
 ### Added
 - Added Terminal User Interface (TUI) built with ratatui for improved user experience
 - Multi-panel layout with status bar, output log, connected peers panel, and stories panel
