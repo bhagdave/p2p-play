@@ -52,7 +52,7 @@ async fn main() {
 
     // Create UI logger
     let ui_logger = handlers::UILogger::new(ui_log_sender);
-    
+
     // Create error logger that writes to file
     let error_logger = ErrorLogger::new("errors.log");
 

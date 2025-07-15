@@ -17,7 +17,7 @@ impl ErrorLogger {
     pub fn log_error(&self, error_message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{}] ERROR: {}\n", timestamp, error_message);
-        
+
         if let Err(e) = self.write_to_file(&log_entry) {
             // If file writing fails, fall back to stderr
             eprintln!("Failed to write to error log file: {}", e);
@@ -79,7 +79,7 @@ mod tests {
         let content = std::fs::read_to_string(path).unwrap();
         assert!(content.contains("First error"));
         assert!(content.contains("Second error"));
-        
+
         // Should have two lines
         let lines: Vec<&str> = content.lines().collect();
         assert_eq!(lines.len(), 2);

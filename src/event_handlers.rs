@@ -80,7 +80,9 @@ pub async fn handle_input_event(
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
         "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
-        cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, swarm, ui_logger, error_logger).await,
+        cmd if cmd.starts_with("ls s") => {
+            handle_list_stories(cmd, swarm, ui_logger, error_logger).await
+        }
         cmd if cmd.starts_with("create s") => {
             if let Some(()) = handle_create_stories(cmd, ui_logger, error_logger).await {
                 return Some(());

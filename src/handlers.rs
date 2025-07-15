@@ -151,7 +151,11 @@ pub async fn handle_list_stories(
     };
 }
 
-pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) -> Option<()> {
+pub async fn handle_create_stories(
+    cmd: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) -> Option<()> {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
@@ -191,7 +195,8 @@ pub async fn handle_publish_story(
         match rest.trim().parse::<usize>() {
             Ok(id) => {
                 if let Err(e) = publish_story(id, story_sender).await {
-                    error_logger.log_error(&format!("Failed to publish story with id {}: {}", id, e));
+                    error_logger
+                        .log_error(&format!("Failed to publish story with id {}: {}", id, e));
                 } else {
                     ui_logger.log(format!("Published story with id: {}", id));
                 }
@@ -558,7 +563,12 @@ mod tests {
         // Note: This will try to create actual files, but we're testing the parsing logic
         rt.block_on(async {
             // Test valid create story command format
-            handle_create_stories("create sTest Story|Test Header|Test Body", &ui_logger, &error_logger).await;
+            handle_create_stories(
+                "create sTest Story|Test Header|Test Body",
+                &ui_logger,
+                &error_logger,
+            )
+            .await;
             // The function will try to create a story but may fail due to file system issues
             // We're mainly testing that the parsing doesn't panic
         });
