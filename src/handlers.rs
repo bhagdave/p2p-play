@@ -1,7 +1,7 @@
 use crate::error_logger::ErrorLogger;
-use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
+use crate::network::{PEER_ID, StoryBehaviour, TOPIC, DirectMessageRequest};
 use crate::storage::{create_new_story, publish_story, read_local_stories, save_local_peer_name};
-use crate::types::{DirectMessage, ListMode, ListRequest, PeerName, Story};
+use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -364,35 +364,44 @@ pub async fn handle_direct_message(
             }
         };
 
-        // Check if the target peer exists
-        let peer_exists = peer_names.values().any(|name| name == &to_name);
-        if !peer_exists {
-            ui_logger.log(format!(
-                "Peer '{}' not found. Use 'ls p' to see available peers.",
-                to_name
-            ));
-            return;
-        }
+        // Check if the target peer exists and find their PeerId
+        let target_peer_id = peer_names.iter()
+            .find(|(_, name)| name == &&to_name)
+            .map(|(peer_id, _)| *peer_id);
+        
+        let target_peer_id = match target_peer_id {
+            Some(peer_id) => peer_id,
+            None => {
+                ui_logger.log(format!(
+                    "Peer '{}' not found. Use 'ls p' to see available peers.",
+                    to_name
+                ));
+                return;
+            }
+        };
 
-        let direct_msg = DirectMessage::new(
-            PEER_ID.to_string(),
-            from_name,
-            to_name.to_string(),
-            message.to_string(),
-        );
+        // Create a direct message request
+        let direct_msg_request = DirectMessageRequest {
+            from_peer_id: PEER_ID.to_string(),
+            from_name: from_name.clone(),
+            to_name: to_name.clone(),
+            message: message.clone(),
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        };
 
-        let json = serde_json::to_string(&direct_msg).expect("can jsonify direct message");
-        let json_bytes = Bytes::from(json.into_bytes());
-
-        swarm
+        // Send the direct message using request-response protocol
+        let request_id = swarm
             .behaviour_mut()
-            .floodsub
-            .publish(TOPIC.clone(), json_bytes);
+            .request_response
+            .send_request(&target_peer_id, direct_msg_request);
 
         ui_logger.log(format!("Direct message sent to {}: {}", to_name, message));
         info!(
-            "Sent direct message to {} from {}",
-            to_name, direct_msg.from_name
+            "Sent direct message to {} from {} (request_id: {:?})",
+            to_name, from_name, request_id
         );
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());

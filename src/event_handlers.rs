@@ -1,13 +1,13 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::*;
-use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
+use crate::network::{PEER_ID, StoryBehaviour, TOPIC, DirectMessageRequest, DirectMessageResponse};
 use crate::storage::save_received_story;
 use crate::types::{
     DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
 };
 
 use bytes::Bytes;
-use libp2p::{PeerId, Swarm};
+use libp2p::{PeerId, Swarm, request_response};
 use log::{error, info};
 use std::collections::HashMap;
 use std::process;
@@ -173,7 +173,7 @@ pub async fn handle_floodsub_event(
     floodsub_event: libp2p::floodsub::Event,
     response_sender: mpsc::UnboundedSender<ListResponse>,
     peer_names: &mut HashMap<PeerId, String>,
-    local_peer_name: &Option<String>,
+    _local_peer_name: &Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
 ) -> Option<()> {
@@ -208,22 +208,6 @@ pub async fn handle_floodsub_event(
 
                     // Signal that stories need to be refreshed
                     return Some(());
-                }
-            } else if let Ok(direct_msg) = serde_json::from_slice::<DirectMessage>(&msg.data) {
-                if direct_msg.from_peer_id != PEER_ID.to_string() {
-                    // Check if this message is for us by our local name
-                    if let Some(local_name) = local_peer_name {
-                        if &direct_msg.to_name == local_name {
-                            ui_logger.log(format!(
-                                "📨 Direct message from {}: {}",
-                                direct_msg.from_name, direct_msg.message
-                            ));
-                            info!(
-                                "Received direct message from {} ({}): {}",
-                                direct_msg.from_name, direct_msg.from_peer_id, direct_msg.message
-                            );
-                        }
-                    }
                 }
             } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
                 if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
@@ -321,6 +305,67 @@ pub async fn handle_peer_name_event(peer_name: PeerName) {
     );
 }
 
+/// Handle request-response events for direct messaging
+pub async fn handle_request_response_event(
+    event: request_response::Event<DirectMessageRequest, DirectMessageResponse>,
+    swarm: &mut Swarm<StoryBehaviour>,
+    local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
+) {
+    match event {
+        request_response::Event::Message { peer, message, .. } => {
+            match message {
+                request_response::Message::Request { request, channel, .. } => {
+                    // Handle incoming direct message request
+                    if let Some(local_name) = local_peer_name {
+                        if &request.to_name == local_name {
+                            ui_logger.log(format!(
+                                "📨 Direct message from {}: {}",
+                                request.from_name, request.message
+                            ));
+                            info!(
+                                "Received direct message from {} ({}): {}",
+                                request.from_name, request.from_peer_id, request.message
+                            );
+                        }
+                    }
+                    
+                    // Send response acknowledging receipt
+                    let response = DirectMessageResponse {
+                        received: true,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                    };
+                    
+                    // Send the response using the channel
+                    if let Err(e) = swarm.behaviour_mut().request_response.send_response(channel, response) {
+                        error!("Failed to send response to {}: {:?}", peer, e);
+                    }
+                }
+                request_response::Message::Response { response, .. } => {
+                    // Handle response to our direct message request
+                    if response.received {
+                        info!("Direct message was received by peer {}", peer);
+                        ui_logger.log(format!("✅ Message delivered to peer {}", peer));
+                    }
+                }
+            }
+        }
+        request_response::Event::OutboundFailure { peer, error, .. } => {
+            error!("Failed to send direct message to {}: {:?}", peer, error);
+            ui_logger.log(format!("❌ Failed to send direct message to {}: {:?}", peer, error));
+        }
+        request_response::Event::InboundFailure { peer, error, .. } => {
+            error!("Failed to receive direct message from {}: {:?}", peer, error);
+        }
+        request_response::Event::ResponseSent { peer, .. } => {
+            info!("Response sent to {}", peer);
+        }
+    }
+}
+
 /// Handle direct message events
 pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
     // This shouldn't happen since DirectMessage events are processed in floodsub handler
@@ -387,6 +432,9 @@ pub async fn handle_event(
         }
         EventType::PingEvent(ping_event) => {
             handle_ping_event(ping_event).await;
+        }
+        EventType::RequestResponseEvent(request_response_event) => {
+            handle_request_response_event(request_response_event, swarm, local_peer_name, ui_logger).await;
         }
         EventType::PeerName(peer_name) => {
             handle_peer_name_event(peer_name).await;
