@@ -32,6 +32,12 @@ pub struct SortedPeerNamesCache {
     version: u64,
 }
 
+impl Default for SortedPeerNamesCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SortedPeerNamesCache {
     pub fn new() -> Self {
         Self {

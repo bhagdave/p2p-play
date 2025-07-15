@@ -1,4 +1,4 @@
-use crate::types::{DirectMessage, PeerName, Stories, Story};
+use crate::types::{DirectMessage, Stories};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -9,9 +9,9 @@ use log::info;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
+    text::Line,
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::collections::HashMap;
@@ -85,60 +85,54 @@ impl App {
     }
 
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
-        match event {
-            Event::Key(key) => match self.input_mode {
-                InputMode::Normal => match key.code {
-                    KeyCode::Char('q') => {
-                        self.should_quit = true;
-                        info!("Quit command received, setting should_quit to true");
-                        return Some(AppEvent::Quit);
-                    }
-                    KeyCode::Char('i') => {
-                        self.input_mode = InputMode::Editing;
-                    }
-                    KeyCode::Up => {
-                        self.scroll_up();
-                    }
-                    KeyCode::Down => {
-                        self.scroll_down();
-                    }
-                    _ => {}
-                },
-                InputMode::Editing => match key.code {
-                    KeyCode::Enter => {
-                        let input = self.input.clone();
-                        self.input.clear();
-                        self.input_mode = InputMode::Normal;
-                        if !input.is_empty() {
-                            self.add_to_log(format!("> {}", input));
-                            return Some(AppEvent::Input(input));
-                        }
-                    }
-                    KeyCode::Char(c) => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            match c {
-                                'c' => {
-                                    self.input_mode = InputMode::Normal;
-                                    self.input.clear();
-                                }
-                                _ => {}
-                            }
-                        } else {
-                            self.input.push(c);
-                        }
-                    }
-                    KeyCode::Backspace => {
-                        self.input.pop();
-                    }
-                    KeyCode::Esc => {
-                        self.input_mode = InputMode::Normal;
-                        self.input.clear();
-                    }
-                    _ => {}
-                },
+        if let Event::Key(key) = event { match self.input_mode {
+            InputMode::Normal => match key.code {
+                KeyCode::Char('q') => {
+                    self.should_quit = true;
+                    info!("Quit command received, setting should_quit to true");
+                    return Some(AppEvent::Quit);
+                }
+                KeyCode::Char('i') => {
+                    self.input_mode = InputMode::Editing;
+                }
+                KeyCode::Up => {
+                    self.scroll_up();
+                }
+                KeyCode::Down => {
+                    self.scroll_down();
+                }
+                _ => {}
             },
-            _ => {}
-        }
+            InputMode::Editing => match key.code {
+                KeyCode::Enter => {
+                    let input = self.input.clone();
+                    self.input.clear();
+                    self.input_mode = InputMode::Normal;
+                    if !input.is_empty() {
+                        self.add_to_log(format!("> {}", input));
+                        return Some(AppEvent::Input(input));
+                    }
+                }
+                KeyCode::Char(c) => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        if c == 'c' {
+                            self.input_mode = InputMode::Normal;
+                            self.input.clear();
+                        }
+                    } else {
+                        self.input.push(c);
+                    }
+                }
+                KeyCode::Backspace => {
+                    self.input.pop();
+                }
+                KeyCode::Esc => {
+                    self.input_mode = InputMode::Normal;
+                    self.input.clear();
+                }
+                _ => {}
+            },
+        } }
         None
     }
 
