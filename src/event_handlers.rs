@@ -1,3 +1,4 @@
+use crate::error_logger::ErrorLogger;
 use crate::handlers::*;
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::save_received_story;
@@ -74,18 +75,21 @@ pub async fn handle_input_event(
     local_peer_name: &mut Option<String>,
     sorted_peer_names_cache: &SortedPeerNamesCache,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) -> Option<()> {
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
         "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
-        cmd if cmd.starts_with("ls s") => handle_list_stories(cmd, swarm, ui_logger).await,
+        cmd if cmd.starts_with("ls s") => {
+            handle_list_stories(cmd, swarm, ui_logger, error_logger).await
+        }
         cmd if cmd.starts_with("create s") => {
-            if let Some(()) = handle_create_stories(cmd, ui_logger).await {
+            if let Some(()) = handle_create_stories(cmd, ui_logger, error_logger).await {
                 return Some(());
             }
         }
         cmd if cmd.starts_with("publish s") => {
-            handle_publish_story(cmd, story_sender.clone(), ui_logger).await
+            handle_publish_story(cmd, story_sender.clone(), ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("show story") => handle_show_story(cmd, ui_logger).await,
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
@@ -337,6 +341,7 @@ pub async fn handle_event(
     local_peer_name: &mut Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) -> Option<()> {
     info!("Event Received");
     match event {
@@ -355,6 +360,7 @@ pub async fn handle_event(
                 local_peer_name,
                 sorted_peer_names_cache,
                 ui_logger,
+                error_logger,
             )
             .await
             {

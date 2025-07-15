@@ -1,3 +1,4 @@
+mod error_logger;
 mod event_handlers;
 mod handlers;
 mod migrations;
@@ -6,6 +7,7 @@ mod storage;
 mod types;
 mod ui;
 
+use error_logger::ErrorLogger;
 use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
@@ -50,6 +52,9 @@ async fn main() {
 
     // Create UI logger
     let ui_logger = handlers::UILogger::new(ui_log_sender);
+
+    // Create error logger that writes to file
+    let error_logger = ErrorLogger::new("errors.log");
 
     // Create a timer for periodic connection maintenance
     let mut connection_maintenance_interval =
@@ -264,6 +269,7 @@ async fn main() {
                 &mut local_peer_name,
                 &mut sorted_peer_names_cache,
                 &ui_logger,
+                &error_logger,
             )
             .await
             {
