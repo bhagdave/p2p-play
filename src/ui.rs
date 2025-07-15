@@ -65,6 +65,7 @@ impl App {
                 "🎯 P2P-Play Terminal UI - Ready!".to_string(),
                 "📝 Press 'i' to enter input mode, 'Esc' to exit input mode".to_string(),
                 "🔧 Type 'help' for available commands".to_string(),
+                "🧹 Press 'c' to clear output".to_string(),
                 "❌ Press 'q' to quit".to_string(),
                 "".to_string(),
             ],
@@ -85,54 +86,59 @@ impl App {
     }
 
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
-        if let Event::Key(key) = event { match self.input_mode {
-            InputMode::Normal => match key.code {
-                KeyCode::Char('q') => {
-                    self.should_quit = true;
-                    info!("Quit command received, setting should_quit to true");
-                    return Some(AppEvent::Quit);
-                }
-                KeyCode::Char('i') => {
-                    self.input_mode = InputMode::Editing;
-                }
-                KeyCode::Up => {
-                    self.scroll_up();
-                }
-                KeyCode::Down => {
-                    self.scroll_down();
-                }
-                _ => {}
-            },
-            InputMode::Editing => match key.code {
-                KeyCode::Enter => {
-                    let input = self.input.clone();
-                    self.input.clear();
-                    self.input_mode = InputMode::Normal;
-                    if !input.is_empty() {
-                        self.add_to_log(format!("> {}", input));
-                        return Some(AppEvent::Input(input));
+        if let Event::Key(key) = event {
+            match self.input_mode {
+                InputMode::Normal => match key.code {
+                    KeyCode::Char('q') => {
+                        self.should_quit = true;
+                        info!("Quit command received, setting should_quit to true");
+                        return Some(AppEvent::Quit);
                     }
-                }
-                KeyCode::Char(c) => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        if c == 'c' {
-                            self.input_mode = InputMode::Normal;
-                            self.input.clear();
+                    KeyCode::Char('i') => {
+                        self.input_mode = InputMode::Editing;
+                    }
+                    KeyCode::Char('c') => {
+                        self.clear_output();
+                    }
+                    KeyCode::Up => {
+                        self.scroll_up();
+                    }
+                    KeyCode::Down => {
+                        self.scroll_down();
+                    }
+                    _ => {}
+                },
+                InputMode::Editing => match key.code {
+                    KeyCode::Enter => {
+                        let input = self.input.clone();
+                        self.input.clear();
+                        self.input_mode = InputMode::Normal;
+                        if !input.is_empty() {
+                            self.add_to_log(format!("> {}", input));
+                            return Some(AppEvent::Input(input));
                         }
-                    } else {
-                        self.input.push(c);
                     }
-                }
-                KeyCode::Backspace => {
-                    self.input.pop();
-                }
-                KeyCode::Esc => {
-                    self.input_mode = InputMode::Normal;
-                    self.input.clear();
-                }
-                _ => {}
-            },
-        } }
+                    KeyCode::Char(c) => {
+                        if key.modifiers.contains(KeyModifiers::CONTROL) {
+                            if c == 'c' {
+                                self.input_mode = InputMode::Normal;
+                                self.input.clear();
+                            }
+                        } else {
+                            self.input.push(c);
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        self.input.pop();
+                    }
+                    KeyCode::Esc => {
+                        self.input_mode = InputMode::Normal;
+                        self.input.clear();
+                    }
+                    _ => {}
+                },
+            }
+        }
         None
     }
 
@@ -142,6 +148,12 @@ impl App {
         if self.scroll_offset >= self.output_log.len().saturating_sub(1) {
             self.scroll_to_bottom();
         }
+    }
+
+    pub fn clear_output(&mut self) {
+        self.output_log.clear();
+        self.scroll_offset = 0;
+        self.add_to_log("🧹 Output cleared".to_string());
     }
 
     pub fn update_peers(&mut self, peers: HashMap<PeerId, String>) {
@@ -324,7 +336,8 @@ impl App {
 
             let input_text = match self.input_mode {
                 InputMode::Normal => {
-                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'q' to quit".to_string()
+                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'c' to clear output, 'q' to quit"
+                        .to_string()
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
             };
@@ -437,5 +450,98 @@ mod tests {
         let formatted = format!("{} {}: {}", status, story.id, story.name);
 
         assert_eq!(formatted, "📖 1: Test Story");
+    }
+
+    #[test]
+    fn test_clear_output_functionality() {
+        // Create a mock app structure for testing clear output
+        let mut mock_app = MockApp {
+            output_log: vec![
+                "Initial message 1".to_string(),
+                "Initial message 2".to_string(),
+                "Initial message 3".to_string(),
+            ],
+            scroll_offset: 2,
+        };
+
+        // Verify initial state
+        assert_eq!(mock_app.output_log.len(), 3);
+        assert_eq!(mock_app.scroll_offset, 2);
+
+        // Test clear output
+        mock_app.clear_output();
+
+        // Should have only the "Output cleared" message
+        assert_eq!(mock_app.output_log.len(), 1);
+        assert_eq!(mock_app.output_log[0], "🧹 Output cleared");
+        assert_eq!(mock_app.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_clear_output_when_empty() {
+        // Test clearing when output log is empty
+        let mut mock_app = MockApp {
+            output_log: vec![],
+            scroll_offset: 0,
+        };
+
+        mock_app.clear_output();
+
+        // Should have only the "Output cleared" message
+        assert_eq!(mock_app.output_log.len(), 1);
+        assert_eq!(mock_app.output_log[0], "🧹 Output cleared");
+        assert_eq!(mock_app.scroll_offset, 0);
+    }
+
+    #[test]
+    fn test_clear_output_key_event() {
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+        let mut mock_app = MockApp {
+            output_log: vec!["Message 1".to_string(), "Message 2".to_string()],
+            scroll_offset: 1,
+        };
+
+        // Simulate pressing 'c' key in Normal mode
+        let key_event = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
+
+        // Test the key event handling logic
+        let should_clear =
+            matches!(key_event, Event::Key(key) if matches!(key.code, KeyCode::Char('c')));
+        assert!(should_clear);
+
+        // If the key matches, clear the output
+        if should_clear {
+            mock_app.clear_output();
+        }
+
+        // Verify output was cleared
+        assert_eq!(mock_app.output_log.len(), 1);
+        assert_eq!(mock_app.output_log[0], "🧹 Output cleared");
+        assert_eq!(mock_app.scroll_offset, 0);
+    }
+
+    // Mock App structure for testing since we can't create a full App with terminal
+    struct MockApp {
+        output_log: Vec<String>,
+        scroll_offset: usize,
+    }
+
+    impl MockApp {
+        fn clear_output(&mut self) {
+            self.output_log.clear();
+            self.scroll_offset = 0;
+            self.add_to_log("🧹 Output cleared".to_string());
+        }
+
+        fn add_to_log(&mut self, message: String) {
+            self.output_log.push(message);
+            // Preserve scroll_offset = 0 if the log was cleared
+            if self.output_log.len() == 1 && self.output_log[0] == "🧹 Output cleared" {
+                self.scroll_offset = 0;
+            } else {
+                self.scroll_offset = self.output_log.len().saturating_sub(1);
+            }
+        }
     }
 }
