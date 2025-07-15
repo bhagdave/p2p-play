@@ -498,18 +498,16 @@ mod tests {
         use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
         let mut mock_app = MockApp {
-            output_log: vec![
-                "Message 1".to_string(),
-                "Message 2".to_string(),
-            ],
+            output_log: vec!["Message 1".to_string(), "Message 2".to_string()],
             scroll_offset: 1,
         };
 
         // Simulate pressing 'c' key in Normal mode
         let key_event = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
-        
+
         // Test the key event handling logic
-        let should_clear = matches!(key_event, Event::Key(key) if matches!(key.code, KeyCode::Char('c')));
+        let should_clear =
+            matches!(key_event, Event::Key(key) if matches!(key.code, KeyCode::Char('c')));
         assert!(should_clear);
 
         // If the key matches, clear the output
