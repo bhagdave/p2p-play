@@ -94,7 +94,11 @@ pub async fn handle_list_connections(
     }
 }
 
-pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+pub async fn handle_list_stories(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
     let rest = cmd.strip_prefix("ls s ");
     match rest {
         Some("all") => {
@@ -117,7 +121,10 @@ pub async fn handle_list_stories(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, u
             info!("Published request");
         }
         Some(story_peer_id) => {
-            ui_logger.log(format!("Requesting all stories from peer: {}", story_peer_id));
+            ui_logger.log(format!(
+                "Requesting all stories from peer: {}",
+                story_peer_id
+            ));
             let req = ListRequest {
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
@@ -172,7 +179,11 @@ pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) -> Option<()
     None
 }
 
-pub async fn handle_publish_story(cmd: &str, story_sender: mpsc::UnboundedSender<Story>, ui_logger: &UILogger) {
+pub async fn handle_publish_story(
+    cmd: &str,
+    story_sender: mpsc::UnboundedSender<Story>,
+    ui_logger: &UILogger,
+) {
     if let Some(rest) = cmd.strip_prefix("publish s") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
@@ -198,7 +209,10 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger) {
                             ui_logger.log(format!("📖 Story {}: {}", story.id, story.name));
                             ui_logger.log(format!("Header: {}", story.header));
                             ui_logger.log(format!("Body: {}", story.body));
-                            ui_logger.log(format!("Public: {}", if story.public { "Yes" } else { "No" }));
+                            ui_logger.log(format!(
+                                "Public: {}",
+                                if story.public { "Yes" } else { "No" }
+                            ));
                         } else {
                             ui_logger.log(format!("Story with id {} not found", id));
                         }
@@ -229,7 +243,11 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("quit to quit".to_string());
 }
 
-pub async fn handle_set_name(cmd: &str, local_peer_name: &mut Option<String>, ui_logger: &UILogger) -> Option<PeerName> {
+pub async fn handle_set_name(
+    cmd: &str,
+    local_peer_name: &mut Option<String>,
+    ui_logger: &UILogger,
+) -> Option<PeerName> {
     if let Some(name) = cmd.strip_prefix("name ") {
         let name = name.trim();
         if name.is_empty() {
@@ -310,13 +328,14 @@ pub async fn handle_direct_message(
     ui_logger: &UILogger,
 ) {
     if let Some(rest) = cmd.strip_prefix("msg ") {
-        let (to_name, message) = match parse_direct_message_command(rest, sorted_peer_names_cache.get_sorted_names()) {
-            Some((name, msg)) => (name, msg),
-            None => {
-                ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
-                return;
-            }
-        };
+        let (to_name, message) =
+            match parse_direct_message_command(rest, sorted_peer_names_cache.get_sorted_names()) {
+                Some((name, msg)) => (name, msg),
+                None => {
+                    ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
+                    return;
+                }
+            };
 
         if to_name.is_empty() || message.is_empty() {
             ui_logger.log("Both peer alias and message must be non-empty".to_string());
@@ -366,7 +385,11 @@ pub async fn handle_direct_message(
     }
 }
 
-pub async fn establish_direct_connection(swarm: &mut Swarm<StoryBehaviour>, addr_str: &str, ui_logger: &UILogger) {
+pub async fn establish_direct_connection(
+    swarm: &mut Swarm<StoryBehaviour>,
+    addr_str: &str,
+    ui_logger: &UILogger,
+) {
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
             ui_logger.log(format!("Manually dialing address: {}", addr));
@@ -466,16 +489,16 @@ mod tests {
     async fn test_handle_help() {
         let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
-        
+
         // This function just prints help text, we'll test it doesn't panic
         handle_help("help", &ui_logger).await;
-        
+
         // Verify help messages are sent to the logger
         let mut messages = Vec::new();
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        
+
         assert!(!messages.is_empty());
         assert!(messages.iter().any(|m| m.contains("ls p")));
         assert!(messages.iter().any(|m| m.contains("create s")));
@@ -494,7 +517,11 @@ mod tests {
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        assert!(messages.iter().any(|m| m.contains("Usage: show story <id>")));
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("Usage: show story <id>"))
+        );
 
         // Test invalid story ID
         handle_show_story("show story abc", &ui_logger).await;
@@ -510,7 +537,11 @@ mod tests {
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        assert!(messages.iter().any(|m| m.contains("not found") || m.contains("Error reading stories")));
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("not found") || m.contains("Error reading stories"))
+        );
     }
 
     #[test]
@@ -650,14 +681,16 @@ mod tests {
         );
 
         // Test name with spaces
-        let result = parse_direct_message_command("Alice Smith Hello world", cache.get_sorted_names());
+        let result =
+            parse_direct_message_command("Alice Smith Hello world", cache.get_sorted_names());
         assert_eq!(
             result,
             Some(("Alice Smith".to_string(), "Hello world".to_string()))
         );
 
         // Test name with multiple spaces
-        let result = parse_direct_message_command("Bob Jones Jr How are you?", cache.get_sorted_names());
+        let result =
+            parse_direct_message_command("Bob Jones Jr How are you?", cache.get_sorted_names());
         assert_eq!(
             result,
             Some(("Bob Jones Jr".to_string(), "How are you?".to_string()))
@@ -693,7 +726,15 @@ mod tests {
         cache.update(&peer_names);
 
         // This should print an error message about needing to set name first
-        handle_direct_message("msg Alice Hello", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
+        handle_direct_message(
+            "msg Alice Hello",
+            &mut swarm,
+            &peer_names,
+            &local_peer_name,
+            &cache,
+            &ui_logger,
+        )
+        .await;
         // Test passes if it doesn't panic
     }
 
@@ -711,9 +752,33 @@ mod tests {
         cache.update(&peer_names);
 
         // Test invalid command formats
-        handle_direct_message("msg Alice", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
-        handle_direct_message("msg", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
-        handle_direct_message("invalid command", &mut swarm, &peer_names, &local_peer_name, &cache, &ui_logger).await;
+        handle_direct_message(
+            "msg Alice",
+            &mut swarm,
+            &peer_names,
+            &local_peer_name,
+            &cache,
+            &ui_logger,
+        )
+        .await;
+        handle_direct_message(
+            "msg",
+            &mut swarm,
+            &peer_names,
+            &local_peer_name,
+            &cache,
+            &ui_logger,
+        )
+        .await;
+        handle_direct_message(
+            "invalid command",
+            &mut swarm,
+            &peer_names,
+            &local_peer_name,
+            &cache,
+            &ui_logger,
+        )
+        .await;
         // Test passes if it doesn't panic
     }
 

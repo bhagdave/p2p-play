@@ -59,7 +59,7 @@ async fn main() {
 
     // Storage for peer names (peer_id -> alias)
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
-    
+
     // Cache for sorted peer names to avoid repeated sorting on every direct message
     let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
@@ -265,7 +265,8 @@ async fn main() {
                 &mut sorted_peer_names_cache,
                 &ui_logger,
             )
-            .await {
+            .await
+            {
                 // Stories were updated, refresh them
                 match storage::read_local_stories().await {
                     Ok(stories) => {

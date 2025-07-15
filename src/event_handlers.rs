@@ -87,11 +87,16 @@ pub async fn handle_input_event(
         cmd if cmd.starts_with("publish s") => {
             handle_publish_story(cmd, story_sender.clone(), ui_logger).await
         }
-        cmd if cmd.starts_with("show story") => {
-            handle_show_story(cmd, ui_logger).await
-        }
+        cmd if cmd.starts_with("show story") => handle_show_story(cmd, ui_logger).await,
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
         cmd if cmd.starts_with("quit") => process::exit(0),
+        "name" => {
+            // Show current alias when no arguments provided
+            match local_peer_name {
+                Some(name) => ui_logger.log(format!("Current alias: {}", name)),
+                None => ui_logger.log("No alias set. Use 'name <alias>' to set one.".to_string()),
+            }
+        }
         cmd if cmd.starts_with("name ") => {
             if let Some(peer_name) = handle_set_name(cmd, local_peer_name, ui_logger).await {
                 // Broadcast the peer name to connected peers
@@ -110,7 +115,15 @@ pub async fn handle_input_event(
             }
         }
         cmd if cmd.starts_with("msg ") => {
-            handle_direct_message(cmd, swarm, peer_names, local_peer_name, sorted_peer_names_cache, ui_logger).await;
+            handle_direct_message(
+                cmd,
+                swarm,
+                peer_names,
+                local_peer_name,
+                sorted_peer_names_cache,
+                ui_logger,
+            )
+            .await;
         }
         _ => ui_logger.log("unknown command".to_string()),
     }
@@ -188,7 +201,7 @@ pub async fn handle_floodsub_event(
                             error!("Failed to save received story: {}", e);
                         }
                     });
-                    
+
                     // Signal that stories need to be refreshed
                     return Some(());
                 }
@@ -215,24 +228,34 @@ pub async fn handle_floodsub_event(
 
                         // Only update the peer name if it's new or has actually changed
                         let mut names_changed = false;
-                        peer_names.entry(peer_id).and_modify(|existing_name| {
-                            if existing_name != &peer_name.name {
-                                info!("Peer {} name changed from '{}' to '{}'", peer_id, existing_name, peer_name.name);
-                                *existing_name = peer_name.name.clone();
+                        peer_names
+                            .entry(peer_id)
+                            .and_modify(|existing_name| {
+                                if existing_name != &peer_name.name {
+                                    info!(
+                                        "Peer {} name changed from '{}' to '{}'",
+                                        peer_id, existing_name, peer_name.name
+                                    );
+                                    *existing_name = peer_name.name.clone();
+                                    names_changed = true;
+                                } else {
+                                    info!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
+                                }
+                            })
+                            .or_insert_with(|| {
+                                info!(
+                                    "Setting peer {} name to '{}' (first time)",
+                                    peer_id, peer_name.name
+                                );
                                 names_changed = true;
-                            } else {
-                                info!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
-                            }
-                        }).or_insert_with(|| {
-                            info!("Setting peer {} name to '{}' (first time)", peer_id, peer_name.name);
-                            names_changed = true;
-                            peer_name.name.clone()
-                        });
-                        
+                                peer_name.name.clone()
+                            });
+
                         // Update the cache if peer names changed
                         if names_changed {
                             sorted_peer_names_cache.update(peer_names);
-                            ui_logger.log(format!("Peer {} set name to '{}'", peer_id, peer_name.name));
+                            ui_logger
+                                .log(format!("Peer {} set name to '{}'", peer_id, peer_name.name));
                         }
                     }
                 }
@@ -324,7 +347,17 @@ pub async fn handle_event(
             handle_publish_story_event(story, swarm).await;
         }
         EventType::Input(line) => {
-            if let Some(()) = handle_input_event(line, swarm, peer_names, story_sender, local_peer_name, sorted_peer_names_cache, ui_logger).await {
+            if let Some(()) = handle_input_event(
+                line,
+                swarm,
+                peer_names,
+                story_sender,
+                local_peer_name,
+                sorted_peer_names_cache,
+                ui_logger,
+            )
+            .await
+            {
                 return Some(());
             }
         }
@@ -332,8 +365,16 @@ pub async fn handle_event(
             handle_mdns_event(mdns_event, swarm).await;
         }
         EventType::FloodsubEvent(floodsub_event) => {
-            if let Some(()) = handle_floodsub_event(floodsub_event, response_sender, peer_names, local_peer_name, sorted_peer_names_cache, ui_logger)
-                .await {
+            if let Some(()) = handle_floodsub_event(
+                floodsub_event,
+                response_sender,
+                peer_names,
+                local_peer_name,
+                sorted_peer_names_cache,
+                ui_logger,
+            )
+            .await
+            {
                 // Stories were updated, refresh them
                 return Some(());
             }
