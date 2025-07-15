@@ -1,18 +1,18 @@
-use crate::types::{DirectMessage, PeerName, Story, Stories};
+use crate::types::{DirectMessage, PeerName, Stories, Story};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use libp2p::PeerId;
 use log::info;
 use ratatui::{
+    Terminal,
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
-    Terminal,
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
@@ -86,59 +86,57 @@ impl App {
 
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         match event {
-            Event::Key(key) => {
-                match self.input_mode {
-                    InputMode::Normal => match key.code {
-                        KeyCode::Char('q') => {
-                            self.should_quit = true;
-                            info!("Quit command received, setting should_quit to true");
-                            return Some(AppEvent::Quit);
+            Event::Key(key) => match self.input_mode {
+                InputMode::Normal => match key.code {
+                    KeyCode::Char('q') => {
+                        self.should_quit = true;
+                        info!("Quit command received, setting should_quit to true");
+                        return Some(AppEvent::Quit);
+                    }
+                    KeyCode::Char('i') => {
+                        self.input_mode = InputMode::Editing;
+                    }
+                    KeyCode::Up => {
+                        self.scroll_up();
+                    }
+                    KeyCode::Down => {
+                        self.scroll_down();
+                    }
+                    _ => {}
+                },
+                InputMode::Editing => match key.code {
+                    KeyCode::Enter => {
+                        let input = self.input.clone();
+                        self.input.clear();
+                        self.input_mode = InputMode::Normal;
+                        if !input.is_empty() {
+                            self.add_to_log(format!("> {}", input));
+                            return Some(AppEvent::Input(input));
                         }
-                        KeyCode::Char('i') => {
-                            self.input_mode = InputMode::Editing;
-                        }
-                        KeyCode::Up => {
-                            self.scroll_up();
-                        }
-                        KeyCode::Down => {
-                            self.scroll_down();
-                        }
-                        _ => {}
-                    },
-                    InputMode::Editing => match key.code {
-                        KeyCode::Enter => {
-                            let input = self.input.clone();
-                            self.input.clear();
-                            self.input_mode = InputMode::Normal;
-                            if !input.is_empty() {
-                                self.add_to_log(format!("> {}", input));
-                                return Some(AppEvent::Input(input));
-                            }
-                        }
-                        KeyCode::Char(c) => {
-                            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                match c {
-                                    'c' => {
-                                        self.input_mode = InputMode::Normal;
-                                        self.input.clear();
-                                    }
-                                    _ => {}
+                    }
+                    KeyCode::Char(c) => {
+                        if key.modifiers.contains(KeyModifiers::CONTROL) {
+                            match c {
+                                'c' => {
+                                    self.input_mode = InputMode::Normal;
+                                    self.input.clear();
                                 }
-                            } else {
-                                self.input.push(c);
+                                _ => {}
                             }
+                        } else {
+                            self.input.push(c);
                         }
-                        KeyCode::Backspace => {
-                            self.input.pop();
-                        }
-                        KeyCode::Esc => {
-                            self.input_mode = InputMode::Normal;
-                            self.input.clear();
-                        }
-                        _ => {}
-                    },
-                }
-            }
+                    }
+                    KeyCode::Backspace => {
+                        self.input.pop();
+                    }
+                    KeyCode::Esc => {
+                        self.input_mode = InputMode::Normal;
+                        self.input.clear();
+                    }
+                    _ => {}
+                },
+            },
             _ => {}
         }
         None
@@ -173,12 +171,10 @@ impl App {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
+
         self.add_to_log(format!(
             "📨 Direct message from {} ({}): {}",
-            dm.from_name, 
-            timestamp,
-            dm.message
+            dm.from_name, timestamp, dm.message
         ));
     }
 
@@ -204,16 +200,17 @@ impl App {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(3),  // Status bar
-                    Constraint::Min(0),     // Main area
-                    Constraint::Length(3),  // Input area
+                    Constraint::Length(3), // Status bar
+                    Constraint::Min(0),    // Main area
+                    Constraint::Length(3), // Input area
                 ])
                 .split(f.size());
 
             // Status bar
             let status_text = if let Some(ref name) = self.local_peer_name {
-                format!("P2P-Play | Peer: {} | Connected: {} | Mode: {}", 
-                    name, 
+                format!(
+                    "P2P-Play | Peer: {} | Connected: {} | Mode: {}",
+                    name,
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",
@@ -221,7 +218,8 @@ impl App {
                     }
                 )
             } else {
-                format!("P2P-Play | No peer name set | Connected: {} | Mode: {}", 
+                format!(
+                    "P2P-Play | No peer name set | Connected: {} | Mode: {}",
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",
@@ -239,15 +237,15 @@ impl App {
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(60),  // Output area
-                    Constraint::Percentage(40),  // Side panels
+                    Constraint::Percentage(60), // Output area
+                    Constraint::Percentage(40), // Side panels
                 ])
                 .split(chunks[1]);
 
             // Output log
             let log_height = (main_chunks[0].height as usize).saturating_sub(2);
             let total_lines = self.output_log.len();
-            
+
             // Calculate what portion of the log to display
             let visible_start = if total_lines <= log_height {
                 0
@@ -256,9 +254,9 @@ impl App {
                 let max_scroll = total_lines.saturating_sub(log_height);
                 self.scroll_offset.min(max_scroll)
             };
-            
+
             let visible_end = std::cmp::min(visible_start + log_height, total_lines);
-            
+
             let visible_log: Vec<Line> = self.output_log[visible_start..visible_end]
                 .iter()
                 .map(|msg| Line::from(msg.clone()))
@@ -280,13 +278,14 @@ impl App {
             let side_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Percentage(50),  // Peers
-                    Constraint::Percentage(50),  // Stories
+                    Constraint::Percentage(50), // Peers
+                    Constraint::Percentage(50), // Stories
                 ])
                 .split(main_chunks[1]);
 
             // Peers list
-            let peer_items: Vec<ListItem> = self.peers
+            let peer_items: Vec<ListItem> = self
+                .peers
                 .iter()
                 .map(|(peer_id, name)| {
                     let content = if name.is_empty() {
@@ -299,12 +298,17 @@ impl App {
                 .collect();
 
             let peers_list = List::new(peer_items)
-                .block(Block::default().borders(Borders::ALL).title("Connected Peers"))
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Connected Peers"),
+                )
                 .highlight_style(Style::default().fg(Color::Yellow));
             f.render_widget(peers_list, side_chunks[0]);
 
             // Stories list
-            let story_items: Vec<ListItem> = self.local_stories
+            let story_items: Vec<ListItem> = self
+                .local_stories
                 .iter()
                 .chain(self.received_stories.iter())
                 .map(|story| {
@@ -325,7 +329,9 @@ impl App {
             };
 
             let input_text = match self.input_mode {
-                InputMode::Normal => "Press 'i' to enter input mode, ↑/↓ to scroll, 'q' to quit".to_string(),
+                InputMode::Normal => {
+                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'q' to quit".to_string()
+                }
                 InputMode::Editing => format!("Command: {}", self.input),
             };
 
@@ -374,7 +380,7 @@ mod tests {
         let mut peers = HashMap::new();
         let peer_id = PeerId::random();
         peers.insert(peer_id, "test_peer".to_string());
-        
+
         // Test that the data structures work as expected
         assert_eq!(peers.len(), 1);
         assert_eq!(peers.get(&peer_id), Some(&"test_peer".to_string()));
@@ -384,7 +390,7 @@ mod tests {
     fn test_input_mode() {
         let normal_mode = InputMode::Normal;
         let editing_mode = InputMode::Editing;
-        
+
         assert_eq!(normal_mode, InputMode::Normal);
         assert_eq!(editing_mode, InputMode::Editing);
         assert_ne!(normal_mode, editing_mode);
@@ -401,7 +407,7 @@ mod tests {
             AppEvent::ReceivedStoriesUpdate(Vec::new()),
             AppEvent::PeerNameUpdate(None),
         ];
-        
+
         // Test that we can create all event variants
         assert_eq!(events.len(), 7);
     }
@@ -416,7 +422,7 @@ mod tests {
             message: "Hello Bob!".to_string(),
             timestamp: 1234567890,
         };
-        
+
         assert_eq!(dm.from_name, "Alice");
         assert_eq!(dm.message, "Hello Bob!");
     }
@@ -424,7 +430,7 @@ mod tests {
     #[test]
     fn test_story_formatting() {
         use crate::types::Story;
-        
+
         let story = Story {
             id: 1,
             name: "Test Story".to_string(),
@@ -432,10 +438,10 @@ mod tests {
             body: "Test Body".to_string(),
             public: true,
         };
-        
+
         let status = if story.public { "📖" } else { "📕" };
         let formatted = format!("{} {}: {}", status, story.id, story.name);
-        
+
         assert_eq!(formatted, "📖 1: Test Story");
     }
 }

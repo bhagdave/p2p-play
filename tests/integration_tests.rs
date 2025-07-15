@@ -319,3 +319,58 @@ async fn test_peer_name_functionality() {
     let different_peer_name = PeerName::new("DifferentPeer".to_string(), "Bob".to_string());
     assert_ne!(peer_name, different_peer_name);
 }
+
+#[tokio::test]
+async fn test_name_command_shows_current_alias() {
+    use p2p_play::event_handlers::handle_input_event;
+    use p2p_play::handlers::{SortedPeerNamesCache, UILogger};
+    use p2p_play::network::create_swarm;
+    use std::collections::HashMap;
+    use tokio::sync::mpsc;
+
+    // Setup test components
+    let mut swarm = create_swarm().expect("Failed to create swarm");
+    let peer_names = HashMap::new();
+    let (story_sender, _story_receiver) = mpsc::unbounded_channel();
+    let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
+    sorted_peer_names_cache.update(&peer_names);
+    let (log_sender, mut log_receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(log_sender);
+
+    // Test case 1: No alias set
+    let mut local_peer_name = None;
+    handle_input_event(
+        "name".to_string(),
+        &mut swarm,
+        &peer_names,
+        story_sender.clone(),
+        &mut local_peer_name,
+        &sorted_peer_names_cache,
+        &ui_logger,
+    )
+    .await;
+
+    // Verify the correct message was logged
+    let message = log_receiver.try_recv().unwrap();
+    assert_eq!(message, "No alias set. Use 'name <alias>' to set one.");
+
+    // Test case 2: Alias is set
+    local_peer_name = Some("TestAlias".to_string());
+    handle_input_event(
+        "name".to_string(),
+        &mut swarm,
+        &peer_names,
+        story_sender.clone(),
+        &mut local_peer_name,
+        &sorted_peer_names_cache,
+        &ui_logger,
+    )
+    .await;
+
+    // Verify the correct message was logged
+    let message = log_receiver.try_recv().unwrap();
+    assert_eq!(message, "Current alias: TestAlias");
+
+    // Ensure no more messages were logged
+    assert!(log_receiver.try_recv().is_err());
+}

@@ -2,6 +2,13 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Show current alias when 'name' command is used without arguments
+- Added test coverage for 'name' command functionality without arguments
+- Test verifies that typing just 'name' shows current alias or helpful message if no alias is set
+
 ## [0.5.0] - 2025-07-14
 
 ### Added
