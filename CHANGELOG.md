@@ -11,7 +11,7 @@ All changes to this project will be documented in this file.
 - File-based error logging system that writes errors to `errors.log` instead of displaying them in the UI
 - New ErrorLogger module with timestamped error logging and comprehensive test coverage
 - Added chrono dependency for UTC timestamps in error logs
-- Clear output functionality for the TUI: Press 'c' in Normal mode to clear all output from the scrolling log area
+- Added the clear output functionality for the TUI: Press 'c' in Normal mode to clear all output from the scrolling log area
 - Added comprehensive test coverage for clear output functionality including edge cases and key binding integration
 - Updated UI instructions and help text to include information about the clear output feature
 
