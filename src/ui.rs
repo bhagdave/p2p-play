@@ -65,6 +65,7 @@ impl App {
                 "🎯 P2P-Play Terminal UI - Ready!".to_string(),
                 "📝 Press 'i' to enter input mode, 'Esc' to exit input mode".to_string(),
                 "🔧 Type 'help' for available commands".to_string(),
+                "🧹 Press 'c' to clear output".to_string(),
                 "❌ Press 'q' to quit".to_string(),
                 "".to_string(),
             ],
@@ -94,6 +95,9 @@ impl App {
                 }
                 KeyCode::Char('i') => {
                     self.input_mode = InputMode::Editing;
+                }
+                KeyCode::Char('c') => {
+                    self.clear_output();
                 }
                 KeyCode::Up => {
                     self.scroll_up();
@@ -142,6 +146,12 @@ impl App {
         if self.scroll_offset >= self.output_log.len().saturating_sub(1) {
             self.scroll_to_bottom();
         }
+    }
+
+    pub fn clear_output(&mut self) {
+        self.output_log.clear();
+        self.scroll_offset = 0;
+        self.add_to_log("🧹 Output cleared".to_string());
     }
 
     pub fn update_peers(&mut self, peers: HashMap<PeerId, String>) {
@@ -324,7 +334,7 @@ impl App {
 
             let input_text = match self.input_mode {
                 InputMode::Normal => {
-                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'q' to quit".to_string()
+                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string()
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
             };
