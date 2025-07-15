@@ -8,6 +8,14 @@ All changes to this project will be documented in this file.
 - Show current alias when 'name' command is used without arguments
 - Added test coverage for 'name' command functionality without arguments
 - Test verifies that typing just 'name' shows current alias or helpful message if no alias is set
+- File-based error logging system that writes errors to `errors.log` instead of displaying them in the UI
+- New ErrorLogger module with timestamped error logging and comprehensive test coverage
+- Added chrono dependency for UTC timestamps in error logs
+
+### Changed
+- Errors from story operations (list, create, publish) are now logged to file instead of being displayed in the UI
+- Cleaner user interface experience with errors no longer cluttering the display
+- Error logging includes fallback to stderr if file writing fails
 
 ## [0.5.0] - 2025-07-14
 

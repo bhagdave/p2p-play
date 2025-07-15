@@ -322,6 +322,7 @@ async fn test_peer_name_functionality() {
 
 #[tokio::test]
 async fn test_name_command_shows_current_alias() {
+    use p2p_play::error_logger::ErrorLogger;
     use p2p_play::event_handlers::handle_input_event;
     use p2p_play::handlers::{SortedPeerNamesCache, UILogger};
     use p2p_play::network::create_swarm;
@@ -336,6 +337,7 @@ async fn test_name_command_shows_current_alias() {
     sorted_peer_names_cache.update(&peer_names);
     let (log_sender, mut log_receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(log_sender);
+    let error_logger = ErrorLogger::new("test_integration_errors.log");
 
     // Test case 1: No alias set
     let mut local_peer_name = None;
@@ -347,6 +349,7 @@ async fn test_name_command_shows_current_alias() {
         &mut local_peer_name,
         &sorted_peer_names_cache,
         &ui_logger,
+        &error_logger,
     )
     .await;
 
@@ -364,6 +367,7 @@ async fn test_name_command_shows_current_alias() {
         &mut local_peer_name,
         &sorted_peer_names_cache,
         &ui_logger,
+        &error_logger,
     )
     .await;
 

@@ -8,3 +8,5 @@ stories.db
 peer_name.json
 tags.lock
 tags.temp
+test_errors.log
+errors.log

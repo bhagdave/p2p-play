@@ -1,3 +1,4 @@
+use crate::error_logger::ErrorLogger;
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{create_new_story, publish_story, read_local_stories, save_local_peer_name};
 use crate::types::{DirectMessage, ListMode, ListRequest, PeerName, Story};
@@ -98,6 +99,7 @@ pub async fn handle_list_stories(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) {
     let rest = cmd.strip_prefix("ls s ");
     match rest {
@@ -143,13 +145,13 @@ pub async fn handle_list_stories(
                     ui_logger.log(format!("Local stories ({})", v.len()));
                     v.iter().for_each(|r| ui_logger.log(format!("{:?}", r)));
                 }
-                Err(e) => ui_logger.log(format!("error fetching local stories: {}", e)),
+                Err(e) => error_logger.log_error(&format!("Failed to fetch local stories: {}", e)),
             };
         }
     };
 }
 
-pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) -> Option<()> {
+pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) -> Option<()> {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
@@ -168,7 +170,7 @@ pub async fn handle_create_stories(cmd: &str, ui_logger: &UILogger) -> Option<()
                 let header = elements.get(1).expect("header is there");
                 let body = elements.get(2).expect("body is there");
                 if let Err(e) = create_new_story(name, header, body).await {
-                    ui_logger.log(format!("error creating story: {}", e));
+                    error_logger.log_error(&format!("Failed to create story: {}", e));
                 } else {
                     ui_logger.log("Story created successfully".to_string());
                     return Some(()); // Signal that stories need to be refreshed
@@ -183,12 +185,13 @@ pub async fn handle_publish_story(
     cmd: &str,
     story_sender: mpsc::UnboundedSender<Story>,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) {
     if let Some(rest) = cmd.strip_prefix("publish s") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
                 if let Err(e) = publish_story(id, story_sender).await {
-                    ui_logger.log(format!("error publishing story with id {}, {}", id, e));
+                    error_logger.log_error(&format!("Failed to publish story with id {}: {}", id, e));
                 } else {
                     ui_logger.log(format!("Published story with id: {}", id));
                 }
@@ -426,6 +429,7 @@ pub async fn establish_direct_connection(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error_logger::ErrorLogger;
     use crate::types::Story;
     use tokio::sync::mpsc;
 
@@ -549,11 +553,12 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
+        let error_logger = ErrorLogger::new("test_errors.log");
 
         // Note: This will try to create actual files, but we're testing the parsing logic
         rt.block_on(async {
             // Test valid create story command format
-            handle_create_stories("create sTest Story|Test Header|Test Body", &ui_logger).await;
+            handle_create_stories("create sTest Story|Test Header|Test Body", &ui_logger, &error_logger).await;
             // The function will try to create a story but may fail due to file system issues
             // We're mainly testing that the parsing doesn't panic
         });
@@ -564,13 +569,14 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
+        let error_logger = ErrorLogger::new("test_errors.log");
 
         rt.block_on(async {
             // Test invalid format (too few arguments)
-            handle_create_stories("create sTest|Header", &ui_logger).await;
+            handle_create_stories("create sTest|Header", &ui_logger, &error_logger).await;
 
             // Test completely invalid format
-            handle_create_stories("invalid command", &ui_logger).await;
+            handle_create_stories("invalid command", &ui_logger, &error_logger).await;
         });
     }
 
@@ -579,12 +585,13 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
+        let error_logger = ErrorLogger::new("test_errors.log");
 
         rt.block_on(async {
             let (story_sender, _story_receiver) = mpsc::unbounded_channel::<Story>();
 
             // Test with valid ID format
-            handle_publish_story("publish s123", story_sender, &ui_logger).await;
+            handle_publish_story("publish s123", story_sender, &ui_logger, &error_logger).await;
             // The function will try to publish but may fail due to file system issues
             // We're testing the parsing logic
         });
@@ -595,16 +602,17 @@ mod tests {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
+        let error_logger = ErrorLogger::new("test_errors.log");
 
         rt.block_on(async {
             let (story_sender, _story_receiver) = mpsc::unbounded_channel::<Story>();
 
             // Test with invalid ID format
-            handle_publish_story("publish sabc", story_sender, &ui_logger).await;
+            handle_publish_story("publish sabc", story_sender, &ui_logger, &error_logger).await;
 
             // Test with invalid command format - use a new sender
             let (story_sender2, _story_receiver2) = mpsc::unbounded_channel::<Story>();
-            handle_publish_story("invalid command", story_sender2, &ui_logger).await;
+            handle_publish_story("invalid command", story_sender2, &ui_logger, &error_logger).await;
         });
     }
 
