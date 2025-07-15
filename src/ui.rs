@@ -536,8 +536,12 @@ mod tests {
 
         fn add_to_log(&mut self, message: String) {
             self.output_log.push(message);
-            // Reset scroll to bottom when adding after clear
-            self.scroll_offset = self.output_log.len().saturating_sub(1);
+            // Preserve scroll_offset = 0 if the log was cleared
+            if self.output_log.len() == 1 && self.output_log[0] == "🧹 Output cleared" {
+                self.scroll_offset = 0;
+            } else {
+                self.scroll_offset = self.output_log.len().saturating_sub(1);
+            }
         }
     }
 }
