@@ -86,57 +86,59 @@ impl App {
     }
 
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
-        if let Event::Key(key) = event { match self.input_mode {
-            InputMode::Normal => match key.code {
-                KeyCode::Char('q') => {
-                    self.should_quit = true;
-                    info!("Quit command received, setting should_quit to true");
-                    return Some(AppEvent::Quit);
-                }
-                KeyCode::Char('i') => {
-                    self.input_mode = InputMode::Editing;
-                }
-                KeyCode::Char('c') => {
-                    self.clear_output();
-                }
-                KeyCode::Up => {
-                    self.scroll_up();
-                }
-                KeyCode::Down => {
-                    self.scroll_down();
-                }
-                _ => {}
-            },
-            InputMode::Editing => match key.code {
-                KeyCode::Enter => {
-                    let input = self.input.clone();
-                    self.input.clear();
-                    self.input_mode = InputMode::Normal;
-                    if !input.is_empty() {
-                        self.add_to_log(format!("> {}", input));
-                        return Some(AppEvent::Input(input));
+        if let Event::Key(key) = event {
+            match self.input_mode {
+                InputMode::Normal => match key.code {
+                    KeyCode::Char('q') => {
+                        self.should_quit = true;
+                        info!("Quit command received, setting should_quit to true");
+                        return Some(AppEvent::Quit);
                     }
-                }
-                KeyCode::Char(c) => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        if c == 'c' {
-                            self.input_mode = InputMode::Normal;
-                            self.input.clear();
+                    KeyCode::Char('i') => {
+                        self.input_mode = InputMode::Editing;
+                    }
+                    KeyCode::Char('c') => {
+                        self.clear_output();
+                    }
+                    KeyCode::Up => {
+                        self.scroll_up();
+                    }
+                    KeyCode::Down => {
+                        self.scroll_down();
+                    }
+                    _ => {}
+                },
+                InputMode::Editing => match key.code {
+                    KeyCode::Enter => {
+                        let input = self.input.clone();
+                        self.input.clear();
+                        self.input_mode = InputMode::Normal;
+                        if !input.is_empty() {
+                            self.add_to_log(format!("> {}", input));
+                            return Some(AppEvent::Input(input));
                         }
-                    } else {
-                        self.input.push(c);
                     }
-                }
-                KeyCode::Backspace => {
-                    self.input.pop();
-                }
-                KeyCode::Esc => {
-                    self.input_mode = InputMode::Normal;
-                    self.input.clear();
-                }
-                _ => {}
-            },
-        } }
+                    KeyCode::Char(c) => {
+                        if key.modifiers.contains(KeyModifiers::CONTROL) {
+                            if c == 'c' {
+                                self.input_mode = InputMode::Normal;
+                                self.input.clear();
+                            }
+                        } else {
+                            self.input.push(c);
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        self.input.pop();
+                    }
+                    KeyCode::Esc => {
+                        self.input_mode = InputMode::Normal;
+                        self.input.clear();
+                    }
+                    _ => {}
+                },
+            }
+        }
         None
     }
 
@@ -334,7 +336,8 @@ impl App {
 
             let input_text = match self.input_mode {
                 InputMode::Normal => {
-                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string()
+                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'c' to clear output, 'q' to quit"
+                        .to_string()
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
             };
