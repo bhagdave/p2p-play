@@ -380,7 +380,8 @@ pub async fn handle_direct_message(
             }
         };
 
-        // Create a direct message request
+        // Create a direct message request with validated sender identity
+        // The from_peer_id is guaranteed to be our actual peer ID since we control the creation
         let direct_msg_request = DirectMessageRequest {
             from_peer_id: PEER_ID.to_string(),
             from_name: from_name.clone(),

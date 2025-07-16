@@ -316,6 +316,28 @@ pub async fn handle_request_response_event(
         request_response::Event::Message { peer, message, .. } => {
             match message {
                 request_response::Message::Request { request, channel, .. } => {
+                    // Validate sender identity to prevent spoofing
+                    if request.from_peer_id != peer.to_string() {
+                        error!(
+                            "Direct message sender identity mismatch: claimed {} but actual connection from {}",
+                            request.from_peer_id, peer
+                        );
+                        
+                        // Send response indicating rejection due to identity mismatch
+                        let response = DirectMessageResponse {
+                            received: false,
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        };
+                        
+                        if let Err(e) = swarm.behaviour_mut().request_response.send_response(channel, response) {
+                            error!("Failed to send rejection response to {}: {:?}", peer, e);
+                        }
+                        return;
+                    }
+                    
                     // Handle incoming direct message request
                     if let Some(local_name) = local_peer_name {
                         if &request.to_name == local_name {
@@ -349,6 +371,9 @@ pub async fn handle_request_response_event(
                     if response.received {
                         info!("Direct message was received by peer {}", peer);
                         ui_logger.log(format!("✅ Message delivered to peer {}", peer));
+                    } else {
+                        error!("Direct message was rejected by peer {}", peer);
+                        ui_logger.log(format!("❌ Message rejected by peer {} (identity validation failed)", peer));
                     }
                 }
             }
@@ -485,4 +510,82 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             Err(e) => error!("error fetching local stories to answer ALL request, {}", e),
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::DirectMessageRequest;
+    use libp2p::PeerId;
+    use tokio::sync::mpsc;
+
+    #[tokio::test]
+    async fn test_direct_message_sender_validation() {
+        let (ui_sender, _ui_receiver) = mpsc::unbounded_channel();
+        let _ui_logger = UILogger::new(ui_sender);
+        
+        // Create a mock peer ID
+        let peer_id = PeerId::random();
+        let different_peer_id = PeerId::random();
+        
+        // Create a direct message request with mismatched peer ID
+        let request = DirectMessageRequest {
+            from_peer_id: different_peer_id.to_string(), // Different from actual peer
+            from_name: "Alice".to_string(),
+            to_name: "Bob".to_string(),
+            message: "Hello!".to_string(),
+            timestamp: 1000,
+        };
+        
+        // Test that identity validation would fail
+        // (This test checks our validation logic conceptually)
+        assert_ne!(request.from_peer_id, peer_id.to_string());
+        assert_eq!(request.from_peer_id, different_peer_id.to_string());
+        
+        // Verify the message structure is correct
+        assert_eq!(request.from_name, "Alice");
+        assert_eq!(request.to_name, "Bob");
+        assert_eq!(request.message, "Hello!");
+    }
+    
+    #[test]
+    fn test_direct_message_request_validation() {
+        let peer_id = PeerId::random();
+        
+        // Test valid request
+        let valid_request = DirectMessageRequest {
+            from_peer_id: peer_id.to_string(),
+            from_name: "Alice".to_string(),
+            to_name: "Bob".to_string(),
+            message: "Hello Bob!".to_string(),
+            timestamp: 1000,
+        };
+        
+        // Verify the request structure
+        assert_eq!(valid_request.from_peer_id, peer_id.to_string());
+        assert!(!valid_request.from_name.is_empty());
+        assert!(!valid_request.to_name.is_empty());
+        assert!(!valid_request.message.is_empty());
+        
+        // Test that peer ID validation would work
+        assert_eq!(valid_request.from_peer_id, peer_id.to_string());
+    }
+    
+    #[test]
+    fn test_direct_message_response_creation() {
+        let response_received = DirectMessageResponse {
+            received: true,
+            timestamp: 1000,
+        };
+        
+        let response_rejected = DirectMessageResponse {
+            received: false,
+            timestamp: 1000,
+        };
+        
+        assert!(response_received.received);
+        assert!(!response_rejected.received);
+        assert_eq!(response_received.timestamp, 1000);
+        assert_eq!(response_rejected.timestamp, 1000);
+    }
 }

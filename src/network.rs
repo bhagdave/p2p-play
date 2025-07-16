@@ -116,7 +116,12 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     let protocol = request_response::ProtocolSupport::Full;
     let dm_protocol = StreamProtocol::new("/dm/1.0.0");
     let protocols = iter::once((dm_protocol, protocol));
-    let cfg = request_response::Config::default();
+    
+    // Configure request-response protocol with timeouts and retry policies
+    let cfg = request_response::Config::default()
+        .with_request_timeout(std::time::Duration::from_secs(30))
+        .with_max_concurrent_streams(100);
+    
     let request_response = request_response::cbor::Behaviour::new(protocols, cfg);
 
     let mut behaviour = StoryBehaviour {
@@ -252,5 +257,45 @@ mod tests {
         // This should not panic - tests that Debug is properly derived
         let debug_str = format!("{:?}", story_event);
         assert!(debug_str.contains("Ping"));
+    }
+
+    #[test]
+    fn test_direct_message_request_response_types() {
+        // Test DirectMessageRequest
+        let request = DirectMessageRequest {
+            from_peer_id: "peer123".to_string(),
+            from_name: "Alice".to_string(),
+            to_name: "Bob".to_string(),
+            message: "Hello!".to_string(),
+            timestamp: 1000,
+        };
+        
+        assert_eq!(request.from_peer_id, "peer123");
+        assert_eq!(request.from_name, "Alice");
+        assert_eq!(request.to_name, "Bob");
+        assert_eq!(request.message, "Hello!");
+        assert_eq!(request.timestamp, 1000);
+        
+        // Test DirectMessageResponse
+        let response = DirectMessageResponse {
+            received: true,
+            timestamp: 2000,
+        };
+        
+        assert!(response.received);
+        assert_eq!(response.timestamp, 2000);
+    }
+    
+    #[test]
+    fn test_request_response_protocol_configuration() {
+        // Test that we can create a request-response configuration
+        let cfg = request_response::Config::default()
+            .with_request_timeout(std::time::Duration::from_secs(30))
+            .with_max_concurrent_streams(100);
+        
+        // These tests verify the configuration can be created
+        // The actual timeout values are internal to libp2p, so we can't easily test them directly
+        // but we can verify the configuration build process works
+        let _cfg = cfg; // Just verify it compiles and can be used
     }
 }

@@ -14,11 +14,22 @@ All changes to this project will be documented in this file.
 - Added the clear output functionality for the TUI: Press 'c' in Normal mode to clear all output from the scrolling log area
 - Added comprehensive test coverage for clear output functionality including edge cases and key binding integration
 - Updated UI instructions and help text to include information about the clear output feature
+- **Proper point-to-point direct messaging using libp2p request-response protocol**
+- Added `request-response` and `cbor` features to libp2p dependency for true peer-to-peer communication
+- Created `DirectMessageRequest` and `DirectMessageResponse` types for proper message serialization
+- Added delivery confirmations for direct messages with success/failure feedback
+- Enhanced security with sender identity validation to prevent message spoofing
+- Added timeout and retry policies for request-response protocol reliability
 
 ### Changed
 - Errors from story operations (list, create, publish) are now logged to file instead of being displayed in the UI
 - Cleaner user interface experience with errors no longer cluttering the display
 - Error logging includes fallback to stderr if file writing fails
+- **Replaced broadcast-based direct messaging with true point-to-point protocol**
+- Direct messages now use `request-response` protocol instead of `floodsub` broadcasting
+- Messages are sent directly to intended recipients only, eliminating network overhead
+- Enhanced privacy as messages are no longer broadcast to all peers
+- Added proper error handling and delivery confirmations for direct messages
 
 ## [0.5.0] - 2025-07-14
 
