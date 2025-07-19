@@ -942,3 +942,18 @@ mod tests {
         assert_eq!(stories.len(), 0);
     }
 }
+
+/// Clears all data from the database (useful for testing)
+pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Clear all tables
+    conn.execute("DELETE FROM channel_subscriptions", [])?;
+    conn.execute("DELETE FROM stories", [])?;
+    conn.execute("DELETE FROM channels WHERE name != 'general'", [])?; // Keep general channel
+    conn.execute("DELETE FROM peer_name", [])?;
+
+    info!("Database cleared for testing");
+    Ok(())
+}
