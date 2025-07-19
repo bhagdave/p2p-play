@@ -286,8 +286,6 @@ pub async fn handle_floodsub_event(
                         // Update the cache if peer names changed
                         if names_changed {
                             sorted_peer_names_cache.update(peer_names);
-                            ui_logger
-                                .log(format!("Peer {} set name to '{}'", peer_id, peer_name.name));
                         }
                     }
                 }
