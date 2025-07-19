@@ -706,4 +706,158 @@ mod tests {
         assert_eq!(response_received.timestamp, 1000);
         assert_eq!(response_rejected.timestamp, 1000);
     }
+
+    #[tokio::test]
+    async fn test_handle_peer_name_event() {
+        let peer_name = PeerName::new("peer123".to_string(), "TestAlias".to_string());
+        
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_peer_name_event(peer_name).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_direct_message_event() {
+        let direct_msg = DirectMessage::new(
+            "peer123".to_string(),
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Test message".to_string()
+        );
+        
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_direct_message_event(direct_msg).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_channel_event() {
+        let channel = crate::types::Channel::new(
+            "test_channel".to_string(),
+            "Test channel description".to_string(),
+            "peer123".to_string()
+        );
+        
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_channel_event(channel).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_channel_subscription_event() {
+        let subscription = crate::types::ChannelSubscription::new(
+            "peer123".to_string(),
+            "test_channel".to_string()
+        );
+        
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_channel_subscription_event(subscription).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_ping_event_success() {
+        use std::time::Duration;
+        use libp2p::swarm::ConnectionId;
+
+        let peer_id = PeerId::random();
+        let ping_event = libp2p::ping::Event {
+            peer: peer_id,
+            connection: ConnectionId::new_unchecked(1),
+            result: Ok(Duration::from_millis(50)),
+        };
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_ping_event(ping_event).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_ping_event_failure() {
+        use libp2p::swarm::ConnectionId;
+        use libp2p::ping::Failure;
+
+        let peer_id = PeerId::random();
+        let ping_event = libp2p::ping::Event {
+            peer: peer_id,
+            connection: ConnectionId::new_unchecked(1),
+            result: Err(Failure::Timeout),
+        };
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_ping_event(ping_event).await;
+    }
+
+    #[tokio::test]
+    async fn test_respond_with_public_stories_channel() {
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let receiver_name = "test_receiver".to_string();
+
+        respond_with_public_stories(sender, receiver_name.clone());
+
+        // Try to receive a response with timeout
+        let response = tokio::time::timeout(
+            tokio::time::Duration::from_millis(500),
+            receiver.recv()
+        ).await;
+
+        // The response might succeed or timeout depending on if stories file exists
+        // We mainly test that the function doesn't panic and attempts to send
+        match response {
+            Ok(Some(resp)) => {
+                assert_eq!(resp.receiver, receiver_name);
+                assert_eq!(resp.mode, ListMode::ALL);
+                // resp.data may be empty if no stories file exists
+            }
+            Ok(None) => {
+                // Channel was closed, which means an error occurred in the spawn
+            }
+            Err(_) => {
+                // Timeout occurred, which is expected if no stories exist
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_maintain_connections() {
+        // Create a mock swarm for testing
+        let mut swarm = crate::network::create_swarm().expect("Failed to create test swarm");
+        
+        // This is hard to test properly without a full network setup,
+        // but we can at least verify the function doesn't panic
+        maintain_connections(&mut swarm).await;
+    }
+
+    #[test] 
+    fn test_event_handling_error_paths() {
+        // Test serialization/deserialization edge cases that might occur in floodsub handling
+        
+        // Test invalid JSON data
+        let invalid_json = b"invalid json data";
+        let list_response_result = serde_json::from_slice::<ListResponse>(invalid_json);
+        assert!(list_response_result.is_err());
+        
+        let published_story_result = serde_json::from_slice::<PublishedStory>(invalid_json);
+        assert!(published_story_result.is_err());
+        
+        let peer_name_result = serde_json::from_slice::<PeerName>(invalid_json);
+        assert!(peer_name_result.is_err());
+        
+        let list_request_result = serde_json::from_slice::<ListRequest>(invalid_json);
+        assert!(list_request_result.is_err());
+    }
+
+    #[test]
+    fn test_list_mode_one_validation() {
+        use crate::types::{ListRequest, ListMode};
+        
+        // Test ListMode::One with valid peer ID format
+        let list_request = ListRequest {
+            mode: ListMode::One("valid_peer_id".to_string()),
+        };
+        
+        match list_request.mode {
+            ListMode::One(peer_id) => {
+                assert_eq!(peer_id, "valid_peer_id");
+            }
+            ListMode::ALL => {
+                panic!("Expected ListMode::One");
+            }
+        }
+    }
 }
