@@ -444,6 +444,7 @@ mod tests {
             header: "Test Header".to_string(),
             body: "Test Body".to_string(),
             public: true,
+            channel: "general".to_string(),
         };
 
         let status = if story.public { "📖" } else { "📕" };
