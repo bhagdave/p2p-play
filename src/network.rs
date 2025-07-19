@@ -1,9 +1,26 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
-use libp2p::{PeerId, identity, mdns, ping};
+use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response};
 use log::info;
 use once_cell::sync::Lazy;
 use std::fs;
+use std::iter;
+
+/// Direct message request/response types
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DirectMessageRequest {
+    pub from_peer_id: String,
+    pub from_name: String,
+    pub to_name: String,
+    pub message: String,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DirectMessageResponse {
+    pub received: bool,
+    pub timestamp: u64,
+}
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
@@ -50,6 +67,8 @@ pub struct StoryBehaviour {
     pub floodsub: Behaviour,
     pub mdns: mdns::tokio::Behaviour,
     pub ping: ping::Behaviour,
+    pub request_response:
+        request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
 }
 
 #[derive(Debug)]
@@ -57,6 +76,7 @@ pub enum StoryBehaviourEvent {
     Floodsub(Event),
     Mdns(mdns::Event),
     Ping(ping::Event),
+    RequestResponse(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
 }
 
 impl From<Event> for StoryBehaviourEvent {
@@ -77,6 +97,14 @@ impl From<ping::Event> for StoryBehaviourEvent {
     }
 }
 
+impl From<request_response::Event<DirectMessageRequest, DirectMessageResponse>>
+    for StoryBehaviourEvent
+{
+    fn from(event: request_response::Event<DirectMessageRequest, DirectMessageResponse>) -> Self {
+        StoryBehaviourEvent::RequestResponse(event)
+    }
+}
+
 pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
@@ -87,10 +115,23 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
         .multiplex(yamux::Config::default())
         .boxed();
 
+    // Create request-response protocol for direct messaging
+    let protocol = request_response::ProtocolSupport::Full;
+    let dm_protocol = StreamProtocol::new("/dm/1.0.0");
+    let protocols = iter::once((dm_protocol, protocol));
+
+    // Configure request-response protocol with timeouts and retry policies
+    let cfg = request_response::Config::default()
+        .with_request_timeout(std::time::Duration::from_secs(30))
+        .with_max_concurrent_streams(100);
+
+    let request_response = request_response::cbor::Behaviour::new(protocols, cfg);
+
     let mut behaviour = StoryBehaviour {
         floodsub: Behaviour::new(*PEER_ID),
         mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
         ping: ping::Behaviour::new(ping::Config::new()),
+        request_response,
     };
 
     info!("Created floodsub with peer id: {:?}", PEER_ID.clone());
@@ -219,5 +260,45 @@ mod tests {
         // This should not panic - tests that Debug is properly derived
         let debug_str = format!("{:?}", story_event);
         assert!(debug_str.contains("Ping"));
+    }
+
+    #[test]
+    fn test_direct_message_request_response_types() {
+        // Test DirectMessageRequest
+        let request = DirectMessageRequest {
+            from_peer_id: "peer123".to_string(),
+            from_name: "Alice".to_string(),
+            to_name: "Bob".to_string(),
+            message: "Hello!".to_string(),
+            timestamp: 1000,
+        };
+
+        assert_eq!(request.from_peer_id, "peer123");
+        assert_eq!(request.from_name, "Alice");
+        assert_eq!(request.to_name, "Bob");
+        assert_eq!(request.message, "Hello!");
+        assert_eq!(request.timestamp, 1000);
+
+        // Test DirectMessageResponse
+        let response = DirectMessageResponse {
+            received: true,
+            timestamp: 2000,
+        };
+
+        assert!(response.received);
+        assert_eq!(response.timestamp, 2000);
+    }
+
+    #[test]
+    fn test_request_response_protocol_configuration() {
+        // Test that we can create a request-response configuration
+        let cfg = request_response::Config::default()
+            .with_request_timeout(std::time::Duration::from_secs(30))
+            .with_max_concurrent_streams(100);
+
+        // These tests verify the configuration can be created
+        // The actual timeout values are internal to libp2p, so we can't easily test them directly
+        // but we can verify the configuration build process works
+        let _cfg = cfg; // Just verify it compiles and can be used
     }
 }
