@@ -22,6 +22,22 @@ pub struct DirectMessageResponse {
     pub timestamp: u64,
 }
 
+/// Node description request/response types
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodeDescriptionRequest {
+    pub from_peer_id: String,
+    pub from_name: String,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodeDescriptionResponse {
+    pub description: Option<String>,
+    pub from_peer_id: String,
+    pub from_name: String,
+    pub timestamp: u64,
+}
+
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
         info!("Found existing peer key file, attempting to load");

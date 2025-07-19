@@ -1,7 +1,7 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::*;
 use crate::network::{DirectMessageRequest, DirectMessageResponse, PEER_ID, StoryBehaviour, TOPIC};
-use crate::storage::save_received_story;
+use crate::storage::{save_received_story, load_node_description};
 use crate::types::{
     DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
 };
@@ -97,6 +97,9 @@ pub async fn handle_input_event(
                 return Some(());
             }
         }
+        cmd if cmd.starts_with("create desc") => {
+            handle_create_description(cmd, ui_logger).await
+        }
         cmd if cmd.starts_with("sub ") => {
             handle_subscribe_channel(cmd, ui_logger, error_logger).await
         }
@@ -107,6 +110,10 @@ pub async fn handle_input_event(
             handle_publish_story(cmd, story_sender.clone(), ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("show story") => handle_show_story(cmd, ui_logger).await,
+        "show desc" => handle_show_description(ui_logger).await,
+        cmd if cmd.starts_with("get desc") => {
+            handle_get_description(cmd, ui_logger, swarm, local_peer_name, peer_names).await
+        }
         cmd if cmd.starts_with("delete s") => {
             if let Some(()) = handle_delete_story(cmd, ui_logger, error_logger).await {
                 return Some(());
@@ -389,14 +396,78 @@ pub async fn handle_request_response_event(
                     // Handle incoming direct message request
                     if let Some(local_name) = local_peer_name {
                         if &request.to_name == local_name {
-                            ui_logger.log(format!(
-                                "📨 Direct message from {}: {}",
-                                request.from_name, request.message
-                            ));
-                            info!(
-                                "Received direct message from {} ({}): {}",
-                                request.from_name, request.from_peer_id, request.message
-                            );
+                            // Check if this is a description request
+                            if request.message.starts_with("__DESC_REQUEST__") {
+                                // Extract the requester's name from the message
+                                let requester_name = request.message.strip_prefix("__DESC_REQUEST__").unwrap_or(&request.from_name);
+                                
+                                ui_logger.log(format!(
+                                    "📋 Description request from {}",
+                                    requester_name
+                                ));
+                                info!(
+                                    "Received description request from {} ({})",
+                                    requester_name, request.from_peer_id
+                                );
+
+                                // Load our description and send it back
+                                match load_node_description().await {
+                                    Ok(description) => {
+                                        let response_message = if let Some(desc) = description {
+                                            format!("__DESC_RESPONSE__{}", desc)
+                                        } else {
+                                            "__DESC_RESPONSE__No description set".to_string()
+                                        };
+
+                                        // Send description as a direct message response
+                                        let desc_response = DirectMessageRequest {
+                                            from_peer_id: PEER_ID.to_string(),
+                                            from_name: local_name.clone(),
+                                            to_name: requester_name.to_string(),
+                                            message: response_message,
+                                            timestamp: std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .unwrap_or_default()
+                                                .as_secs(),
+                                        };
+
+                                        // Send the description back
+                                        let _request_id = swarm
+                                            .behaviour_mut()
+                                            .request_response
+                                            .send_request(&peer, desc_response);
+                                        
+                                        info!("Sent description response to {}", requester_name);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to load description: {}", e);
+                                    }
+                                }
+                            } else if request.message.starts_with("__DESC_RESPONSE__") {
+                                // Handle description response
+                                let description = request.message.strip_prefix("__DESC_RESPONSE__").unwrap_or("Invalid response");
+                                
+                                ui_logger.log(format!(
+                                    "📋 Description from {} ({} bytes):",
+                                    request.from_name, description.len()
+                                ));
+                                ui_logger.log(description.to_string());
+                                
+                                info!(
+                                    "Received description response from {} ({}): {}",
+                                    request.from_name, request.from_peer_id, description
+                                );
+                            } else {
+                                // Regular direct message
+                                ui_logger.log(format!(
+                                    "📨 Direct message from {}: {}",
+                                    request.from_name, request.message
+                                ));
+                                info!(
+                                    "Received direct message from {} ({}): {}",
+                                    request.from_name, request.from_peer_id, request.message
+                                );
+                            }
                         }
                     }
 
