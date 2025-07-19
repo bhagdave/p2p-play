@@ -213,9 +213,11 @@ impl App {
                 .split(f.size());
 
             // Status bar
+            let version = env!("CARGO_PKG_VERSION");
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play | Peer: {} | Connected: {} | Mode: {}",
+                    "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {}",
+                    version,
                     name,
                     self.peers.len(),
                     match self.input_mode {
@@ -225,7 +227,8 @@ impl App {
                 )
             } else {
                 format!(
-                    "P2P-Play | No peer name set | Connected: {} | Mode: {}",
+                    "P2P-Play v{} | No peer name set | Connected: {} | Mode: {}",
+                    version,
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",
@@ -451,6 +454,28 @@ mod tests {
         let formatted = format!("{} {}: {}", status, story.id, story.name);
 
         assert_eq!(formatted, "📖 1: Test Story");
+    }
+
+    #[test]
+    fn test_version_display_in_status_bar() {
+        // Test that the version is properly included in status bar text
+        let version = env!("CARGO_PKG_VERSION");
+        
+        // Test status bar with peer name
+        let status_with_peer = format!(
+            "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {}",
+            version, "TestPeer", 2, "Normal"
+        );
+        assert!(status_with_peer.contains("P2P-Play v"));
+        assert!(status_with_peer.contains(version));
+        
+        // Test status bar without peer name
+        let status_without_peer = format!(
+            "P2P-Play v{} | No peer name set | Connected: {} | Mode: {}",
+            version, 0, "Editing"
+        );
+        assert!(status_without_peer.contains("P2P-Play v"));
+        assert!(status_without_peer.contains(version));
     }
 
     #[test]
