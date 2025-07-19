@@ -14,6 +14,12 @@ All changes to this project will be documented in this file.
 - Added custom logger configuration to filter libp2p internal errors from console
 - Enhanced ErrorLogger with log_network_error() method for network-specific error handling
 - Configured log level filtering to suppress noisy libp2p module messages (libp2p_swarm, libp2p_tcp, etc.)
+- Removed noisy connection and disconnection messages from TUI output log to improve user experience
+- Connection establishment messages ("Connected to new peer: {peer_id}") no longer appear in the output log
+- Disconnection messages ("Disconnected from {name}: {peer_id}") no longer appear in the output log  
+- Failed connection messages ("Failed to connect to {peer_id}: {error}") no longer appear in the output log
+- Connection status remains visible in the dedicated "Connected Peers" section
+- Connection events are still logged to file for debugging purposes
 
 ## [0.6.0] - 2025-07-16
 
