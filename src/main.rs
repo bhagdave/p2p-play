@@ -216,10 +216,7 @@ async fn main() {
                         },
                         SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
                             info!("Connection established to {} via {:?}", peer_id, endpoint);
-                            // Only log connection establishment once per session to reduce noise
-                            if !peer_names.contains_key(&peer_id) {
-                                app.add_to_log(format!("Connected to new peer: {}", peer_id));
-                            }
+                            // Connection status is now visible in the Connected Peers section
                             info!("Adding peer {} to floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
 
@@ -236,10 +233,7 @@ async fn main() {
                         },
                         SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                             info!("Connection closed to {}: {:?}", peer_id, cause);
-                            // Only log disconnections if the peer had a name (was established)
-                            if let Some(name) = peer_names.get(&peer_id) {
-                                app.add_to_log(format!("Disconnected from {}: {}", name, peer_id));
-                            }
+                            // Connection status is now visible in the Connected Peers section
                             info!("Removing peer {} from floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
 
@@ -255,10 +249,7 @@ async fn main() {
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
                             error!("Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
-                            // Only log connection errors that matter to the user
-                            if let Some(peer_id) = peer_id {
-                                app.add_to_log(format!("Failed to connect to {}: {}", peer_id, error));
-                            }
+                            // Connection errors are logged to file but not shown in UI to reduce noise
                             None
                         },
                         SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, connection_id, .. } => {
