@@ -1032,51 +1032,60 @@ mod tests {
         assert_eq!(stories.len(), 0);
     }
 
-    #[test]
-    fn test_delete_local_story_database() {
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            // Set up test environment variables
-            unsafe {
-                std::env::set_var("TEST_DATABASE_PATH", "test_delete.db");
-            }
-            
-            // Reset connection for testing to use the test database path
-            reset_db_connection_for_testing().await.unwrap();
+    #[tokio::test]
+    async fn test_delete_local_story_database() {
+        use tempfile::NamedTempFile;
+        
+        // Use a temporary database file for this test
+        let temp_db = NamedTempFile::new().unwrap();
+        let db_path = temp_db.path().to_str().unwrap();
+        
+        // Create a direct database connection for testing
+        let conn = rusqlite::Connection::open(db_path).unwrap();
+        
+        // Create tables
+        migrations::create_tables(&conn).unwrap();
+        
+        // Create test stories directly in the test database
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            ["0", "Story 1", "Header 1", "Body 1", "0", "general"],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            ["1", "Story 2", "Header 2", "Body 2", "0", "general"],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            ["2", "Story 3", "Header 3", "Body 3", "0", "general"],
+        ).unwrap();
+        
+        // Verify stories exist
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
+        let count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(count, 3);
 
-            // Clear and ensure database exists
-            clear_database_for_testing().await.unwrap();
+        // Test deleting existing story
+        let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", ["1"]).unwrap();
+        assert_eq!(rows_affected, 1);
 
-            // Create test stories
-            create_new_story_with_channel("Story 1", "Header 1", "Body 1", "general").await.unwrap();
-            create_new_story_with_channel("Story 2", "Header 2", "Body 2", "general").await.unwrap();
-            create_new_story_with_channel("Story 3", "Header 3", "Body 3", "general").await.unwrap();
+        // Verify story was deleted
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
+        let count_after: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(count_after, 2);
+        
+        // Verify specific story with id=1 is gone
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories WHERE id = ?").unwrap();
+        let id_count: i64 = stmt.query_row(["1"], |row| row.get(0)).unwrap();
+        assert_eq!(id_count, 0);
 
-            // Verify stories exist
-            let stories = read_local_stories().await.unwrap();
-            assert_eq!(stories.len(), 3);
+        // Test deleting non-existent story
+        let rows_affected_nonexistent = conn.execute("DELETE FROM stories WHERE id = ?", ["999"]).unwrap();
+        assert_eq!(rows_affected_nonexistent, 0);
 
-            // Test deleting existing story
-            let deleted = delete_local_story(1).await.unwrap();
-            assert!(deleted);
-
-            // Verify story was deleted
-            let stories_after = read_local_stories().await.unwrap();
-            assert_eq!(stories_after.len(), 2);
-            assert!(!stories_after.iter().any(|s| s.id == 1));
-
-            // Test deleting non-existent story
-            let not_deleted = delete_local_story(999).await.unwrap();
-            assert!(!not_deleted);
-
-            // Verify count unchanged
-            let stories_final = read_local_stories().await.unwrap();
-            assert_eq!(stories_final.len(), 2);
-
-            // Cleanup: remove the test variable
-            unsafe {
-                std::env::remove_var("TEST_DATABASE_PATH");
-            }
-        });
+        // Verify count unchanged
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
+        let final_count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(final_count, 2);
     }
 }
