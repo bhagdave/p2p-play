@@ -1,7 +1,7 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response};
-use log::info;
+use log::{info, warn, error};
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
