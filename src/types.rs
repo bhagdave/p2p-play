@@ -98,7 +98,14 @@ impl Story {
         }
     }
 
-    pub fn new_with_channel(id: usize, name: String, header: String, body: String, public: bool, channel: String) -> Self {
+    pub fn new_with_channel(
+        id: usize,
+        name: String,
+        header: String,
+        body: String,
+        public: bool,
+        channel: String,
+    ) -> Self {
         Self {
             id,
             name,

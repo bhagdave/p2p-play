@@ -91,7 +91,9 @@ pub async fn handle_input_event(
             }
         }
         cmd if cmd.starts_with("create ch") => {
-            if let Some(()) = handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await {
+            if let Some(()) =
+                handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await
+            {
                 return Some(());
             }
         }
@@ -202,9 +204,14 @@ pub async fn handle_floodsub_event(
             } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                 if published.publisher != PEER_ID.to_string() {
                     // Check if we're subscribed to the story's channel
-                    let should_accept_story = match crate::storage::read_subscribed_channels(&PEER_ID.to_string()).await {
+                    let should_accept_story = match crate::storage::read_subscribed_channels(
+                        &PEER_ID.to_string(),
+                    )
+                    .await
+                    {
                         Ok(subscribed_channels) => {
-                            subscribed_channels.contains(&published.story.channel) || published.story.channel == "general"
+                            subscribed_channels.contains(&published.story.channel)
+                                || published.story.channel == "general"
                         }
                         Err(e) => {
                             error!("Failed to check subscriptions for incoming story: {}", e);
@@ -597,12 +604,17 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
         let filtered_stories: Vec<_> = stories
             .into_iter()
             .filter(|story| {
-                story.public && (subscribed_channels.contains(&story.channel) || story.channel == "general")
+                story.public
+                    && (subscribed_channels.contains(&story.channel) || story.channel == "general")
             })
             .collect();
 
-        info!("Sending {} filtered stories to {} based on {} subscribed channels", 
-              filtered_stories.len(), receiver, subscribed_channels.len());
+        info!(
+            "Sending {} filtered stories to {} based on {} subscribed channels",
+            filtered_stories.len(),
+            receiver,
+            subscribed_channels.len()
+        );
 
         let resp = ListResponse {
             mode: ListMode::ALL,

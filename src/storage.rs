@@ -1,4 +1,4 @@
-use crate::types::{Stories, Story, Channel, Channels, ChannelSubscription, ChannelSubscriptions};
+use crate::types::{Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story};
 use log::{error, info};
 use rusqlite::Connection;
 use std::error::Error;
@@ -16,12 +16,12 @@ fn get_database_path() -> String {
     if let Ok(test_path) = std::env::var("TEST_DATABASE_PATH") {
         return test_path;
     }
-    
+
     // Check for custom database path
     if let Ok(db_path) = std::env::var("DATABASE_PATH") {
         return db_path;
     }
-    
+
     // Default production path
     "./stories.db".to_string()
 }
@@ -32,7 +32,7 @@ static DB_STATE: once_cell::sync::Lazy<RwLock<Option<(Arc<Mutex<Connection>>, St
 
 async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
     let current_path = get_database_path();
-    
+
     // Check if we have an existing connection with the same path
     {
         let state = DB_STATE.read().await;
@@ -104,7 +104,9 @@ pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
             header: row.get(2)?,
             body: row.get(3)?,
             public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
-            channel: row.get::<_, Option<String>>(5)?.unwrap_or_else(|| "general".to_string()),
+            channel: row
+                .get::<_, Option<String>>(5)?
+                .unwrap_or_else(|| "general".to_string()),
         })
     })?;
 
@@ -126,8 +128,8 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
         // Treat as SQLite database path - create a temporary connection
         let conn = Connection::open(path)?;
 
-        let mut stmt =
-            conn.prepare("SELECT id, name, header, body, public, channel FROM stories ORDER BY id")?;
+        let mut stmt = conn
+            .prepare("SELECT id, name, header, body, public, channel FROM stories ORDER BY id")?;
         let story_iter = stmt.query_map([], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
@@ -135,7 +137,9 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
                 header: row.get(2)?,
                 body: row.get(3)?,
                 public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
-                channel: row.get::<_, Option<String>>(5)?.unwrap_or_else(|| "general".to_string()),
+                channel: row
+                    .get::<_, Option<String>>(5)?
+                    .unwrap_or_else(|| "general".to_string()),
             })
         })?;
 
@@ -221,7 +225,12 @@ pub async fn create_new_story(name: &str, header: &str, body: &str) -> Result<()
     create_new_story_with_channel(name, header, body, "general").await
 }
 
-pub async fn create_new_story_with_channel(name: &str, header: &str, body: &str, channel: &str) -> Result<(), Box<dyn Error>> {
+pub async fn create_new_story_with_channel(
+    name: &str,
+    header: &str,
+    body: &str,
+    channel: &str,
+) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -291,8 +300,8 @@ pub async fn publish_story(
 
     if rows_affected > 0 {
         // Fetch the updated story to send it
-        let mut stmt =
-            conn.prepare("SELECT id, name, header, body, public, channel FROM stories WHERE id = ?")?;
+        let mut stmt = conn
+            .prepare("SELECT id, name, header, body, public, channel FROM stories WHERE id = ?")?;
         let story_result = stmt.query_row([&id.to_string()], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
@@ -300,7 +309,9 @@ pub async fn publish_story(
                 header: row.get(2)?,
                 body: row.get(3)?,
                 public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
-                channel: row.get::<_, Option<String>>(5)?.unwrap_or_else(|| "general".to_string()),
+                channel: row
+                    .get::<_, Option<String>>(5)?
+                    .unwrap_or_else(|| "general".to_string()),
             })
         });
 
@@ -449,7 +460,11 @@ pub async fn load_local_peer_name_from_path(path: &str) -> Result<Option<String>
 }
 
 // Channel management functions
-pub async fn create_channel(name: &str, description: &str, created_by: &str) -> Result<(), Box<dyn Error>> {
+pub async fn create_channel(
+    name: &str,
+    description: &str,
+    created_by: &str,
+) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -471,7 +486,8 @@ pub async fn read_channels() -> Result<Channels, Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let mut stmt = conn.prepare("SELECT name, description, created_by, created_at FROM channels ORDER BY name")?;
+    let mut stmt = conn
+        .prepare("SELECT name, description, created_by, created_at FROM channels ORDER BY name")?;
     let channel_iter = stmt.query_map([], |row| {
         Ok(Channel {
             name: row.get(0)?,
@@ -507,7 +523,10 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> Result<(
     Ok(())
 }
 
-pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> Result<(), Box<dyn Error>> {
+pub async fn unsubscribe_from_channel(
+    peer_id: &str,
+    channel_name: &str,
+) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -524,10 +543,10 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let mut stmt = conn.prepare("SELECT channel_name FROM channel_subscriptions WHERE peer_id = ? ORDER BY channel_name")?;
-    let channel_iter = stmt.query_map([peer_id], |row| {
-        Ok(row.get::<_, String>(0)?)
-    })?;
+    let mut stmt = conn.prepare(
+        "SELECT channel_name FROM channel_subscriptions WHERE peer_id = ? ORDER BY channel_name",
+    )?;
+    let channel_iter = stmt.query_map([peer_id], |row| Ok(row.get::<_, String>(0)?))?;
 
     let mut channels = Vec::new();
     for channel in channel_iter {
@@ -978,10 +997,10 @@ mod tests {
 pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     // Reset the connection to ensure we're using the test database path
     reset_db_connection_for_testing().await?;
-    
+
     // Ensure the test database is initialized
     ensure_stories_file_exists().await?;
-    
+
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 

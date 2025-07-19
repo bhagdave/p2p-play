@@ -1,7 +1,11 @@
 use crate::error_logger::ErrorLogger;
-use crate::storage::{create_new_story_with_channel, publish_story, read_local_stories, save_local_peer_name, create_channel, read_channels, subscribe_to_channel, unsubscribe_from_channel, read_subscribed_channels};
-use crate::types::{DirectMessage, ListMode, ListRequest, PeerName, Story};
 use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour, TOPIC};
+use crate::storage::{
+    create_channel, create_new_story_with_channel, publish_story, read_channels,
+    read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
+    unsubscribe_from_channel,
+};
+use crate::types::{DirectMessage, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -168,23 +172,32 @@ pub async fn handle_create_stories(
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
             ui_logger.log("Interactive story creation not yet supported in TUI mode.".to_string());
-            ui_logger.log("Use format: create s name|header|body or create s name|header|body|channel".to_string());
+            ui_logger.log(
+                "Use format: create s name|header|body or create s name|header|body|channel"
+                    .to_string(),
+            );
             return None;
         } else {
             // Parse pipe-separated arguments
             let elements: Vec<&str> = rest.split('|').collect();
             if elements.len() < 3 {
-                ui_logger.log("too few arguments - Format: name|header|body or name|header|body|channel".to_string());
+                ui_logger.log(
+                    "too few arguments - Format: name|header|body or name|header|body|channel"
+                        .to_string(),
+                );
             } else {
                 let name = elements.first().expect("name is there");
                 let header = elements.get(1).expect("header is there");
                 let body = elements.get(2).expect("body is there");
                 let channel = elements.get(3).unwrap_or(&"general");
-                
+
                 if let Err(e) = create_new_story_with_channel(name, header, body, channel).await {
                     error_logger.log_error(&format!("Failed to create story: {}", e));
                 } else {
-                    ui_logger.log(format!("Story created successfully in channel '{}'", channel));
+                    ui_logger.log(format!(
+                        "Story created successfully in channel '{}'",
+                        channel
+                    ));
                     return Some(()); // Signal that stories need to be refreshed
                 };
             }
@@ -426,7 +439,7 @@ pub async fn handle_create_channel(
     if let Some(rest) = cmd.strip_prefix("create ch") {
         let rest = rest.trim();
         let elements: Vec<&str> = rest.split('|').collect();
-        
+
         if elements.len() < 2 {
             ui_logger.log("Format: create ch name|description".to_string());
             return None;
@@ -451,7 +464,10 @@ pub async fn handle_create_channel(
             ui_logger.log(format!("Channel '{}' created successfully", name));
             // Auto-subscribe to the channel we created
             if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), name).await {
-                error_logger.log_error(&format!("Failed to auto-subscribe to created channel: {}", e));
+                error_logger.log_error(&format!(
+                    "Failed to auto-subscribe to created channel: {}",
+                    e
+                ));
             }
             return Some(());
         }
@@ -471,14 +487,10 @@ pub async fn handle_list_channels(ui_logger: &UILogger, error_logger: &ErrorLogg
     }
 }
 
-pub async fn handle_subscribe_channel(
-    cmd: &str,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if let Some(channel_name) = cmd.strip_prefix("sub ") {
         let channel_name = channel_name.trim();
-        
+
         if channel_name.is_empty() {
             ui_logger.log("Usage: sub <channel_name>".to_string());
             return;
@@ -501,7 +513,7 @@ pub async fn handle_unsubscribe_channel(
 ) {
     if let Some(channel_name) = cmd.strip_prefix("unsub ") {
         let channel_name = channel_name.trim();
-        
+
         if channel_name.is_empty() {
             ui_logger.log("Usage: unsub <channel_name>".to_string());
             return;

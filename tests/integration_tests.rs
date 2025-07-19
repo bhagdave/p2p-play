@@ -394,19 +394,23 @@ async fn test_channel_creation_and_management() {
     let description = "Technology discussions";
     let creator = "alice_peer";
 
-    create_channel(channel_name, description, creator).await.unwrap();
+    create_channel(channel_name, description, creator)
+        .await
+        .unwrap();
 
     // Read channels and verify creation
     let channels = read_channels().await.unwrap();
     let tech_channel = channels.iter().find(|c| c.name == channel_name).unwrap();
-    
+
     assert_eq!(tech_channel.name, channel_name);
     assert_eq!(tech_channel.description, description);
     assert_eq!(tech_channel.created_by, creator);
     assert!(tech_channel.created_at > 0);
 
     // Test duplicate channel creation (should be ignored)
-    create_channel(channel_name, "Different description", "different_peer").await.unwrap();
+    create_channel(channel_name, "Different description", "different_peer")
+        .await
+        .unwrap();
     let channels_after = read_channels().await.unwrap();
     assert_eq!(channels.len(), channels_after.len()); // Should be same count
 }
@@ -424,8 +428,12 @@ async fn test_channel_subscriptions() {
     let channel2 = "news";
 
     // Create channels
-    create_channel(channel1, "Technology channel", "system").await.unwrap();
-    create_channel(channel2, "News channel", "system").await.unwrap();
+    create_channel(channel1, "Technology channel", "system")
+        .await
+        .unwrap();
+    create_channel(channel2, "News channel", "system")
+        .await
+        .unwrap();
 
     // Subscribe to channels
     subscribe_to_channel(peer_id, channel1).await.unwrap();
@@ -459,13 +467,19 @@ async fn test_stories_with_channels() {
     clear_database_for_testing().await.unwrap();
 
     // Create stories in different channels using database functions
-    create_new_story_with_channel("Tech Story", "Header", "Body", "general").await.unwrap();
-    create_new_story_with_channel("Gaming Story", "Game Header", "Game Body", "gaming").await.unwrap();
-    create_new_story_with_channel("News Story", "News Header", "News Body", "news").await.unwrap();
+    create_new_story_with_channel("Tech Story", "Header", "Body", "general")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Gaming Story", "Game Header", "Game Body", "gaming")
+        .await
+        .unwrap();
+    create_new_story_with_channel("News Story", "News Header", "News Body", "news")
+        .await
+        .unwrap();
 
     // Read stories and verify channels
     let stories = read_local_stories().await.unwrap();
-    
+
     // Find our test stories
     let tech_story = stories.iter().find(|s| s.name == "Tech Story").unwrap();
     let gaming_story = stories.iter().find(|s| s.name == "Gaming Story").unwrap();
@@ -486,9 +500,11 @@ async fn test_channel_story_filtering() {
     clear_database_for_testing().await.unwrap();
 
     let peer_id = "filter_test_peer";
-    
+
     // Create channels
-    create_channel("tech", "Technology", "system").await.unwrap();
+    create_channel("tech", "Technology", "system")
+        .await
+        .unwrap();
     create_channel("gaming", "Gaming", "system").await.unwrap();
     create_channel("news", "News", "system").await.unwrap();
 
@@ -497,10 +513,18 @@ async fn test_channel_story_filtering() {
     subscribe_to_channel(peer_id, "gaming").await.unwrap();
 
     // Create and publish stories in different channels
-    create_new_story_with_channel("Tech Article", "Tech Header", "Tech Body", "tech").await.unwrap();
-    create_new_story_with_channel("Game Review", "Game Header", "Game Body", "gaming").await.unwrap();
-    create_new_story_with_channel("Breaking News", "News Header", "News Body", "news").await.unwrap();
-    create_new_story_with_channel("General Post", "General Header", "General Body", "general").await.unwrap();
+    create_new_story_with_channel("Tech Article", "Tech Header", "Tech Body", "tech")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Game Review", "Game Header", "Game Body", "gaming")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Breaking News", "News Header", "News Body", "news")
+        .await
+        .unwrap();
+    create_new_story_with_channel("General Post", "General Header", "General Body", "general")
+        .await
+        .unwrap();
 
     // Mark all stories as public
     let all_stories = read_local_stories().await.unwrap();
@@ -517,13 +541,13 @@ async fn test_channel_story_filtering() {
 
     assert_eq!(tech_stories.len(), 1);
     assert_eq!(tech_stories[0].name, "Tech Article");
-    
+
     assert_eq!(gaming_stories.len(), 1);
     assert_eq!(gaming_stories[0].name, "Game Review");
-    
+
     assert_eq!(news_stories.len(), 1);
     assert_eq!(news_stories[0].name, "Breaking News");
-    
+
     assert_eq!(general_stories.len(), 1);
     assert_eq!(general_stories[0].name, "General Post");
 }
@@ -541,8 +565,12 @@ async fn test_channel_workflow_integration() {
     let peer2_id = "peer2";
 
     // Create channels
-    create_channel("tech", "Technology discussions", peer1_id).await.unwrap();
-    create_channel("art", "Art and creativity", peer2_id).await.unwrap();
+    create_channel("tech", "Technology discussions", peer1_id)
+        .await
+        .unwrap();
+    create_channel("art", "Art and creativity", peer2_id)
+        .await
+        .unwrap();
 
     // Peer1 subscribes to tech, Peer2 subscribes to art
     subscribe_to_channel(peer1_id, "tech").await.unwrap();
@@ -552,9 +580,15 @@ async fn test_channel_workflow_integration() {
     subscribe_to_channel(peer2_id, "general").await.unwrap();
 
     // Create stories in different channels
-    create_new_story_with_channel("Rust Tutorial", "Tech Header", "Tech Body", "tech").await.unwrap();
-    create_new_story_with_channel("Digital Painting", "Art Header", "Art Body", "art").await.unwrap();
-    create_new_story_with_channel("Welcome Post", "General Header", "General Body", "general").await.unwrap();
+    create_new_story_with_channel("Rust Tutorial", "Tech Header", "Tech Body", "tech")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Digital Painting", "Art Header", "Art Body", "art")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Welcome Post", "General Header", "General Body", "general")
+        .await
+        .unwrap();
 
     // Publish all stories
     let all_stories = read_local_stories().await.unwrap();
@@ -578,10 +612,10 @@ async fn test_channel_workflow_integration() {
     // Verify channel content
     let all_channels = read_channels().await.unwrap();
     assert!(all_channels.len() >= 3); // At least general + tech + art
-    
+
     let tech_channel = all_channels.iter().find(|c| c.name == "tech").unwrap();
     let art_channel = all_channels.iter().find(|c| c.name == "art").unwrap();
-    
+
     assert_eq!(tech_channel.created_by, peer1_id);
     assert_eq!(art_channel.created_by, peer2_id);
 }
@@ -629,8 +663,8 @@ async fn test_story_serialization_with_channel() {
 
 #[tokio::test]
 async fn test_channel_subscription_data_structures() {
-    use p2p_play::types::*;
     use p2p_play::storage::*;
+    use p2p_play::types::*;
 
     // Initialize and clear database to be safe
     ensure_stories_file_exists().await.unwrap();
@@ -649,10 +683,8 @@ async fn test_channel_subscription_data_structures() {
     assert!(channel.created_at > 0);
 
     // Test ChannelSubscription creation
-    let subscription = ChannelSubscription::new(
-        "subscriber_peer".to_string(),
-        "test_channel".to_string(),
-    );
+    let subscription =
+        ChannelSubscription::new("subscriber_peer".to_string(), "test_channel".to_string());
 
     assert_eq!(subscription.peer_id, "subscriber_peer");
     assert_eq!(subscription.channel_name, "test_channel");
@@ -663,7 +695,8 @@ async fn test_channel_subscription_data_structures() {
     let subscription_json = serde_json::to_string(&subscription).unwrap();
 
     let channel_deserialized: Channel = serde_json::from_str(&channel_json).unwrap();
-    let subscription_deserialized: ChannelSubscription = serde_json::from_str(&subscription_json).unwrap();
+    let subscription_deserialized: ChannelSubscription =
+        serde_json::from_str(&subscription_json).unwrap();
 
     assert_eq!(channel, channel_deserialized);
     assert_eq!(subscription, subscription_deserialized);

@@ -89,7 +89,8 @@ async fn main() {
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
         Ok(subscriptions) => {
             if !subscriptions.contains(&"general".to_string()) {
-                if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await {
+                if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
+                {
                     error!("Failed to auto-subscribe to general channel: {}", e);
                 } else {
                     info!("Auto-subscribed to general channel");
