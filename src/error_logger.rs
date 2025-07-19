@@ -29,7 +29,10 @@ impl ErrorLogger {
     /// Log network/connection errors that should be hidden from UI but preserved in logs
     pub fn log_network_error(&self, source: &str, error_message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{}] NETWORK_ERROR [{}]: {}\n", timestamp, source, error_message);
+        let log_entry = format!(
+            "[{}] NETWORK_ERROR [{}]: {}\n",
+            timestamp, source, error_message
+        );
 
         if let Err(e) = self.write_to_file(&log_entry) {
             // If file writing fails, use warn instead of error to avoid console spam
@@ -143,24 +146,35 @@ mod tests {
         let error_logger = ErrorLogger::new(path);
 
         // Test the new formatting method
-        error_logger.log_network_error_fmt("test_source", format_args!("Error {} with code {}", "connection", 404));
+        error_logger.log_network_error_fmt(
+            "test_source",
+            format_args!("Error {} with code {}", "connection", 404),
+        );
 
         let content = std::fs::read_to_string(path).unwrap();
         assert!(content.contains("NETWORK_ERROR [test_source]: Error connection with code 404"));
         assert!(content.contains("UTC"));
     }
 
-    #[test] 
+    #[test]
     fn test_log_network_error_macro() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path().to_str().unwrap();
         let error_logger = ErrorLogger::new(path);
 
         // Test the macro
-        log_network_error!(error_logger, "macro_test", "Failed to connect to peer {} with error {}", "peer123", "timeout");
+        log_network_error!(
+            error_logger,
+            "macro_test",
+            "Failed to connect to peer {} with error {}",
+            "peer123",
+            "timeout"
+        );
 
         let content = std::fs::read_to_string(path).unwrap();
-        assert!(content.contains("NETWORK_ERROR [macro_test]: Failed to connect to peer peer123 with error timeout"));
+        assert!(content.contains(
+            "NETWORK_ERROR [macro_test]: Failed to connect to peer peer123 with error timeout"
+        ));
         assert!(content.contains("UTC"));
     }
 }
