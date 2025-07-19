@@ -325,6 +325,25 @@ pub async fn publish_story(
     Ok(())
 }
 
+pub async fn delete_local_story(id: usize) -> Result<bool, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Delete the story with the given ID
+    let rows_affected = conn.execute(
+        "DELETE FROM stories WHERE id = ?",
+        [&id.to_string()],
+    )?;
+
+    if rows_affected > 0 {
+        info!("Deleted story with ID: {}", id);
+        Ok(true)
+    } else {
+        info!("No story found with ID: {}", id);
+        Ok(false)
+    }
+}
+
 pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story>, Box<dyn Error>> {
     let mut local_stories = read_local_stories_from_path(path).await?;
     let mut published_story = None;
@@ -1011,5 +1030,53 @@ mod tests {
         assert!(test_path.exists());
         let stories = read_local_stories_from_path(test_path_str).await.unwrap();
         assert_eq!(stories.len(), 0);
+    }
+
+    #[test]
+    fn test_delete_local_story_database() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // Set up test environment variables
+            unsafe {
+                std::env::set_var("TEST_DATABASE_PATH", "test_delete.db");
+            }
+            
+            // Reset connection for testing to use the test database path
+            reset_db_connection_for_testing().await.unwrap();
+
+            // Clear and ensure database exists
+            clear_database_for_testing().await.unwrap();
+
+            // Create test stories
+            create_new_story_with_channel("Story 1", "Header 1", "Body 1", "general").await.unwrap();
+            create_new_story_with_channel("Story 2", "Header 2", "Body 2", "general").await.unwrap();
+            create_new_story_with_channel("Story 3", "Header 3", "Body 3", "general").await.unwrap();
+
+            // Verify stories exist
+            let stories = read_local_stories().await.unwrap();
+            assert_eq!(stories.len(), 3);
+
+            // Test deleting existing story
+            let deleted = delete_local_story(1).await.unwrap();
+            assert!(deleted);
+
+            // Verify story was deleted
+            let stories_after = read_local_stories().await.unwrap();
+            assert_eq!(stories_after.len(), 2);
+            assert!(!stories_after.iter().any(|s| s.id == 1));
+
+            // Test deleting non-existent story
+            let not_deleted = delete_local_story(999).await.unwrap();
+            assert!(!not_deleted);
+
+            // Verify count unchanged
+            let stories_final = read_local_stories().await.unwrap();
+            assert_eq!(stories_final.len(), 2);
+
+            // Cleanup: remove the test variable
+            unsafe {
+                std::env::remove_var("TEST_DATABASE_PATH");
+            }
+        });
     }
 }

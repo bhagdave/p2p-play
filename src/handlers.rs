@@ -1,7 +1,7 @@
 use crate::error_logger::ErrorLogger;
 use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{
-    create_channel, create_new_story_with_channel, publish_story, read_channels,
+    create_channel, create_new_story_with_channel, delete_local_story, publish_story, read_channels,
     read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
     unsubscribe_from_channel,
 };
@@ -260,6 +260,38 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger) {
     }
 }
 
+pub async fn handle_delete_story(
+    cmd: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) -> Option<()> {
+    if let Some(rest) = cmd.strip_prefix("delete s ") {
+        match rest.trim().parse::<usize>() {
+            Ok(id) => {
+                match delete_local_story(id).await {
+                    Ok(deleted) => {
+                        if deleted {
+                            ui_logger.log(format!("Story with id {} deleted successfully", id));
+                            return Some(()); // Signal that stories need to be refreshed
+                        } else {
+                            ui_logger.log(format!("Story with id {} not found", id));
+                        }
+                    }
+                    Err(e) => {
+                        error_logger.log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                    }
+                }
+            }
+            Err(e) => {
+                ui_logger.log(format!("Invalid story id '{}': {}", rest.trim(), e));
+            }
+        }
+    } else {
+        ui_logger.log("Usage: delete s <id>".to_string());
+    }
+    None
+}
+
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls p to list discovered peers".to_string());
     ui_logger.log("ls c to list connected peers".to_string());
@@ -270,6 +302,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("create ch name|description to create channel".to_string());
     ui_logger.log("publish s to publish story".to_string());
     ui_logger.log("show story <id> to show story details".to_string());
+    ui_logger.log("delete s <id> to delete a story".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
