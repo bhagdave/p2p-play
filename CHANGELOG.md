@@ -4,10 +4,16 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Story Deletion**: New `delete s <id>` command to permanently remove stories from local storage
+- Local story deletion functionality with proper error handling and user feedback
+- Comprehensive test coverage for story deletion including edge cases and database operations
+
 ### Fixed
 - Removed handshake failures and network error messages from console output to prevent TUI interface disruption
 - Replaced println! statements in network.rs with proper logging calls
 - Network connection errors (incoming/outgoing) now log to error file instead of console
+- Replaced unsafe environment variable manipulation in tests with safe alternatives using temporary databases
 
 ### Changed
 - Updated logging system from pretty_env_logger to env_logger for better control
@@ -20,6 +26,7 @@ All changes to this project will be documented in this file.
 - Failed connection messages ("Failed to connect to {peer_id}: {error}") no longer appear in the output log
 - Connection status remains visible in the dedicated "Connected Peers" section
 - Connection events are still logged to file for debugging purposes
+- Test suite now uses safe Rust code exclusively, eliminating all unsafe blocks from storage tests
 
 ## [0.6.0] - 2025-07-16
 

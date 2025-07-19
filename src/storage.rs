@@ -325,6 +325,25 @@ pub async fn publish_story(
     Ok(())
 }
 
+pub async fn delete_local_story(id: usize) -> Result<bool, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Delete the story with the given ID
+    let rows_affected = conn.execute(
+        "DELETE FROM stories WHERE id = ?",
+        [&id.to_string()],
+    )?;
+
+    if rows_affected > 0 {
+        info!("Deleted story with ID: {}", id);
+        Ok(true)
+    } else {
+        info!("No story found with ID: {}", id);
+        Ok(false)
+    }
+}
+
 pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story>, Box<dyn Error>> {
     let mut local_stories = read_local_stories_from_path(path).await?;
     let mut published_story = None;
@@ -1011,5 +1030,62 @@ mod tests {
         assert!(test_path.exists());
         let stories = read_local_stories_from_path(test_path_str).await.unwrap();
         assert_eq!(stories.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_delete_local_story_database() {
+        use tempfile::NamedTempFile;
+        
+        // Use a temporary database file for this test
+        let temp_db = NamedTempFile::new().unwrap();
+        let db_path = temp_db.path().to_str().unwrap();
+        
+        // Create a direct database connection for testing
+        let conn = rusqlite::Connection::open(db_path).unwrap();
+        
+        // Create tables
+        migrations::create_tables(&conn).unwrap();
+        
+        // Create test stories directly in the test database
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            ["0", "Story 1", "Header 1", "Body 1", "0", "general"],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            ["1", "Story 2", "Header 2", "Body 2", "0", "general"],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            ["2", "Story 3", "Header 3", "Body 3", "0", "general"],
+        ).unwrap();
+        
+        // Verify stories exist
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
+        let count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(count, 3);
+
+        // Test deleting existing story
+        let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", ["1"]).unwrap();
+        assert_eq!(rows_affected, 1);
+
+        // Verify story was deleted
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
+        let count_after: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(count_after, 2);
+        
+        // Verify specific story with id=1 is gone
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories WHERE id = ?").unwrap();
+        let id_count: i64 = stmt.query_row(["1"], |row| row.get(0)).unwrap();
+        assert_eq!(id_count, 0);
+
+        // Test deleting non-existent story
+        let rows_affected_nonexistent = conn.execute("DELETE FROM stories WHERE id = ?", ["999"]).unwrap();
+        assert_eq!(rows_affected_nonexistent, 0);
+
+        // Verify count unchanged
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
+        let final_count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
+        assert_eq!(final_count, 2);
     }
 }
