@@ -37,6 +37,17 @@ impl ErrorLogger {
         }
     }
 
+    /// Log network errors with lazy formatting to avoid unnecessary string allocation
+    pub fn log_network_error_fmt(&self, source: &str, args: std::fmt::Arguments) {
+        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
+        let log_entry = format!("[{}] NETWORK_ERROR [{}]: {}\n", timestamp, source, args);
+
+        if let Err(e) = self.write_to_file(&log_entry) {
+            // If file writing fails, use warn instead of error to avoid console spam
+            warn!("Failed to write network error to log file: {}", e);
+        }
+    }
+
     fn write_to_file(&self, content: &str) -> std::io::Result<()> {
         let mut file = OpenOptions::new()
             .create(true)
@@ -53,6 +64,14 @@ impl ErrorLogger {
         }
         Ok(())
     }
+}
+
+/// Macro for logging network errors with lazy formatting
+#[macro_export]
+macro_rules! log_network_error {
+    ($logger:expr, $source:expr, $($arg:tt)*) => {
+        $logger.log_network_error_fmt($source, format_args!($($arg)*))
+    };
 }
 
 #[cfg(test)]

@@ -265,7 +265,7 @@ async fn main() {
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
                             // Log to file instead of console to avoid UI spam
-                            error_logger.log_network_error("outgoing_connection", &format!("Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error));
+                            log_network_error!(error_logger, "outgoing_connection", "Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
                             // Only log connection errors that matter to the user
                             if let Some(peer_id) = peer_id {
                                 app.add_to_log(format!("Failed to connect to {}: {}", peer_id, error));
@@ -274,7 +274,7 @@ async fn main() {
                         },
                         SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, connection_id, .. } => {
                             // Log to file instead of console to avoid UI spam
-                            error_logger.log_network_error("incoming_connection", &format!("Failed incoming connection from {} to {} (connection id: {:?}): {}", send_back_addr, local_addr, connection_id, error));
+                            log_network_error!(error_logger, "incoming_connection", "Failed incoming connection from {} to {} (connection id: {:?}): {}", send_back_addr, local_addr, connection_id, error);
                             // Don't log incoming connection errors to reduce noise
                             None
                         },
