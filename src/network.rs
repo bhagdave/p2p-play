@@ -38,7 +38,7 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key
         }
     }
     Err(e) => {
-        println!("No existing key file found ({}), generating new one", e);
+        info!("No existing key file found ({}), generating new one", e);
         generate_and_save_keypair()
     }
 });

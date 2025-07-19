@@ -28,6 +28,7 @@ async fn main() {
     // Set up custom logger that filters libp2p errors from console but logs them to file
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
+        .filter_module("p2p_play", log::LevelFilter::Info)  // Allow our app's info messages
         .filter_module("libp2p", log::LevelFilter::Warn)
         .filter_module("libp2p_swarm", log::LevelFilter::Error)
         .filter_module("libp2p_tcp", log::LevelFilter::Error)
