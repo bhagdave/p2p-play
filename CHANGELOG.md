@@ -55,6 +55,7 @@ All changes to this project will be documented in this file.
 - Stories from unsubscribed channels are filtered out during network communication
 - Default "general" channel created automatically on first run
 - Backward compatibility for story storage while maintaining network protocol breaking change
+- Tests wil now only work with the test runner or you will get db failures
 
 ## [0.5.0] - 2025-07-14
 
