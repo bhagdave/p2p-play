@@ -32,10 +32,30 @@ pub struct App {
     pub scroll_offset: usize,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum InputMode {
     Normal,
     Editing,
+    CreatingStory {
+        step: StoryCreationStep,
+        partial_story: PartialStory,
+    },
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum StoryCreationStep {
+    Name,
+    Header,
+    Body,
+    Channel,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct PartialStory {
+    pub name: Option<String>,
+    pub header: Option<String>,
+    pub body: Option<String>,
+    pub channel: Option<String>,
 }
 
 pub enum AppEvent {
@@ -87,7 +107,7 @@ impl App {
 
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         if let Event::Key(key) = event {
-            match self.input_mode {
+            match &self.input_mode {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => {
                         self.should_quit = true;
@@ -137,6 +157,87 @@ impl App {
                     }
                     _ => {}
                 },
+                InputMode::CreatingStory { step, partial_story } => {
+                    match key.code {
+                        KeyCode::Esc => {
+                            self.cancel_story_creation();
+                        }
+                        KeyCode::Enter => {
+                            let input = self.input.trim().to_string();
+                            self.input.clear();
+                            
+                            let mut new_partial = partial_story.clone();
+                            let mut next_step = None;
+                            
+                            match step {
+                                StoryCreationStep::Name => {
+                                    if input.is_empty() {
+                                        self.add_to_log("❌ Story name cannot be empty. Please try again:".to_string());
+                                        return None;
+                                    }
+                                    new_partial.name = Some(input);
+                                    next_step = Some(StoryCreationStep::Header);
+                                    self.add_to_log("✅ Story name saved".to_string());
+                                    self.add_to_log("📄 Enter story header:".to_string());
+                                }
+                                StoryCreationStep::Header => {
+                                    if input.is_empty() {
+                                        self.add_to_log("❌ Story header cannot be empty. Please try again:".to_string());
+                                        return None;
+                                    }
+                                    new_partial.header = Some(input);
+                                    next_step = Some(StoryCreationStep::Body);
+                                    self.add_to_log("✅ Story header saved".to_string());
+                                    self.add_to_log("📖 Enter story body:".to_string());
+                                }
+                                StoryCreationStep::Body => {
+                                    if input.is_empty() {
+                                        self.add_to_log("❌ Story body cannot be empty. Please try again:".to_string());
+                                        return None;
+                                    }
+                                    new_partial.body = Some(input);
+                                    next_step = Some(StoryCreationStep::Channel);
+                                    self.add_to_log("✅ Story body saved".to_string());
+                                    self.add_to_log("📂 Enter channel (or press Enter for 'general'):".to_string());
+                                }
+                                StoryCreationStep::Channel => {
+                                    let channel = if input.is_empty() { "general".to_string() } else { input };
+                                    new_partial.channel = Some(channel);
+                                    
+                                    // Story creation complete - create the command string
+                                    if let (Some(name), Some(header), Some(body), Some(ch)) = 
+                                        (&new_partial.name, &new_partial.header, &new_partial.body, &new_partial.channel) {
+                                        let create_command = format!("create s {}|{}|{}|{}", name, header, body, ch);
+                                        self.input_mode = InputMode::Normal;
+                                        self.add_to_log("✅ Story creation complete!".to_string());
+                                        return Some(AppEvent::Input(create_command));
+                                    }
+                                }
+                            }
+                            
+                            // Update to next step if not complete
+                            if let Some(step) = next_step {
+                                self.input_mode = InputMode::CreatingStory {
+                                    step,
+                                    partial_story: new_partial,
+                                };
+                            }
+                        }
+                        KeyCode::Char(c) => {
+                            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                if c == 'c' {
+                                    self.cancel_story_creation();
+                                }
+                            } else {
+                                self.input.push(c);
+                            }
+                        }
+                        KeyCode::Backspace => {
+                            self.input.pop();
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
         None
@@ -184,6 +285,39 @@ impl App {
         ));
     }
 
+    pub fn start_story_creation(&mut self) {
+        self.input_mode = InputMode::CreatingStory {
+            step: StoryCreationStep::Name,
+            partial_story: PartialStory {
+                name: None,
+                header: None,
+                body: None,
+                channel: None,
+            },
+        };
+        self.input.clear();
+        self.add_to_log("📖 Starting interactive story creation...".to_string());
+        self.add_to_log("📝 Enter story name (or Esc to cancel):".to_string());
+    }
+
+    pub fn cancel_story_creation(&mut self) {
+        self.input_mode = InputMode::Normal;
+        self.input.clear();
+        self.add_to_log("❌ Story creation cancelled".to_string());
+    }
+
+    pub fn get_current_step_prompt(&self) -> String {
+        match &self.input_mode {
+            InputMode::CreatingStory { step, .. } => match step {
+                StoryCreationStep::Name => "📝 Enter story name:".to_string(),
+                StoryCreationStep::Header => "📄 Enter story header:".to_string(),
+                StoryCreationStep::Body => "📖 Enter story body:".to_string(),
+                StoryCreationStep::Channel => "📂 Enter channel (or press Enter for 'general'):".to_string(),
+            },
+            _ => "".to_string(),
+        }
+    }
+
     fn scroll_up(&mut self) {
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
@@ -221,6 +355,7 @@ impl App {
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
+                        InputMode::CreatingStory { .. } => "Creating Story",
                     }
                 )
             } else {
@@ -230,6 +365,7 @@ impl App {
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
+                        InputMode::CreatingStory { .. } => "Creating Story",
                     }
                 )
             };
@@ -332,14 +468,24 @@ impl App {
             let input_style = match self.input_mode {
                 InputMode::Normal => Style::default(),
                 InputMode::Editing => Style::default().fg(Color::Yellow),
+                InputMode::CreatingStory { .. } => Style::default().fg(Color::Green),
             };
 
-            let input_text = match self.input_mode {
+            let input_text = match &self.input_mode {
                 InputMode::Normal => {
                     "Press 'i' to enter input mode, ↑/↓ to scroll, 'c' to clear output, 'q' to quit"
                         .to_string()
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
+                InputMode::CreatingStory { step, .. } => {
+                    let prompt = match step {
+                        StoryCreationStep::Name => "📝 Story Name",
+                        StoryCreationStep::Header => "📄 Story Header", 
+                        StoryCreationStep::Body => "📖 Story Body",
+                        StoryCreationStep::Channel => "📂 Channel (Enter for 'general')",
+                    };
+                    format!("{}: {}", prompt, self.input)
+                }
             };
 
             let input = Paragraph::new(input_text)
@@ -347,12 +493,27 @@ impl App {
                 .block(Block::default().borders(Borders::ALL).title("Input"));
             f.render_widget(input, chunks[2]);
 
-            // Set cursor position if in editing mode
-            if self.input_mode == InputMode::Editing {
-                f.set_cursor(
-                    chunks[2].x + self.input.len() as u16 + 10, // 10 is for "Command: "
-                    chunks[2].y + 1,
-                );
+            // Set cursor position if in editing mode or creating story
+            match &self.input_mode {
+                InputMode::Editing => {
+                    f.set_cursor(
+                        chunks[2].x + self.input.len() as u16 + 10, // 10 is for "Command: "
+                        chunks[2].y + 1,
+                    );
+                }
+                InputMode::CreatingStory { step, .. } => {
+                    let prefix_len = match step {
+                        StoryCreationStep::Name => "📝 Story Name: ".len(),
+                        StoryCreationStep::Header => "📄 Story Header: ".len(),
+                        StoryCreationStep::Body => "📖 Story Body: ".len(),
+                        StoryCreationStep::Channel => "📂 Channel (Enter for 'general'): ".len(),
+                    };
+                    f.set_cursor(
+                        chunks[2].x + self.input.len() as u16 + prefix_len as u16 + 1,
+                        chunks[2].y + 1,
+                    );
+                }
+                _ => {}
             }
         })?;
 
@@ -417,6 +578,58 @@ mod tests {
 
         // Test that we can create all event variants
         assert_eq!(events.len(), 7);
+    }
+
+    #[test]
+    fn test_story_creation_states() {
+        // Test story creation step enumeration
+        let steps = vec![
+            StoryCreationStep::Name,
+            StoryCreationStep::Header,
+            StoryCreationStep::Body,
+            StoryCreationStep::Channel,
+        ];
+        assert_eq!(steps.len(), 4);
+
+        // Test partial story creation
+        let partial = PartialStory {
+            name: Some("Test Story".to_string()),
+            header: Some("Test Header".to_string()),
+            body: None,
+            channel: None,
+        };
+        assert_eq!(partial.name, Some("Test Story".to_string()));
+        assert_eq!(partial.header, Some("Test Header".to_string()));
+        assert!(partial.body.is_none());
+        assert!(partial.channel.is_none());
+    }
+
+    #[test]
+    fn test_input_mode_story_creation() {
+        let normal_mode = InputMode::Normal;
+        let editing_mode = InputMode::Editing;
+        let creating_mode = InputMode::CreatingStory {
+            step: StoryCreationStep::Name,
+            partial_story: PartialStory {
+                name: None,
+                header: None,
+                body: None,
+                channel: None,
+            },
+        };
+
+        assert_eq!(normal_mode, InputMode::Normal);
+        assert_eq!(editing_mode, InputMode::Editing);
+        assert_ne!(normal_mode, creating_mode);
+        assert_ne!(editing_mode, creating_mode);
+
+        // Test that story creation mode holds the right data
+        if let InputMode::CreatingStory { step, partial_story } = creating_mode {
+            assert_eq!(step, StoryCreationStep::Name);
+            assert!(partial_story.name.is_none());
+        } else {
+            panic!("Expected CreatingStory mode");
+        }
     }
 
     #[test]

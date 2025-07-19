@@ -12,7 +12,7 @@ use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{ensure_stories_file_exists, load_local_peer_name};
-use types::{EventType, PeerName};
+use types::{ActionResult, EventType, PeerName};
 use ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -287,7 +287,7 @@ async fn main() {
         };
 
         if let Some(event) = evt {
-            if let Some(()) = handle_event(
+            if let Some(action_result) = handle_event(
                 event,
                 &mut swarm,
                 &mut peer_names,
@@ -300,14 +300,22 @@ async fn main() {
             )
             .await
             {
-                // Stories were updated, refresh them
-                match storage::read_local_stories().await {
-                    Ok(stories) => {
-                        info!("Refreshed {} stories", stories.len());
-                        app.update_local_stories(stories);
+                match action_result {
+                    ActionResult::RefreshStories => {
+                        // Stories were updated, refresh them
+                        match storage::read_local_stories().await {
+                            Ok(stories) => {
+                                info!("Refreshed {} stories", stories.len());
+                                app.update_local_stories(stories);
+                            }
+                            Err(e) => {
+                                error!("Failed to refresh stories: {}", e);
+                            }
+                        }
                     }
-                    Err(e) => {
-                        error!("Failed to refresh stories: {}", e);
+                    ActionResult::StartStoryCreation => {
+                        // Start interactive story creation mode
+                        app.start_story_creation();
                     }
                 }
             }

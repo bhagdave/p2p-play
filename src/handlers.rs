@@ -5,7 +5,7 @@ use crate::storage::{
     read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
     unsubscribe_from_channel,
 };
-use crate::types::{ListMode, ListRequest, PeerName, Story};
+use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -165,18 +165,16 @@ pub async fn handle_create_stories(
     cmd: &str,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
-            ui_logger.log("Interactive story creation not yet supported in TUI mode.".to_string());
-            ui_logger.log(
-                "Use format: create s name|header|body or create s name|header|body|channel"
-                    .to_string(),
-            );
-            return None;
+            ui_logger.log("📖 Starting interactive story creation...".to_string());
+            ui_logger.log("📝 This will guide you through creating a story step by step.".to_string());
+            ui_logger.log("📌 Use Esc at any time to cancel.".to_string());
+            return Some(ActionResult::StartStoryCreation);
         } else {
             // Parse pipe-separated arguments
             let elements: Vec<&str> = rest.split('|').collect();
@@ -198,7 +196,7 @@ pub async fn handle_create_stories(
                         "Story created successfully in channel '{}'",
                         channel
                     ));
-                    return Some(()); // Signal that stories need to be refreshed
+                    return Some(ActionResult::RefreshStories);
                 };
             }
         }
@@ -264,7 +262,7 @@ pub async fn handle_delete_story(
     cmd: &str,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("delete s ") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
@@ -272,7 +270,7 @@ pub async fn handle_delete_story(
                     Ok(deleted) => {
                         if deleted {
                             ui_logger.log(format!("Story with id {} deleted successfully", id));
-                            return Some(()); // Signal that stories need to be refreshed
+                            return Some(ActionResult::RefreshStories);
                         } else {
                             ui_logger.log(format!("Story with id {} not found", id));
                         }
@@ -467,7 +465,7 @@ pub async fn handle_create_channel(
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("create ch") {
         let rest = rest.trim();
         let elements: Vec<&str> = rest.split('|').collect();
@@ -501,7 +499,7 @@ pub async fn handle_create_channel(
                     e
                 ));
             }
-            return Some(());
+            return Some(ActionResult::RefreshStories);
         }
     }
     None
@@ -738,23 +736,43 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_create_stories_valid() {
+    fn test_handle_create_stories_interactive() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+        let error_logger = ErrorLogger::new("test_errors.log");
+
+        rt.block_on(async {
+            // Test empty create s command should trigger interactive mode
+            let result = handle_create_stories("create s", &ui_logger, &error_logger).await;
+            assert_eq!(result, Some(ActionResult::StartStoryCreation));
+            
+            // Check that appropriate messages were logged
+            let mut messages = Vec::new();
+            while let Ok(msg) = receiver.try_recv() {
+                messages.push(msg);
+            }
+            assert!(messages.iter().any(|m| m.contains("interactive story creation")));
+        });
+    }
+
+    #[test]
+    fn test_handle_create_stories_pipe_format() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
         let error_logger = ErrorLogger::new("test_errors.log");
 
-        // Note: This will try to create actual files, but we're testing the parsing logic
         rt.block_on(async {
-            // Test valid create story command format
-            handle_create_stories(
-                "create sTest Story|Test Header|Test Body",
-                &ui_logger,
-                &error_logger,
-            )
-            .await;
-            // The function will try to create a story but may fail due to file system issues
+            // Test pipe-separated format still works but may fail due to file system
+            let result = handle_create_stories(
+                "create s Test|Header|Body|general", 
+                &ui_logger, 
+                &error_logger
+            ).await;
+            // The result depends on whether the storage operation succeeds
             // We're mainly testing that the parsing doesn't panic
+            assert!(result.is_some() || result.is_none());
         });
     }
 

@@ -72,6 +72,12 @@ pub struct ChannelSubscription {
 pub type Channels = Vec<Channel>;
 pub type ChannelSubscriptions = Vec<ChannelSubscription>;
 
+#[derive(Debug, PartialEq)]
+pub enum ActionResult {
+    RefreshStories,
+    StartStoryCreation,
+}
+
 pub enum EventType {
     Response(ListResponse),
     Input(String),
@@ -563,5 +569,15 @@ mod tests {
 
         assert_eq!(dm1, dm2);
         assert_ne!(dm1, dm3);
+    }
+
+    #[test]
+    fn test_action_result_variants() {
+        let refresh = ActionResult::RefreshStories;
+        let start_creation = ActionResult::StartStoryCreation;
+        
+        assert_eq!(refresh, ActionResult::RefreshStories);
+        assert_eq!(start_creation, ActionResult::StartStoryCreation);
+        assert_ne!(refresh, start_creation);
     }
 }
