@@ -5,7 +5,7 @@ use crate::storage::{
     read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
     unsubscribe_from_channel,
 };
-use crate::types::{DirectMessage, ListMode, ListRequest, PeerName, Story};
+use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;

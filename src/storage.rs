@@ -546,7 +546,7 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
     let mut stmt = conn.prepare(
         "SELECT channel_name FROM channel_subscriptions WHERE peer_id = ? ORDER BY channel_name",
     )?;
-    let channel_iter = stmt.query_map([peer_id], |row| Ok(row.get::<_, String>(0)?))?;
+    let channel_iter = stmt.query_map([peer_id], |row| row.get::<_, String>(0))?;
 
     let mut channels = Vec::new();
     for channel in channel_iter {
@@ -599,6 +599,27 @@ pub async fn get_stories_by_channel(channel_name: &str) -> Result<Stories, Box<d
     }
 
     Ok(stories)
+}
+
+/// Clears all data from the database and ensures fresh test database (useful for testing)
+pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
+    // Reset the connection to ensure we're using the test database path
+    reset_db_connection_for_testing().await?;
+
+    // Ensure the test database is initialized
+    ensure_stories_file_exists().await?;
+
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Clear all tables
+    conn.execute("DELETE FROM channel_subscriptions", [])?;
+    conn.execute("DELETE FROM stories", [])?;
+    conn.execute("DELETE FROM channels WHERE name != 'general'", [])?; // Keep general channel
+    conn.execute("DELETE FROM peer_name", [])?;
+
+    info!("Test database cleared and reset");
+    Ok(())
 }
 
 #[cfg(test)]
@@ -991,25 +1012,4 @@ mod tests {
         let stories = read_local_stories_from_path(test_path_str).await.unwrap();
         assert_eq!(stories.len(), 0);
     }
-}
-
-/// Clears all data from the database and ensures fresh test database (useful for testing)
-pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
-    // Reset the connection to ensure we're using the test database path
-    reset_db_connection_for_testing().await?;
-
-    // Ensure the test database is initialized
-    ensure_stories_file_exists().await?;
-
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    // Clear all tables
-    conn.execute("DELETE FROM channel_subscriptions", [])?;
-    conn.execute("DELETE FROM stories", [])?;
-    conn.execute("DELETE FROM channels WHERE name != 'general'", [])?; // Keep general channel
-    conn.execute("DELETE FROM peer_name", [])?;
-
-    info!("Test database cleared and reset");
-    Ok(())
 }
