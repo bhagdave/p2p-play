@@ -290,7 +290,6 @@ pub async fn handle_set_name(
         }
 
         *local_peer_name = Some(name.to_string());
-        ui_logger.log(format!("Set local peer name to: {}", name));
 
         // Save the peer name to storage for persistence across restarts
         if let Err(e) = save_local_peer_name(name).await {
