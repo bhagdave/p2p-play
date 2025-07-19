@@ -387,6 +387,7 @@ async fn test_channel_creation_and_management() {
 
     // Initialize database
     ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
 
     // Test channel creation
     let channel_name = "tech";
@@ -416,6 +417,7 @@ async fn test_channel_subscriptions() {
 
     // Initialize database
     ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
 
     let peer_id = "test_peer_123";
     let channel1 = "tech";
@@ -481,6 +483,7 @@ async fn test_channel_story_filtering() {
 
     // Initialize database
     ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
 
     let peer_id = "filter_test_peer";
     
@@ -627,6 +630,11 @@ async fn test_story_serialization_with_channel() {
 #[tokio::test]
 async fn test_channel_subscription_data_structures() {
     use p2p_play::types::*;
+    use p2p_play::storage::*;
+
+    // Initialize and clear database to be safe
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
 
     // Test Channel creation
     let channel = Channel::new(
