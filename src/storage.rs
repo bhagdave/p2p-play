@@ -4,35 +4,65 @@ use rusqlite::Connection;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::fs;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::migrations;
 
-const DATABASE_PATH: &str = "./stories.db";
 const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
 
-// Thread-safe database connection
-static DB_CONN: once_cell::sync::OnceCell<Arc<Mutex<Connection>>> =
-    once_cell::sync::OnceCell::new();
+/// Get the database path, checking environment variables for custom paths
+fn get_database_path() -> String {
+    // Check for test database path first (for integration tests)
+    if let Ok(test_path) = std::env::var("TEST_DATABASE_PATH") {
+        return test_path;
+    }
+    
+    // Check for custom database path
+    if let Ok(db_path) = std::env::var("DATABASE_PATH") {
+        return db_path;
+    }
+    
+    // Default production path
+    "./stories.db".to_string()
+}
+
+// Thread-safe database connection storage with support for dynamic paths
+static DB_STATE: once_cell::sync::Lazy<RwLock<Option<(Arc<Mutex<Connection>>, String)>>> =
+    once_cell::sync::Lazy::new(|| RwLock::new(None));
 
 async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
-    if let Some(conn) = DB_CONN.get() {
-        Ok(conn.clone())
-    } else {
-        info!("Creating new SQLite database connection: {}", DATABASE_PATH);
-
-        // Create the database file and connection
-        let conn = Connection::open(DATABASE_PATH)?;
-        let conn_arc = Arc::new(Mutex::new(conn));
-
-        // Initialize the connection in the static variable
-        DB_CONN
-            .set(conn_arc.clone())
-            .map_err(|_| "Failed to initialize database connection")?;
-
-        info!("Successfully connected to SQLite database");
-        Ok(conn_arc)
+    let current_path = get_database_path();
+    
+    // Check if we have an existing connection with the same path
+    {
+        let state = DB_STATE.read().await;
+        if let Some((conn, stored_path)) = state.as_ref() {
+            if stored_path == &current_path {
+                return Ok(conn.clone());
+            }
+        }
     }
+
+    // Need to create or update connection
+    info!("Creating new SQLite database connection: {}", current_path);
+    let conn = Connection::open(&current_path)?;
+    let conn_arc = Arc::new(Mutex::new(conn));
+
+    // Update the stored connection and path
+    {
+        let mut state = DB_STATE.write().await;
+        *state = Some((conn_arc.clone(), current_path));
+    }
+
+    info!("Successfully connected to SQLite database");
+    Ok(conn_arc)
+}
+
+/// Reset database connection (useful for testing)
+pub async fn reset_db_connection_for_testing() -> Result<(), Box<dyn Error>> {
+    let mut state = DB_STATE.write().await;
+    *state = None;
+    Ok(())
 }
 
 async fn create_tables() -> Result<(), Box<dyn Error>> {
@@ -44,10 +74,11 @@ async fn create_tables() -> Result<(), Box<dyn Error>> {
 }
 
 pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
-    info!("Initializing SQLite database at: {}", DATABASE_PATH);
+    let db_path = get_database_path();
+    info!("Initializing SQLite database at: {}", db_path);
 
     // Ensure the directory exists for the database file
-    if let Some(parent) = std::path::Path::new(DATABASE_PATH).parent() {
+    if let Some(parent) = std::path::Path::new(&db_path).parent() {
         if !parent.exists() {
             info!("Creating directory: {:?}", parent);
             tokio::fs::create_dir_all(parent).await?;
@@ -943,8 +974,14 @@ mod tests {
     }
 }
 
-/// Clears all data from the database (useful for testing)
+/// Clears all data from the database and ensures fresh test database (useful for testing)
 pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
+    // Reset the connection to ensure we're using the test database path
+    reset_db_connection_for_testing().await?;
+    
+    // Ensure the test database is initialized
+    ensure_stories_file_exists().await?;
+    
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -954,6 +991,6 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     conn.execute("DELETE FROM channels WHERE name != 'general'", [])?; // Keep general channel
     conn.execute("DELETE FROM peer_name", [])?;
 
-    info!("Database cleared for testing");
+    info!("Test database cleared and reset");
     Ok(())
 }
