@@ -400,6 +400,10 @@ mod tests {
             result: Ok(Duration::from_millis(50)),
         };
         let _ping_event_type = EventType::PingEvent(ping_event);
+
+        // Test kad event
+        let kad_event = libp2p::kad::Event::ModeChanged { new_mode: libp2p::kad::Mode::Client };
+        let _kad_event_type = EventType::KadEvent(kad_event);
     }
 
     #[test]

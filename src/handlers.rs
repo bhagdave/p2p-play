@@ -759,7 +759,32 @@ mod tests {
         assert!(messages.iter().any(|m| m.contains("ls p")));
         assert!(messages.iter().any(|m| m.contains("create s")));
         assert!(messages.iter().any(|m| m.contains("show story")));
+        assert!(messages.iter().any(|m| m.contains("dht bootstrap")));
+        assert!(messages.iter().any(|m| m.contains("dht peers")));
         assert!(messages.iter().any(|m| m.contains("quit")));
+    }
+
+    #[test]
+    fn test_extract_peer_id_from_multiaddr() {
+        use libp2p::multiaddr::Protocol;
+        
+        // Test with valid multiaddr containing peer ID
+        let peer_id = *PEER_ID;
+        let mut addr = libp2p::Multiaddr::empty();
+        addr.push(Protocol::Ip4([127, 0, 0, 1].into()));
+        addr.push(Protocol::Tcp(8080));
+        addr.push(Protocol::P2p(peer_id));
+        
+        let extracted = super::extract_peer_id_from_multiaddr(&addr);
+        assert_eq!(extracted, Some(peer_id));
+        
+        // Test with multiaddr without peer ID
+        let mut addr_no_peer = libp2p::Multiaddr::empty();
+        addr_no_peer.push(Protocol::Ip4([127, 0, 0, 1].into()));
+        addr_no_peer.push(Protocol::Tcp(8080));
+        
+        let extracted_none = super::extract_peer_id_from_multiaddr(&addr_no_peer);
+        assert_eq!(extracted_none, None);
     }
 
     #[tokio::test]

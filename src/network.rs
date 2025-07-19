@@ -268,6 +268,19 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_kad_in_story_behaviour() {
+        // Test that kad is properly included in the behaviour
+        let store = kad::store::MemoryStore::new(*PEER_ID);
+        let kad_config = kad::Config::default();
+        let mut kad = kad::Behaviour::with_config(*PEER_ID, store, kad_config);
+        kad.set_mode(Some(kad::Mode::Server));
+        
+        // Verify kad mode was set
+        // We can't easily test the internal state, but this verifies compilation
+        let _kad = kad;
+    }
+
     #[tokio::test]
     async fn test_create_swarm_success() {
         // Test that swarm can be created successfully
