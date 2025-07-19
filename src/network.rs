@@ -24,15 +24,15 @@ pub struct DirectMessageResponse {
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
-        println!("Found existing peer key file, attempting to load");
+        info!("Found existing peer key file, attempting to load");
         match identity::Keypair::from_protobuf_encoding(&bytes) {
             Ok(keypair) => {
                 let peer_id = PeerId::from(keypair.public());
-                println!("Successfully loaded keypair with PeerId: {}", peer_id);
+                info!("Successfully loaded keypair with PeerId: {}", peer_id);
                 keypair
             }
             Err(e) => {
-                println!("Error loading keypair: {}, generating new one", e);
+                info!("Error loading keypair: {}, generating new one", e);
                 generate_and_save_keypair()
             }
         }
@@ -49,14 +49,14 @@ pub static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 fn generate_and_save_keypair() -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
-    println!("Generated new keypair with PeerId: {}", peer_id);
+    info!("Generated new keypair with PeerId: {}", peer_id);
 
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
-            Ok(_) => println!("Successfully saved keypair to file"),
-            Err(e) => println!("Failed to save keypair: {}", e),
+            Ok(_) => info!("Successfully saved keypair to file"),
+            Err(e) => info!("Failed to save keypair: {}", e),
         },
-        Err(e) => println!("Failed to encode keypair: {}", e),
+        Err(e) => info!("Failed to encode keypair: {}", e),
     }
     keypair
 }
