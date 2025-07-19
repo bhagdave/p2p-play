@@ -2,6 +2,19 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- Removed handshake failures and network error messages from console output to prevent TUI interface disruption
+- Replaced println! statements in network.rs with proper logging calls
+- Network connection errors (incoming/outgoing) now log to error file instead of console
+
+### Changed
+- Updated logging system from pretty_env_logger to env_logger for better control
+- Added custom logger configuration to filter libp2p internal errors from console
+- Enhanced ErrorLogger with log_network_error() method for network-specific error handling
+- Configured log level filtering to suppress noisy libp2p module messages (libp2p_swarm, libp2p_tcp, etc.)
+
 ## [0.6.0] - 2025-07-16
 
 ### Added
