@@ -25,7 +25,17 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() {
-    pretty_env_logger::init();
+    // Set up custom logger that filters libp2p errors from console but logs them to file
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .filter_module("p2p_play", log::LevelFilter::Info) // Allow our app's info messages
+        .filter_module("libp2p", log::LevelFilter::Warn)
+        .filter_module("libp2p_swarm", log::LevelFilter::Error)
+        .filter_module("libp2p_tcp", log::LevelFilter::Error)
+        .filter_module("libp2p_noise", log::LevelFilter::Error)
+        .filter_module("libp2p_yamux", log::LevelFilter::Error)
+        .filter_module("multistream_select", log::LevelFilter::Error)
+        .init();
 
     info!("Peer Id: {}", PEER_ID.clone());
 
@@ -248,13 +258,17 @@ async fn main() {
                             None
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
-                            error!("Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
-                            // Connection errors are logged to file but not shown in UI to reduce noise
+                            // Log to file instead of console to avoid UI spam
+                            log_network_error!(error_logger, "outgoing_connection", "Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
+                            // Only log connection errors that matter to the user
+                            if let Some(peer_id) = peer_id {
+                                app.add_to_log(format!("Failed to connect to {}: {}", peer_id, error));
+                            }
                             None
                         },
                         SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, connection_id, .. } => {
-                            error!("Failed incoming connection from {} to {} (connection id: {:?}): {}",
-                                   send_back_addr, local_addr, connection_id, error);
+                            // Log to file instead of console to avoid UI spam
+                            log_network_error!(error_logger, "incoming_connection", "Failed incoming connection from {} to {} (connection id: {:?}): {}", send_back_addr, local_addr, connection_id, error);
                             // Don't log incoming connection errors to reduce noise
                             None
                         },
