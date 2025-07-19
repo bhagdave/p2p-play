@@ -20,9 +20,9 @@ impl ErrorLogger {
         let log_entry = format!("[{}] ERROR: {}\n", timestamp, error_message);
 
         if let Err(e) = self.write_to_file(&log_entry) {
-            // If file writing fails, fall back to stderr
-            eprintln!("Failed to write to error log file: {}", e);
-            eprintln!("{}", log_entry.trim());
+            // If file writing fails, fall back to warn logging (shows in TUI)
+            warn!("Failed to write to error log file: {}", e);
+            warn!("{}", log_entry.trim());
         }
     }
 
