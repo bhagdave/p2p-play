@@ -1,5 +1,5 @@
 use crate::error_logger::ErrorLogger;
-use crate::network::{PEER_ID, StoryBehaviour, TOPIC, DirectMessageRequest};
+use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{create_new_story, publish_story, read_local_stories, save_local_peer_name};
 use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
@@ -365,10 +365,11 @@ pub async fn handle_direct_message(
         };
 
         // Check if the target peer exists and find their PeerId
-        let target_peer_id = peer_names.iter()
+        let target_peer_id = peer_names
+            .iter()
             .find(|(_, name)| name == &&to_name)
             .map(|(peer_id, _)| *peer_id);
-        
+
         let target_peer_id = match target_peer_id {
             Some(peer_id) => peer_id,
             None => {

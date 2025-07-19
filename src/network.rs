@@ -1,6 +1,6 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
-use libp2p::{PeerId, identity, mdns, ping, request_response, StreamProtocol};
+use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response};
 use log::info;
 use once_cell::sync::Lazy;
 use std::fs;
@@ -67,7 +67,8 @@ pub struct StoryBehaviour {
     pub floodsub: Behaviour,
     pub mdns: mdns::tokio::Behaviour,
     pub ping: ping::Behaviour,
-    pub request_response: request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
+    pub request_response:
+        request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
 }
 
 #[derive(Debug)]
@@ -96,7 +97,9 @@ impl From<ping::Event> for StoryBehaviourEvent {
     }
 }
 
-impl From<request_response::Event<DirectMessageRequest, DirectMessageResponse>> for StoryBehaviourEvent {
+impl From<request_response::Event<DirectMessageRequest, DirectMessageResponse>>
+    for StoryBehaviourEvent
+{
     fn from(event: request_response::Event<DirectMessageRequest, DirectMessageResponse>) -> Self {
         StoryBehaviourEvent::RequestResponse(event)
     }
@@ -116,12 +119,12 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     let protocol = request_response::ProtocolSupport::Full;
     let dm_protocol = StreamProtocol::new("/dm/1.0.0");
     let protocols = iter::once((dm_protocol, protocol));
-    
+
     // Configure request-response protocol with timeouts and retry policies
     let cfg = request_response::Config::default()
         .with_request_timeout(std::time::Duration::from_secs(30))
         .with_max_concurrent_streams(100);
-    
+
     let request_response = request_response::cbor::Behaviour::new(protocols, cfg);
 
     let mut behaviour = StoryBehaviour {
@@ -269,30 +272,30 @@ mod tests {
             message: "Hello!".to_string(),
             timestamp: 1000,
         };
-        
+
         assert_eq!(request.from_peer_id, "peer123");
         assert_eq!(request.from_name, "Alice");
         assert_eq!(request.to_name, "Bob");
         assert_eq!(request.message, "Hello!");
         assert_eq!(request.timestamp, 1000);
-        
+
         // Test DirectMessageResponse
         let response = DirectMessageResponse {
             received: true,
             timestamp: 2000,
         };
-        
+
         assert!(response.received);
         assert_eq!(response.timestamp, 2000);
     }
-    
+
     #[test]
     fn test_request_response_protocol_configuration() {
         // Test that we can create a request-response configuration
         let cfg = request_response::Config::default()
             .with_request_timeout(std::time::Duration::from_secs(30))
             .with_max_concurrent_streams(100);
-        
+
         // These tests verify the configuration can be created
         // The actual timeout values are internal to libp2p, so we can't easily test them directly
         // but we can verify the configuration build process works

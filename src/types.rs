@@ -1,7 +1,7 @@
+use crate::network::{DirectMessageRequest, DirectMessageResponse};
 use libp2p::floodsub::Event;
 use libp2p::{mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
-use crate::network::{DirectMessageRequest, DirectMessageResponse};
 
 pub type Stories = Vec<Story>;
 
