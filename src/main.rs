@@ -219,6 +219,7 @@ async fn main() {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => Some(EventType::MdnsEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(event)) => Some(EventType::PingEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(event)) => Some(EventType::RequestResponseEvent(event)),
+                        SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => Some(EventType::KadEvent(event)),
                         SwarmEvent::NewListenAddr { address, .. } => {
                             info!("Local node is listening on {}", address);
                             app.add_to_log(format!("Local node is listening on {}", address));

@@ -1,6 +1,6 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
-use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response};
+use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response, kad};
 use log::{info, warn, error};
 use once_cell::sync::Lazy;
 use std::fs;
@@ -69,6 +69,7 @@ pub struct StoryBehaviour {
     pub ping: ping::Behaviour,
     pub request_response:
         request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
+    pub kad: kad::Behaviour<kad::store::MemoryStore>,
 }
 
 #[derive(Debug)]
@@ -77,6 +78,7 @@ pub enum StoryBehaviourEvent {
     Mdns(mdns::Event),
     Ping(ping::Event),
     RequestResponse(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
+    Kad(kad::Event),
 }
 
 impl From<Event> for StoryBehaviourEvent {
@@ -105,6 +107,12 @@ impl From<request_response::Event<DirectMessageRequest, DirectMessageResponse>>
     }
 }
 
+impl From<kad::Event> for StoryBehaviourEvent {
+    fn from(event: kad::Event) -> Self {
+        StoryBehaviourEvent::Kad(event)
+    }
+}
+
 pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
@@ -127,11 +135,20 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     let request_response = request_response::cbor::Behaviour::new(protocols, cfg);
 
+    // Create Kademlia DHT
+    let store = kad::store::MemoryStore::new(*PEER_ID);
+    let kad_config = kad::Config::default();
+    let mut kad = kad::Behaviour::with_config(*PEER_ID, store, kad_config);
+
+    // Set Kademlia mode to server to accept queries and provide records
+    kad.set_mode(Some(kad::Mode::Server));
+
     let mut behaviour = StoryBehaviour {
         floodsub: Behaviour::new(*PEER_ID),
         mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
         ping: ping::Behaviour::new(ping::Config::new()),
         request_response,
+        kad,
     };
 
     info!("Created floodsub with peer id: {:?}", PEER_ID.clone());
@@ -231,6 +248,23 @@ mod tests {
                 // Conversion worked
             }
             _ => panic!("Expected Ping event"),
+        }
+    }
+
+    #[test]
+    fn test_story_behaviour_event_from_kad() {
+        use libp2p::kad::Event as KadEvent;
+
+        // Create a mock kad event - using the simplest variant
+        let kad_event = KadEvent::ModeChanged { new_mode: libp2p::kad::Mode::Client };
+
+        // Test conversion
+        let story_event = StoryBehaviourEvent::from(kad_event);
+        match story_event {
+            StoryBehaviourEvent::Kad(_) => {
+                // Conversion worked
+            }
+            _ => panic!("Expected Kad event"),
         }
     }
 

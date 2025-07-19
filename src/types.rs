@@ -1,6 +1,6 @@
 use crate::network::{DirectMessageRequest, DirectMessageResponse};
 use libp2p::floodsub::Event;
-use libp2p::{mdns, ping, request_response};
+use libp2p::{mdns, ping, request_response, kad};
 use serde::{Deserialize, Serialize};
 
 pub type Stories = Vec<Story>;
@@ -79,6 +79,7 @@ pub enum EventType {
     MdnsEvent(mdns::Event),
     PingEvent(ping::Event),
     RequestResponseEvent(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
+    KadEvent(kad::Event),
     PublishStory(Story),
     PeerName(PeerName),
     DirectMessage(DirectMessage),

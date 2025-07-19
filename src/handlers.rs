@@ -307,6 +307,8 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
+    ui_logger.log("dht bootstrap <multiaddr> to bootstrap DHT with a peer".to_string());
+    ui_logger.log("dht peers to find closest peers in DHT".to_string());
     ui_logger.log("quit to quit".to_string());
 }
 
@@ -613,6 +615,67 @@ pub async fn establish_direct_connection(
         }
         Err(e) => ui_logger.log(format!("Failed to parse address: {}", e)),
     }
+}
+
+/// Handle DHT bootstrap command
+pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    if let Some(addr_str) = cmd.strip_prefix("dht bootstrap ") {
+        let addr_str = addr_str.trim();
+        
+        if addr_str.is_empty() {
+            ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
+            ui_logger.log("Example: dht bootstrap /ip4/172.105.162.14/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+            return;
+        }
+
+        match addr_str.parse::<libp2p::Multiaddr>() {
+            Ok(addr) => {
+                ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {}", addr));
+                
+                // First, try to dial the peer to establish connection
+                if let Err(e) = swarm.dial(addr.clone()) {
+                    ui_logger.log(format!("Failed to dial bootstrap peer: {}", e));
+                    return;
+                }
+                
+                // Add the address as a bootstrap peer in the DHT
+                if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
+                    swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                    
+                    // Start bootstrap process
+                    if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
+                        ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
+                    } else {
+                        ui_logger.log("DHT bootstrap started successfully".to_string());
+                    }
+                } else {
+                    ui_logger.log("Failed to extract peer ID from multiaddr".to_string());
+                }
+            }
+            Err(e) => ui_logger.log(format!("Failed to parse multiaddr: {}", e)),
+        }
+    } else {
+        ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
+    }
+}
+
+/// Handle DHT get closest peers command
+pub async fn handle_dht_get_peers(_cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    ui_logger.log("Searching for closest peers in DHT...".to_string());
+    
+    // Get closest peers to our own peer ID
+    let _query_id = swarm.behaviour_mut().kad.get_closest_peers(*PEER_ID);
+    ui_logger.log("DHT peer search started (results will appear in events)".to_string());
+}
+
+/// Extract peer ID from a multiaddr if it contains one
+fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
+    for protocol in addr.iter() {
+        if let libp2p::multiaddr::Protocol::P2p(peer_id) = protocol {
+            return Some(peer_id);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
