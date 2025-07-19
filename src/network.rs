@@ -32,7 +32,7 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key
                 keypair
             }
             Err(e) => {
-                info!("Error loading keypair: {}, generating new one", e);
+                warn!("Error loading keypair: {}, generating new one", e);
                 generate_and_save_keypair()
             }
         }
@@ -54,9 +54,9 @@ fn generate_and_save_keypair() -> identity::Keypair {
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
             Ok(_) => info!("Successfully saved keypair to file"),
-            Err(e) => info!("Failed to save keypair: {}", e),
+            Err(e) => error!("Failed to save keypair: {}", e),
         },
-        Err(e) => info!("Failed to encode keypair: {}", e),
+        Err(e) => error!("Failed to encode keypair: {}", e),
     }
     keypair
 }
