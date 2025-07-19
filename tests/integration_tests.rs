@@ -385,6 +385,9 @@ async fn test_name_command_shows_current_alias() {
 async fn test_channel_creation_and_management() {
     use p2p_play::storage::*;
 
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+
     // Test channel creation
     let channel_name = "tech";
     let description = "Technology discussions";
@@ -410,6 +413,9 @@ async fn test_channel_creation_and_management() {
 #[tokio::test]
 async fn test_channel_subscriptions() {
     use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
 
     let peer_id = "test_peer_123";
     let channel1 = "tech";
@@ -446,13 +452,12 @@ async fn test_channel_subscriptions() {
 async fn test_stories_with_channels() {
     use p2p_play::storage::*;
 
-    let temp_file = tempfile::NamedTempFile::new().unwrap();
-    let path = temp_file.path().to_str().unwrap();
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
 
-    // Create stories in different channels
-    let story_id1 = create_new_story_in_path("Tech Story", "Header", "Body", path).await.unwrap();
-    
-    // Directly test create_new_story_with_channel
+    // Create stories in different channels using database functions
+    create_new_story_with_channel("Tech Story", "Header", "Body", "general").await.unwrap();
     create_new_story_with_channel("Gaming Story", "Game Header", "Game Body", "gaming").await.unwrap();
     create_new_story_with_channel("News Story", "News Header", "News Body", "news").await.unwrap();
 
@@ -473,6 +478,9 @@ async fn test_stories_with_channels() {
 #[tokio::test]
 async fn test_channel_story_filtering() {
     use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
 
     let peer_id = "filter_test_peer";
     
@@ -520,6 +528,10 @@ async fn test_channel_story_filtering() {
 #[tokio::test]
 async fn test_channel_workflow_integration() {
     use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
 
     // Simulate two peers with different channel subscriptions
     let peer1_id = "peer1";
