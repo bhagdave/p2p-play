@@ -135,4 +135,32 @@ mod tests {
         // Should not panic when clearing a file that doesn't exist
         assert!(error_logger.clear_log().is_ok());
     }
+
+    #[test]
+    fn test_log_network_error_fmt() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+        let error_logger = ErrorLogger::new(path);
+
+        // Test the new formatting method
+        error_logger.log_network_error_fmt("test_source", format_args!("Error {} with code {}", "connection", 404));
+
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("NETWORK_ERROR [test_source]: Error connection with code 404"));
+        assert!(content.contains("UTC"));
+    }
+
+    #[test] 
+    fn test_log_network_error_macro() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+        let error_logger = ErrorLogger::new(path);
+
+        // Test the macro
+        log_network_error!(error_logger, "macro_test", "Failed to connect to peer {} with error {}", "peer123", "timeout");
+
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("NETWORK_ERROR [macro_test]: Failed to connect to peer peer123 with error timeout"));
+        assert!(content.contains("UTC"));
+    }
 }
