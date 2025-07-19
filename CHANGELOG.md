@@ -4,7 +4,19 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-07-16
+
 ### Added
+- **Channel System**: Complete channel-based story organization with subscription management
+- `ls ch` - List all available channels with descriptions
+- `ls sub` - List your channel subscriptions
+- `create ch name|description` - Create new channels for organizing stories
+- `sub <channel>` - Subscribe to specific channels to receive their stories
+- `unsub <channel>` - Unsubscribe from channels you no longer want to follow
+- Enhanced `create s` command with optional channel parameter: `create s name|header|body[|channel]`
+- Automatic subscription to "general" channel for all new users
+- Channel-based story filtering across the P2P network - peers only receive stories from subscribed channels
+- SQLite database tables for channels (`channels`) and subscriptions (`channel_subscriptions`)
 - Show current alias when 'name' command is used without arguments
 - Added test coverage for 'name' command functionality without arguments
 - Test verifies that typing just 'name' shows current alias or helpful message if no alias is set
@@ -16,9 +28,22 @@ All changes to this project will be documented in this file.
 - Updated UI instructions and help text to include information about the clear output feature
 
 ### Changed
+- **BREAKING CHANGE**: Updated `Story` structure to include `channel` field - not backward compatible with v0.5.x
+- **Network Protocol**: Stories now include channel information in serialization format
+- **Story Filtering**: Peer-to-peer story sharing now filtered by channel subscriptions
+- Stories default to "general" channel if no channel specified
+- Database migration automatically adds channel support to existing stories
+- Enhanced help text to include all new channel-related commands
 - Errors from story operations (list, create, publish) are now logged to file instead of being displayed in the UI
 - Cleaner user interface experience with errors no longer cluttering the display
 - Error logging includes fallback to stderr if file writing fails
+
+### Technical Details
+- Channel subscriptions are stored per peer in SQLite database
+- Automatic database migration adds channel column to existing story tables
+- Stories from unsubscribed channels are filtered out during network communication
+- Default "general" channel created automatically on first run
+- Backward compatibility for story storage while maintaining network protocol breaking change
 
 ## [0.5.0] - 2025-07-14
 
