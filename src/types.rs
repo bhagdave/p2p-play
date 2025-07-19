@@ -12,6 +12,7 @@ pub struct Story {
     pub header: String,
     pub body: String,
     pub public: bool,
+    pub channel: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -53,6 +54,24 @@ pub struct DirectMessage {
     pub timestamp: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Channel {
+    pub name: String,
+    pub description: String,
+    pub created_by: String,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct ChannelSubscription {
+    pub peer_id: String,
+    pub channel_name: String,
+    pub subscribed_at: u64,
+}
+
+pub type Channels = Vec<Channel>;
+pub type ChannelSubscriptions = Vec<ChannelSubscription>;
+
 pub enum EventType {
     Response(ListResponse),
     Input(String),
@@ -63,6 +82,8 @@ pub enum EventType {
     PublishStory(Story),
     PeerName(PeerName),
     DirectMessage(DirectMessage),
+    Channel(Channel),
+    ChannelSubscription(ChannelSubscription),
 }
 
 impl Story {
@@ -73,6 +94,25 @@ impl Story {
             header,
             body,
             public,
+            channel: "general".to_string(),
+        }
+    }
+
+    pub fn new_with_channel(
+        id: usize,
+        name: String,
+        header: String,
+        body: String,
+        public: bool,
+        channel: String,
+    ) -> Self {
+        Self {
+            id,
+            name,
+            header,
+            body,
+            public,
+            channel,
         }
     }
 
@@ -134,6 +174,37 @@ impl DirectMessage {
             to_name,
             message,
             timestamp,
+        }
+    }
+}
+
+impl Channel {
+    pub fn new(name: String, description: String, created_by: String) -> Self {
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            name,
+            description,
+            created_by,
+            created_at,
+        }
+    }
+}
+
+impl ChannelSubscription {
+    pub fn new(peer_id: String, channel_name: String) -> Self {
+        let subscribed_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            peer_id,
+            channel_name,
+            subscribed_at,
         }
     }
 }

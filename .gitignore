@@ -4,7 +4,7 @@ tags
 .idea
 peer_key
 stories.json
-stories.db
+*.db
 peer_name.json
 tags.lock
 tags.temp

@@ -83,10 +83,25 @@ pub async fn handle_input_event(
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
+        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
+        "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("create s") => {
             if let Some(()) = handle_create_stories(cmd, ui_logger, error_logger).await {
                 return Some(());
             }
+        }
+        cmd if cmd.starts_with("create ch") => {
+            if let Some(()) =
+                handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await
+            {
+                return Some(());
+            }
+        }
+        cmd if cmd.starts_with("sub ") => {
+            handle_subscribe_channel(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("unsub ") => {
+            handle_unsubscribe_channel(cmd, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("publish s") => {
             handle_publish_story(cmd, story_sender.clone(), ui_logger, error_logger).await
@@ -188,26 +203,50 @@ pub async fn handle_floodsub_event(
                 }
             } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                 if published.publisher != PEER_ID.to_string() {
-                    info!(
-                        "Received published story '{}' from {}",
-                        published.story.name, msg.source
-                    );
-                    info!("Story: {:?}", published.story);
-                    ui_logger.log(format!(
-                        "📖 Received story '{}' from {}",
-                        published.story.name, msg.source
-                    ));
-
-                    // Save received story to local storage asynchronously
-                    let story_to_save = published.story.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = save_received_story(story_to_save).await {
-                            error!("Failed to save received story: {}", e);
+                    // Check if we're subscribed to the story's channel
+                    let should_accept_story = match crate::storage::read_subscribed_channels(
+                        &PEER_ID.to_string(),
+                    )
+                    .await
+                    {
+                        Ok(subscribed_channels) => {
+                            subscribed_channels.contains(&published.story.channel)
+                                || published.story.channel == "general"
                         }
-                    });
+                        Err(e) => {
+                            error!("Failed to check subscriptions for incoming story: {}", e);
+                            // Default to accepting general channel stories only
+                            published.story.channel == "general"
+                        }
+                    };
 
-                    // Signal that stories need to be refreshed
-                    return Some(());
+                    if should_accept_story {
+                        info!(
+                            "Received published story '{}' from {} in channel '{}'",
+                            published.story.name, msg.source, published.story.channel
+                        );
+                        info!("Story: {:?}", published.story);
+                        ui_logger.log(format!(
+                            "📖 Received story '{}' from {} in channel '{}'",
+                            published.story.name, msg.source, published.story.channel
+                        ));
+
+                        // Save received story to local storage asynchronously
+                        let story_to_save = published.story.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = save_received_story(story_to_save).await {
+                                error!("Failed to save received story: {}", e);
+                            }
+                        });
+
+                        // Signal that stories need to be refreshed
+                        return Some(());
+                    } else {
+                        info!(
+                            "Ignoring story '{}' from channel '{}' - not subscribed",
+                            published.story.name, published.story.channel
+                        );
+                    }
                 }
             } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
                 if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
@@ -420,6 +459,22 @@ pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
     );
 }
 
+/// Handle channel events
+pub async fn handle_channel_event(channel: crate::types::Channel) {
+    info!(
+        "Received Channel event: {} - {}",
+        channel.name, channel.description
+    );
+}
+
+/// Handle channel subscription events
+pub async fn handle_channel_subscription_event(subscription: crate::types::ChannelSubscription) {
+    info!(
+        "Received ChannelSubscription event: {} subscribed to {}",
+        subscription.peer_id, subscription.channel_name
+    );
+}
+
 /// Main event dispatcher that routes events to appropriate handlers
 pub async fn handle_event(
     event: EventType,
@@ -492,6 +547,12 @@ pub async fn handle_event(
         EventType::DirectMessage(direct_msg) => {
             handle_direct_message_event(direct_msg).await;
         }
+        EventType::Channel(channel) => {
+            handle_channel_event(channel).await;
+        }
+        EventType::ChannelSubscription(subscription) => {
+            handle_channel_subscription_event(subscription).await;
+        }
     }
     None
 }
@@ -521,18 +582,47 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
 // Helper function that needs to be accessible - copied from main.rs
 pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, receiver: String) {
     tokio::spawn(async move {
-        match crate::storage::read_local_stories().await {
-            Ok(stories) => {
-                let resp = ListResponse {
-                    mode: ListMode::ALL,
-                    receiver,
-                    data: stories.into_iter().filter(|r| r.public).collect(),
-                };
-                if let Err(e) = sender.send(resp) {
-                    error!("error sending response via channel, {}", e);
-                }
+        // Read stories and subscriptions separately to avoid Send issues
+        let stories = match crate::storage::read_local_stories().await {
+            Ok(stories) => stories,
+            Err(e) => {
+                error!("error fetching local stories to answer ALL request, {}", e);
+                return;
             }
-            Err(e) => error!("error fetching local stories to answer ALL request, {}", e),
+        };
+
+        let subscribed_channels = match crate::storage::read_subscribed_channels(&receiver).await {
+            Ok(channels) => channels,
+            Err(e) => {
+                error!("error fetching subscribed channels for {}: {}", receiver, e);
+                // If we can't get subscriptions, default to "general" channel
+                vec!["general".to_string()]
+            }
+        };
+
+        // Filter stories to only include public stories from subscribed channels
+        let filtered_stories: Vec<_> = stories
+            .into_iter()
+            .filter(|story| {
+                story.public
+                    && (subscribed_channels.contains(&story.channel) || story.channel == "general")
+            })
+            .collect();
+
+        info!(
+            "Sending {} filtered stories to {} based on {} subscribed channels",
+            filtered_stories.len(),
+            receiver,
+            subscribed_channels.len()
+        );
+
+        let resp = ListResponse {
+            mode: ListMode::ALL,
+            receiver,
+            data: filtered_stories,
+        };
+        if let Err(e) = sender.send(resp) {
+            error!("error sending response via channel, {}", e);
         }
     });
 }

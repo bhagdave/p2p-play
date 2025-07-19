@@ -128,6 +128,7 @@ async fn test_story_deduplication() {
         header: "Same Header".to_string(),
         body: "Same Body".to_string(),
         public: true,
+        channel: "general".to_string(),
     };
 
     // Save the same story multiple times
@@ -377,4 +378,326 @@ async fn test_name_command_shows_current_alias() {
 
     // Ensure no more messages were logged
     assert!(log_receiver.try_recv().is_err());
+}
+
+// Channel functionality tests
+#[tokio::test]
+async fn test_channel_creation_and_management() {
+    use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
+
+    // Test channel creation
+    let channel_name = "tech";
+    let description = "Technology discussions";
+    let creator = "alice_peer";
+
+    create_channel(channel_name, description, creator)
+        .await
+        .unwrap();
+
+    // Read channels and verify creation
+    let channels = read_channels().await.unwrap();
+    let tech_channel = channels.iter().find(|c| c.name == channel_name).unwrap();
+
+    assert_eq!(tech_channel.name, channel_name);
+    assert_eq!(tech_channel.description, description);
+    assert_eq!(tech_channel.created_by, creator);
+    assert!(tech_channel.created_at > 0);
+
+    // Test duplicate channel creation (should be ignored)
+    create_channel(channel_name, "Different description", "different_peer")
+        .await
+        .unwrap();
+    let channels_after = read_channels().await.unwrap();
+    assert_eq!(channels.len(), channels_after.len()); // Should be same count
+}
+
+#[tokio::test]
+async fn test_channel_subscriptions() {
+    use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
+
+    let peer_id = "test_peer_123";
+    let channel1 = "tech";
+    let channel2 = "news";
+
+    // Create channels
+    create_channel(channel1, "Technology channel", "system")
+        .await
+        .unwrap();
+    create_channel(channel2, "News channel", "system")
+        .await
+        .unwrap();
+
+    // Subscribe to channels
+    subscribe_to_channel(peer_id, channel1).await.unwrap();
+    subscribe_to_channel(peer_id, channel2).await.unwrap();
+
+    // Read subscriptions
+    let subscriptions = read_subscribed_channels(peer_id).await.unwrap();
+    assert_eq!(subscriptions.len(), 2);
+    assert!(subscriptions.contains(&channel1.to_string()));
+    assert!(subscriptions.contains(&channel2.to_string()));
+
+    // Unsubscribe from one channel
+    unsubscribe_from_channel(peer_id, channel1).await.unwrap();
+    let subscriptions_after = read_subscribed_channels(peer_id).await.unwrap();
+    assert_eq!(subscriptions_after.len(), 1);
+    assert!(subscriptions_after.contains(&channel2.to_string()));
+    assert!(!subscriptions_after.contains(&channel1.to_string()));
+
+    // Test duplicate subscription (should not create duplicates)
+    subscribe_to_channel(peer_id, channel2).await.unwrap();
+    let final_subscriptions = read_subscribed_channels(peer_id).await.unwrap();
+    assert_eq!(final_subscriptions.len(), 1);
+}
+
+#[tokio::test]
+async fn test_stories_with_channels() {
+    use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
+
+    // Create stories in different channels using database functions
+    create_new_story_with_channel("Tech Story", "Header", "Body", "general")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Gaming Story", "Game Header", "Game Body", "gaming")
+        .await
+        .unwrap();
+    create_new_story_with_channel("News Story", "News Header", "News Body", "news")
+        .await
+        .unwrap();
+
+    // Read stories and verify channels
+    let stories = read_local_stories().await.unwrap();
+
+    // Find our test stories
+    let tech_story = stories.iter().find(|s| s.name == "Tech Story").unwrap();
+    let gaming_story = stories.iter().find(|s| s.name == "Gaming Story").unwrap();
+    let news_story = stories.iter().find(|s| s.name == "News Story").unwrap();
+
+    // The first story should default to "general" channel
+    assert_eq!(tech_story.channel, "general");
+    assert_eq!(gaming_story.channel, "gaming");
+    assert_eq!(news_story.channel, "news");
+}
+
+#[tokio::test]
+async fn test_channel_story_filtering() {
+    use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
+
+    let peer_id = "filter_test_peer";
+
+    // Create channels
+    create_channel("tech", "Technology", "system")
+        .await
+        .unwrap();
+    create_channel("gaming", "Gaming", "system").await.unwrap();
+    create_channel("news", "News", "system").await.unwrap();
+
+    // Subscribe peer to only tech and gaming
+    subscribe_to_channel(peer_id, "tech").await.unwrap();
+    subscribe_to_channel(peer_id, "gaming").await.unwrap();
+
+    // Create and publish stories in different channels
+    create_new_story_with_channel("Tech Article", "Tech Header", "Tech Body", "tech")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Game Review", "Game Header", "Game Body", "gaming")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Breaking News", "News Header", "News Body", "news")
+        .await
+        .unwrap();
+    create_new_story_with_channel("General Post", "General Header", "General Body", "general")
+        .await
+        .unwrap();
+
+    // Mark all stories as public
+    let all_stories = read_local_stories().await.unwrap();
+    for story in &all_stories {
+        let (story_sender, _) = tokio::sync::mpsc::unbounded_channel();
+        publish_story(story.id, story_sender).await.unwrap();
+    }
+
+    // Test story filtering by channel
+    let tech_stories = get_stories_by_channel("tech").await.unwrap();
+    let gaming_stories = get_stories_by_channel("gaming").await.unwrap();
+    let news_stories = get_stories_by_channel("news").await.unwrap();
+    let general_stories = get_stories_by_channel("general").await.unwrap();
+
+    assert_eq!(tech_stories.len(), 1);
+    assert_eq!(tech_stories[0].name, "Tech Article");
+
+    assert_eq!(gaming_stories.len(), 1);
+    assert_eq!(gaming_stories[0].name, "Game Review");
+
+    assert_eq!(news_stories.len(), 1);
+    assert_eq!(news_stories[0].name, "Breaking News");
+
+    assert_eq!(general_stories.len(), 1);
+    assert_eq!(general_stories[0].name, "General Post");
+}
+
+#[tokio::test]
+async fn test_channel_workflow_integration() {
+    use p2p_play::storage::*;
+
+    // Initialize database
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
+
+    // Simulate two peers with different channel subscriptions
+    let peer1_id = "peer1";
+    let peer2_id = "peer2";
+
+    // Create channels
+    create_channel("tech", "Technology discussions", peer1_id)
+        .await
+        .unwrap();
+    create_channel("art", "Art and creativity", peer2_id)
+        .await
+        .unwrap();
+
+    // Peer1 subscribes to tech, Peer2 subscribes to art
+    subscribe_to_channel(peer1_id, "tech").await.unwrap();
+    subscribe_to_channel(peer2_id, "art").await.unwrap();
+    // Both subscribe to general
+    subscribe_to_channel(peer1_id, "general").await.unwrap();
+    subscribe_to_channel(peer2_id, "general").await.unwrap();
+
+    // Create stories in different channels
+    create_new_story_with_channel("Rust Tutorial", "Tech Header", "Tech Body", "tech")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Digital Painting", "Art Header", "Art Body", "art")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Welcome Post", "General Header", "General Body", "general")
+        .await
+        .unwrap();
+
+    // Publish all stories
+    let all_stories = read_local_stories().await.unwrap();
+    for story in &all_stories {
+        let (story_sender, _) = tokio::sync::mpsc::unbounded_channel();
+        publish_story(story.id, story_sender).await.unwrap();
+    }
+
+    // Test subscriptions
+    let peer1_subscriptions = read_subscribed_channels(peer1_id).await.unwrap();
+    let peer2_subscriptions = read_subscribed_channels(peer2_id).await.unwrap();
+
+    assert!(peer1_subscriptions.contains(&"tech".to_string()));
+    assert!(peer1_subscriptions.contains(&"general".to_string()));
+    assert!(!peer1_subscriptions.contains(&"art".to_string()));
+
+    assert!(peer2_subscriptions.contains(&"art".to_string()));
+    assert!(peer2_subscriptions.contains(&"general".to_string()));
+    assert!(!peer2_subscriptions.contains(&"tech".to_string()));
+
+    // Verify channel content
+    let all_channels = read_channels().await.unwrap();
+    assert!(all_channels.len() >= 3); // At least general + tech + art
+
+    let tech_channel = all_channels.iter().find(|c| c.name == "tech").unwrap();
+    let art_channel = all_channels.iter().find(|c| c.name == "art").unwrap();
+
+    assert_eq!(tech_channel.created_by, peer1_id);
+    assert_eq!(art_channel.created_by, peer2_id);
+}
+
+#[tokio::test]
+async fn test_story_serialization_with_channel() {
+    use p2p_play::types::*;
+
+    // Test story with channel field
+    let story = Story::new_with_channel(
+        1,
+        "Channel Test".to_string(),
+        "Header".to_string(),
+        "Body".to_string(),
+        true,
+        "tech".to_string(),
+    );
+
+    // Test serialization/deserialization
+    let json = serde_json::to_string(&story).unwrap();
+    let deserialized: Story = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(story, deserialized);
+    assert_eq!(deserialized.channel, "tech");
+
+    // Test default channel story
+    let default_story = Story::new(
+        2,
+        "Default Channel".to_string(),
+        "Header".to_string(),
+        "Body".to_string(),
+        false,
+    );
+
+    assert_eq!(default_story.channel, "general");
+
+    // Test published story with channel
+    let published = PublishedStory::new(story.clone(), "publisher_peer".to_string());
+    let published_json = serde_json::to_string(&published).unwrap();
+    let published_deserialized: PublishedStory = serde_json::from_str(&published_json).unwrap();
+
+    assert_eq!(published, published_deserialized);
+    assert_eq!(published_deserialized.story.channel, "tech");
+}
+
+#[tokio::test]
+async fn test_channel_subscription_data_structures() {
+    use p2p_play::storage::*;
+    use p2p_play::types::*;
+
+    // Initialize and clear database to be safe
+    ensure_stories_file_exists().await.unwrap();
+    clear_database_for_testing().await.unwrap();
+
+    // Test Channel creation
+    let channel = Channel::new(
+        "test_channel".to_string(),
+        "Test channel description".to_string(),
+        "creator_peer".to_string(),
+    );
+
+    assert_eq!(channel.name, "test_channel");
+    assert_eq!(channel.description, "Test channel description");
+    assert_eq!(channel.created_by, "creator_peer");
+    assert!(channel.created_at > 0);
+
+    // Test ChannelSubscription creation
+    let subscription =
+        ChannelSubscription::new("subscriber_peer".to_string(), "test_channel".to_string());
+
+    assert_eq!(subscription.peer_id, "subscriber_peer");
+    assert_eq!(subscription.channel_name, "test_channel");
+    assert!(subscription.subscribed_at > 0);
+
+    // Test serialization
+    let channel_json = serde_json::to_string(&channel).unwrap();
+    let subscription_json = serde_json::to_string(&subscription).unwrap();
+
+    let channel_deserialized: Channel = serde_json::from_str(&channel_json).unwrap();
+    let subscription_deserialized: ChannelSubscription =
+        serde_json::from_str(&subscription_json).unwrap();
+
+    assert_eq!(channel, channel_deserialized);
+    assert_eq!(subscription, subscription_deserialized);
 }
