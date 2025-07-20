@@ -898,6 +898,7 @@ mod tests {
             }
             ListMode::ALL => {
                 panic!("Expected ListMode::One");
+            }
            
         }
     }
