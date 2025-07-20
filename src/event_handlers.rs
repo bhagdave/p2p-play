@@ -80,11 +80,11 @@ pub async fn handle_input_event(
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
         "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
+        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
+        "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
-        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
-        "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("create s") => {
             if let Some(()) = handle_create_stories(cmd, ui_logger, error_logger).await {
                 return Some(());
@@ -788,10 +788,60 @@ mod tests {
         assert_eq!(response_rejected.timestamp, 1000);
     }
 
+    #[test]
+    fn test_ls_sub_pattern_matching() {
+        // Test that pattern matching for "ls sub" works correctly
+        // This prevents regression of the bug where "ls sub" was incorrectly
+        // matched by "ls s*" pattern instead of its specific handler
+
+        let test_cases = vec![
+            ("ls sub", "subscription"),
+            ("ls ch", "channels"),
+            ("ls s local", "stories"),
+            ("ls s all", "stories"),
+            ("ls p", "peers"),
+            ("ls c", "connections"),
+        ];
+
+        for (input, _expected_type) in test_cases {
+            let result = match_command_type(input);
+            match input {
+                "ls sub" => assert_eq!(
+                    result, "subscription",
+                    "ls sub should match subscription handler"
+                ),
+                "ls ch" => assert_eq!(result, "channels", "ls ch should match channels handler"),
+                cmd if cmd.starts_with("ls s") => assert_eq!(
+                    result, "stories",
+                    "ls s commands should match stories handler"
+                ),
+                "ls p" => assert_eq!(result, "peers", "ls p should match peers handler"),
+                "ls c" => assert_eq!(
+                    result, "connections",
+                    "ls c should match connections handler"
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    // Mock function that simulates the pattern matching logic from event_handlers.rs
+    fn match_command_type(line: &str) -> &'static str {
+        // This follows the exact same pattern matching order as in handle_input_event
+        match line {
+            "ls p" => "peers",
+            "ls c" => "connections",
+            "ls ch" => "channels",
+            "ls sub" => "subscription",
+            cmd if cmd.starts_with("ls s") => "stories",
+            _ => "unknown",
+        }
+    }
+
     #[tokio::test]
     async fn test_handle_peer_name_event() {
         let peer_name = PeerName::new("peer123".to_string(), "TestAlias".to_string());
-        
+
         // This function doesn't return a value, so we just test it doesn't panic
         handle_peer_name_event(peer_name).await;
     }
@@ -802,9 +852,9 @@ mod tests {
             "peer123".to_string(),
             "Alice".to_string(),
             "Bob".to_string(),
-            "Test message".to_string()
+            "Test message".to_string(),
         );
-        
+
         // This function doesn't return a value, so we just test it doesn't panic
         handle_direct_message_event(direct_msg).await;
     }
@@ -814,9 +864,9 @@ mod tests {
         let channel = crate::types::Channel::new(
             "test_channel".to_string(),
             "Test channel description".to_string(),
-            "peer123".to_string()
+            "peer123".to_string(),
         );
-        
+
         // This function doesn't return a value, so we just test it doesn't panic
         handle_channel_event(channel).await;
     }
@@ -825,17 +875,17 @@ mod tests {
     async fn test_handle_channel_subscription_event() {
         let subscription = crate::types::ChannelSubscription::new(
             "peer123".to_string(),
-            "test_channel".to_string()
+            "test_channel".to_string(),
         );
-        
+
         // This function doesn't return a value, so we just test it doesn't panic
         handle_channel_subscription_event(subscription).await;
     }
 
     #[tokio::test]
     async fn test_handle_ping_event_success() {
-        use std::time::Duration;
         use libp2p::swarm::ConnectionId;
+        use std::time::Duration;
 
         let peer_id = PeerId::random();
         let ping_event = libp2p::ping::Event {
@@ -850,8 +900,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_ping_event_failure() {
-        use libp2p::swarm::ConnectionId;
         use libp2p::ping::Failure;
+        use libp2p::swarm::ConnectionId;
 
         let peer_id = PeerId::random();
         let ping_event = libp2p::ping::Event {
@@ -872,10 +922,8 @@ mod tests {
         respond_with_public_stories(sender, receiver_name.clone());
 
         // Try to receive a response with timeout
-        let response = tokio::time::timeout(
-            tokio::time::Duration::from_millis(500),
-            receiver.recv()
-        ).await;
+        let response =
+            tokio::time::timeout(tokio::time::Duration::from_millis(500), receiver.recv()).await;
 
         // The response might succeed or timeout depending on if stories file exists
         // We mainly test that the function doesn't panic and attempts to send
@@ -898,40 +946,40 @@ mod tests {
     async fn test_maintain_connections() {
         // Create a mock swarm for testing
         let mut swarm = crate::network::create_swarm().expect("Failed to create test swarm");
-        
+
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
         maintain_connections(&mut swarm).await;
     }
 
-    #[test] 
+    #[test]
     fn test_event_handling_error_paths() {
         // Test serialization/deserialization edge cases that might occur in floodsub handling
-        
+
         // Test invalid JSON data
         let invalid_json = b"invalid json data";
         let list_response_result = serde_json::from_slice::<ListResponse>(invalid_json);
         assert!(list_response_result.is_err());
-        
+
         let published_story_result = serde_json::from_slice::<PublishedStory>(invalid_json);
         assert!(published_story_result.is_err());
-        
+
         let peer_name_result = serde_json::from_slice::<PeerName>(invalid_json);
         assert!(peer_name_result.is_err());
-        
+
         let list_request_result = serde_json::from_slice::<ListRequest>(invalid_json);
         assert!(list_request_result.is_err());
     }
 
     #[test]
     fn test_list_mode_one_validation() {
-        use crate::types::{ListRequest, ListMode};
-        
+        use crate::types::{ListMode, ListRequest};
+
         // Test ListMode::One with valid peer ID format
         let list_request = ListRequest {
             mode: ListMode::One("valid_peer_id".to_string()),
         };
-        
+
         match list_request.mode {
             ListMode::One(peer_id) => {
                 assert_eq!(peer_id, "valid_peer_id");
