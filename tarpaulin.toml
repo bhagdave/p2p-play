@@ -5,18 +5,18 @@ exclude-files = []
 # Exclude lines that cannot realistically be tested
 exclude = [
     # Main event loop and initialization code that's hard to test
-    "src/main.rs:27-325",
+    "main_event_loop",
     # Process exit calls that would terminate the test runner
-    "src/main.rs:47-48",
-    "src/main.rs:54-55",
-    "src/event_handlers.rs:116",
+    "process_exit_calls",
+    "process_exit_calls_2",
+    "event_handler_error_handling",
     # Error handling for UI failures that would break tests
-    "src/main.rs:142-144",
-    "src/main.rs:147-149",
-    "src/main.rs:322-324",
+    "ui_error_handling",
+    "ui_error_handling_2",
+    "finalization_code",
     # Network initialization that requires actual network setup
-    "src/main.rs:73",
-    "src/main.rs:131-137",
+    "network_initialization",
+    "network_initialization_2",
 ]
 
 # Coverage threshold - we want to improve from ~35%
