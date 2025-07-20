@@ -1,0 +1,27 @@
+[tool.tarpaulin.default]
+# Exclude the main function from coverage as it's hard to test
+exclude-files = []
+
+# Exclude lines that cannot realistically be tested
+exclude = [
+    # Main event loop and initialization code that's hard to test
+    "main_event_loop",
+    # Process exit calls that would terminate the test runner
+    "process_exit_calls",
+    "process_exit_calls_2",
+    "event_handler_error_handling",
+    # Error handling for UI failures that would break tests
+    "ui_error_handling",
+    "ui_error_handling_2",
+    "finalization_code",
+    # Network initialization that requires actual network setup
+    "network_initialization",
+    "network_initialization_2",
+]
+
+# Coverage threshold - we want to improve from ~35%
+fail-under = 40.0
+
+# Output formats
+out = ["Html", "Xml"]
+output-dir = "coverage/"
