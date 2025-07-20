@@ -150,10 +150,8 @@ impl App {
 
     pub fn add_to_log(&mut self, message: String) {
         self.output_log.push(message);
-        // Only auto-scroll if auto_scroll is enabled
-        if self.auto_scroll {
-            self.scroll_to_bottom();
-        }
+        // Note: scroll position is handled automatically in draw() method
+        // when auto_scroll is enabled, so no need to call scroll_to_bottom() here
     }
 
     pub fn clear_output(&mut self) {
@@ -204,26 +202,6 @@ impl App {
         // Instead, we'll let the draw() method handle proper clamping
         self.scroll_offset += 1;
         self.auto_scroll = false; // Disable auto-scroll when user manually scrolls
-    }
-
-    fn scroll_to_bottom(&mut self) {
-        // Calculate scroll offset to show the bottom of the log
-        // Use a reasonable estimate for visible height (we'll use ~20 lines as default)
-        let estimated_visible_height = 20;
-        if self.output_log.len() <= estimated_visible_height {
-            self.scroll_offset = 0;
-        } else {
-            self.scroll_offset = self.output_log.len().saturating_sub(estimated_visible_height);
-        }
-    }
-    
-    fn scroll_to_bottom_with_height(&mut self, log_height: usize) {
-        // Position scroll to show the last messages in the visible window
-        if self.output_log.len() <= log_height {
-            self.scroll_offset = 0;
-        } else {
-            self.scroll_offset = self.output_log.len().saturating_sub(log_height);
-        }
     }
     
 
@@ -583,21 +561,22 @@ mod tests {
         // Test adding a message with auto-scroll enabled
         mock_app.add_to_log("New message 1".to_string());
         assert_eq!(mock_app.output_log.len(), 3);
-        // Scroll position should be adjusted to show the bottom
+        // Note: scroll position is now handled in draw() method, not in add_to_log()
 
         // Test manual scroll disables auto-scroll
         mock_app.scroll_up();
         assert!(!mock_app.auto_scroll);
 
-        // Test adding message with auto-scroll disabled doesn't move scroll
-        let scroll_before = mock_app.scroll_offset;
+        // Test adding message with auto-scroll disabled
         mock_app.add_to_log("New message 2".to_string());
-        assert_eq!(mock_app.scroll_offset, scroll_before);
+        assert_eq!(mock_app.output_log.len(), 4);
+        // Scroll position doesn't change since it's handled in draw()
 
         // Test re-enabling auto-scroll
         mock_app.auto_scroll = true;
         mock_app.add_to_log("New message 3".to_string());
-        // Should now auto-scroll again
+        assert_eq!(mock_app.output_log.len(), 5);
+        // Auto-scroll positioning happens in draw() method
     }
 
     #[test]
@@ -649,16 +628,8 @@ mod tests {
     impl MockAppWithAutoScroll {
         fn add_to_log(&mut self, message: String) {
             self.output_log.push(message);
-            // Simulate the auto-scroll behavior
-            if self.auto_scroll {
-                // In a real app, this would be calculated with log_height
-                // For testing, just move to a reasonable position
-                if self.output_log.len() > 5 {
-                    self.scroll_offset = self.output_log.len().saturating_sub(5);
-                } else {
-                    self.scroll_offset = 0;
-                }
-            }
+            // Note: In the real implementation, scroll position is handled in draw() method
+            // For testing, we don't simulate the auto-scroll here since it's handled elsewhere
         }
 
         fn scroll_up(&mut self) {
