@@ -580,7 +580,7 @@ mod tests {
         assert_eq!(story.name, "Test Story");
         assert_eq!(story.header, "Test Header");
         assert_eq!(story.body, "Test Body");
-        assert_eq!(story.public, true);
+        assert!(story.public);
         assert_eq!(story.channel, "custom_channel");
     }
 
