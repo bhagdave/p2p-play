@@ -203,8 +203,6 @@ impl App {
         self.scroll_offset += 1;
         self.auto_scroll = false; // Disable auto-scroll when user manually scrolls
     }
-    
-
 
     pub fn draw(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.terminal.draw(|f| {
@@ -261,7 +259,7 @@ impl App {
             // Output log
             let actual_log_height = (main_chunks[0].height as usize).saturating_sub(2);
             let total_lines = self.output_log.len();
-            
+
             // Calculate scroll position considering auto_scroll
             let scroll_offset = if self.auto_scroll {
                 // Auto-scroll: show the bottom of the log
@@ -482,7 +480,7 @@ mod tests {
     fn test_version_display_in_status_bar() {
         // Test that the version is properly included in status bar text
         let version = env!("CARGO_PKG_VERSION");
-        
+
         // Test status bar with peer name
         let status_with_peer = format!(
             "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {}",
@@ -490,7 +488,7 @@ mod tests {
         );
         assert!(status_with_peer.contains("P2P-Play v"));
         assert!(status_with_peer.contains(version));
-        
+
         // Test status bar without peer name
         let status_without_peer = format!(
             "P2P-Play v{} | No peer name set | Connected: {} | Mode: {}",
@@ -589,7 +587,7 @@ mod tests {
         };
 
         assert!(mock_app.auto_scroll);
-        
+
         mock_app.scroll_up();
         assert!(!mock_app.auto_scroll);
     }
