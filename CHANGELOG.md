@@ -11,6 +11,10 @@ All changes to this project will be documented in this file.
 - test_runner script now uses tarpaulin to produce coverage report
 
 ### Fixed
+- **Terminal UI Text Rendering**: Fixed text overlap and readability issues in the Output panel where text was rendering without proper spacing
+- Improved text wrapping by changing from `Wrap { trim: true }` to `Wrap { trim: false }` to preserve spacing
+- Enhanced text rendering using explicit ratatui `Text`/`Line`/`Span` structures for better text handling
+- Updated layout constraints from percentage-based to minimum width constraints for improved display stability
 - Removed handshake failures and network error messages from console output to prevent TUI interface disruption
 - Replaced println! statements in network.rs with proper logging calls
 - Network connection errors (incoming/outgoing) now log to error file instead of console
