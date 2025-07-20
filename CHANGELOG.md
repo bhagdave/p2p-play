@@ -9,6 +9,12 @@ All changes to this project will be documented in this file.
 - Local story deletion functionality with proper error handling and user feedback
 - Comprehensive test coverage for story deletion including edge cases and database operations
 - test_runner script now uses tarpaulin to produce coverage report
+- **TUI Auto-scroll**: Added intelligent auto-scroll functionality for terminal output
+  - Automatically scrolls to show new messages when they arrive
+  - Preserves manual scroll position when user scrolls up to read history
+  - End key re-enables auto-scroll and jumps to latest messages
+  - Status bar shows current auto-scroll state (AUTO: ON/OFF)
+  - Maintains user control while ensuring new content is visible
 
 ### Fixed
 - **Terminal UI Text Rendering**: Fixed text overlap and readability issues in the Output panel where text was rendering without proper spacing

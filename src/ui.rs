@@ -208,9 +208,13 @@ impl App {
 
     fn scroll_to_bottom(&mut self) {
         // Calculate scroll offset to show the bottom of the log
-        // This should be called during drawing to get accurate log_height
-        // For now, use a reasonable default that will be corrected during draw
-        self.scroll_offset = self.output_log.len();
+        // Use a reasonable estimate for visible height (we'll use ~20 lines as default)
+        let estimated_visible_height = 20;
+        if self.output_log.len() <= estimated_visible_height {
+            self.scroll_offset = 0;
+        } else {
+            self.scroll_offset = self.output_log.len().saturating_sub(estimated_visible_height);
+        }
     }
     
     fn scroll_to_bottom_with_height(&mut self, log_height: usize) {
@@ -222,14 +226,7 @@ impl App {
         }
     }
     
-    fn check_auto_scroll_position(&mut self) {
-        // Re-enable auto-scroll if user has scrolled back to bottom
-        // We'll use a reasonable approximation since we don't have log_height here
-        let estimated_bottom = self.output_log.len().saturating_sub(10); // Assume ~10 lines visible
-        if self.scroll_offset >= estimated_bottom {
-            self.auto_scroll = true;
-        }
-    }
+
 
     pub fn draw(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.terminal.draw(|f| {
@@ -246,7 +243,7 @@ impl App {
             let version = env!("CARGO_PKG_VERSION");
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {} | Auto-scroll: {}",
+                    "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {} | AUTO: {}",
                     version,
                     name,
                     self.peers.len(),
@@ -258,7 +255,7 @@ impl App {
                 )
             } else {
                 format!(
-                    "P2P-Play v{} | No peer name set | Connected: {} | Mode: {} | Auto-scroll: {}",
+                    "P2P-Play v{} | No peer name set | Connected: {} | Mode: {} | AUTO: {}",
                     version,
                     self.peers.len(),
                     match self.input_mode {
