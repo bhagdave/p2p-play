@@ -633,17 +633,11 @@ pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, 
             Ok(addr) => {
                 ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {}", addr));
                 
-                // First, try to dial the peer to establish connection
-                if let Err(e) = swarm.dial(addr.clone()) {
-                    ui_logger.log(format!("Failed to dial bootstrap peer: {}", e));
-                    return;
-                }
-                
                 // Add the address as a bootstrap peer in the DHT
                 if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
                     swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
                     
-                    // Start bootstrap process
+                    // Start bootstrap process (this will handle dialing the peer internally)
                     if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
                         ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
                     } else {
