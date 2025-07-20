@@ -339,7 +339,7 @@ pub async fn handle_kad_event(
         libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
             match result {
                 libp2p::kad::QueryResult::Bootstrap(Ok(bootstrap_ok)) => {
-                    info!("Kademlia bootstrap successful with peer: {}", bootstrap_ok.peer);
+                    debug!("Kademlia bootstrap successful with peer: {}", bootstrap_ok.peer);
                     ui_logger.log(format!("DHT bootstrap successful with peer: {}", bootstrap_ok.peer));
                 }
                 libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
@@ -347,50 +347,50 @@ pub async fn handle_kad_event(
                     ui_logger.log(format!("DHT bootstrap failed: {:?}", e));
                 }
                 libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
-                    info!("Found {} closest peers to key", get_closest_peers_ok.peers.len());
+                    debug!("Found {} closest peers to key", get_closest_peers_ok.peers.len());
                     for peer in &get_closest_peers_ok.peers {
-                        info!("Closest peer: {:?}", peer);
+                        debug!("Closest peer: {:?}", peer);
                     }
                 }
                 libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
                     error!("Failed to get closest peers: {:?}", e);
                 }
                 _ => {
-                    info!("Other Kademlia query result: {:?}", result);
+                    debug!("Other Kademlia query result: {:?}", result);
                 }
             }
         }
         libp2p::kad::Event::RoutingUpdated { peer, is_new_peer, .. } => {
             if is_new_peer {
-                info!("New peer added to DHT routing table: {}", peer);
+                debug!("New peer added to DHT routing table: {}", peer);
                 ui_logger.log(format!("New peer added to DHT: {}", peer));
                 
                 // Add the peer to floodsub partial view if connected
                 if swarm.is_connected(&peer) {
                     swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
-                    info!("Added DHT peer {} to floodsub partial view", peer);
+                    debug!("Added DHT peer {} to floodsub partial view", peer);
                 }
             }
         }
         libp2p::kad::Event::InboundRequest { request } => {
             match request {
                 libp2p::kad::InboundRequest::FindNode { .. } => {
-                    info!("Received DHT FindNode request");
+                    debug!("Received DHT FindNode request");
                 }
                 libp2p::kad::InboundRequest::GetProvider { .. } => {
-                    info!("Received DHT GetProvider request");
+                    debug!("Received DHT GetProvider request");
                 }
                 _ => {
-                    info!("Received other DHT inbound request: {:?}", request);
+                    debug!("Received other DHT inbound request: {:?}", request);
                 }
             }
         }
         libp2p::kad::Event::ModeChanged { new_mode } => {
-            info!("Kademlia mode changed to: {:?}", new_mode);
+            debug!("Kademlia mode changed to: {:?}", new_mode);
             ui_logger.log(format!("DHT mode changed to: {:?}", new_mode));
         }
         _ => {
-            info!("Other Kademlia event: {:?}", kad_event);
+            debug!("Other Kademlia event: {:?}", kad_event);
         }
     }
 }
