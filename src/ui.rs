@@ -5,14 +5,14 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use libp2p::PeerId;
-use log::info;
+use log::debug;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::Line,
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
@@ -93,7 +93,7 @@ impl App {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => {
                         self.should_quit = true;
-                        info!("Quit command received, setting should_quit to true");
+                        debug!("Quit command received, setting should_quit to true");
                         return Some(AppEvent::Quit);
                     }
                     KeyCode::Char('i') => {
@@ -243,9 +243,11 @@ impl App {
                 .split(f.size());
 
             // Status bar
+            let version = env!("CARGO_PKG_VERSION");
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play | Peer: {} | Connected: {} | Mode: {} | Auto-scroll: {}",
+                    "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {} | Auto-scroll: {}",
+                    version,
                     name,
                     self.peers.len(),
                     match self.input_mode {
@@ -256,7 +258,8 @@ impl App {
                 )
             } else {
                 format!(
-                    "P2P-Play | No peer name set | Connected: {} | Mode: {} | Auto-scroll: {}",
+                    "P2P-Play v{} | No peer name set | Connected: {} | Mode: {} | Auto-scroll: {}",
+                    version,
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",
@@ -275,8 +278,8 @@ impl App {
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(60), // Output area
-                    Constraint::Percentage(40), // Side panels
+                    Constraint::Min(80), // Output area - minimum 80 characters
+                    Constraint::Min(30), // Side panels - minimum 30 characters
                 ])
                 .split(chunks[1]);
 
@@ -306,10 +309,13 @@ impl App {
             let visible_start = scroll_offset;
             let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
 
-            let visible_log: Vec<Line> = self.output_log[visible_start..visible_end]
+            // Convert log messages to display text using explicit ratatui structures
+            let lines: Vec<Line> = self.output_log[visible_start..visible_end]
                 .iter()
-                .map(|msg| Line::from(msg.clone()))
+                .map(|msg| Line::from(Span::raw(msg.clone())))
                 .collect();
+
+            let text = Text::from(lines);
 
             // Create title with scroll indicator
             let title = if total_lines > actual_log_height {
@@ -318,9 +324,10 @@ impl App {
                 "Output".to_string()
             };
 
-            let output = Paragraph::new(visible_log)
+            let output = Paragraph::new(text)
                 .block(Block::default().borders(Borders::ALL).title(title))
-                .wrap(Wrap { trim: true });
+                .wrap(ratatui::widgets::Wrap { trim: false })
+                .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(output, main_chunks[0]);
 
             // Side panels - split into top and bottom
@@ -494,6 +501,28 @@ mod tests {
         let formatted = format!("{} {}: {}", status, story.id, story.name);
 
         assert_eq!(formatted, "📖 1: Test Story");
+    }
+
+    #[test]
+    fn test_version_display_in_status_bar() {
+        // Test that the version is properly included in status bar text
+        let version = env!("CARGO_PKG_VERSION");
+        
+        // Test status bar with peer name
+        let status_with_peer = format!(
+            "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {}",
+            version, "TestPeer", 2, "Normal"
+        );
+        assert!(status_with_peer.contains("P2P-Play v"));
+        assert!(status_with_peer.contains(version));
+        
+        // Test status bar without peer name
+        let status_without_peer = format!(
+            "P2P-Play v{} | No peer name set | Connected: {} | Mode: {}",
+            version, 0, "Editing"
+        );
+        assert!(status_without_peer.contains("P2P-Play v"));
+        assert!(status_without_peer.contains(version));
     }
 
     #[test]
