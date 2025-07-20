@@ -177,4 +177,18 @@ mod tests {
         ));
         assert!(content.contains("UTC"));
     }
+
+    #[test]
+    fn test_log_network_error() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+        let error_logger = ErrorLogger::new(path);
+
+        // Test the direct log_network_error method
+        error_logger.log_network_error("mdns", "Discovery failed for peer 12345");
+
+        let content = std::fs::read_to_string(path).unwrap();
+        assert!(content.contains("NETWORK_ERROR [mdns]: Discovery failed for peer 12345"));
+        assert!(content.contains("UTC"));
+    }
 }

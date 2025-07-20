@@ -18,7 +18,7 @@ use ui::{App, AppEvent, handle_ui_events};
 use bytes::Bytes;
 use libp2p::swarm::SwarmEvent;
 use libp2p::{PeerId, Swarm, futures::StreamExt};
-use log::{error, info};
+use log::{debug, error};
 use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
@@ -37,7 +37,7 @@ async fn main() {
         .filter_module("multistream_select", log::LevelFilter::Error)
         .init();
 
-    info!("Peer Id: {}", PEER_ID.clone());
+    debug!("Peer Id: {}", PEER_ID.clone());
 
     // Initialize the UI
     let mut app = match App::new() {
@@ -82,7 +82,7 @@ async fn main() {
     let mut local_peer_name: Option<String> = match load_local_peer_name().await {
         Ok(saved_name) => {
             if let Some(ref name) = saved_name {
-                info!("Loaded saved peer name: {}", name);
+                debug!("Loaded saved peer name: {}", name);
                 app.add_to_log(format!("Loaded saved peer name: {}", name));
                 app.update_local_peer_name(saved_name.clone());
             }
@@ -103,7 +103,7 @@ async fn main() {
                 {
                     error!("Failed to auto-subscribe to general channel: {}", e);
                 } else {
-                    info!("Auto-subscribed to general channel");
+                    debug!("Auto-subscribed to general channel");
                 }
             }
         }
@@ -119,7 +119,7 @@ async fn main() {
     // Load initial stories and update UI
     match storage::read_local_stories().await {
         Ok(stories) => {
-            info!("Loaded {} local stories", stories.len());
+            debug!("Loaded {} local stories", stories.len());
             app.update_local_stories(stories);
         }
         Err(e) => {
@@ -173,7 +173,7 @@ async fn main() {
                         match event {
                             AppEvent::Input(line) => Some(EventType::Input(line)),
                             AppEvent::Quit => {
-                                info!("Quit event received in main loop");
+                                debug!("Quit event received in main loop");
                                 app.should_quit = true;
                                 break;
                             }
@@ -221,14 +221,14 @@ async fn main() {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(event)) => Some(EventType::RequestResponseEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => Some(EventType::KadEvent(event)),
                         SwarmEvent::NewListenAddr { address, .. } => {
-                            info!("Local node is listening on {}", address);
+                            debug!("Local node is listening on {}", address);
                             app.add_to_log(format!("Local node is listening on {}", address));
                             None
                         },
                         SwarmEvent::ConnectionEstablished { peer_id, endpoint, .. } => {
-                            info!("Connection established to {} via {:?}", peer_id, endpoint);
+                            debug!("Connection established to {} via {:?}", peer_id, endpoint);
                             // Connection status is now visible in the Connected Peers section
-                            info!("Adding peer {} to floodsub partial view", peer_id);
+                            debug!("Adding peer {} to floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
 
                             // If we have a local peer name set, broadcast it to the newly connected peer
@@ -237,20 +237,20 @@ async fn main() {
                                 let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
                                 let json_bytes = Bytes::from(json.into_bytes());
                                 swarm.behaviour_mut().floodsub.publish(TOPIC.clone(), json_bytes);
-                                info!("Sent local peer name '{}' to newly connected peer {}", name, peer_id);
+                                debug!("Sent local peer name '{}' to newly connected peer {}", name, peer_id);
                             }
 
                             None
                         },
                         SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                            info!("Connection closed to {}: {:?}", peer_id, cause);
+                            debug!("Connection closed to {}: {:?}", peer_id, cause);
                             // Connection status is now visible in the Connected Peers section
-                            info!("Removing peer {} from floodsub partial view", peer_id);
+                            debug!("Removing peer {} from floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.remove_node_from_partial_view(&peer_id);
 
                             // Remove the peer name when connection is closed
                             if let Some(name) = peer_names.remove(&peer_id) {
-                                info!("Removed peer name '{}' for disconnected peer {}", name, peer_id);
+                                debug!("Removed peer name '{}' for disconnected peer {}", name, peer_id);
                                 // Update the cache since peer names changed
                                 sorted_peer_names_cache.update(&peer_names);
                                 app.update_peers(peer_names.clone());
@@ -274,12 +274,12 @@ async fn main() {
                             None
                         },
                         SwarmEvent::Dialing { peer_id, connection_id, .. } => {
-                            info!("Dialing peer: {:?} (connection id: {:?})", peer_id, connection_id);
+                            debug!("Dialing peer: {:?} (connection id: {:?})", peer_id, connection_id);
                             // Don't log dialing attempts to reduce noise
                             None
                         },
                         _ => {
-                            info!("Unhandled Swarm Event: {:?}", event);
+                            debug!("Unhandled Swarm Event: {:?}", event);
                             None
                         }
                     }
@@ -304,7 +304,7 @@ async fn main() {
                 // Stories were updated, refresh them
                 match storage::read_local_stories().await {
                     Ok(stories) => {
-                        info!("Refreshed {} stories", stories.len());
+                        debug!("Refreshed {} stories", stories.len());
                         app.update_local_stories(stories);
                     }
                     Err(e) => {
