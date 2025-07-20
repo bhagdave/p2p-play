@@ -19,5 +19,5 @@ TEST_DATABASE_PATH="./test_stories.db" cargo test --test integration_tests --qui
 rm -f ./test_stories.db
 
 echo "📊 Running All Tests with coverage details..."
-TEST_DATABASE_PATH="./test_stories.db" cargo tarpaulin --config tarpaulin.toml -- --test-threads=1`
+TEST_DATABASE_PATH="./test_stories.db" cargo tarpaulin --config tarpaulin.toml -- --test-threads=1
 

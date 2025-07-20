@@ -5,6 +5,13 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Kademlia DHT Support**: Complete implementation of Kademlia DHT for internet-wide peer discovery
+  - New `dht bootstrap <multiaddr>` command to connect to bootstrap peers and join the DHT network
+  - New `dht peers` command to discover closest peers in the DHT network
+  - Automatic DHT server mode for accepting queries and providing records to other peers
+  - Seamless integration with existing floodsub story sharing and direct messaging
+  - Enhanced peer discovery beyond local network (mDNS) to internet-scale connectivity
+  - Comprehensive event handling for bootstrap success/failure and peer discovery notifications
 - **Story Deletion**: New `delete s <id>` command to permanently remove stories from local storage
 - Local story deletion functionality with proper error handling and user feedback
 - Comprehensive test coverage for story deletion including edge cases and database operations

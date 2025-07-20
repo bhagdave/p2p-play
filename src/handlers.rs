@@ -308,6 +308,8 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
+    ui_logger.log("dht bootstrap <multiaddr> to bootstrap DHT with a peer".to_string());
+    ui_logger.log("dht peers to find closest peers in DHT".to_string());
     ui_logger.log("quit to quit".to_string());
 }
 
@@ -616,6 +618,61 @@ pub async fn establish_direct_connection(
     }
 }
 
+/// Handle DHT bootstrap command
+pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    if let Some(addr_str) = cmd.strip_prefix("dht bootstrap ") {
+        let addr_str = addr_str.trim();
+        
+        if addr_str.is_empty() {
+            ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
+            ui_logger.log("Example: dht bootstrap /ip4/172.105.162.14/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+            return;
+        }
+
+        match addr_str.parse::<libp2p::Multiaddr>() {
+            Ok(addr) => {
+                ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {}", addr));
+                
+                // Add the address as a bootstrap peer in the DHT
+                if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
+                    swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                    
+                    // Start bootstrap process (this will handle dialing the peer internally)
+                    if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
+                        ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
+                    } else {
+                        ui_logger.log("DHT bootstrap started successfully".to_string());
+                    }
+                } else {
+                    ui_logger.log("Failed to extract peer ID from multiaddr".to_string());
+                }
+            }
+            Err(e) => ui_logger.log(format!("Failed to parse multiaddr: {}", e)),
+        }
+    } else {
+        ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
+    }
+}
+
+/// Handle DHT get closest peers command
+pub async fn handle_dht_get_peers(_cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    ui_logger.log("Searching for closest peers in DHT...".to_string());
+    
+    // Get closest peers to our own peer ID
+    let _query_id = swarm.behaviour_mut().kad.get_closest_peers(*PEER_ID);
+    ui_logger.log("DHT peer search started (results will appear in events)".to_string());
+}
+
+/// Extract peer ID from a multiaddr if it contains one
+fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
+    for protocol in addr.iter() {
+        if let libp2p::multiaddr::Protocol::P2p(peer_id) = protocol {
+            return Some(peer_id);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -697,7 +754,32 @@ mod tests {
         assert!(messages.iter().any(|m| m.contains("ls p")));
         assert!(messages.iter().any(|m| m.contains("create s")));
         assert!(messages.iter().any(|m| m.contains("show story")));
+        assert!(messages.iter().any(|m| m.contains("dht bootstrap")));
+        assert!(messages.iter().any(|m| m.contains("dht peers")));
         assert!(messages.iter().any(|m| m.contains("quit")));
+    }
+
+    #[test]
+    fn test_extract_peer_id_from_multiaddr() {
+        use libp2p::multiaddr::Protocol;
+        
+        // Test with valid multiaddr containing peer ID
+        let peer_id = *PEER_ID;
+        let mut addr = libp2p::Multiaddr::empty();
+        addr.push(Protocol::Ip4([127, 0, 0, 1].into()));
+        addr.push(Protocol::Tcp(8080));
+        addr.push(Protocol::P2p(peer_id));
+        
+        let extracted = super::extract_peer_id_from_multiaddr(&addr);
+        assert_eq!(extracted, Some(peer_id));
+        
+        // Test with multiaddr without peer ID
+        let mut addr_no_peer = libp2p::Multiaddr::empty();
+        addr_no_peer.push(Protocol::Ip4([127, 0, 0, 1].into()));
+        addr_no_peer.push(Protocol::Tcp(8080));
+        
+        let extracted_none = super::extract_peer_id_from_multiaddr(&addr_no_peer);
+        assert_eq!(extracted_none, None);
     }
 
     #[tokio::test]

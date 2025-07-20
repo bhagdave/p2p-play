@@ -219,6 +219,7 @@ async fn main() {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => Some(EventType::MdnsEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(event)) => Some(EventType::PingEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(event)) => Some(EventType::RequestResponseEvent(event)),
+                        SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => Some(EventType::KadEvent(event)),
                         SwarmEvent::NewListenAddr { address, .. } => {
                             debug!("Local node is listening on {}", address);
                             app.add_to_log(format!("Local node is listening on {}", address));
@@ -399,6 +400,10 @@ mod tests {
             result: Ok(Duration::from_millis(50)),
         };
         let _ping_event_type = EventType::PingEvent(ping_event);
+
+        // Test kad event
+        let kad_event = libp2p::kad::Event::ModeChanged { new_mode: libp2p::kad::Mode::Client };
+        let _kad_event_type = EventType::KadEvent(kad_event);
     }
 
     #[test]
