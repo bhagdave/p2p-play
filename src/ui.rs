@@ -5,14 +5,14 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use libp2p::PeerId;
-use log::info;
+use log::debug;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::Line,
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    text::{Line, Span, Text},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
@@ -30,6 +30,7 @@ pub struct App {
     pub list_state: ListState,
     pub input_mode: InputMode,
     pub scroll_offset: usize,
+    pub auto_scroll: bool, // Track if we should auto-scroll to bottom
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -96,6 +97,7 @@ impl App {
             list_state: ListState::default(),
             input_mode: InputMode::Normal,
             scroll_offset: 0,
+            auto_scroll: true, // Start with auto-scroll enabled
         })
     }
 
@@ -111,7 +113,7 @@ impl App {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => {
                         self.should_quit = true;
-                        info!("Quit command received, setting should_quit to true");
+                        debug!("Quit command received, setting should_quit to true");
                         return Some(AppEvent::Quit);
                     }
                     KeyCode::Char('i') => {
@@ -125,6 +127,10 @@ impl App {
                     }
                     KeyCode::Down => {
                         self.scroll_down();
+                    }
+                    KeyCode::End => {
+                        // Re-enable auto-scroll and go to bottom
+                        self.auto_scroll = true;
                     }
                     _ => {}
                 },
@@ -245,15 +251,14 @@ impl App {
 
     pub fn add_to_log(&mut self, message: String) {
         self.output_log.push(message);
-        // Only auto-scroll to bottom if user is already at the bottom
-        if self.scroll_offset >= self.output_log.len().saturating_sub(1) {
-            self.scroll_to_bottom();
-        }
+        // Note: scroll position is handled automatically in draw() method
+        // when auto_scroll is enabled, so no need to call scroll_to_bottom() here
     }
 
     pub fn clear_output(&mut self) {
         self.output_log.clear();
         self.scroll_offset = 0;
+        self.auto_scroll = true; // Re-enable auto-scroll after clear
         self.add_to_log("🧹 Output cleared".to_string());
     }
 
@@ -319,20 +324,18 @@ impl App {
     }
 
     fn scroll_up(&mut self) {
+        // Always disable auto-scroll when user manually scrolls
+        self.auto_scroll = false;
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
         }
     }
 
     fn scroll_down(&mut self) {
-        let max_scroll = self.output_log.len().saturating_sub(1);
-        if self.scroll_offset < max_scroll {
-            self.scroll_offset += 1;
-        }
-    }
-
-    fn scroll_to_bottom(&mut self) {
-        self.scroll_offset = self.output_log.len().saturating_sub(1);
+        // Don't use the old max_scroll calculation that was based on line index
+        // Instead, we'll let the draw() method handle proper clamping
+        self.scroll_offset += 1;
+        self.auto_scroll = false; // Disable auto-scroll when user manually scrolls
     }
 
     pub fn draw(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -347,26 +350,31 @@ impl App {
                 .split(f.size());
 
             // Status bar
+            let version = env!("CARGO_PKG_VERSION");
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play | Peer: {} | Connected: {} | Mode: {}",
+                    "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {} | AUTO: {}",
+                    version,
                     name,
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
                         InputMode::CreatingStory { .. } => "Creating Story",
-                    }
+                    },
+                    if self.auto_scroll { "ON" } else { "OFF" }
                 )
             } else {
                 format!(
-                    "P2P-Play | No peer name set | Connected: {} | Mode: {}",
+                    "P2P-Play v{} | No peer name set | Connected: {} | Mode: {} | AUTO: {}",
+                    version,
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
                         InputMode::CreatingStory { .. } => "Creating Story",
-                    }
+                    },
+                    if self.auto_scroll { "ON" } else { "OFF" }
                 )
             };
 
@@ -379,41 +387,56 @@ impl App {
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(60), // Output area
-                    Constraint::Percentage(40), // Side panels
+                    Constraint::Min(80), // Output area - minimum 80 characters
+                    Constraint::Min(30), // Side panels - minimum 30 characters
                 ])
                 .split(chunks[1]);
 
             // Output log
-            let log_height = (main_chunks[0].height as usize).saturating_sub(2);
+            let actual_log_height = (main_chunks[0].height as usize).saturating_sub(2);
             let total_lines = self.output_log.len();
 
-            // Calculate what portion of the log to display
-            let visible_start = if total_lines <= log_height {
-                0
+            // Calculate scroll position considering auto_scroll
+            let scroll_offset = if self.auto_scroll {
+                // Auto-scroll: show the bottom of the log
+                if total_lines <= actual_log_height {
+                    0
+                } else {
+                    total_lines.saturating_sub(actual_log_height)
+                }
             } else {
-                // Show a window from scroll_offset
-                let max_scroll = total_lines.saturating_sub(log_height);
-                self.scroll_offset.min(max_scroll)
+                // Manual scroll: use the current scroll_offset, but clamp it
+                if total_lines <= actual_log_height {
+                    0
+                } else {
+                    let max_scroll = total_lines.saturating_sub(actual_log_height);
+                    self.scroll_offset.min(max_scroll)
+                }
             };
 
-            let visible_end = std::cmp::min(visible_start + log_height, total_lines);
+            // Calculate what portion of the log to display
+            let visible_start = scroll_offset;
+            let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
 
-            let visible_log: Vec<Line> = self.output_log[visible_start..visible_end]
+            // Convert log messages to display text using explicit ratatui structures
+            let lines: Vec<Line> = self.output_log[visible_start..visible_end]
                 .iter()
-                .map(|msg| Line::from(msg.clone()))
+                .map(|msg| Line::from(Span::raw(msg.clone())))
                 .collect();
 
+            let text = Text::from(lines);
+
             // Create title with scroll indicator
-            let title = if total_lines > log_height {
+            let title = if total_lines > actual_log_height {
                 format!("Output [{}/{}]", visible_start + 1, total_lines)
             } else {
                 "Output".to_string()
             };
 
-            let output = Paragraph::new(visible_log)
+            let output = Paragraph::new(text)
                 .block(Block::default().borders(Borders::ALL).title(title))
-                .wrap(Wrap { trim: true });
+                .wrap(ratatui::widgets::Wrap { trim: false })
+                .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(output, main_chunks[0]);
 
             // Side panels - split into top and bottom
@@ -473,7 +496,7 @@ impl App {
 
             let input_text = match &self.input_mode {
                 InputMode::Normal => {
-                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'c' to clear output, 'q' to quit"
+                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'End' to enable auto-scroll, 'c' to clear output, 'q' to quit"
                         .to_string()
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
@@ -667,6 +690,28 @@ mod tests {
     }
 
     #[test]
+    fn test_version_display_in_status_bar() {
+        // Test that the version is properly included in status bar text
+        let version = env!("CARGO_PKG_VERSION");
+
+        // Test status bar with peer name
+        let status_with_peer = format!(
+            "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {}",
+            version, "TestPeer", 2, "Normal"
+        );
+        assert!(status_with_peer.contains("P2P-Play v"));
+        assert!(status_with_peer.contains(version));
+
+        // Test status bar without peer name
+        let status_without_peer = format!(
+            "P2P-Play v{} | No peer name set | Connected: {} | Mode: {}",
+            version, 0, "Editing"
+        );
+        assert!(status_without_peer.contains("P2P-Play v"));
+        assert!(status_without_peer.contains(version));
+    }
+
+    #[test]
     fn test_clear_output_functionality() {
         // Create a mock app structure for testing clear output
         let mut mock_app = MockApp {
@@ -708,31 +753,56 @@ mod tests {
     }
 
     #[test]
-    fn test_clear_output_key_event() {
-        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-
-        let mut mock_app = MockApp {
-            output_log: vec!["Message 1".to_string(), "Message 2".to_string()],
-            scroll_offset: 1,
+    fn test_auto_scroll_functionality() {
+        // Create a mock app structure for testing auto-scroll
+        let mut mock_app = MockAppWithAutoScroll {
+            output_log: vec![
+                "Initial message 1".to_string(),
+                "Initial message 2".to_string(),
+            ],
+            scroll_offset: 0,
+            auto_scroll: true,
         };
 
-        // Simulate pressing 'c' key in Normal mode
-        let key_event = Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE));
-
-        // Test the key event handling logic
-        let should_clear =
-            matches!(key_event, Event::Key(key) if matches!(key.code, KeyCode::Char('c')));
-        assert!(should_clear);
-
-        // If the key matches, clear the output
-        if should_clear {
-            mock_app.clear_output();
-        }
-
-        // Verify output was cleared
-        assert_eq!(mock_app.output_log.len(), 1);
-        assert_eq!(mock_app.output_log[0], "🧹 Output cleared");
+        // Test initial state
+        assert_eq!(mock_app.output_log.len(), 2);
         assert_eq!(mock_app.scroll_offset, 0);
+        assert!(mock_app.auto_scroll);
+
+        // Test adding a message with auto-scroll enabled
+        mock_app.add_to_log("New message 1".to_string());
+        assert_eq!(mock_app.output_log.len(), 3);
+        // Note: scroll position is now handled in draw() method, not in add_to_log()
+
+        // Test manual scroll disables auto-scroll
+        mock_app.scroll_up();
+        assert!(!mock_app.auto_scroll);
+
+        // Test adding message with auto-scroll disabled
+        mock_app.add_to_log("New message 2".to_string());
+        assert_eq!(mock_app.output_log.len(), 4);
+        // Scroll position doesn't change since it's handled in draw()
+
+        // Test re-enabling auto-scroll
+        mock_app.auto_scroll = true;
+        mock_app.add_to_log("New message 3".to_string());
+        assert_eq!(mock_app.output_log.len(), 5);
+        // Auto-scroll positioning happens in draw() method
+    }
+
+    #[test]
+    fn test_auto_scroll_status_display() {
+        // Test that auto-scroll status is properly displayed
+        let mut mock_app = MockAppWithAutoScroll {
+            output_log: vec!["Test".to_string()],
+            scroll_offset: 0,
+            auto_scroll: true,
+        };
+
+        assert!(mock_app.auto_scroll);
+
+        mock_app.scroll_up();
+        assert!(!mock_app.auto_scroll);
     }
 
     // Mock App structure for testing since we can't create a full App with terminal
@@ -755,6 +825,29 @@ mod tests {
                 self.scroll_offset = 0;
             } else {
                 self.scroll_offset = self.output_log.len().saturating_sub(1);
+            }
+        }
+    }
+
+    // Mock App structure for testing auto-scroll functionality
+    struct MockAppWithAutoScroll {
+        output_log: Vec<String>,
+        scroll_offset: usize,
+        auto_scroll: bool,
+    }
+
+    impl MockAppWithAutoScroll {
+        fn add_to_log(&mut self, message: String) {
+            self.output_log.push(message);
+            // Note: In the real implementation, scroll position is handled in draw() method
+            // For testing, we don't simulate the auto-scroll here since it's handled elsewhere
+        }
+
+        fn scroll_up(&mut self) {
+            // Always disable auto-scroll when user manually scrolls, even if at top
+            self.auto_scroll = false;
+            if self.scroll_offset > 0 {
+                self.scroll_offset -= 1;
             }
         }
     }

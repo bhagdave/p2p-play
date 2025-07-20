@@ -1,15 +1,15 @@
 use crate::error_logger::ErrorLogger;
 use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{
-    create_channel, create_new_story_with_channel, delete_local_story, publish_story, read_channels,
-    read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
-    unsubscribe_from_channel,
+    create_channel, create_new_story_with_channel, delete_local_story, publish_story,
+    read_channels, read_local_stories, read_subscribed_channels, save_local_peer_name,
+    subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
-use log::info;
+use log::debug;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
@@ -119,9 +119,9 @@ pub async fn handle_list_stories(
                 mode: ListMode::ALL,
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            info!("JSON od request: {}", json);
+            debug!("JSON od request: {}", json);
             let json_bytes = Bytes::from(json.into_bytes());
-            info!(
+            debug!(
                 "Publishing to topic: {:?} from peer:{:?}",
                 TOPIC.clone(),
                 PEER_ID.clone()
@@ -130,7 +130,7 @@ pub async fn handle_list_stories(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
-            info!("Published request");
+            debug!("Published request");
         }
         Some(story_peer_id) => {
             ui_logger.log(format!(
@@ -141,7 +141,7 @@ pub async fn handle_list_stories(
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            info!("JSON od request: {}", json);
+            debug!("JSON od request: {}", json);
             let json_bytes = Bytes::from(json.into_bytes());
             swarm
                 .behaviour_mut()
@@ -276,7 +276,8 @@ pub async fn handle_delete_story(
                         }
                     }
                     Err(e) => {
-                        error_logger.log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                        error_logger
+                            .log_error(&format!("Failed to delete story with id {}: {}", id, e));
                     }
                 }
             }
@@ -451,7 +452,7 @@ pub async fn handle_direct_message(
             .send_request(&target_peer_id, direct_msg_request);
 
         ui_logger.log(format!("Direct message sent to {}: {}", to_name, message));
-        info!(
+        debug!(
             "Sent direct message to {} from {} (request_id: {:?})",
             to_name, from_name, request_id
         );
@@ -588,18 +589,18 @@ pub async fn establish_direct_connection(
                     ui_logger.log("Dialing initiated successfully".to_string());
 
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-                    info!("Number of connected peers: {}", connected_peers.len());
+                    debug!("Number of connected peers: {}", connected_peers.len());
 
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                     let connected_peers_after: Vec<_> = swarm.connected_peers().cloned().collect();
-                    info!(
+                    debug!(
                         "Number of connected peers after 2 seconds: {}",
                         connected_peers_after.len()
                     );
                     for peer in connected_peers {
-                        info!("Connected to peer: {}", peer);
+                        debug!("Connected to peer: {}", peer);
 
-                        info!("Adding peer to floodsub: {}", peer);
+                        debug!("Adding peer to floodsub: {}", peer);
                         swarm
                             .behaviour_mut()
                             .floodsub

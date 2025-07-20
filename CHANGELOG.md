@@ -8,8 +8,19 @@ All changes to this project will be documented in this file.
 - **Story Deletion**: New `delete s <id>` command to permanently remove stories from local storage
 - Local story deletion functionality with proper error handling and user feedback
 - Comprehensive test coverage for story deletion including edge cases and database operations
+- test_runner script now uses tarpaulin to produce coverage report
+- **TUI Auto-scroll**: Added intelligent auto-scroll functionality for terminal output
+  - Automatically scrolls to show new messages when they arrive
+  - Preserves manual scroll position when user scrolls up to read history
+  - End key re-enables auto-scroll and jumps to latest messages
+  - Status bar shows current auto-scroll state (AUTO: ON/OFF)
+  - Maintains user control while ensuring new content is visible
 
 ### Fixed
+- **Terminal UI Text Rendering**: Fixed text overlap and readability issues in the Output panel where text was rendering without proper spacing
+- Improved text wrapping by changing from `Wrap { trim: true }` to `Wrap { trim: false }` to preserve spacing
+- Enhanced text rendering using explicit ratatui `Text`/`Line`/`Span` structures for better text handling
+- Updated layout constraints from percentage-based to minimum width constraints for improved display stability
 - Removed handshake failures and network error messages from console output to prevent TUI interface disruption
 - Replaced println! statements in network.rs with proper logging calls
 - Network connection errors (incoming/outgoing) now log to error file instead of console
@@ -27,6 +38,7 @@ All changes to this project will be documented in this file.
 - Connection status remains visible in the dedicated "Connected Peers" section
 - Connection events are still logged to file for debugging purposes
 - Test suite now uses safe Rust code exclusively, eliminating all unsafe blocks from storage tests
+- Additional test coverage with target of over 40%
 
 ## [0.6.0] - 2025-07-16
 

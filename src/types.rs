@@ -580,4 +580,220 @@ mod tests {
         assert_eq!(start_creation, ActionResult::StartStoryCreation);
         assert_ne!(refresh, start_creation);
     }
+  
+    #[test]
+    fn test_story_new_with_channel() {
+        let story = Story::new_with_channel(
+            1,
+            "Test Story".to_string(),
+            "Test Header".to_string(),
+            "Test Body".to_string(),
+            true,
+            "custom_channel".to_string(),
+        );
+
+        assert_eq!(story.id, 1);
+        assert_eq!(story.name, "Test Story");
+        assert_eq!(story.header, "Test Header");
+        assert_eq!(story.body, "Test Body");
+        assert!(story.public);
+        assert_eq!(story.channel, "custom_channel");
+    }
+
+    #[test]
+    fn test_story_is_public() {
+        let mut public_story = Story::new(
+            1,
+            "Public Story".to_string(),
+            "Header".to_string(),
+            "Body".to_string(),
+            true,
+        );
+        let private_story = Story::new(
+            2,
+            "Private Story".to_string(),
+            "Header".to_string(),
+            "Body".to_string(),
+            false,
+        );
+
+        assert!(public_story.is_public());
+        assert!(!private_story.is_public());
+
+        // Test set_public
+        public_story.set_public(false);
+        assert!(!public_story.is_public());
+    }
+
+    #[test]
+    fn test_story_set_public() {
+        let mut story = Story::new(
+            1,
+            "Story".to_string(),
+            "Header".to_string(),
+            "Body".to_string(),
+            false,
+        );
+
+        assert!(!story.public);
+        story.set_public(true);
+        assert!(story.public);
+        story.set_public(false);
+        assert!(!story.public);
+    }
+
+    #[test]
+    fn test_list_request_new_all() {
+        let request = ListRequest::new_all();
+
+        match request.mode {
+            ListMode::ALL => assert!(true),
+            ListMode::One(_) => panic!("Expected ListMode::ALL"),
+        }
+    }
+
+    #[test]
+    fn test_list_request_new_one() {
+        let peer_id = "peer123".to_string();
+        let request = ListRequest::new_one(peer_id.clone());
+
+        match request.mode {
+            ListMode::One(id) => assert_eq!(id, peer_id),
+            ListMode::ALL => panic!("Expected ListMode::One"),
+        }
+    }
+
+    #[test]
+    fn test_list_response_new() {
+        let stories = vec![Story::new(
+            1,
+            "Test".to_string(),
+            "Header".to_string(),
+            "Body".to_string(),
+            true,
+        )];
+
+        let response = ListResponse::new(ListMode::ALL, "receiver123".to_string(), stories.clone());
+
+        assert_eq!(response.mode, ListMode::ALL);
+        assert_eq!(response.receiver, "receiver123");
+        assert_eq!(response.data, stories);
+    }
+
+    #[test]
+    fn test_published_story_new() {
+        let story = Story::new(
+            1,
+            "Test Story".to_string(),
+            "Header".to_string(),
+            "Body".to_string(),
+            true,
+        );
+        let publisher = "publisher123".to_string();
+
+        let published = PublishedStory::new(story.clone(), publisher.clone());
+
+        assert_eq!(published.story, story);
+        assert_eq!(published.publisher, publisher);
+    }
+
+    #[test]
+    fn test_peer_name_new() {
+        let peer_id = "peer456".to_string();
+        let name = "Alice".to_string();
+
+        let peer_name = PeerName::new(peer_id.clone(), name.clone());
+
+        assert_eq!(peer_name.peer_id, peer_id);
+        assert_eq!(peer_name.name, name);
+    }
+
+    #[test]
+    fn test_direct_message_new() {
+        let from_peer_id = "sender123".to_string();
+        let from_name = "Alice".to_string();
+        let to_name = "Bob".to_string();
+        let message = "Hello Bob!".to_string();
+
+        let dm = DirectMessage::new(
+            from_peer_id.clone(),
+            from_name.clone(),
+            to_name.clone(),
+            message.clone(),
+        );
+
+        assert_eq!(dm.from_peer_id, from_peer_id);
+        assert_eq!(dm.from_name, from_name);
+        assert_eq!(dm.to_name, to_name);
+        assert_eq!(dm.message, message);
+        assert!(dm.timestamp > 0); // Should have a valid timestamp
+    }
+
+    #[test]
+    fn test_channel_new() {
+        let name = "test_channel".to_string();
+        let description = "Test channel description".to_string();
+        let created_by = "creator123".to_string();
+
+        let channel = Channel::new(name.clone(), description.clone(), created_by.clone());
+
+        assert_eq!(channel.name, name);
+        assert_eq!(channel.description, description);
+        assert_eq!(channel.created_by, created_by);
+        assert!(channel.created_at > 0); // Should have a valid timestamp
+    }
+
+    #[test]
+    fn test_channel_subscription_new() {
+        let peer_id = "peer789".to_string();
+        let channel_name = "general".to_string();
+
+        let subscription = ChannelSubscription::new(peer_id.clone(), channel_name.clone());
+
+        assert_eq!(subscription.peer_id, peer_id);
+        assert_eq!(subscription.channel_name, channel_name);
+        assert!(subscription.subscribed_at > 0); // Should have a valid timestamp
+    }
+
+    #[test]
+    fn test_event_type_variants_construction() {
+        // Test that all EventType variants can be constructed with the unused types
+        let peer_name = PeerName::new("peer123".to_string(), "Alice".to_string());
+        let _peer_name_event = EventType::PeerName(peer_name);
+
+        let direct_msg = DirectMessage::new(
+            "peer123".to_string(),
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Hello".to_string(),
+        );
+        let _direct_msg_event = EventType::DirectMessage(direct_msg);
+
+        let channel = Channel::new(
+            "test".to_string(),
+            "Test channel".to_string(),
+            "creator".to_string(),
+        );
+        let _channel_event = EventType::Channel(channel);
+
+        let subscription = ChannelSubscription::new("peer123".to_string(), "general".to_string());
+        let _subscription_event = EventType::ChannelSubscription(subscription);
+
+        // This test mainly ensures the variants can be constructed without panic
+    }
+
+    #[test]
+    fn test_channel_subscriptions_type_alias() {
+        // Test the ChannelSubscriptions type alias
+        let subscription1 = ChannelSubscription::new("peer1".to_string(), "general".to_string());
+        let subscription2 = ChannelSubscription::new("peer2".to_string(), "tech".to_string());
+
+        let subscriptions: ChannelSubscriptions = vec![subscription1, subscription2];
+
+        assert_eq!(subscriptions.len(), 2);
+        assert_eq!(subscriptions[0].peer_id, "peer1");
+        assert_eq!(subscriptions[0].channel_name, "general");
+        assert_eq!(subscriptions[1].peer_id, "peer2");
+        assert_eq!(subscriptions[1].channel_name, "tech");
+    }
 }
