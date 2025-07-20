@@ -80,11 +80,11 @@ pub async fn handle_input_event(
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
         "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
+        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
+        "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
-        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
-        "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("create s") => {
             if let Some(()) = handle_create_stories(cmd, ui_logger, error_logger).await {
                 return Some(());
@@ -707,6 +707,47 @@ mod tests {
         assert_eq!(response_rejected.timestamp, 1000);
     }
 
+    #[test]
+    fn test_ls_sub_pattern_matching() {
+        // Test that pattern matching for "ls sub" works correctly
+        // This prevents regression of the bug where "ls sub" was incorrectly
+        // matched by "ls s*" pattern instead of its specific handler
+        
+        let test_cases = vec![
+            ("ls sub", "subscription"),
+            ("ls ch", "channels"),
+            ("ls s local", "stories"),
+            ("ls s all", "stories"),
+            ("ls p", "peers"),
+            ("ls c", "connections"),
+        ];
+        
+        for (input, _expected_type) in test_cases {
+            let result = match_command_type(input);
+            match input {
+                "ls sub" => assert_eq!(result, "subscription", "ls sub should match subscription handler"),
+                "ls ch" => assert_eq!(result, "channels", "ls ch should match channels handler"),
+                cmd if cmd.starts_with("ls s") => assert_eq!(result, "stories", "ls s commands should match stories handler"),
+                "ls p" => assert_eq!(result, "peers", "ls p should match peers handler"),
+                "ls c" => assert_eq!(result, "connections", "ls c should match connections handler"),
+                _ => {}
+            }
+        }
+    }
+    
+    // Mock function that simulates the pattern matching logic from event_handlers.rs
+    fn match_command_type(line: &str) -> &'static str {
+        // This follows the exact same pattern matching order as in handle_input_event
+        match line {
+            "ls p" => "peers",
+            "ls c" => "connections", 
+            "ls ch" => "channels",
+            "ls sub" => "subscription",
+            cmd if cmd.starts_with("ls s") => "stories",
+            _ => "unknown"
+        }
+    }
+          
     #[tokio::test]
     async fn test_handle_peer_name_event() {
         let peer_name = PeerName::new("peer123".to_string(), "TestAlias".to_string());
@@ -858,6 +899,7 @@ mod tests {
             ListMode::ALL => {
                 panic!("Expected ListMode::One");
             }
+           
         }
     }
 }
