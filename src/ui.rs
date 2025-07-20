@@ -5,7 +5,7 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use libp2p::PeerId;
-use log::info;
+use log::debug;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
@@ -91,7 +91,7 @@ impl App {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => {
                         self.should_quit = true;
-                        info!("Quit command received, setting should_quit to true");
+                        debug!("Quit command received, setting should_quit to true");
                         return Some(AppEvent::Quit);
                     }
                     KeyCode::Char('i') => {
