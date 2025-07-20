@@ -1,5 +1,5 @@
 use crate::types::{Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story};
-use log::{error, info};
+use log::{debug, error};
 use rusqlite::Connection;
 use std::error::Error;
 use std::sync::Arc;
@@ -44,7 +44,7 @@ async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
     }
 
     // Need to create or update connection
-    info!("Creating new SQLite database connection: {}", current_path);
+    debug!("Creating new SQLite database connection: {}", current_path);
     let conn = Connection::open(&current_path)?;
     let conn_arc = Arc::new(Mutex::new(conn));
 
@@ -54,7 +54,7 @@ async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
         *state = Some((conn_arc.clone(), current_path));
     }
 
-    info!("Successfully connected to SQLite database");
+    debug!("Successfully connected to SQLite database");
     Ok(conn_arc)
 }
 
@@ -75,19 +75,19 @@ async fn create_tables() -> Result<(), Box<dyn Error>> {
 
 pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
     let db_path = get_database_path();
-    info!("Initializing SQLite database at: {}", db_path);
+    debug!("Initializing SQLite database at: {}", db_path);
 
     // Ensure the directory exists for the database file
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
         if !parent.exists() {
-            info!("Creating directory: {:?}", parent);
+            debug!("Creating directory: {:?}", parent);
             tokio::fs::create_dir_all(parent).await?;
         }
     }
 
     let _conn = get_db_connection().await?;
     create_tables().await?;
-    info!("SQLite database and tables initialized");
+    debug!("SQLite database and tables initialized");
     Ok(())
 }
 
@@ -251,10 +251,10 @@ pub async fn create_new_story_with_channel(
         ],
     )?;
 
-    info!("Created story:");
-    info!("Name: {}", name);
-    info!("Header: {}", header);
-    info!("Body: {}", body);
+    debug!("Created story:");
+    debug!("Name: {}", name);
+    debug!("Header: {}", header);
+    debug!("Body: {}", body);
 
     Ok(())
 }
@@ -336,10 +336,10 @@ pub async fn delete_local_story(id: usize) -> Result<bool, Box<dyn Error>> {
     )?;
 
     if rows_affected > 0 {
-        info!("Deleted story with ID: {}", id);
+        debug!("Deleted story with ID: {}", id);
         Ok(true)
     } else {
-        info!("No story found with ID: {}", id);
+        debug!("No story found with ID: {}", id);
         Ok(false)
     }
 }
@@ -390,9 +390,9 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
             ],
         )?;
 
-        info!("Saved received story to local storage with ID: {}", new_id);
+        debug!("Saved received story to local storage with ID: {}", new_id);
     } else {
-        info!("Story already exists locally, skipping save");
+        debug!("Story already exists locally, skipping save");
     }
 
     Ok(())
@@ -497,7 +497,7 @@ pub async fn create_channel(
         [name, description, created_by, &timestamp.to_string()],
     )?;
 
-    info!("Created channel: {} - {}", name, description);
+    debug!("Created channel: {} - {}", name, description);
     Ok(())
 }
 
@@ -538,7 +538,7 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> Result<(
         [peer_id, channel_name, &timestamp.to_string()],
     )?;
 
-    info!("Subscribed {} to channel: {}", peer_id, channel_name);
+    debug!("Subscribed {} to channel: {}", peer_id, channel_name);
     Ok(())
 }
 
@@ -554,7 +554,7 @@ pub async fn unsubscribe_from_channel(
         [peer_id, channel_name],
     )?;
 
-    info!("Unsubscribed {} from channel: {}", peer_id, channel_name);
+    debug!("Unsubscribed {} from channel: {}", peer_id, channel_name);
     Ok(())
 }
 
@@ -637,7 +637,7 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     conn.execute("DELETE FROM channels WHERE name != 'general'", [])?; // Keep general channel
     conn.execute("DELETE FROM peer_name", [])?;
 
-    info!("Test database cleared and reset");
+    debug!("Test database cleared and reset");
     Ok(())
 }
 
