@@ -1,7 +1,7 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response};
-use log::{info, warn, error};
+use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
@@ -24,11 +24,11 @@ pub struct DirectMessageResponse {
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
-        info!("Found existing peer key file, attempting to load");
+        debug!("Found existing peer key file, attempting to load");
         match identity::Keypair::from_protobuf_encoding(&bytes) {
             Ok(keypair) => {
                 let peer_id = PeerId::from(keypair.public());
-                info!("Successfully loaded keypair with PeerId: {}", peer_id);
+                debug!("Successfully loaded keypair with PeerId: {}", peer_id);
                 keypair
             }
             Err(e) => {
@@ -38,7 +38,7 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key
         }
     }
     Err(e) => {
-        info!("No existing key file found ({}), generating new one", e);
+        debug!("No existing key file found ({}), generating new one", e);
         generate_and_save_keypair()
     }
 });
@@ -49,11 +49,11 @@ pub static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 fn generate_and_save_keypair() -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
-    info!("Generated new keypair with PeerId: {}", peer_id);
+    debug!("Generated new keypair with PeerId: {}", peer_id);
 
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
-            Ok(_) => info!("Successfully saved keypair to file"),
+            Ok(_) => debug!("Successfully saved keypair to file"),
             Err(e) => error!("Failed to save keypair: {}", e),
         },
         Err(e) => error!("Failed to encode keypair: {}", e),
@@ -134,8 +134,8 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
         request_response,
     };
 
-    info!("Created floodsub with peer id: {:?}", PEER_ID.clone());
-    info!("Subscribing to topic: {:?}", TOPIC.clone());
+    debug!("Created floodsub with peer id: {:?}", PEER_ID.clone());
+    debug!("Subscribing to topic: {:?}", TOPIC.clone());
     behaviour.floodsub.subscribe(TOPIC.clone());
 
     let swarm = Swarm::<StoryBehaviour>::new(
