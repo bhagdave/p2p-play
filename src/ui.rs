@@ -243,8 +243,8 @@ impl App {
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Percentage(60), // Output area
-                    Constraint::Percentage(40), // Side panels
+                    Constraint::Min(80), // Output area - minimum 80 characters
+                    Constraint::Min(30), // Side panels - minimum 30 characters
                 ])
                 .split(chunks[1]);
 
@@ -280,7 +280,8 @@ impl App {
 
             let output = Paragraph::new(text)
                 .block(Block::default().borders(Borders::ALL).title(title))
-                .wrap(ratatui::widgets::Wrap { trim: false });
+                .wrap(ratatui::widgets::Wrap { trim: false })
+                .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(output, main_chunks[0]);
 
             // Side panels - split into top and bottom
