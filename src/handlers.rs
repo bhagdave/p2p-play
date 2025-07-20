@@ -1,9 +1,9 @@
 use crate::error_logger::ErrorLogger;
 use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{
-    create_channel, create_new_story_with_channel, delete_local_story, publish_story, read_channels,
-    read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
-    unsubscribe_from_channel,
+    create_channel, create_new_story_with_channel, delete_local_story, publish_story,
+    read_channels, read_local_stories, read_subscribed_channels, save_local_peer_name,
+    subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
@@ -278,7 +278,8 @@ pub async fn handle_delete_story(
                         }
                     }
                     Err(e) => {
-                        error_logger.log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                        error_logger
+                            .log_error(&format!("Failed to delete story with id {}: {}", id, e));
                     }
                 }
             }
