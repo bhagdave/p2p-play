@@ -1,7 +1,7 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
-use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response};
-use log::{info, warn, error};
+use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response, kad};
+use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
@@ -40,11 +40,11 @@ pub struct NodeDescriptionResponse {
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
-        info!("Found existing peer key file, attempting to load");
+        debug!("Found existing peer key file, attempting to load");
         match identity::Keypair::from_protobuf_encoding(&bytes) {
             Ok(keypair) => {
                 let peer_id = PeerId::from(keypair.public());
-                info!("Successfully loaded keypair with PeerId: {}", peer_id);
+                debug!("Successfully loaded keypair with PeerId: {}", peer_id);
                 keypair
             }
             Err(e) => {
@@ -54,7 +54,7 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key
         }
     }
     Err(e) => {
-        info!("No existing key file found ({}), generating new one", e);
+        debug!("No existing key file found ({}), generating new one", e);
         generate_and_save_keypair()
     }
 });
@@ -65,11 +65,11 @@ pub static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 fn generate_and_save_keypair() -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
-    info!("Generated new keypair with PeerId: {}", peer_id);
+    debug!("Generated new keypair with PeerId: {}", peer_id);
 
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
-            Ok(_) => info!("Successfully saved keypair to file"),
+            Ok(_) => debug!("Successfully saved keypair to file"),
             Err(e) => error!("Failed to save keypair: {}", e),
         },
         Err(e) => error!("Failed to encode keypair: {}", e),
@@ -85,6 +85,7 @@ pub struct StoryBehaviour {
     pub ping: ping::Behaviour,
     pub request_response:
         request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
+    pub kad: kad::Behaviour<kad::store::MemoryStore>,
 }
 
 #[derive(Debug)]
@@ -93,6 +94,7 @@ pub enum StoryBehaviourEvent {
     Mdns(mdns::Event),
     Ping(ping::Event),
     RequestResponse(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
+    Kad(kad::Event),
 }
 
 impl From<Event> for StoryBehaviourEvent {
@@ -121,6 +123,12 @@ impl From<request_response::Event<DirectMessageRequest, DirectMessageResponse>>
     }
 }
 
+impl From<kad::Event> for StoryBehaviourEvent {
+    fn from(event: kad::Event) -> Self {
+        StoryBehaviourEvent::Kad(event)
+    }
+}
+
 pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
@@ -143,15 +151,24 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     let request_response = request_response::cbor::Behaviour::new(protocols, cfg);
 
+    // Create Kademlia DHT
+    let store = kad::store::MemoryStore::new(*PEER_ID);
+    let kad_config = kad::Config::default();
+    let mut kad = kad::Behaviour::with_config(*PEER_ID, store, kad_config);
+
+    // Set Kademlia mode to server to accept queries and provide records
+    kad.set_mode(Some(kad::Mode::Server));
+
     let mut behaviour = StoryBehaviour {
         floodsub: Behaviour::new(*PEER_ID),
         mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
         ping: ping::Behaviour::new(ping::Config::new()),
         request_response,
+        kad,
     };
 
-    info!("Created floodsub with peer id: {:?}", PEER_ID.clone());
-    info!("Subscribing to topic: {:?}", TOPIC.clone());
+    debug!("Created floodsub with peer id: {:?}", PEER_ID.clone());
+    debug!("Subscribing to topic: {:?}", TOPIC.clone());
     behaviour.floodsub.subscribe(TOPIC.clone());
 
     let swarm = Swarm::<StoryBehaviour>::new(
@@ -248,6 +265,36 @@ mod tests {
             }
             _ => panic!("Expected Ping event"),
         }
+    }
+
+    #[test]
+    fn test_story_behaviour_event_from_kad() {
+        use libp2p::kad::Event as KadEvent;
+
+        // Create a mock kad event - using the simplest variant
+        let kad_event = KadEvent::ModeChanged { new_mode: libp2p::kad::Mode::Client };
+
+        // Test conversion
+        let story_event = StoryBehaviourEvent::from(kad_event);
+        match story_event {
+            StoryBehaviourEvent::Kad(_) => {
+                // Conversion worked
+            }
+            _ => panic!("Expected Kad event"),
+        }
+    }
+
+    #[test]
+    fn test_kad_in_story_behaviour() {
+        // Test that kad is properly included in the behaviour
+        let store = kad::store::MemoryStore::new(*PEER_ID);
+        let kad_config = kad::Config::default();
+        let mut kad = kad::Behaviour::with_config(*PEER_ID, store, kad_config);
+        kad.set_mode(Some(kad::Mode::Server));
+        
+        // Verify kad mode was set
+        // We can't easily test the internal state, but this verifies compilation
+        let _kad = kad;
     }
 
     #[tokio::test]

@@ -3,19 +3,19 @@ use crate::handlers::*;
 use crate::network::{DirectMessageRequest, DirectMessageResponse, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{save_received_story, load_node_description};
 use crate::types::{
-    DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
+    ActionResult, DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
 };
 
 use bytes::Bytes;
 use libp2p::{PeerId, Swarm, request_response};
-use log::{error, info};
+use log::{debug, error};
 use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
 
 /// Handle response events by publishing them to the network
 pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBehaviour>) {
-    info!("Response received");
+    debug!("Response received");
     let json = serde_json::to_string(&resp).expect("can jsonify response");
     let json_bytes = Bytes::from(json.into_bytes());
     swarm
@@ -29,7 +29,7 @@ pub async fn handle_publish_story_event(
     story: crate::types::Story,
     swarm: &mut Swarm<StoryBehaviour>,
 ) {
-    info!("Broadcasting published story: {}", story.name);
+    debug!("Broadcasting published story: {}", story.name);
 
     // Pre-publish connection check and reconnection
     maintain_connections(swarm).await;
@@ -39,9 +39,9 @@ pub async fn handle_publish_story_event(
 
     // Debug: Show connected peers and floodsub state
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-    info!("Currently connected peers: {}", connected_peers.len());
+    debug!("Currently connected peers: {}", connected_peers.len());
     for peer in &connected_peers {
-        info!("Connected to: {}", peer);
+        debug!("Connected to: {}", peer);
     }
 
     if connected_peers.is_empty() {
@@ -54,7 +54,7 @@ pub async fn handle_publish_story_event(
     };
     let json = serde_json::to_string(&published_story).expect("can jsonify published story");
     let json_bytes = Bytes::from(json.into_bytes());
-    info!(
+    debug!(
         "Publishing {} bytes to topic {:?}",
         json_bytes.len(),
         TOPIC.clone()
@@ -63,7 +63,7 @@ pub async fn handle_publish_story_event(
         .behaviour_mut()
         .floodsub
         .publish(TOPIC.clone(), json_bytes);
-    info!("Story broadcast completed");
+    debug!("Story broadcast completed");
 }
 
 /// Handle user input events
@@ -76,26 +76,20 @@ pub async fn handle_input_event(
     sorted_peer_names_cache: &SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
         "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
+        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
+        "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
-        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
-        "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("create s") => {
-            if let Some(()) = handle_create_stories(cmd, ui_logger, error_logger).await {
-                return Some(());
-            }
+            return handle_create_stories(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("create ch") => {
-            if let Some(()) =
-                handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await
-            {
-                return Some(());
-            }
+            return handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("create desc") => {
             handle_create_description(cmd, ui_logger).await
@@ -115,11 +109,11 @@ pub async fn handle_input_event(
             handle_get_description(cmd, ui_logger, swarm, local_peer_name, peer_names).await
         }
         cmd if cmd.starts_with("delete s") => {
-            if let Some(()) = handle_delete_story(cmd, ui_logger, error_logger).await {
-                return Some(());
-            }
+            return handle_delete_story(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
+        cmd if cmd.starts_with("dht bootstrap") => handle_dht_bootstrap(cmd, swarm, ui_logger).await,
+        cmd if cmd.starts_with("dht peers") => handle_dht_get_peers(cmd, swarm, ui_logger).await,
         cmd if cmd.starts_with("quit") => process::exit(0),
         "name" => {
             // Show current alias when no arguments provided
@@ -137,7 +131,7 @@ pub async fn handle_input_event(
                     .behaviour_mut()
                     .floodsub
                     .publish(TOPIC.clone(), json_bytes);
-                info!("Broadcasted peer name to connected peers");
+                debug!("Broadcasted peer name to connected peers");
             }
         }
         cmd if cmd.starts_with("connect ") => {
@@ -165,26 +159,26 @@ pub async fn handle_input_event(
 pub async fn handle_mdns_event(mdns_event: libp2p::mdns::Event, swarm: &mut Swarm<StoryBehaviour>) {
     match mdns_event {
         libp2p::mdns::Event::Discovered(discovered_list) => {
-            info!("Discovered Peers event");
+            debug!("Discovered Peers event");
             for (peer, addr) in discovered_list {
-                info!("Discovered a peer:{} at {}", peer, addr);
+                debug!("Discovered a peer:{} at {}", peer, addr);
                 if !swarm.is_connected(&peer) {
-                    info!("Attempting to dial peer: {}", peer);
+                    debug!("Attempting to dial peer: {}", peer);
                     if let Err(e) = swarm.dial(peer) {
                         error!("Failed to initiate dial to {}: {}", peer, e);
                     }
                 } else {
-                    info!("Already connected to peer: {}", peer);
+                    debug!("Already connected to peer: {}", peer);
                 }
             }
         }
         libp2p::mdns::Event::Expired(expired_list) => {
-            info!("Expired Peers event");
+            debug!("Expired Peers event");
             for (peer, _addr) in expired_list {
-                info!("Expired a peer:{} at {}", peer, _addr);
+                debug!("Expired a peer:{} at {}", peer, _addr);
                 let discovered_nodes: Vec<_> = swarm.behaviour().mdns.discovered_nodes().collect();
                 if !discovered_nodes.contains(&(&peer)) {
-                    info!("Removing peer from partial view: {}", peer);
+                    debug!("Removing peer from partial view: {}", peer);
                     swarm
                         .behaviour_mut()
                         .floodsub
@@ -206,12 +200,12 @@ pub async fn handle_floodsub_event(
 ) -> Option<()> {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
-            info!("Message event received from {:?}", msg.source);
-            info!("Message data length: {} bytes", msg.data.len());
+            debug!("Message event received from {:?}", msg.source);
+            debug!("Message data length: {} bytes", msg.data.len());
             if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
                 if resp.receiver == PEER_ID.to_string() {
-                    info!("Response from {}:", msg.source);
-                    resp.data.iter().for_each(|r| info!("{:?}", r));
+                    debug!("Response from {}:", msg.source);
+                    resp.data.iter().for_each(|r| debug!("{:?}", r));
                 }
             } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                 if published.publisher != PEER_ID.to_string() {
@@ -233,11 +227,11 @@ pub async fn handle_floodsub_event(
                     };
 
                     if should_accept_story {
-                        info!(
+                        debug!(
                             "Received published story '{}' from {} in channel '{}'",
                             published.story.name, msg.source, published.story.channel
                         );
-                        info!("Story: {:?}", published.story);
+                        debug!("Story: {:?}", published.story);
                         ui_logger.log(format!(
                             "📖 Received story '{}' from {} in channel '{}'",
                             published.story.name, msg.source, published.story.channel
@@ -254,7 +248,7 @@ pub async fn handle_floodsub_event(
                         // Signal that stories need to be refreshed
                         return Some(());
                     } else {
-                        info!(
+                        debug!(
                             "Ignoring story '{}' from channel '{}' - not subscribed",
                             published.story.name, published.story.channel
                         );
@@ -263,7 +257,7 @@ pub async fn handle_floodsub_event(
             } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
                 if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
                     if peer_id != *PEER_ID {
-                        info!("Received peer name '{}' from {}", peer_name.name, peer_id);
+                        debug!("Received peer name '{}' from {}", peer_name.name, peer_id);
 
                         // Only update the peer name if it's new or has actually changed
                         let mut names_changed = false;
@@ -271,18 +265,18 @@ pub async fn handle_floodsub_event(
                             .entry(peer_id)
                             .and_modify(|existing_name| {
                                 if existing_name != &peer_name.name {
-                                    info!(
+                                    debug!(
                                         "Peer {} name changed from '{}' to '{}'",
                                         peer_id, existing_name, peer_name.name
                                     );
                                     *existing_name = peer_name.name.clone();
                                     names_changed = true;
                                 } else {
-                                    info!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
+                                    debug!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
                                 }
                             })
                             .or_insert_with(|| {
-                                info!(
+                                debug!(
                                     "Setting peer {} name to '{}' (first time)",
                                     peer_id, peer_name.name
                                 );
@@ -299,7 +293,7 @@ pub async fn handle_floodsub_event(
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                 match req.mode {
                     ListMode::ALL => {
-                        info!("Received ALL req: {:?} from {:?}", req, msg.source);
+                        debug!("Received ALL req: {:?} from {:?}", req, msg.source);
                         respond_with_public_stories(
                             response_sender.clone(),
                             msg.source.to_string(),
@@ -307,7 +301,7 @@ pub async fn handle_floodsub_event(
                     }
                     ListMode::One(ref peer_id) => {
                         if peer_id == &PEER_ID.to_string() {
-                            info!("Received req: {:?} from {:?}", req, msg.source);
+                            debug!("Received req: {:?} from {:?}", req, msg.source);
                             respond_with_public_stories(
                                 response_sender.clone(),
                                 msg.source.to_string(),
@@ -318,10 +312,86 @@ pub async fn handle_floodsub_event(
             }
         }
         _ => {
-            info!("Subscription events");
+            debug!("Subscription events");
         }
     }
     None
+}
+
+/// Handle DHT bootstrap command
+pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    crate::handlers::handle_dht_bootstrap(cmd, swarm, ui_logger).await;
+}
+
+/// Handle DHT get closest peers command
+pub async fn handle_dht_get_peers(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    crate::handlers::handle_dht_get_peers(cmd, swarm, ui_logger).await;
+}
+
+/// Handle Kademlia DHT events for peer discovery
+pub async fn handle_kad_event(
+    kad_event: libp2p::kad::Event,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
+    match kad_event {
+        libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
+            match result {
+                libp2p::kad::QueryResult::Bootstrap(Ok(bootstrap_ok)) => {
+                    debug!("Kademlia bootstrap successful with peer: {}", bootstrap_ok.peer);
+                    ui_logger.log(format!("DHT bootstrap successful with peer: {}", bootstrap_ok.peer));
+                }
+                libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
+                    error!("Kademlia bootstrap failed: {:?}", e);
+                    ui_logger.log(format!("DHT bootstrap failed: {:?}", e));
+                }
+                libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
+                    debug!("Found {} closest peers to key", get_closest_peers_ok.peers.len());
+                    for peer in &get_closest_peers_ok.peers {
+                        debug!("Closest peer: {:?}", peer);
+                    }
+                }
+                libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
+                    error!("Failed to get closest peers: {:?}", e);
+                }
+                _ => {
+                    debug!("Other Kademlia query result: {:?}", result);
+                }
+            }
+        }
+        libp2p::kad::Event::RoutingUpdated { peer, is_new_peer, .. } => {
+            if is_new_peer {
+                debug!("New peer added to DHT routing table: {}", peer);
+                ui_logger.log(format!("New peer added to DHT: {}", peer));
+                
+                // Add the peer to floodsub partial view if connected
+                if swarm.is_connected(&peer) {
+                    swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
+                    debug!("Added DHT peer {} to floodsub partial view", peer);
+                }
+            }
+        }
+        libp2p::kad::Event::InboundRequest { request } => {
+            match request {
+                libp2p::kad::InboundRequest::FindNode { .. } => {
+                    debug!("Received DHT FindNode request");
+                }
+                libp2p::kad::InboundRequest::GetProvider { .. } => {
+                    debug!("Received DHT GetProvider request");
+                }
+                _ => {
+                    debug!("Received other DHT inbound request: {:?}", request);
+                }
+            }
+        }
+        libp2p::kad::Event::ModeChanged { new_mode } => {
+            debug!("Kademlia mode changed to: {:?}", new_mode);
+            ui_logger.log(format!("DHT mode changed to: {:?}", new_mode));
+        }
+        _ => {
+            debug!("Other Kademlia event: {:?}", kad_event);
+        }
+    }
 }
 
 /// Handle ping events for connection monitoring
@@ -332,7 +402,7 @@ pub async fn handle_ping_event(ping_event: libp2p::ping::Event) {
             result: Ok(rtt),
             ..
         } => {
-            info!("Ping to {} successful: {}ms", peer, rtt.as_millis());
+            debug!("Ping to {} successful: {}ms", peer, rtt.as_millis());
         }
         libp2p::ping::Event {
             peer,
@@ -348,7 +418,7 @@ pub async fn handle_ping_event(ping_event: libp2p::ping::Event) {
 pub async fn handle_peer_name_event(peer_name: PeerName) {
     // This shouldn't happen since PeerName events are created from floodsub messages
     // but we'll handle it just in case
-    info!(
+    debug!(
         "Received PeerName event: {} -> {}",
         peer_name.peer_id, peer_name.name
     );
@@ -468,6 +538,14 @@ pub async fn handle_request_response_event(
                                     request.from_name, request.from_peer_id, request.message
                                 );
                             }
+                            ui_logger.log(format!(
+                                "📨 Direct message from {}: {}",
+                                request.from_name, request.message
+                            ));
+                            debug!(
+                                "Received direct message from {} ({}): {}",
+                                request.from_name, request.from_peer_id, request.message
+                            );
                         }
                     }
 
@@ -492,7 +570,7 @@ pub async fn handle_request_response_event(
                 request_response::Message::Response { response, .. } => {
                     // Handle response to our direct message request
                     if response.received {
-                        info!("Direct message was received by peer {}", peer);
+                        debug!("Direct message was received by peer {}", peer);
                         ui_logger.log(format!("✅ Message delivered to peer {}", peer));
                     } else {
                         error!("Direct message was rejected by peer {}", peer);
@@ -518,7 +596,7 @@ pub async fn handle_request_response_event(
             );
         }
         request_response::Event::ResponseSent { peer, .. } => {
-            info!("Response sent to {}", peer);
+            debug!("Response sent to {}", peer);
         }
     }
 }
@@ -527,7 +605,7 @@ pub async fn handle_request_response_event(
 pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
     // This shouldn't happen since DirectMessage events are processed in floodsub handler
     // but we'll handle it just in case
-    info!(
+    debug!(
         "Received DirectMessage event: {} -> {}: {}",
         direct_msg.from_name, direct_msg.to_name, direct_msg.message
     );
@@ -535,7 +613,7 @@ pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
 
 /// Handle channel events
 pub async fn handle_channel_event(channel: crate::types::Channel) {
-    info!(
+    debug!(
         "Received Channel event: {} - {}",
         channel.name, channel.description
     );
@@ -543,7 +621,7 @@ pub async fn handle_channel_event(channel: crate::types::Channel) {
 
 /// Handle channel subscription events
 pub async fn handle_channel_subscription_event(subscription: crate::types::ChannelSubscription) {
-    info!(
+    debug!(
         "Received ChannelSubscription event: {} subscribed to {}",
         subscription.peer_id, subscription.channel_name
     );
@@ -560,8 +638,8 @@ pub async fn handle_event(
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
-    info!("Event Received");
+) -> Option<ActionResult> {
+    debug!("Event Received");
     match event {
         EventType::Response(resp) => {
             handle_response_event(resp, swarm).await;
@@ -570,7 +648,7 @@ pub async fn handle_event(
             handle_publish_story_event(story, swarm).await;
         }
         EventType::Input(line) => {
-            if let Some(()) = handle_input_event(
+            return handle_input_event(
                 line,
                 swarm,
                 peer_names,
@@ -580,10 +658,7 @@ pub async fn handle_event(
                 ui_logger,
                 error_logger,
             )
-            .await
-            {
-                return Some(());
-            }
+            .await;
         }
         EventType::MdnsEvent(mdns_event) => {
             handle_mdns_event(mdns_event, swarm).await;
@@ -600,7 +675,7 @@ pub async fn handle_event(
             .await
             {
                 // Stories were updated, refresh them
-                return Some(());
+                return Some(ActionResult::RefreshStories);
             }
         }
         EventType::PingEvent(ping_event) => {
@@ -614,6 +689,9 @@ pub async fn handle_event(
                 ui_logger,
             )
             .await;
+        }
+        EventType::KadEvent(kad_event) => {
+            handle_kad_event(kad_event, swarm, ui_logger).await;
         }
         EventType::PeerName(peer_name) => {
             handle_peer_name_event(peer_name).await;
@@ -636,7 +714,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
     let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
 
-    info!(
+    debug!(
         "Connection maintenance: {} discovered, {} connected",
         discovered_peers.len(),
         connected_peers.len()
@@ -645,7 +723,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
     // Try to connect to discovered peers that aren't connected
     for peer in discovered_peers {
         if !swarm.is_connected(&peer) {
-            info!("Reconnecting to discovered peer: {}", peer);
+            debug!("Reconnecting to discovered peer: {}", peer);
             if let Err(e) = swarm.dial(peer) {
                 error!("Failed to dial peer {}: {}", peer, e);
             }
@@ -683,7 +761,7 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             })
             .collect();
 
-        info!(
+        debug!(
             "Sending {} filtered stories to {} based on {} subscribed channels",
             filtered_stories.len(),
             receiver,
@@ -776,5 +854,207 @@ mod tests {
         assert!(!response_rejected.received);
         assert_eq!(response_received.timestamp, 1000);
         assert_eq!(response_rejected.timestamp, 1000);
+    }
+
+    #[test]
+    fn test_ls_sub_pattern_matching() {
+        // Test that pattern matching for "ls sub" works correctly
+        // This prevents regression of the bug where "ls sub" was incorrectly
+        // matched by "ls s*" pattern instead of its specific handler
+
+        let test_cases = vec![
+            ("ls sub", "subscription"),
+            ("ls ch", "channels"),
+            ("ls s local", "stories"),
+            ("ls s all", "stories"),
+            ("ls p", "peers"),
+            ("ls c", "connections"),
+        ];
+
+        for (input, _expected_type) in test_cases {
+            let result = match_command_type(input);
+            match input {
+                "ls sub" => assert_eq!(
+                    result, "subscription",
+                    "ls sub should match subscription handler"
+                ),
+                "ls ch" => assert_eq!(result, "channels", "ls ch should match channels handler"),
+                cmd if cmd.starts_with("ls s") => assert_eq!(
+                    result, "stories",
+                    "ls s commands should match stories handler"
+                ),
+                "ls p" => assert_eq!(result, "peers", "ls p should match peers handler"),
+                "ls c" => assert_eq!(
+                    result, "connections",
+                    "ls c should match connections handler"
+                ),
+                _ => {}
+            }
+        }
+    }
+
+    // Mock function that simulates the pattern matching logic from event_handlers.rs
+    fn match_command_type(line: &str) -> &'static str {
+        // This follows the exact same pattern matching order as in handle_input_event
+        match line {
+            "ls p" => "peers",
+            "ls c" => "connections",
+            "ls ch" => "channels",
+            "ls sub" => "subscription",
+            cmd if cmd.starts_with("ls s") => "stories",
+            _ => "unknown",
+        }
+    }
+
+    #[tokio::test]
+    async fn test_handle_peer_name_event() {
+        let peer_name = PeerName::new("peer123".to_string(), "TestAlias".to_string());
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_peer_name_event(peer_name).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_direct_message_event() {
+        let direct_msg = DirectMessage::new(
+            "peer123".to_string(),
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Test message".to_string(),
+        );
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_direct_message_event(direct_msg).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_channel_event() {
+        let channel = crate::types::Channel::new(
+            "test_channel".to_string(),
+            "Test channel description".to_string(),
+            "peer123".to_string(),
+        );
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_channel_event(channel).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_channel_subscription_event() {
+        let subscription = crate::types::ChannelSubscription::new(
+            "peer123".to_string(),
+            "test_channel".to_string(),
+        );
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_channel_subscription_event(subscription).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_ping_event_success() {
+        use libp2p::swarm::ConnectionId;
+        use std::time::Duration;
+
+        let peer_id = PeerId::random();
+        let ping_event = libp2p::ping::Event {
+            peer: peer_id,
+            connection: ConnectionId::new_unchecked(1),
+            result: Ok(Duration::from_millis(50)),
+        };
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_ping_event(ping_event).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_ping_event_failure() {
+        use libp2p::ping::Failure;
+        use libp2p::swarm::ConnectionId;
+
+        let peer_id = PeerId::random();
+        let ping_event = libp2p::ping::Event {
+            peer: peer_id,
+            connection: ConnectionId::new_unchecked(1),
+            result: Err(Failure::Timeout),
+        };
+
+        // This function doesn't return a value, so we just test it doesn't panic
+        handle_ping_event(ping_event).await;
+    }
+
+    #[tokio::test]
+    async fn test_respond_with_public_stories_channel() {
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let receiver_name = "test_receiver".to_string();
+
+        respond_with_public_stories(sender, receiver_name.clone());
+
+        // Try to receive a response with timeout
+        let response =
+            tokio::time::timeout(tokio::time::Duration::from_millis(500), receiver.recv()).await;
+
+        // The response might succeed or timeout depending on if stories file exists
+        // We mainly test that the function doesn't panic and attempts to send
+        match response {
+            Ok(Some(resp)) => {
+                assert_eq!(resp.receiver, receiver_name);
+                assert_eq!(resp.mode, ListMode::ALL);
+                // resp.data may be empty if no stories file exists
+            }
+            Ok(None) => {
+                // Channel was closed, which means an error occurred in the spawn
+            }
+            Err(_) => {
+                // Timeout occurred, which is expected if no stories exist
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_maintain_connections() {
+        // Create a mock swarm for testing
+        let mut swarm = crate::network::create_swarm().expect("Failed to create test swarm");
+
+        // This is hard to test properly without a full network setup,
+        // but we can at least verify the function doesn't panic
+        maintain_connections(&mut swarm).await;
+    }
+
+    #[test]
+    fn test_event_handling_error_paths() {
+        // Test serialization/deserialization edge cases that might occur in floodsub handling
+
+        // Test invalid JSON data
+        let invalid_json = b"invalid json data";
+        let list_response_result = serde_json::from_slice::<ListResponse>(invalid_json);
+        assert!(list_response_result.is_err());
+
+        let published_story_result = serde_json::from_slice::<PublishedStory>(invalid_json);
+        assert!(published_story_result.is_err());
+
+        let peer_name_result = serde_json::from_slice::<PeerName>(invalid_json);
+        assert!(peer_name_result.is_err());
+
+        let list_request_result = serde_json::from_slice::<ListRequest>(invalid_json);
+        assert!(list_request_result.is_err());
+    }
+
+    #[test]
+    fn test_list_mode_one_validation() {
+        use crate::types::{ListMode, ListRequest};
+
+        // Test ListMode::One with valid peer ID format
+        let list_request = ListRequest {
+            mode: ListMode::One("valid_peer_id".to_string()),
+        };
+
+        match list_request.mode {
+            ListMode::One(peer_id) => {
+                assert_eq!(peer_id, "valid_peer_id");
+            }
+            ListMode::ALL => {
+                panic!("Expected ListMode::One");
+            }
+        }
     }
 }

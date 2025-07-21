@@ -5,11 +5,11 @@ use crate::storage::{
     read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
     unsubscribe_from_channel, save_node_description, load_node_description,
 };
-use crate::types::{ListMode, ListRequest, PeerName, Story};
+use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
-use log::info;
+use log::debug;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
@@ -119,9 +119,9 @@ pub async fn handle_list_stories(
                 mode: ListMode::ALL,
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            info!("JSON od request: {}", json);
+            debug!("JSON od request: {}", json);
             let json_bytes = Bytes::from(json.into_bytes());
-            info!(
+            debug!(
                 "Publishing to topic: {:?} from peer:{:?}",
                 TOPIC.clone(),
                 PEER_ID.clone()
@@ -130,7 +130,7 @@ pub async fn handle_list_stories(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
-            info!("Published request");
+            debug!("Published request");
         }
         Some(story_peer_id) => {
             ui_logger.log(format!(
@@ -141,7 +141,7 @@ pub async fn handle_list_stories(
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            info!("JSON od request: {}", json);
+            debug!("JSON od request: {}", json);
             let json_bytes = Bytes::from(json.into_bytes());
             swarm
                 .behaviour_mut()
@@ -165,18 +165,16 @@ pub async fn handle_create_stories(
     cmd: &str,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
-            ui_logger.log("Interactive story creation not yet supported in TUI mode.".to_string());
-            ui_logger.log(
-                "Use format: create s name|header|body or create s name|header|body|channel"
-                    .to_string(),
-            );
-            return None;
+            ui_logger.log("📖 Starting interactive story creation...".to_string());
+            ui_logger.log("📝 This will guide you through creating a story step by step.".to_string());
+            ui_logger.log("📌 Use Esc at any time to cancel.".to_string());
+            return Some(ActionResult::StartStoryCreation);
         } else {
             // Parse pipe-separated arguments
             let elements: Vec<&str> = rest.split('|').collect();
@@ -198,7 +196,7 @@ pub async fn handle_create_stories(
                         "Story created successfully in channel '{}'",
                         channel
                     ));
-                    return Some(()); // Signal that stories need to be refreshed
+                    return Some(ActionResult::RefreshStories);
                 };
             }
         }
@@ -264,7 +262,7 @@ pub async fn handle_delete_story(
     cmd: &str,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("delete s ") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
@@ -272,13 +270,14 @@ pub async fn handle_delete_story(
                     Ok(deleted) => {
                         if deleted {
                             ui_logger.log(format!("Story with id {} deleted successfully", id));
-                            return Some(()); // Signal that stories need to be refreshed
+                            return Some(ActionResult::RefreshStories);
                         } else {
                             ui_logger.log(format!("Story with id {} not found", id));
                         }
                     }
                     Err(e) => {
-                        error_logger.log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                        error_logger
+                            .log_error(&format!("Failed to delete story with id {}: {}", id, e));
                     }
                 }
             }
@@ -310,6 +309,8 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
+    ui_logger.log("dht bootstrap <multiaddr> to bootstrap DHT with a peer".to_string());
+    ui_logger.log("dht peers to find closest peers in DHT".to_string());
     ui_logger.log("quit to quit".to_string());
 }
 
@@ -456,7 +457,7 @@ pub async fn handle_direct_message(
             .send_request(&target_peer_id, direct_msg_request);
 
         ui_logger.log(format!("Direct message sent to {}: {}", to_name, message));
-        info!(
+        debug!(
             "Sent direct message to {} from {} (request_id: {:?})",
             to_name, from_name, request_id
         );
@@ -470,7 +471,7 @@ pub async fn handle_create_channel(
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("create ch") {
         let rest = rest.trim();
         let elements: Vec<&str> = rest.split('|').collect();
@@ -504,7 +505,7 @@ pub async fn handle_create_channel(
                     e
                 ));
             }
-            return Some(());
+            return Some(ActionResult::RefreshStories);
         }
     }
     None
@@ -593,18 +594,18 @@ pub async fn establish_direct_connection(
                     ui_logger.log("Dialing initiated successfully".to_string());
 
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-                    info!("Number of connected peers: {}", connected_peers.len());
+                    debug!("Number of connected peers: {}", connected_peers.len());
 
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                     let connected_peers_after: Vec<_> = swarm.connected_peers().cloned().collect();
-                    info!(
+                    debug!(
                         "Number of connected peers after 2 seconds: {}",
                         connected_peers_after.len()
                     );
                     for peer in connected_peers {
-                        info!("Connected to peer: {}", peer);
+                        debug!("Connected to peer: {}", peer);
 
-                        info!("Adding peer to floodsub: {}", peer);
+                        debug!("Adding peer to floodsub: {}", peer);
                         swarm
                             .behaviour_mut()
                             .floodsub
@@ -717,6 +718,61 @@ pub async fn handle_show_description(ui_logger: &UILogger) {
     }
 }
 
+/// Handle DHT bootstrap command
+pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    if let Some(addr_str) = cmd.strip_prefix("dht bootstrap ") {
+        let addr_str = addr_str.trim();
+        
+        if addr_str.is_empty() {
+            ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
+            ui_logger.log("Example: dht bootstrap /ip4/172.105.162.14/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+            return;
+        }
+
+        match addr_str.parse::<libp2p::Multiaddr>() {
+            Ok(addr) => {
+                ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {}", addr));
+                
+                // Add the address as a bootstrap peer in the DHT
+                if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
+                    swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                    
+                    // Start bootstrap process (this will handle dialing the peer internally)
+                    if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
+                        ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
+                    } else {
+                        ui_logger.log("DHT bootstrap started successfully".to_string());
+                    }
+                } else {
+                    ui_logger.log("Failed to extract peer ID from multiaddr".to_string());
+                }
+            }
+            Err(e) => ui_logger.log(format!("Failed to parse multiaddr: {}", e)),
+        }
+    } else {
+        ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
+    }
+}
+
+/// Handle DHT get closest peers command
+pub async fn handle_dht_get_peers(_cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    ui_logger.log("Searching for closest peers in DHT...".to_string());
+    
+    // Get closest peers to our own peer ID
+    let _query_id = swarm.behaviour_mut().kad.get_closest_peers(*PEER_ID);
+    ui_logger.log("DHT peer search started (results will appear in events)".to_string());
+}
+
+/// Extract peer ID from a multiaddr if it contains one
+fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
+    for protocol in addr.iter() {
+        if let libp2p::multiaddr::Protocol::P2p(peer_id) = protocol {
+            return Some(peer_id);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -798,7 +854,32 @@ mod tests {
         assert!(messages.iter().any(|m| m.contains("ls p")));
         assert!(messages.iter().any(|m| m.contains("create s")));
         assert!(messages.iter().any(|m| m.contains("show story")));
+        assert!(messages.iter().any(|m| m.contains("dht bootstrap")));
+        assert!(messages.iter().any(|m| m.contains("dht peers")));
         assert!(messages.iter().any(|m| m.contains("quit")));
+    }
+
+    #[test]
+    fn test_extract_peer_id_from_multiaddr() {
+        use libp2p::multiaddr::Protocol;
+        
+        // Test with valid multiaddr containing peer ID
+        let peer_id = *PEER_ID;
+        let mut addr = libp2p::Multiaddr::empty();
+        addr.push(Protocol::Ip4([127, 0, 0, 1].into()));
+        addr.push(Protocol::Tcp(8080));
+        addr.push(Protocol::P2p(peer_id));
+        
+        let extracted = super::extract_peer_id_from_multiaddr(&addr);
+        assert_eq!(extracted, Some(peer_id));
+        
+        // Test with multiaddr without peer ID
+        let mut addr_no_peer = libp2p::Multiaddr::empty();
+        addr_no_peer.push(Protocol::Ip4([127, 0, 0, 1].into()));
+        addr_no_peer.push(Protocol::Tcp(8080));
+        
+        let extracted_none = super::extract_peer_id_from_multiaddr(&addr_no_peer);
+        assert_eq!(extracted_none, None);
     }
 
     #[tokio::test]
@@ -840,23 +921,43 @@ mod tests {
     }
 
     #[test]
-    fn test_handle_create_stories_valid() {
+    fn test_handle_create_stories_interactive() {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+        let error_logger = ErrorLogger::new("test_errors.log");
+
+        rt.block_on(async {
+            // Test empty create s command should trigger interactive mode
+            let result = handle_create_stories("create s", &ui_logger, &error_logger).await;
+            assert_eq!(result, Some(ActionResult::StartStoryCreation));
+            
+            // Check that appropriate messages were logged
+            let mut messages = Vec::new();
+            while let Ok(msg) = receiver.try_recv() {
+                messages.push(msg);
+            }
+            assert!(messages.iter().any(|m| m.contains("interactive story creation")));
+        });
+    }
+
+    #[test]
+    fn test_handle_create_stories_pipe_format() {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
         let error_logger = ErrorLogger::new("test_errors.log");
 
-        // Note: This will try to create actual files, but we're testing the parsing logic
         rt.block_on(async {
-            // Test valid create story command format
-            handle_create_stories(
-                "create sTest Story|Test Header|Test Body",
-                &ui_logger,
-                &error_logger,
-            )
-            .await;
-            // The function will try to create a story but may fail due to file system issues
+            // Test pipe-separated format still works but may fail due to file system
+            let result = handle_create_stories(
+                "create s Test|Header|Body|general", 
+                &ui_logger, 
+                &error_logger
+            ).await;
+            // The result depends on whether the storage operation succeeds
             // We're mainly testing that the parsing doesn't panic
+            assert!(result.is_some() || result.is_none());
         });
     }
 

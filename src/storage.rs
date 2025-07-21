@@ -1,5 +1,5 @@
 use crate::types::{Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story};
-use log::{error, info};
+use log::{debug, error};
 use rusqlite::Connection;
 use std::error::Error;
 use std::sync::Arc;
@@ -44,7 +44,7 @@ async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
     }
 
     // Need to create or update connection
-    info!("Creating new SQLite database connection: {}", current_path);
+    debug!("Creating new SQLite database connection: {}", current_path);
     let conn = Connection::open(&current_path)?;
     let conn_arc = Arc::new(Mutex::new(conn));
 
@@ -54,7 +54,7 @@ async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
         *state = Some((conn_arc.clone(), current_path));
     }
 
-    info!("Successfully connected to SQLite database");
+    debug!("Successfully connected to SQLite database");
     Ok(conn_arc)
 }
 
@@ -75,19 +75,19 @@ async fn create_tables() -> Result<(), Box<dyn Error>> {
 
 pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
     let db_path = get_database_path();
-    info!("Initializing SQLite database at: {}", db_path);
+    debug!("Initializing SQLite database at: {}", db_path);
 
     // Ensure the directory exists for the database file
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
         if !parent.exists() {
-            info!("Creating directory: {:?}", parent);
+            debug!("Creating directory: {:?}", parent);
             tokio::fs::create_dir_all(parent).await?;
         }
     }
 
     let _conn = get_db_connection().await?;
     create_tables().await?;
-    info!("SQLite database and tables initialized");
+    debug!("SQLite database and tables initialized");
     Ok(())
 }
 
@@ -251,10 +251,10 @@ pub async fn create_new_story_with_channel(
         ],
     )?;
 
-    info!("Created story:");
-    info!("Name: {}", name);
-    info!("Header: {}", header);
-    info!("Body: {}", body);
+    debug!("Created story:");
+    debug!("Name: {}", name);
+    debug!("Header: {}", header);
+    debug!("Body: {}", body);
 
     Ok(())
 }
@@ -330,16 +330,13 @@ pub async fn delete_local_story(id: usize) -> Result<bool, Box<dyn Error>> {
     let conn = conn_arc.lock().await;
 
     // Delete the story with the given ID
-    let rows_affected = conn.execute(
-        "DELETE FROM stories WHERE id = ?",
-        [&id.to_string()],
-    )?;
+    let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", [&id.to_string()])?;
 
     if rows_affected > 0 {
-        info!("Deleted story with ID: {}", id);
+        debug!("Deleted story with ID: {}", id);
         Ok(true)
     } else {
-        info!("No story found with ID: {}", id);
+        debug!("No story found with ID: {}", id);
         Ok(false)
     }
 }
@@ -390,9 +387,9 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
             ],
         )?;
 
-        info!("Saved received story to local storage with ID: {}", new_id);
+        debug!("Saved received story to local storage with ID: {}", new_id);
     } else {
-        info!("Story already exists locally, skipping save");
+        debug!("Story already exists locally, skipping save");
     }
 
     Ok(())
@@ -497,7 +494,7 @@ pub async fn create_channel(
         [name, description, created_by, &timestamp.to_string()],
     )?;
 
-    info!("Created channel: {} - {}", name, description);
+    debug!("Created channel: {} - {}", name, description);
     Ok(())
 }
 
@@ -538,7 +535,7 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> Result<(
         [peer_id, channel_name, &timestamp.to_string()],
     )?;
 
-    info!("Subscribed {} to channel: {}", peer_id, channel_name);
+    debug!("Subscribed {} to channel: {}", peer_id, channel_name);
     Ok(())
 }
 
@@ -554,7 +551,7 @@ pub async fn unsubscribe_from_channel(
         [peer_id, channel_name],
     )?;
 
-    info!("Unsubscribed {} from channel: {}", peer_id, channel_name);
+    debug!("Unsubscribed {} from channel: {}", peer_id, channel_name);
     Ok(())
 }
 
@@ -637,7 +634,7 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     conn.execute("DELETE FROM channels WHERE name != 'general'", [])?; // Keep general channel
     conn.execute("DELETE FROM peer_name", [])?;
 
-    info!("Test database cleared and reset");
+    debug!("Test database cleared and reset");
     Ok(())
 }
 
@@ -1064,17 +1061,17 @@ mod tests {
     #[tokio::test]
     async fn test_delete_local_story_database() {
         use tempfile::NamedTempFile;
-        
+
         // Use a temporary database file for this test
         let temp_db = NamedTempFile::new().unwrap();
         let db_path = temp_db.path().to_str().unwrap();
-        
+
         // Create a direct database connection for testing
         let conn = rusqlite::Connection::open(db_path).unwrap();
-        
+
         // Create tables
         migrations::create_tables(&conn).unwrap();
-        
+
         // Create test stories directly in the test database
         conn.execute(
             "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
@@ -1088,28 +1085,34 @@ mod tests {
             "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
             ["2", "Story 3", "Header 3", "Body 3", "0", "general"],
         ).unwrap();
-        
+
         // Verify stories exist
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
         let count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
         assert_eq!(count, 3);
 
         // Test deleting existing story
-        let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", ["1"]).unwrap();
+        let rows_affected = conn
+            .execute("DELETE FROM stories WHERE id = ?", ["1"])
+            .unwrap();
         assert_eq!(rows_affected, 1);
 
         // Verify story was deleted
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
         let count_after: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
         assert_eq!(count_after, 2);
-        
+
         // Verify specific story with id=1 is gone
-        let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories WHERE id = ?").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT COUNT(*) FROM stories WHERE id = ?")
+            .unwrap();
         let id_count: i64 = stmt.query_row(["1"], |row| row.get(0)).unwrap();
         assert_eq!(id_count, 0);
 
         // Test deleting non-existent story
-        let rows_affected_nonexistent = conn.execute("DELETE FROM stories WHERE id = ?", ["999"]).unwrap();
+        let rows_affected_nonexistent = conn
+            .execute("DELETE FROM stories WHERE id = ?", ["999"])
+            .unwrap();
         assert_eq!(rows_affected_nonexistent, 0);
 
         // Verify count unchanged
