@@ -306,7 +306,7 @@ async fn main() {
                         // Stories were updated, refresh them
                         match storage::read_local_stories().await {
                             Ok(stories) => {
-                                info!("Refreshed {} stories", stories.len());
+                                debug!("Refreshed {} stories", stories.len());
                                 app.update_local_stories(stories);
                             }
                             Err(e) => {
