@@ -525,11 +525,12 @@ impl App {
                     );
                 }
                 InputMode::CreatingStory { step, .. } => {
+                    // Use display width constants instead of .len() to handle emoji widths correctly
                     let prefix_len = match step {
-                        StoryCreationStep::Name => "📝 Story Name: ".len(),
-                        StoryCreationStep::Header => "📄 Story Header: ".len(),
-                        StoryCreationStep::Body => "📖 Story Body: ".len(),
-                        StoryCreationStep::Channel => "📂 Channel (Enter for 'general'): ".len(),
+                        StoryCreationStep::Name => 15,        // "📝 Story Name: " display width
+                        StoryCreationStep::Header => 17,      // "📄 Story Header: " display width
+                        StoryCreationStep::Body => 14,        // "📖 Story Body: " display width
+                        StoryCreationStep::Channel => 34,     // "📂 Channel (Enter for 'general'): " display width
                     };
                     f.set_cursor(
                         chunks[2].x + self.input.len() as u16 + prefix_len as u16 + 1,
