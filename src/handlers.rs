@@ -627,10 +627,10 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
         return;
     }
 
-    let description = parts[2];
+    let description = parts[2].trim();
     
     if description.is_empty() {
-        ui_logger.log("Description cannot be empty".to_string());
+        ui_logger.log("Usage: create desc <description>".to_string());
         return;
     }
 
@@ -1279,7 +1279,7 @@ mod tests {
         assert!(messages.iter().any(|m| m.contains("saved")));
 
         // Clean up
-        let _ = tokio::fs::remove_file("node_description.txt").await;
+        let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
     }
 
     #[tokio::test]
@@ -1313,7 +1313,7 @@ mod tests {
         }
         
         assert!(!messages.is_empty());
-        assert!(messages.iter().any(|m| m.contains("cannot be empty")));
+        assert!(messages.iter().any(|m| m.contains("Usage:")));
     }
 
     #[tokio::test]
@@ -1322,7 +1322,7 @@ mod tests {
         let ui_logger = UILogger::new(sender);
 
         // Test when no description exists
-        let _ = tokio::fs::remove_file("node_description.txt").await;
+        let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
         handle_show_description(&ui_logger).await;
         
         let mut messages = Vec::new();
@@ -1354,6 +1354,6 @@ mod tests {
         assert!(messages.iter().any(|m| m.contains("Test description content")));
 
         // Clean up
-        let _ = tokio::fs::remove_file("node_description.txt").await;
+        let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
     }
 }

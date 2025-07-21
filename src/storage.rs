@@ -9,6 +9,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::migrations;
 
 const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
+pub const NODE_DESCRIPTION_FILE_PATH: &str = "node_description.txt";
 
 /// Get the database path, checking environment variables for custom paths
 fn get_database_path() -> String {
@@ -644,13 +645,13 @@ pub async fn save_node_description(description: &str) -> Result<(), Box<dyn Erro
         return Err("Description exceeds 1024 bytes limit".into());
     }
     
-    fs::write("node_description.txt", description).await?;
+    fs::write(NODE_DESCRIPTION_FILE_PATH, description).await?;
     Ok(())
 }
 
 /// Load local node description from file
 pub async fn load_node_description() -> Result<Option<String>, Box<dyn Error>> {
-    match fs::read_to_string("node_description.txt").await {
+    match fs::read_to_string(NODE_DESCRIPTION_FILE_PATH).await {
         Ok(content) => {
             if content.is_empty() {
                 Ok(None)

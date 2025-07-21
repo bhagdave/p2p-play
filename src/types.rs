@@ -55,21 +55,6 @@ pub struct DirectMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct NodeDescriptionRequest {
-    pub from_peer_id: String,
-    pub from_name: String,
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct NodeDescriptionResponse {
-    pub description: Option<String>,
-    pub from_peer_id: String,
-    pub from_name: String,
-    pub timestamp: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Channel {
     pub name: String,
     pub description: String,
@@ -195,37 +180,6 @@ impl DirectMessage {
             from_name,
             to_name,
             message,
-            timestamp,
-        }
-    }
-}
-
-impl NodeDescriptionRequest {
-    pub fn new(from_peer_id: String, from_name: String) -> Self {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            from_peer_id,
-            from_name,
-            timestamp,
-        }
-    }
-}
-
-impl NodeDescriptionResponse {
-    pub fn new(description: Option<String>, from_peer_id: String, from_name: String) -> Self {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            description,
-            from_peer_id,
-            from_name,
             timestamp,
         }
     }
@@ -618,54 +572,6 @@ mod tests {
         assert_ne!(dm1, dm3);
     }
 
-    #[test]
-    fn test_node_description_request_creation() {
-        let req = NodeDescriptionRequest::new(
-            "peer123".to_string(),
-            "Alice".to_string(),
-        );
-
-        assert_eq!(req.from_peer_id, "peer123");
-        assert_eq!(req.from_name, "Alice");
-        assert!(req.timestamp > 0);
-    }
-
-    #[test]
-    fn test_node_description_response_creation() {
-        let desc = Some("This is my node description".to_string());
-        let resp = NodeDescriptionResponse::new(
-            desc.clone(),
-            "peer456".to_string(),
-            "Bob".to_string(),
-        );
-
-        assert_eq!(resp.description, desc);
-        assert_eq!(resp.from_peer_id, "peer456");
-        assert_eq!(resp.from_name, "Bob");
-        assert!(resp.timestamp > 0);
-    }
-
-    #[test]
-    fn test_node_description_serialization() {
-        let req = NodeDescriptionRequest::new(
-            "peer789".to_string(),
-            "Charlie".to_string(),
-        );
-
-        let json = serde_json::to_string(&req).unwrap();
-        let deserialized: NodeDescriptionRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(req, deserialized);
-
-        let resp = NodeDescriptionResponse::new(
-            Some("Test description".to_string()),
-            "peer101".to_string(),
-            "David".to_string(),
-        );
-
-        let json = serde_json::to_string(&resp).unwrap();
-        let deserialized: NodeDescriptionResponse = serde_json::from_str(&json).unwrap();
-        assert_eq!(resp, deserialized);
-    }
   
     fn test_action_result_variants() {
         let refresh = ActionResult::RefreshStories;

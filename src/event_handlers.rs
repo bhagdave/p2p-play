@@ -469,7 +469,10 @@ pub async fn handle_request_response_event(
                             // Check if this is a description request
                             if request.message.starts_with("__DESC_REQUEST__") {
                                 // Extract the requester's name from the message
-                                let requester_name = request.message.strip_prefix("__DESC_REQUEST__").unwrap_or(&request.from_name);
+                                let requester_name = match request.message.strip_prefix("__DESC_REQUEST__") {
+                                    Some(name) if !name.is_empty() => name,
+                                    _ => &request.from_name,
+                                };
                                 
                                 ui_logger.log(format!(
                                     "📋 Description request from {}",
