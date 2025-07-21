@@ -5,6 +5,12 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Step-by-step Interactive Story Creation**: Enhanced story creation with guided prompts and improved user experience
+  - Interactive prompts for name, header, and body fields with real-time validation
+  - Improved cursor positioning and text rendering for multi-line story content
+  - Enhanced emoji width calculation for proper text display and cursor management
+  - Better error handling and user feedback during story creation process
+  - Streamlined UI flow with clearer instructions and visual indicators
 - **Kademlia DHT Support**: Complete implementation of Kademlia DHT for internet-wide peer discovery
   - New `dht bootstrap <multiaddr>` command to connect to bootstrap peers and join the DHT network
   - New `dht peers` command to discover closest peers in the DHT network
