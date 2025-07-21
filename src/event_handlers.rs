@@ -3,7 +3,7 @@ use crate::handlers::*;
 use crate::network::{DirectMessageRequest, DirectMessageResponse, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::save_received_story;
 use crate::types::{
-    DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
+    ActionResult, DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
 };
 
 use bytes::Bytes;
@@ -76,7 +76,7 @@ pub async fn handle_input_event(
     sorted_peer_names_cache: &SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
         "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
@@ -86,16 +86,10 @@ pub async fn handle_input_event(
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("create s") => {
-            if let Some(()) = handle_create_stories(cmd, ui_logger, error_logger).await {
-                return Some(());
-            }
+            return handle_create_stories(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("create ch") => {
-            if let Some(()) =
-                handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await
-            {
-                return Some(());
-            }
+            return handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("sub ") => {
             handle_subscribe_channel(cmd, ui_logger, error_logger).await
@@ -108,9 +102,7 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("show story") => handle_show_story(cmd, ui_logger).await,
         cmd if cmd.starts_with("delete s") => {
-            if let Some(()) = handle_delete_story(cmd, ui_logger, error_logger).await {
-                return Some(());
-            }
+            return handle_delete_story(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
         cmd if cmd.starts_with("dht bootstrap") => handle_dht_bootstrap(cmd, swarm, ui_logger).await,
@@ -567,7 +559,7 @@ pub async fn handle_event(
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) -> Option<()> {
+) -> Option<ActionResult> {
     debug!("Event Received");
     match event {
         EventType::Response(resp) => {
@@ -577,7 +569,7 @@ pub async fn handle_event(
             handle_publish_story_event(story, swarm).await;
         }
         EventType::Input(line) => {
-            if let Some(()) = handle_input_event(
+            return handle_input_event(
                 line,
                 swarm,
                 peer_names,
@@ -587,10 +579,7 @@ pub async fn handle_event(
                 ui_logger,
                 error_logger,
             )
-            .await
-            {
-                return Some(());
-            }
+            .await;
         }
         EventType::MdnsEvent(mdns_event) => {
             handle_mdns_event(mdns_event, swarm).await;
@@ -607,7 +596,7 @@ pub async fn handle_event(
             .await
             {
                 // Stories were updated, refresh them
-                return Some(());
+                return Some(ActionResult::RefreshStories);
             }
         }
         EventType::PingEvent(ping_event) => {
