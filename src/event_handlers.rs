@@ -475,7 +475,7 @@ pub async fn handle_request_response_event(
                                     "📋 Description request from {}",
                                     requester_name
                                 ));
-                                info!(
+                                debug!(
                                     "Received description request from {} ({})",
                                     requester_name, request.from_peer_id
                                 );
@@ -507,7 +507,7 @@ pub async fn handle_request_response_event(
                                             .request_response
                                             .send_request(&peer, desc_response);
                                         
-                                        info!("Sent description response to {}", requester_name);
+                                        debug!("Sent description response to {}", requester_name);
                                     }
                                     Err(e) => {
                                         error!("Failed to load description: {}", e);
@@ -523,7 +523,7 @@ pub async fn handle_request_response_event(
                                 ));
                                 ui_logger.log(description.to_string());
                                 
-                                info!(
+                                debug!(
                                     "Received description response from {} ({}): {}",
                                     request.from_name, request.from_peer_id, description
                                 );
@@ -533,19 +533,7 @@ pub async fn handle_request_response_event(
                                     "📨 Direct message from {}: {}",
                                     request.from_name, request.message
                                 ));
-                                info!(
-                                    "Received direct message from {} ({}): {}",
-                                    request.from_name, request.from_peer_id, request.message
-                                );
                             }
-                            ui_logger.log(format!(
-                                "📨 Direct message from {}: {}",
-                                request.from_name, request.message
-                            ));
-                            debug!(
-                                "Received direct message from {} ({}): {}",
-                                request.from_name, request.from_peer_id, request.message
-                            );
                         }
                     }
 
