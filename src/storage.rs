@@ -1,4 +1,4 @@
-use crate::types::{Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story};
+use crate::types::{BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story};
 use log::{debug, error};
 use rusqlite::Connection;
 use std::error::Error;
@@ -668,6 +668,62 @@ pub async fn load_node_description() -> Result<Option<String>, Box<dyn Error>> {
     }
 }
 
+/// Save bootstrap configuration to file
+pub async fn save_bootstrap_config(config: &BootstrapConfig) -> Result<(), Box<dyn Error>> {
+    save_bootstrap_config_to_path(config, "bootstrap_config.json").await
+}
+
+/// Save bootstrap configuration to specific path
+pub async fn save_bootstrap_config_to_path(config: &BootstrapConfig, path: &str) -> Result<(), Box<dyn Error>> {
+    // Validate the config before saving
+    config.validate()?;
+    
+    let json = serde_json::to_string_pretty(config)?;
+    fs::write(path, json).await?;
+    debug!("Bootstrap config saved with {} peers", config.bootstrap_peers.len());
+    Ok(())
+}
+
+/// Load bootstrap configuration from file, creating default if missing
+pub async fn load_bootstrap_config() -> Result<BootstrapConfig, Box<dyn Error>> {
+    load_bootstrap_config_from_path("bootstrap_config.json").await
+}
+
+/// Load bootstrap configuration from specific path, creating default if missing
+pub async fn load_bootstrap_config_from_path(path: &str) -> Result<BootstrapConfig, Box<dyn Error>> {
+    match fs::read_to_string(path).await {
+        Ok(content) => {
+            let config: BootstrapConfig = serde_json::from_str(&content)?;
+            
+            // Validate the loaded config
+            config.validate()?;
+            
+            debug!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len());
+            Ok(config)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            debug!("No bootstrap config file found, creating default");
+            let default_config = BootstrapConfig::default();
+            
+            // Save the default config for future use
+            save_bootstrap_config_to_path(&default_config, path).await?;
+            
+            Ok(default_config)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Ensure bootstrap config file exists with defaults
+pub async fn ensure_bootstrap_config_exists() -> Result<(), Box<dyn Error>> {
+    if !tokio::fs::metadata("bootstrap_config.json").await.is_ok() {
+        let default_config = BootstrapConfig::default();
+        save_bootstrap_config(&default_config).await?;
+        debug!("Created default bootstrap config file");
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1168,5 +1224,103 @@ mod tests {
         
         let loaded = load_node_description().await.unwrap();
         assert_eq!(loaded, Some(description));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_config_save_and_load() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        let mut config = BootstrapConfig::new();
+        // Add a valid multiaddr for testing
+        config.add_peer("/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+        config.retry_interval_ms = 10000;
+
+        // Save the config
+        save_bootstrap_config_to_path(&config, path).await.unwrap();
+
+        // Load it back
+        let loaded_config = load_bootstrap_config_from_path(path).await.unwrap();
+        assert_eq!(loaded_config.bootstrap_peers.len(), 3); // 2 default + 1 added
+        assert_eq!(loaded_config.retry_interval_ms, 10000);
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_config_default_creation() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+        
+        // Remove the temp file so it doesn't exist
+        std::fs::remove_file(path).unwrap();
+
+        // Load config when file doesn't exist - should create default
+        let config = load_bootstrap_config_from_path(path).await.unwrap();
+        assert_eq!(config.bootstrap_peers.len(), 2); // Default peers
+        assert_eq!(config.retry_interval_ms, 5000);
+        assert_eq!(config.max_retry_attempts, 5);
+
+        // File should now exist
+        assert!(tokio::fs::metadata(path).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_config_validation() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+
+        // Create invalid config JSON with an actually invalid multiaddr
+        let invalid_json = r#"{"bootstrap_peers": ["not-a-valid-multiaddr"], "retry_interval_ms": 5000, "max_retry_attempts": 5, "bootstrap_timeout_ms": 30000}"#;
+        tokio::fs::write(path, invalid_json).await.unwrap();
+
+        // Loading should fail due to validation
+        let result = load_bootstrap_config_from_path(path).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_config_add_remove_peers() {
+        let mut config = BootstrapConfig::new();
+        let peer = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string();
+        
+        // Add peer
+        assert!(config.add_peer(peer.clone()));
+        assert!(config.bootstrap_peers.contains(&peer));
+        
+        // Adding same peer again should return false
+        assert!(!config.add_peer(peer.clone()));
+        
+        // Remove peer
+        assert!(config.remove_peer(&peer));
+        assert!(!config.bootstrap_peers.contains(&peer));
+        
+        // Removing same peer again should return false
+        assert!(!config.remove_peer(&peer));
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_config_clear_peers() {
+        let mut config = BootstrapConfig::new();
+        assert!(!config.bootstrap_peers.is_empty());
+        
+        config.clear_peers();
+        assert!(config.bootstrap_peers.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_bootstrap_config_validation_edge_cases() {
+        let mut config = BootstrapConfig::new();
+        
+        // Empty peers should fail validation
+        config.clear_peers();
+        assert!(config.validate().is_err());
+        
+        // Invalid multiaddr should fail validation
+        config.bootstrap_peers.push("not-a-multiaddr".to_string());
+        assert!(config.validate().is_err());
+        
+        // Valid multiaddr should pass
+        config.bootstrap_peers.clear();
+        config.bootstrap_peers.push("/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+        assert!(config.validate().is_ok());
     }
 }

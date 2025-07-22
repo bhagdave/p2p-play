@@ -11,7 +11,7 @@ use error_logger::ErrorLogger;
 use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
-use storage::{ensure_stories_file_exists, load_local_peer_name};
+use storage::{ensure_bootstrap_config_exists, ensure_stories_file_exists, load_bootstrap_config, load_local_peer_name};
 use types::{ActionResult, EventType, PeerName};
 use ui::{App, AppEvent, handle_ui_events};
 
@@ -91,6 +91,26 @@ async fn main() {
         Err(e) => {
             error!("Failed to load saved peer name: {}", e);
             app.add_to_log(format!("Failed to load saved peer name: {}", e));
+            None
+        }
+    };
+
+    // Ensure bootstrap config file exists and load it
+    if let Err(e) = ensure_bootstrap_config_exists().await {
+        error!("Failed to initialize bootstrap config: {}", e);
+        app.add_to_log(format!("Failed to initialize bootstrap config: {}", e));
+    }
+
+    // Load bootstrap configuration
+    let _bootstrap_config = match load_bootstrap_config().await {
+        Ok(config) => {
+            debug!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len());
+            app.add_to_log(format!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len()));
+            Some(config)
+        }
+        Err(e) => {
+            error!("Failed to load bootstrap config: {}", e);
+            app.add_to_log(format!("Failed to load bootstrap config: {}", e));
             None
         }
     };
