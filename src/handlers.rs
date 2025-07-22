@@ -1,5 +1,5 @@
 use crate::error_logger::ErrorLogger;
-use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour, TOPIC};
+use crate::network::{DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, publish_story, read_channels,
     read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
@@ -679,15 +679,12 @@ pub async fn handle_get_description(
         return;
     }
 
-    // Send a special direct message requesting description
+    // Send a node description request using the dedicated protocol
     let from_name = local_peer_name.as_deref().unwrap_or("Unknown");
-    let request_message = format!("__DESC_REQUEST__{}", from_name);
     
-    let direct_message_request = DirectMessageRequest {
+    let description_request = NodeDescriptionRequest {
         from_peer_id: PEER_ID.to_string(),
         from_name: from_name.to_string(),
-        to_name: peer_alias.to_string(),
-        message: request_message,
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -696,8 +693,8 @@ pub async fn handle_get_description(
 
     let _request_id = swarm
         .behaviour_mut()
-        .request_response
-        .send_request(&target_peer, direct_message_request);
+        .node_description
+        .send_request(&target_peer, description_request);
     
     ui_logger.log(format!("Requesting description from '{}'...", peer_alias));
 }
@@ -1352,6 +1349,7 @@ mod tests {
         
         assert!(!messages.is_empty());
         assert!(messages.iter().any(|m| m.contains("Test description content")));
+        assert!(messages.iter().any(|m| m.contains("Your node description")));
 
         // Clean up
         let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;

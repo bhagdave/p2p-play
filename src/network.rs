@@ -85,6 +85,8 @@ pub struct StoryBehaviour {
     pub ping: ping::Behaviour,
     pub request_response:
         request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
+    pub node_description:
+        request_response::cbor::Behaviour<NodeDescriptionRequest, NodeDescriptionResponse>,
     pub kad: kad::Behaviour<kad::store::MemoryStore>,
 }
 
@@ -94,6 +96,7 @@ pub enum StoryBehaviourEvent {
     Mdns(mdns::Event),
     Ping(ping::Event),
     RequestResponse(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
+    NodeDescription(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
     Kad(kad::Event),
 }
 
@@ -123,6 +126,14 @@ impl From<request_response::Event<DirectMessageRequest, DirectMessageResponse>>
     }
 }
 
+impl From<request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>>
+    for StoryBehaviourEvent
+{
+    fn from(event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>) -> Self {
+        StoryBehaviourEvent::NodeDescription(event)
+    }
+}
+
 impl From<kad::Event> for StoryBehaviourEvent {
     fn from(event: kad::Event) -> Self {
         StoryBehaviourEvent::Kad(event)
@@ -142,14 +153,21 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     // Create request-response protocol for direct messaging
     let protocol = request_response::ProtocolSupport::Full;
     let dm_protocol = StreamProtocol::new("/dm/1.0.0");
-    let protocols = iter::once((dm_protocol, protocol));
+    let dm_protocols = iter::once((dm_protocol, protocol));
 
     // Configure request-response protocol with timeouts and retry policies
     let cfg = request_response::Config::default()
         .with_request_timeout(std::time::Duration::from_secs(30))
         .with_max_concurrent_streams(100);
 
-    let request_response = request_response::cbor::Behaviour::new(protocols, cfg);
+    let request_response = request_response::cbor::Behaviour::new(dm_protocols, cfg.clone());
+
+    // Create request-response protocol for node descriptions
+    let desc_protocol_support = request_response::ProtocolSupport::Full;
+    let desc_protocol = StreamProtocol::new("/node-desc/1.0.0");
+    let desc_protocols = iter::once((desc_protocol, desc_protocol_support));
+    
+    let node_description = request_response::cbor::Behaviour::new(desc_protocols, cfg);
 
     // Create Kademlia DHT
     let store = kad::store::MemoryStore::new(*PEER_ID);
@@ -164,6 +182,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
         mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
         ping: ping::Behaviour::new(ping::Config::new()),
         request_response,
+        node_description,
         kad,
     };
 
