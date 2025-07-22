@@ -1,9 +1,10 @@
 use crate::error_logger::ErrorLogger;
 use crate::network::{DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{
-    create_channel, create_new_story_with_channel, delete_local_story, publish_story, read_channels,
-    read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
-    unsubscribe_from_channel, save_node_description, load_node_description,
+    create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config, 
+    load_node_description, publish_story, read_channels, read_local_stories, read_subscribed_channels, 
+    save_bootstrap_config, save_local_peer_name, save_node_description, subscribe_to_channel,
+    unsubscribe_from_channel,
 };
 use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
@@ -309,7 +310,8 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
-    ui_logger.log("dht bootstrap <multiaddr> to bootstrap DHT with a peer".to_string());
+    ui_logger.log("dht bootstrap add/remove/list/clear/retry - manage bootstrap peers".to_string());
+    ui_logger.log("dht bootstrap <multiaddr> to bootstrap directly with peer".to_string());
     ui_logger.log("dht peers to find closest peers in DHT".to_string());
     ui_logger.log("quit to quit".to_string());
 }
@@ -715,39 +717,195 @@ pub async fn handle_show_description(ui_logger: &UILogger) {
     }
 }
 
-/// Handle DHT bootstrap command
+/// Handle DHT bootstrap command with subcommands
 pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
-    if let Some(addr_str) = cmd.strip_prefix("dht bootstrap ") {
-        let addr_str = addr_str.trim();
-        
-        if addr_str.is_empty() {
-            ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
-            ui_logger.log("Example: dht bootstrap /ip4/172.105.162.14/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
-            return;
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    
+    if parts.len() < 3 {
+        show_bootstrap_usage(ui_logger);
+        return;
+    }
+    
+    match parts[2] {
+        "add" => handle_bootstrap_add(&parts[3..], ui_logger).await,
+        "remove" => handle_bootstrap_remove(&parts[3..], ui_logger).await,
+        "list" => handle_bootstrap_list(ui_logger).await,
+        "clear" => handle_bootstrap_clear(ui_logger).await,
+        "retry" => handle_bootstrap_retry(swarm, ui_logger).await,
+        // Legacy support: if third part looks like a multiaddr, treat as direct bootstrap
+        addr if addr.starts_with("/") => {
+            let addr_str = parts[2..].join(" ");
+            handle_direct_bootstrap(&addr_str, swarm, ui_logger).await;
         }
+        _ => show_bootstrap_usage(ui_logger),
+    }
+}
 
-        match addr_str.parse::<libp2p::Multiaddr>() {
-            Ok(addr) => {
-                ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {}", addr));
-                
-                // Add the address as a bootstrap peer in the DHT
-                if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
-                    swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
-                    
-                    // Start bootstrap process (this will handle dialing the peer internally)
-                    if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
-                        ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
-                    } else {
-                        ui_logger.log("DHT bootstrap started successfully".to_string());
+fn show_bootstrap_usage(ui_logger: &UILogger) {
+    ui_logger.log("DHT Bootstrap Commands:".to_string());
+    ui_logger.log("  dht bootstrap add <multiaddr>    - Add bootstrap peer to config".to_string());
+    ui_logger.log("  dht bootstrap remove <multiaddr> - Remove bootstrap peer from config".to_string());
+    ui_logger.log("  dht bootstrap list               - Show configured bootstrap peers".to_string());
+    ui_logger.log("  dht bootstrap clear              - Clear all bootstrap peers".to_string());
+    ui_logger.log("  dht bootstrap retry              - Retry bootstrap with config peers".to_string());
+    ui_logger.log("  dht bootstrap <multiaddr>        - Bootstrap directly with peer".to_string());
+    ui_logger.log("Example: dht bootstrap add /dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN".to_string());
+}
+
+async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
+    if args.is_empty() {
+        ui_logger.log("Usage: dht bootstrap add <multiaddr>".to_string());
+        return;
+    }
+    
+    let multiaddr = args.join(" ");
+    
+    // Validate the multiaddr format
+    if let Err(e) = multiaddr.parse::<libp2p::Multiaddr>() {
+        ui_logger.log(format!("Invalid multiaddr '{}': {}", multiaddr, e));
+        return;
+    }
+    
+    // Load current config, add peer, and save
+    match load_bootstrap_config().await {
+        Ok(mut config) => {
+            if config.add_peer(multiaddr.clone()) {
+                match save_bootstrap_config(&config).await {
+                    Ok(_) => {
+                        ui_logger.log(format!("Added bootstrap peer: {}", multiaddr));
+                        ui_logger.log(format!("Total bootstrap peers: {}", config.bootstrap_peers.len()));
                     }
-                } else {
-                    ui_logger.log("Failed to extract peer ID from multiaddr".to_string());
+                    Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
+                }
+            } else {
+                ui_logger.log(format!("Bootstrap peer already exists: {}", multiaddr));
+            }
+        }
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+    }
+}
+
+async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
+    if args.is_empty() {
+        ui_logger.log("Usage: dht bootstrap remove <multiaddr>".to_string());
+        return;
+    }
+    
+    let multiaddr = args.join(" ");
+    
+    // Load current config, remove peer, and save
+    match load_bootstrap_config().await {
+        Ok(mut config) => {
+            if config.remove_peer(&multiaddr) {
+                match save_bootstrap_config(&config).await {
+                    Ok(_) => {
+                        ui_logger.log(format!("Removed bootstrap peer: {}", multiaddr));
+                        ui_logger.log(format!("Total bootstrap peers: {}", config.bootstrap_peers.len()));
+                    }
+                    Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
+                }
+            } else {
+                ui_logger.log(format!("Bootstrap peer not found: {}", multiaddr));
+            }
+        }
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+    }
+}
+
+async fn handle_bootstrap_list(ui_logger: &UILogger) {
+    match load_bootstrap_config().await {
+        Ok(config) => {
+            ui_logger.log(format!("Bootstrap Configuration ({} peers):", config.bootstrap_peers.len()));
+            for (i, peer) in config.bootstrap_peers.iter().enumerate() {
+                ui_logger.log(format!("  {}. {}", i + 1, peer));
+            }
+            ui_logger.log(format!("Retry Interval: {}ms", config.retry_interval_ms));
+            ui_logger.log(format!("Max Retry Attempts: {}", config.max_retry_attempts));
+            ui_logger.log(format!("Bootstrap Timeout: {}ms", config.bootstrap_timeout_ms));
+        }
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+    }
+}
+
+async fn handle_bootstrap_clear(ui_logger: &UILogger) {
+    match load_bootstrap_config().await {
+        Ok(mut config) => {
+            let peer_count = config.bootstrap_peers.len();
+            config.clear_peers();
+            match save_bootstrap_config(&config).await {
+                Ok(_) => {
+                    ui_logger.log(format!("Cleared {} bootstrap peers", peer_count));
+                    ui_logger.log("Warning: No bootstrap peers configured. Add peers to enable DHT connectivity.".to_string());
+                }
+                Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
+            }
+        }
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+    }
+}
+
+async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    match load_bootstrap_config().await {
+        Ok(config) => {
+            if config.bootstrap_peers.is_empty() {
+                ui_logger.log("No bootstrap peers configured. Use 'dht bootstrap add <multiaddr>' to add peers.".to_string());
+                return;
+            }
+            
+            ui_logger.log(format!("Retrying bootstrap with {} configured peers...", config.bootstrap_peers.len()));
+            
+            for peer_addr in &config.bootstrap_peers {
+                match peer_addr.parse::<libp2p::Multiaddr>() {
+                    Ok(addr) => {
+                        if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
+                            swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                            ui_logger.log(format!("Added bootstrap peer to DHT: {}", peer_addr));
+                        } else {
+                            ui_logger.log(format!("Failed to extract peer ID from: {}", peer_addr));
+                        }
+                    }
+                    Err(e) => ui_logger.log(format!("Invalid multiaddr in config '{}': {}", peer_addr, e)),
                 }
             }
-            Err(e) => ui_logger.log(format!("Failed to parse multiaddr: {}", e)),
+            
+            // Start bootstrap process
+            if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
+                ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
+            } else {
+                ui_logger.log("DHT bootstrap retry started successfully".to_string());
+            }
         }
-    } else {
-        ui_logger.log("Usage: dht bootstrap <multiaddr>".to_string());
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+    }
+}
+
+async fn handle_direct_bootstrap(addr_str: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+    let addr_str = addr_str.trim();
+    
+    if addr_str.is_empty() {
+        show_bootstrap_usage(ui_logger);
+        return;
+    }
+
+    match addr_str.parse::<libp2p::Multiaddr>() {
+        Ok(addr) => {
+            ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {}", addr));
+            
+            // Add the address as a bootstrap peer in the DHT
+            if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
+                swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                
+                // Start bootstrap process (this will handle dialing the peer internally)
+                if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
+                    ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
+                } else {
+                    ui_logger.log("DHT bootstrap started successfully".to_string());
+                }
+            } else {
+                ui_logger.log("Failed to extract peer ID from multiaddr".to_string());
+            }
+        }
+        Err(e) => ui_logger.log(format!("Failed to parse multiaddr: {}", e)),
     }
 }
 
