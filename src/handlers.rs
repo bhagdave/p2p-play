@@ -1318,8 +1318,12 @@ mod tests {
         let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
 
-        // Test when no description exists
+        // Test when no description exists - remove file and ensure it's gone
         let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
+        
+        // Wait a bit to ensure file is deleted
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        
         handle_show_description(&ui_logger).await;
         
         let mut messages = Vec::new();
@@ -1328,7 +1332,7 @@ mod tests {
         }
         
         assert!(!messages.is_empty());
-        assert!(messages.iter().any(|m| m.contains("No node description")));
+        assert!(messages.iter().any(|m| m.contains("No node description set")));
     }
 
     #[tokio::test]

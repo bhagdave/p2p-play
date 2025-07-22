@@ -655,10 +655,17 @@ pub async fn handle_node_description_event(
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
             error!("Failed to send description request to {}: {:?}", peer, error);
-            ui_logger.log(format!(
-                "❌ Failed to request description from {}: {:?}",
-                peer, error
-            ));
+            
+            let user_message = match error {
+                request_response::OutboundFailure::UnsupportedProtocols => {
+                    format!("❌ Peer {} doesn't support node descriptions (version mismatch)", peer)
+                }
+                _ => {
+                    format!("❌ Failed to request description from {}: {:?}", peer, error)
+                }
+            };
+            
+            ui_logger.log(user_message);
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
             error!(
