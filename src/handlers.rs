@@ -919,7 +919,7 @@ pub async fn handle_dht_get_peers(_cmd: &str, swarm: &mut Swarm<StoryBehaviour>,
 }
 
 /// Extract peer ID from a multiaddr if it contains one
-fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
+pub fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
     for protocol in addr.iter() {
         if let libp2p::multiaddr::Protocol::P2p(peer_id) = protocol {
             return Some(peer_id);

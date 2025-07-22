@@ -1,3 +1,4 @@
+mod bootstrap;
 mod error_logger;
 mod event_handlers;
 mod handlers;
@@ -7,6 +8,7 @@ mod storage;
 mod types;
 mod ui;
 
+use bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use error_logger::ErrorLogger;
 use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
@@ -22,6 +24,39 @@ use log::{debug, error};
 use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
+
+/// Update bootstrap status based on DHT events
+fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut AutoBootstrap) {
+    match kad_event {
+        libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
+            match result {
+                libp2p::kad::QueryResult::Bootstrap(Ok(_)) => {
+                    // Bootstrap query succeeded - we'll wait for routing table updates to confirm connectivity
+                    debug!("Bootstrap query succeeded");
+                }
+                libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
+                    auto_bootstrap.mark_failed(format!("Bootstrap query failed: {:?}", e));
+                }
+                _ => {}
+            }
+        }
+        libp2p::kad::Event::RoutingUpdated { is_new_peer: true, .. } => {
+            // New peer added to routing table - this indicates successful DHT connectivity
+            // We'll count peers by checking the current status and updating if needed
+            match &auto_bootstrap.status {
+                bootstrap::BootstrapStatus::InProgress { .. } => {
+                    // Bootstrap was in progress, mark as connected with at least 1 peer
+                    // We use 1 as a conservative estimate since getting exact peer count 
+                    // would require accessing the routing table, which isn't available here
+                    auto_bootstrap.mark_connected(1);
+                    debug!("Bootstrap marked as connected due to new peer in routing table");
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -114,6 +149,14 @@ async fn main() {
             None
         }
     };
+
+    // Initialize automatic bootstrap
+    let mut auto_bootstrap = AutoBootstrap::new();
+    auto_bootstrap.initialize(&ui_logger).await;
+
+    // Create a timer for automatic bootstrap retry
+    let mut bootstrap_retry_interval =
+        tokio::time::interval(tokio::time::Duration::from_secs(10));
 
     // Auto-subscribe to general channel if not already subscribed
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
@@ -233,6 +276,11 @@ async fn main() {
                     event_handlers::maintain_connections(&mut swarm).await;
                     None
                 },
+                _ = bootstrap_retry_interval.tick() => {
+                    // Automatic bootstrap retry
+                    run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &ui_logger).await;
+                    None
+                },
                 event = swarm.select_next_some() => {
                     match event {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => Some(EventType::FloodsubEvent(event)),
@@ -240,7 +288,11 @@ async fn main() {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(event)) => Some(EventType::PingEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(event)) => Some(EventType::RequestResponseEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::NodeDescription(event)) => Some(EventType::NodeDescriptionEvent(event)),
-                        SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => Some(EventType::KadEvent(event)),
+                        SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => {
+                            // Update bootstrap status based on DHT events
+                            update_bootstrap_status(&event, &mut auto_bootstrap);
+                            Some(EventType::KadEvent(event))
+                        },
                         SwarmEvent::NewListenAddr { address, .. } => {
                             debug!("Local node is listening on {}", address);
                             app.add_to_log(format!("Local node is listening on {}", address));
