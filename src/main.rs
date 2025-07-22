@@ -158,6 +158,10 @@ async fn main() {
     let mut bootstrap_retry_interval =
         tokio::time::interval(tokio::time::Duration::from_secs(10));
 
+    // Create a timer for periodic bootstrap status logging
+    let mut bootstrap_status_log_interval =
+        tokio::time::interval(tokio::time::Duration::from_secs(30));
+
     // Auto-subscribe to general channel if not already subscribed
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
         Ok(subscriptions) => {
@@ -279,6 +283,14 @@ async fn main() {
                 _ = bootstrap_retry_interval.tick() => {
                     // Automatic bootstrap retry
                     run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &ui_logger).await;
+                    None
+                },
+                _ = bootstrap_status_log_interval.tick() => {
+                    // Periodically log bootstrap status
+                    if !matches!(auto_bootstrap.status, bootstrap::BootstrapStatus::NotStarted) {
+                        let status_msg = auto_bootstrap.get_status_string();
+                        ui_logger.log(format!("Bootstrap Status: {}", status_msg));
+                    }
                     None
                 },
                 event = swarm.select_next_some() => {
