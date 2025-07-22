@@ -5,6 +5,13 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Node Descriptions**: Optional node descriptions that can be shared between peers on the P2P network
+  - `create desc <description>` command to create a node description (max 1024 bytes)
+  - `show desc` command to display your current node description with byte count
+  - `get desc <peer_alias>` command to request description from a connected peer
+  - Uses dedicated request-response protocol with structured NodeDescriptionRequest/NodeDescriptionResponse types
+  - Comprehensive validation for file size limits, empty descriptions, and peer connectivity
+  - Note: All nodes must run the same version to use node descriptions due to protocol compatibility
 - **Step-by-step Interactive Story Creation**: Enhanced story creation with guided prompts and improved user experience
   - Interactive prompts for name, header, and body fields with real-time validation
   - Improved cursor positioning and text rendering for multi-line story content

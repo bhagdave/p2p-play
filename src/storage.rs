@@ -9,6 +9,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::migrations;
 
 const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
+pub const NODE_DESCRIPTION_FILE_PATH: &str = "node_description.txt";
 
 /// Get the database path, checking environment variables for custom paths
 fn get_database_path() -> String {
@@ -638,6 +639,35 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+/// Save node description to file (limited to 1024 bytes)
+pub async fn save_node_description(description: &str) -> Result<(), Box<dyn Error>> {
+    if description.len() > 1024 {
+        return Err("Description exceeds 1024 bytes limit".into());
+    }
+    
+    fs::write(NODE_DESCRIPTION_FILE_PATH, description).await?;
+    Ok(())
+}
+
+/// Load local node description from file
+pub async fn load_node_description() -> Result<Option<String>, Box<dyn Error>> {
+    match fs::read_to_string(NODE_DESCRIPTION_FILE_PATH).await {
+        Ok(content) => {
+            if content.is_empty() {
+                Ok(None)
+            } else {
+                // Ensure it doesn't exceed the limit even if file was modified externally
+                if content.len() > 1024 {
+                    return Err("Description file exceeds 1024 bytes limit".into());
+                }
+                Ok(Some(content))
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1090,5 +1120,53 @@ mod tests {
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
         let final_count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
         assert_eq!(final_count, 2);
+    }
+
+    #[tokio::test]
+    async fn test_save_and_load_node_description() {
+        // Test saving a description
+        let description = "This is my node description";
+        save_node_description(description).await.unwrap();
+
+        // Test loading it back
+        let loaded = load_node_description().await.unwrap();
+        assert_eq!(loaded, Some(description.to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_save_node_description_too_long() {
+        // Test description that exceeds 1024 bytes
+        let long_description = "A".repeat(1025);
+        let result = save_node_description(&long_description).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("1024 bytes limit"));
+    }
+
+    #[tokio::test]
+    async fn test_load_node_description_no_file() {
+        // Delete the file if it exists
+        let _ = tokio::fs::remove_file("node_description.txt").await;
+        
+        let result = load_node_description().await.unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[tokio::test]
+    async fn test_save_empty_node_description() {
+        // Test saving empty description
+        save_node_description("").await.unwrap();
+        
+        let loaded = load_node_description().await.unwrap();
+        assert_eq!(loaded, None); // Empty should return None
+    }
+
+    #[tokio::test]
+    async fn test_node_description_max_size() {
+        // Test description at exactly 1024 bytes
+        let description = "A".repeat(1024);
+        save_node_description(&description).await.unwrap();
+        
+        let loaded = load_node_description().await.unwrap();
+        assert_eq!(loaded, Some(description));
     }
 }

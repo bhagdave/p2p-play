@@ -1,7 +1,7 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::*;
-use crate::network::{DirectMessageRequest, DirectMessageResponse, PEER_ID, StoryBehaviour, TOPIC};
-use crate::storage::save_received_story;
+use crate::network::{DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour, TOPIC};
+use crate::storage::{save_received_story, load_node_description};
 use crate::types::{
     ActionResult, DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
 };
@@ -91,6 +91,9 @@ pub async fn handle_input_event(
         cmd if cmd.starts_with("create ch") => {
             return handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await;
         }
+        cmd if cmd.starts_with("create desc") => {
+            handle_create_description(cmd, ui_logger).await
+        }
         cmd if cmd.starts_with("sub ") => {
             handle_subscribe_channel(cmd, ui_logger, error_logger).await
         }
@@ -101,6 +104,10 @@ pub async fn handle_input_event(
             handle_publish_story(cmd, story_sender.clone(), ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("show story") => handle_show_story(cmd, ui_logger).await,
+        "show desc" => handle_show_description(ui_logger).await,
+        cmd if cmd.starts_with("get desc") => {
+            handle_get_description(cmd, ui_logger, swarm, local_peer_name, peer_names).await
+        }
         cmd if cmd.starts_with("delete s") => {
             return handle_delete_story(cmd, ui_logger, error_logger).await;
         }
@@ -459,14 +466,11 @@ pub async fn handle_request_response_event(
                     // Handle incoming direct message request
                     if let Some(local_name) = local_peer_name {
                         if &request.to_name == local_name {
+                            // Regular direct message
                             ui_logger.log(format!(
                                 "📨 Direct message from {}: {}",
                                 request.from_name, request.message
                             ));
-                            debug!(
-                                "Received direct message from {} ({}): {}",
-                                request.from_name, request.from_peer_id, request.message
-                            );
                         }
                     }
 
@@ -548,6 +552,133 @@ pub async fn handle_channel_subscription_event(subscription: crate::types::Chann
     );
 }
 
+/// Handle node description request-response events
+pub async fn handle_node_description_event(
+    event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>,
+    swarm: &mut Swarm<StoryBehaviour>,
+    local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
+) {
+    match event {
+        request_response::Event::Message { peer, message, .. } => {
+            match message {
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    // Handle incoming node description request
+                    debug!(
+                        "Received node description request from {} ({})",
+                        request.from_name, request.from_peer_id
+                    );
+
+                    ui_logger.log(format!(
+                        "📋 Description request from {}",
+                        request.from_name
+                    ));
+
+                    // Load our description and send it back
+                    match load_node_description().await {
+                        Ok(description) => {
+                            let response = NodeDescriptionResponse {
+                                description,
+                                from_peer_id: PEER_ID.to_string(),
+                                from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+
+                            // Send the response
+                            if let Err(e) = swarm
+                                .behaviour_mut()
+                                .node_description
+                                .send_response(channel, response)
+                            {
+                                error!("Failed to send node description response to {}: {:?}", peer, e);
+                                ui_logger.log(format!(
+                                    "❌ Failed to send description response to {}: {:?}",
+                                    peer, e
+                                ));
+                            } else {
+                                debug!("Sent description response to {}", peer);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Failed to load description: {}", e);
+                            
+                            // Send empty response to indicate no description
+                            let response = NodeDescriptionResponse {
+                                description: None,
+                                from_peer_id: PEER_ID.to_string(),
+                                from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+
+                            if let Err(e) = swarm
+                                .behaviour_mut()
+                                .node_description
+                                .send_response(channel, response)
+                            {
+                                error!("Failed to send empty description response to {}: {:?}", peer, e);
+                            }
+                        }
+                    }
+                }
+                request_response::Message::Response { response, .. } => {
+                    // Handle incoming node description response
+                    debug!(
+                        "Received node description response from {} ({}): {:?}",
+                        response.from_name, response.from_peer_id, response.description
+                    );
+
+                    match response.description {
+                        Some(description) => {
+                            ui_logger.log(format!(
+                                "📋 Description from {} ({} bytes):",
+                                response.from_name, description.len()
+                            ));
+                            ui_logger.log(description);
+                        }
+                        None => {
+                            ui_logger.log(format!(
+                                "📋 {} has no description set",
+                                response.from_name
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        request_response::Event::OutboundFailure { peer, error, .. } => {
+            error!("Failed to send description request to {}: {:?}", peer, error);
+            
+            let user_message = match error {
+                request_response::OutboundFailure::UnsupportedProtocols => {
+                    format!("❌ Peer {} doesn't support node descriptions (version mismatch)", peer)
+                }
+                _ => {
+                    format!("❌ Failed to request description from {}: {:?}", peer, error)
+                }
+            };
+            
+            ui_logger.log(user_message);
+        }
+        request_response::Event::InboundFailure { peer, error, .. } => {
+            error!(
+                "Failed to receive description request from {}: {:?}",
+                peer, error
+            );
+        }
+        request_response::Event::ResponseSent { peer, .. } => {
+            debug!("Node description response sent to {}", peer);
+        }
+    }
+}
+
 /// Main event dispatcher that routes events to appropriate handlers
 pub async fn handle_event(
     event: EventType,
@@ -605,6 +736,15 @@ pub async fn handle_event(
         EventType::RequestResponseEvent(request_response_event) => {
             handle_request_response_event(
                 request_response_event,
+                swarm,
+                local_peer_name,
+                ui_logger,
+            )
+            .await;
+        }
+        EventType::NodeDescriptionEvent(node_desc_event) => {
+            handle_node_description_event(
+                node_desc_event,
                 swarm,
                 local_peer_name,
                 ui_logger,

@@ -1,9 +1,9 @@
 use crate::error_logger::ErrorLogger;
-use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour, TOPIC};
+use crate::network::{DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{
-    create_channel, create_new_story_with_channel, delete_local_story, publish_story,
-    read_channels, read_local_stories, read_subscribed_channels, save_local_peer_name,
-    subscribe_to_channel, unsubscribe_from_channel,
+    create_channel, create_new_story_with_channel, delete_local_story, publish_story, read_channels,
+    read_local_stories, read_subscribed_channels, save_local_peer_name, subscribe_to_channel,
+    unsubscribe_from_channel, save_node_description, load_node_description,
 };
 use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
@@ -299,8 +299,11 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls sub to list your subscriptions".to_string());
     ui_logger.log("create s name|header|body[|channel] to create story".to_string());
     ui_logger.log("create ch name|description to create channel".to_string());
+    ui_logger.log("create desc <description> to create node description".to_string());
     ui_logger.log("publish s to publish story".to_string());
     ui_logger.log("show story <id> to show story details".to_string());
+    ui_logger.log("show desc to show your node description".to_string());
+    ui_logger.log("get desc <peer_alias> to get description from peer".to_string());
     ui_logger.log("delete s <id> to delete a story".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
@@ -613,6 +616,102 @@ pub async fn establish_direct_connection(
             }
         }
         Err(e) => ui_logger.log(format!("Failed to parse address: {}", e)),
+    }
+}
+
+/// Handle creating node description
+pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
+    let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
+    if parts.len() < 3 {
+        ui_logger.log("Usage: create desc <description>".to_string());
+        return;
+    }
+
+    let description = parts[2].trim();
+    
+    if description.is_empty() {
+        ui_logger.log("Usage: create desc <description>".to_string());
+        return;
+    }
+
+    match save_node_description(description).await {
+        Ok(()) => {
+            ui_logger.log(format!("Node description saved: {} bytes", description.len()));
+        }
+        Err(e) => {
+            ui_logger.log(format!("Failed to save description: {}", e));
+        }
+    }
+}
+
+/// Handle requesting node description from a peer
+pub async fn handle_get_description(
+    cmd: &str, 
+    ui_logger: &UILogger,
+    swarm: &mut Swarm<StoryBehaviour>,
+    local_peer_name: &Option<String>,
+    peer_names: &HashMap<PeerId, String>,
+) {
+    let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
+    if parts.len() < 3 {
+        ui_logger.log("Usage: get desc <peer_alias>".to_string());
+        return;
+    }
+
+    let peer_alias = parts[2];
+    
+    // Find the peer by their alias
+    let target_peer = peer_names.iter()
+        .find(|(_, name)| name.as_str() == peer_alias)
+        .map(|(peer_id, _)| *peer_id);
+
+    let target_peer = match target_peer {
+        Some(peer) => peer,
+        None => {
+            ui_logger.log(format!("Peer '{}' not found. Use 'ls p' to see discovered peers.", peer_alias));
+            return;
+        }
+    };
+
+    // Check if we're connected to this peer
+    if !swarm.is_connected(&target_peer) {
+        ui_logger.log(format!("Not connected to peer '{}'. Use 'connect' to establish connection.", peer_alias));
+        return;
+    }
+
+    // Send a node description request using the dedicated protocol
+    let from_name = local_peer_name.as_deref().unwrap_or("Unknown");
+    
+    let description_request = NodeDescriptionRequest {
+        from_peer_id: PEER_ID.to_string(),
+        from_name: from_name.to_string(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+
+    let _request_id = swarm
+        .behaviour_mut()
+        .node_description
+        .send_request(&target_peer, description_request);
+    
+    ui_logger.log(format!("Requesting description from '{}'...", peer_alias));
+}
+
+/// Handle showing local node description
+pub async fn handle_show_description(ui_logger: &UILogger) {
+    match load_node_description().await {
+        Ok(Some(description)) => {
+            ui_logger.log(format!("Your node description ({} bytes):", description.len()));
+            ui_logger.log(description);
+        }
+        Ok(None) => {
+            ui_logger.log("No node description set. Use 'create desc <description>' to create one.".to_string());
+        }
+        Err(e) => {
+            ui_logger.log(format!("Failed to load description: {}", e));
+        }
     }
 }
 
@@ -1156,5 +1255,107 @@ mod tests {
             result,
             Some(("Alice Smith".to_string(), "test".to_string()))
         );
+    }
+
+    #[tokio::test]
+    async fn test_handle_create_description() {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+
+        // Test valid description
+        handle_create_description("create desc This is my node", &ui_logger).await;
+        
+        // Collect messages
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        
+        assert!(!messages.is_empty());
+        // Should contain success message about saved description
+        assert!(messages.iter().any(|m| m.contains("saved")));
+
+        // Clean up
+        let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_create_description_invalid() {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+
+        // Test invalid format
+        handle_create_description("create desc", &ui_logger).await;
+        
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        
+        assert!(!messages.is_empty());
+        assert!(messages.iter().any(|m| m.contains("Usage:")));
+    }
+
+    #[tokio::test]
+    async fn test_handle_create_description_empty() {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+
+        // Test empty description
+        handle_create_description("create desc ", &ui_logger).await;
+        
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        
+        assert!(!messages.is_empty());
+        assert!(messages.iter().any(|m| m.contains("Usage:")));
+    }
+
+    #[tokio::test]
+    async fn test_handle_show_description() {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+
+        // Test when no description exists - remove file and ensure it's gone
+        let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
+        
+        // Wait a bit to ensure file is deleted
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        
+        handle_show_description(&ui_logger).await;
+        
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        
+        assert!(!messages.is_empty());
+        assert!(messages.iter().any(|m| m.contains("No node description set")));
+    }
+
+    #[tokio::test]
+    async fn test_handle_show_description_with_content() {
+        let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+
+        // First create a description
+        save_node_description("Test description content").await.unwrap();
+        
+        // Then show it
+        handle_show_description(&ui_logger).await;
+        
+        let mut messages = Vec::new();
+        while let Ok(msg) = receiver.try_recv() {
+            messages.push(msg);
+        }
+        
+        assert!(!messages.is_empty());
+        assert!(messages.iter().any(|m| m.contains("Test description content")));
+        assert!(messages.iter().any(|m| m.contains("Your node description")));
+
+        // Clean up
+        let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
     }
 }

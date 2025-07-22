@@ -1,4 +1,4 @@
-use crate::network::{DirectMessageRequest, DirectMessageResponse};
+use crate::network::{DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse};
 use libp2p::floodsub::Event;
 use libp2p::{mdns, ping, request_response, kad};
 use serde::{Deserialize, Serialize};
@@ -85,6 +85,7 @@ pub enum EventType {
     MdnsEvent(mdns::Event),
     PingEvent(ping::Event),
     RequestResponseEvent(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
+    NodeDescriptionEvent(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
     KadEvent(kad::Event),
     PublishStory(Story),
     PeerName(PeerName),
@@ -572,7 +573,7 @@ mod tests {
         assert_ne!(dm1, dm3);
     }
 
-    #[test]
+  
     fn test_action_result_variants() {
         let refresh = ActionResult::RefreshStories;
         let start_creation = ActionResult::StartStoryCreation;
