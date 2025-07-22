@@ -9,14 +9,4 @@ I have also changed the code so that it works with the latest version of the [li
 
 I should also add that I am using this project to test different code assistants and see how they work and how to integrate them into a normal workflow.
 
-## Node Descriptions
-
-The application now supports optional node descriptions that can be shared between peers:
-
-- `create desc <description>` - Create a description for your node (max 1024 bytes)
-- `show desc` - Display your current description 
-- `get desc <peer_alias>` - Request description from a connected peer
-
-**Note**: All nodes in a network must be running the same version to use node descriptions. If you see "UnsupportedProtocols" errors when requesting descriptions, it means the other peer is running an older version without this feature.
-
 
