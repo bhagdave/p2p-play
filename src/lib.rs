@@ -1,3 +1,4 @@
+pub mod bootstrap;
 pub mod error_logger;
 pub mod event_handlers;
 pub mod handlers;

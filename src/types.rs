@@ -69,6 +69,14 @@ pub struct ChannelSubscription {
     pub subscribed_at: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct BootstrapConfig {
+    pub bootstrap_peers: Vec<String>,
+    pub retry_interval_ms: u64,
+    pub max_retry_attempts: u32,
+    pub bootstrap_timeout_ms: u64,
+}
+
 pub type Channels = Vec<Channel>;
 pub type ChannelSubscriptions = Vec<ChannelSubscription>;
 
@@ -214,6 +222,59 @@ impl ChannelSubscription {
             channel_name,
             subscribed_at,
         }
+    }
+}
+
+impl BootstrapConfig {
+    pub fn new() -> Self {
+        Self {
+            bootstrap_peers: vec![
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN".to_string(),
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa".to_string(),
+            ],
+            retry_interval_ms: 5000,
+            max_retry_attempts: 5,
+            bootstrap_timeout_ms: 30000,
+        }
+    }
+
+    pub fn add_peer(&mut self, peer: String) -> bool {
+        if !self.bootstrap_peers.contains(&peer) {
+            self.bootstrap_peers.push(peer);
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn remove_peer(&mut self, peer: &str) -> bool {
+        let initial_len = self.bootstrap_peers.len();
+        self.bootstrap_peers.retain(|p| p != peer);
+        initial_len != self.bootstrap_peers.len()
+    }
+
+    pub fn clear_peers(&mut self) {
+        self.bootstrap_peers.clear();
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.bootstrap_peers.is_empty() {
+            return Err("No bootstrap peers configured".to_string());
+        }
+        
+        for peer in &self.bootstrap_peers {
+            if let Err(e) = peer.parse::<libp2p::Multiaddr>() {
+                return Err(format!("Invalid multiaddr '{}': {}", peer, e));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for BootstrapConfig {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -782,6 +843,101 @@ mod tests {
         let _subscription_event = EventType::ChannelSubscription(subscription);
 
         // This test mainly ensures the variants can be constructed without panic
+    }
+
+    #[test]
+    fn test_bootstrap_config_new() {
+        let config = BootstrapConfig::new();
+        assert_eq!(config.bootstrap_peers.len(), 2);
+        assert_eq!(config.retry_interval_ms, 5000);
+        assert_eq!(config.max_retry_attempts, 5);
+        assert_eq!(config.bootstrap_timeout_ms, 30000);
+        assert!(config.bootstrap_peers.contains(&"/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN".to_string()));
+    }
+
+    #[test]
+    fn test_bootstrap_config_default() {
+        let config = BootstrapConfig::default();
+        let new_config = BootstrapConfig::new();
+        assert_eq!(config.bootstrap_peers, new_config.bootstrap_peers);
+        assert_eq!(config.retry_interval_ms, new_config.retry_interval_ms);
+    }
+
+    #[test]
+    fn test_bootstrap_config_add_peer() {
+        let mut config = BootstrapConfig::new();
+        let test_peer = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string();
+        
+        let initial_len = config.bootstrap_peers.len();
+        assert!(config.add_peer(test_peer.clone()));
+        assert_eq!(config.bootstrap_peers.len(), initial_len + 1);
+        assert!(config.bootstrap_peers.contains(&test_peer));
+        
+        // Adding duplicate should return false and not increase length
+        assert!(!config.add_peer(test_peer.clone()));
+        assert_eq!(config.bootstrap_peers.len(), initial_len + 1);
+    }
+
+    #[test]
+    fn test_bootstrap_config_remove_peer() {
+        let mut config = BootstrapConfig::new();
+        let test_peer = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string();
+        
+        // Add peer first
+        config.add_peer(test_peer.clone());
+        let len_after_add = config.bootstrap_peers.len();
+        
+        // Remove peer
+        assert!(config.remove_peer(&test_peer));
+        assert_eq!(config.bootstrap_peers.len(), len_after_add - 1);
+        assert!(!config.bootstrap_peers.contains(&test_peer));
+        
+        // Removing non-existent peer should return false
+        assert!(!config.remove_peer(&test_peer));
+        assert_eq!(config.bootstrap_peers.len(), len_after_add - 1);
+    }
+
+    #[test]
+    fn test_bootstrap_config_clear_peers() {
+        let mut config = BootstrapConfig::new();
+        assert!(!config.bootstrap_peers.is_empty());
+        
+        config.clear_peers();
+        assert!(config.bootstrap_peers.is_empty());
+    }
+
+    #[test]
+    fn test_bootstrap_config_validate() {
+        let mut config = BootstrapConfig::new();
+        
+        // Valid config should pass
+        assert!(config.validate().is_ok());
+        
+        // Empty peers should fail
+        config.clear_peers();
+        assert!(config.validate().is_err());
+        assert!(config.validate().unwrap_err().contains("No bootstrap peers"));
+        
+        // Invalid multiaddr should fail
+        config.bootstrap_peers.push("invalid-multiaddr".to_string());
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid multiaddr"));
+        
+        // Valid multiaddr should pass
+        config.bootstrap_peers.clear();
+        config.bootstrap_peers.push("/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_bootstrap_config_serialization() {
+        let config = BootstrapConfig::new();
+        
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: BootstrapConfig = serde_json::from_str(&json).unwrap();
+        
+        assert_eq!(config, deserialized);
     }
 
     #[test]

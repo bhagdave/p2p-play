@@ -1,3 +1,4 @@
+mod bootstrap;
 mod error_logger;
 mod event_handlers;
 mod handlers;
@@ -7,11 +8,12 @@ mod storage;
 mod types;
 mod ui;
 
+use bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use error_logger::ErrorLogger;
 use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
-use storage::{ensure_stories_file_exists, load_local_peer_name};
+use storage::{ensure_bootstrap_config_exists, ensure_stories_file_exists, load_bootstrap_config, load_local_peer_name};
 use types::{ActionResult, EventType, PeerName};
 use ui::{App, AppEvent, handle_ui_events};
 
@@ -22,6 +24,39 @@ use log::{debug, error};
 use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
+
+/// Update bootstrap status based on DHT events
+fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut AutoBootstrap, swarm: &mut Swarm<network::StoryBehaviour>) {
+    match kad_event {
+        libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
+            match result {
+                libp2p::kad::QueryResult::Bootstrap(Ok(_)) => {
+                    // Bootstrap query succeeded - we'll wait for routing table updates to confirm connectivity
+                    debug!("Bootstrap query succeeded");
+                }
+                libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
+                    auto_bootstrap.mark_failed(format!("Bootstrap query failed: {:?}", e));
+                }
+                _ => {}
+            }
+        }
+        libp2p::kad::Event::RoutingUpdated { is_new_peer: true, .. } => {
+            // New peer added to routing table - this indicates successful DHT connectivity
+            // We'll count peers by checking the current status and updating if needed
+            let status = auto_bootstrap.status.lock().unwrap();
+            let is_in_progress = matches!(*status, bootstrap::BootstrapStatus::InProgress { .. });
+            drop(status); // Release lock before calling mark_connected
+            
+            if is_in_progress {
+                // Get the actual number of peers in the routing table
+                let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
+                debug!("Bootstrap marked as connected with {} peers in routing table", peer_count);
+                auto_bootstrap.mark_connected(peer_count);
+            }
+        }
+        _ => {}
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -95,6 +130,38 @@ async fn main() {
         }
     };
 
+    // Ensure bootstrap config file exists and load it
+    if let Err(e) = ensure_bootstrap_config_exists().await {
+        error!("Failed to initialize bootstrap config: {}", e);
+        app.add_to_log(format!("Failed to initialize bootstrap config: {}", e));
+    }
+
+    // Load bootstrap configuration
+    let _bootstrap_config = match load_bootstrap_config().await {
+        Ok(config) => {
+            debug!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len());
+            app.add_to_log(format!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len()));
+            Some(config)
+        }
+        Err(e) => {
+            error!("Failed to load bootstrap config: {}", e);
+            app.add_to_log(format!("Failed to load bootstrap config: {}", e));
+            None
+        }
+    };
+
+    // Initialize automatic bootstrap
+    let mut auto_bootstrap = AutoBootstrap::new();
+    auto_bootstrap.initialize(&ui_logger).await;
+
+    // Create a timer for automatic bootstrap retry
+    let mut bootstrap_retry_interval =
+        tokio::time::interval(tokio::time::Duration::from_secs(10));
+
+    // Create a timer for periodic bootstrap status logging
+    let mut bootstrap_status_log_interval =
+        tokio::time::interval(tokio::time::Duration::from_secs(30));
+
     // Auto-subscribe to general channel if not already subscribed
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
         Ok(subscriptions) => {
@@ -138,7 +205,7 @@ async fn main() {
 
     // Main application loop
     loop {
-        // Handle UI events
+        // Handle UI events first to ensure responsiveness
         if let Err(e) = handle_ui_events(&mut app, ui_sender.clone()).await {
             error!("UI event handling error: {}", e);
         }
@@ -153,13 +220,13 @@ async fn main() {
             break;
         }
 
-        // Add a small yield to prevent blocking
+        // Yield control to allow other tasks to run
         tokio::task::yield_now().await;
 
         let evt = {
             tokio::select! {
-                // Add a timeout to ensure the loop doesn't get stuck
-                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                // Shorter timeout to ensure UI responsiveness
+                _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
                     None
                 }
                 ui_log_msg = ui_log_rcv.recv() => {
@@ -213,6 +280,24 @@ async fn main() {
                     event_handlers::maintain_connections(&mut swarm).await;
                     None
                 },
+                _ = bootstrap_retry_interval.tick() => {
+                    // Automatic bootstrap retry - only if should retry and time is right
+                    if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
+                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &ui_logger).await;
+                    }
+                    None
+                },
+                _ = bootstrap_status_log_interval.tick() => {
+                    // Periodically log bootstrap status - use try_lock to avoid blocking
+                    if let Ok(status) = auto_bootstrap.status.try_lock() {
+                        if !matches!(*status, bootstrap::BootstrapStatus::NotStarted) {
+                            drop(status); // Release lock before expensive operation
+                            let status_msg = auto_bootstrap.get_status_string();
+                            ui_logger.log(format!("Bootstrap Status: {}", status_msg));
+                        }
+                    }
+                    None
+                },
                 event = swarm.select_next_some() => {
                     match event {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => Some(EventType::FloodsubEvent(event)),
@@ -220,7 +305,11 @@ async fn main() {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(event)) => Some(EventType::PingEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(event)) => Some(EventType::RequestResponseEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::NodeDescription(event)) => Some(EventType::NodeDescriptionEvent(event)),
-                        SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => Some(EventType::KadEvent(event)),
+                        SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => {
+                            // Update bootstrap status based on DHT events
+                            update_bootstrap_status(&event, &mut auto_bootstrap, &mut swarm);
+                            Some(EventType::KadEvent(event))
+                        },
                         SwarmEvent::NewListenAddr { address, .. } => {
                             debug!("Local node is listening on {}", address);
                             app.add_to_log(format!("Local node is listening on {}", address));
