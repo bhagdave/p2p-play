@@ -633,12 +633,10 @@ mod tests {
     #[test]
     fn test_story_creation_states() {
         // Test story creation step enumeration
-        let steps = vec![
-            StoryCreationStep::Name,
+        let steps = [StoryCreationStep::Name,
             StoryCreationStep::Header,
             StoryCreationStep::Body,
-            StoryCreationStep::Channel,
-        ];
+            StoryCreationStep::Channel];
         assert_eq!(steps.len(), 4);
 
         // Test partial story creation

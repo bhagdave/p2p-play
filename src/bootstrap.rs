@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum BootstrapStatus {
+    #[default]
     NotStarted,
     InProgress {
         attempts: u32,
@@ -24,11 +26,6 @@ pub enum BootstrapStatus {
     },
 }
 
-impl Default for BootstrapStatus {
-    fn default() -> Self {
-        BootstrapStatus::NotStarted
-    }
-}
 
 pub struct AutoBootstrap {
     pub status: Arc<Mutex<BootstrapStatus>>,
@@ -202,9 +199,9 @@ impl AutoBootstrap {
         };
 
         // Exponential backoff: retry_interval * 2^(attempts-1)
-        let base_interval_ms = config.retry_interval_ms as u64;
+        let base_interval_ms = config.retry_interval_ms;
         let retry_count = *self.retry_count.lock().unwrap();
-        let backoff_power = (retry_count.saturating_sub(1)).min(5) as u32; // Cap at 2^5 = 32x
+        let backoff_power = (retry_count.saturating_sub(1)).min(5); // Cap at 2^5 = 32x
         let backoff_multiplier = 2_u64.pow(backoff_power);
 
         // Use saturating_mul to prevent overflow, then convert to Duration safely
@@ -496,7 +493,7 @@ mod tests {
 
     #[test]
     fn test_status_string() {
-        let mut bootstrap = AutoBootstrap::new();
+        let bootstrap = AutoBootstrap::new();
 
         assert_eq!(bootstrap.get_status_string(), "DHT: Not started");
 

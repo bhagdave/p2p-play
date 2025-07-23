@@ -729,7 +729,7 @@ pub async fn load_bootstrap_config_from_path(
 
 /// Ensure bootstrap config file exists with defaults
 pub async fn ensure_bootstrap_config_exists() -> Result<(), Box<dyn Error>> {
-    if !tokio::fs::metadata("bootstrap_config.json").await.is_ok() {
+    if tokio::fs::metadata("bootstrap_config.json").await.is_err() {
         let default_config = BootstrapConfig::default();
         save_bootstrap_config(&default_config).await?;
         debug!("Created default bootstrap config file");
