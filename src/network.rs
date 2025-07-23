@@ -151,6 +151,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     let tcp_config = Config::default()
         .nodelay(true)
         .port_reuse(false); // Disable port reuse on Windows to avoid WSAEADDRINUSE errors
+                            // Windows doesn't allow immediate port reuse for sockets in TIME_WAIT state
 
     #[cfg(not(windows))]
     let tcp_config = Config::default().nodelay(true);

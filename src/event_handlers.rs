@@ -810,6 +810,7 @@ pub async fn handle_event(
 static LAST_CONNECTION_ATTEMPTS: Lazy<std::sync::Mutex<HashMap<PeerId, Instant>>> =
     Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
 const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
+const CLEANUP_THRESHOLD: Duration = Duration::from_secs(3600); // 1 hour
 
 // Helper function that needs to be accessible - copied from main.rs
 pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
@@ -826,29 +827,37 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
     for peer in discovered_peers {
         if !swarm.is_connected(&peer) {
             // Check if we should throttle this connection attempt
-            let should_attempt = {
-                let mut attempts = LAST_CONNECTION_ATTEMPTS.lock().unwrap();
-                let last_attempt = attempts.get(&peer);
-                
-                match last_attempt {
-                    Some(last_time) => {
-                        let elapsed = last_time.elapsed();
-                        if elapsed >= MIN_RECONNECT_INTERVAL {
+            let should_attempt = match LAST_CONNECTION_ATTEMPTS.try_lock() {
+                Ok(mut attempts) => {
+                    // Cleanup entries older than the threshold to prevent memory leaks
+                    attempts.retain(|_, &mut last_time| last_time.elapsed() < CLEANUP_THRESHOLD);
+                    
+                    let last_attempt = attempts.get(&peer);
+                    
+                    match last_attempt {
+                        Some(last_time) => {
+                            let elapsed = last_time.elapsed();
+                            if elapsed >= MIN_RECONNECT_INTERVAL {
+                                attempts.insert(peer, Instant::now());
+                                true
+                            } else {
+                                debug!(
+                                    "Throttling reconnection to peer {} (last attempt {} seconds ago)", 
+                                    peer, 
+                                    elapsed.as_secs()
+                                );
+                                false
+                            }
+                        }
+                        None => {
                             attempts.insert(peer, Instant::now());
                             true
-                        } else {
-                            debug!(
-                                "Throttling reconnection to peer {} (last attempt {} seconds ago)", 
-                                peer, 
-                                elapsed.as_secs()
-                            );
-                            false
                         }
                     }
-                    None => {
-                        attempts.insert(peer, Instant::now());
-                        true
-                    }
+                }
+                Err(_) => {
+                    debug!("Connection attempts map temporarily unavailable");
+                    false
                 }
             };
 
