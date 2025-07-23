@@ -15,7 +15,9 @@ use libp2p::{PeerId, Swarm, request_response};
 use log::{debug, error};
 use std::collections::HashMap;
 use std::process;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+use once_cell::sync::Lazy;
 
 /// Handle response events by publishing them to the network
 pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBehaviour>) {
@@ -804,6 +806,11 @@ pub async fn handle_event(
     None
 }
 
+// Connection throttling to prevent rapid reconnection attempts
+static LAST_CONNECTION_ATTEMPTS: Lazy<std::sync::Mutex<HashMap<PeerId, Instant>>> =
+    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
+const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
+
 // Helper function that needs to be accessible - copied from main.rs
 pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
     let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
@@ -818,9 +825,38 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
     // Try to connect to discovered peers that aren't connected
     for peer in discovered_peers {
         if !swarm.is_connected(&peer) {
-            debug!("Reconnecting to discovered peer: {}", peer);
-            if let Err(e) = swarm.dial(peer) {
-                error!("Failed to dial peer {}: {}", peer, e);
+            // Check if we should throttle this connection attempt
+            let should_attempt = {
+                let mut attempts = LAST_CONNECTION_ATTEMPTS.lock().unwrap();
+                let last_attempt = attempts.get(&peer);
+                
+                match last_attempt {
+                    Some(last_time) => {
+                        let elapsed = last_time.elapsed();
+                        if elapsed >= MIN_RECONNECT_INTERVAL {
+                            attempts.insert(peer, Instant::now());
+                            true
+                        } else {
+                            debug!(
+                                "Throttling reconnection to peer {} (last attempt {} seconds ago)", 
+                                peer, 
+                                elapsed.as_secs()
+                            );
+                            false
+                        }
+                    }
+                    None => {
+                        attempts.insert(peer, Instant::now());
+                        true
+                    }
+                }
+            };
+
+            if should_attempt {
+                debug!("Reconnecting to discovered peer: {}", peer);
+                if let Err(e) = swarm.dial(peer) {
+                    error!("Failed to dial peer {}: {}", peer, e);
+                }
             }
         }
     }

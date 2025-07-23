@@ -146,7 +146,16 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
 
-    let transp = tcp::tokio::Transport::new(Config::default().nodelay(true))
+    // Configure TCP transport with Windows-specific socket settings
+    #[cfg(windows)]
+    let tcp_config = Config::default()
+        .nodelay(true)
+        .port_reuse(false); // Disable port reuse on Windows to avoid WSAEADDRINUSE errors
+
+    #[cfg(not(windows))]
+    let tcp_config = Config::default().nodelay(true);
+
+    let transp = tcp::tokio::Transport::new(tcp_config)
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux::Config::default())
