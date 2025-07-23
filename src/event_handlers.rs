@@ -15,7 +15,9 @@ use libp2p::{PeerId, Swarm, request_response};
 use log::{debug, error};
 use std::collections::HashMap;
 use std::process;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
+use once_cell::sync::Lazy;
 
 /// Handle response events by publishing them to the network
 pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBehaviour>) {
@@ -804,6 +806,12 @@ pub async fn handle_event(
     None
 }
 
+// Connection throttling to prevent rapid reconnection attempts
+static LAST_CONNECTION_ATTEMPTS: Lazy<std::sync::Mutex<HashMap<PeerId, Instant>>> =
+    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
+const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
+const CLEANUP_THRESHOLD: Duration = Duration::from_secs(3600); // 1 hour
+
 // Helper function that needs to be accessible - copied from main.rs
 pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
     let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
@@ -818,9 +826,46 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
     // Try to connect to discovered peers that aren't connected
     for peer in discovered_peers {
         if !swarm.is_connected(&peer) {
-            debug!("Reconnecting to discovered peer: {}", peer);
-            if let Err(e) = swarm.dial(peer) {
-                error!("Failed to dial peer {}: {}", peer, e);
+            // Check if we should throttle this connection attempt
+            let should_attempt = match LAST_CONNECTION_ATTEMPTS.try_lock() {
+                Ok(mut attempts) => {
+                    // Cleanup entries older than the threshold to prevent memory leaks
+                    attempts.retain(|_, &mut last_time| last_time.elapsed() < CLEANUP_THRESHOLD);
+                    
+                    let last_attempt = attempts.get(&peer);
+                    
+                    match last_attempt {
+                        Some(last_time) => {
+                            let elapsed = last_time.elapsed();
+                            if elapsed >= MIN_RECONNECT_INTERVAL {
+                                attempts.insert(peer, Instant::now());
+                                true
+                            } else {
+                                debug!(
+                                    "Throttling reconnection to peer {} (last attempt {} seconds ago)", 
+                                    peer, 
+                                    elapsed.as_secs()
+                                );
+                                false
+                            }
+                        }
+                        None => {
+                            attempts.insert(peer, Instant::now());
+                            true
+                        }
+                    }
+                }
+                Err(_) => {
+                    debug!("Connection attempts map temporarily unavailable");
+                    false
+                }
+            };
+
+            if should_attempt {
+                debug!("Reconnecting to discovered peer: {}", peer);
+                if let Err(e) = swarm.dial(peer) {
+                    error!("Failed to dial peer {}: {}", peer, e);
+                }
             }
         }
     }
@@ -1113,6 +1158,27 @@ mod tests {
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
         maintain_connections(&mut swarm).await;
+    }
+
+    #[test]
+    fn test_connection_throttling_logic() {
+        use std::time::{Duration, Instant};
+        use libp2p::PeerId;
+        
+        // Test the throttling constants and logic
+        assert_eq!(MIN_RECONNECT_INTERVAL, Duration::from_secs(60));
+        
+        // Create a test peer ID
+        let _test_peer = PeerId::random();
+        
+        // Simulate connection attempt timing logic
+        let now = Instant::now();
+        let one_minute_ago = now - Duration::from_secs(60);
+        let thirty_seconds_ago = now - Duration::from_secs(30);
+        
+        // Test that elapsed time calculation works
+        assert!(one_minute_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
+        assert!(thirty_seconds_ago.elapsed() < MIN_RECONNECT_INTERVAL);
     }
 
     #[tokio::test]

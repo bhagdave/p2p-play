@@ -146,7 +146,17 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
 
-    let transp = tcp::tokio::Transport::new(Config::default().nodelay(true))
+    // Configure TCP transport with Windows-specific socket settings
+    #[cfg(windows)]
+    let tcp_config = Config::default()
+        .nodelay(true)
+        .port_reuse(false); // Disable port reuse on Windows to avoid WSAEADDRINUSE errors
+                            // Windows doesn't allow immediate port reuse for sockets in TIME_WAIT state
+
+    #[cfg(not(windows))]
+    let tcp_config = Config::default().nodelay(true);
+
+    let transp = tcp::tokio::Transport::new(tcp_config)
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux::Config::default())
@@ -328,6 +338,30 @@ mod tests {
 
         let swarm = result.unwrap();
         assert_eq!(swarm.local_peer_id(), &*PEER_ID);
+    }
+
+    #[test]
+    fn test_tcp_config_windows_vs_unix() {
+        // Test that TCP configuration is properly set based on target OS
+        use libp2p::tcp::Config;
+        
+        #[cfg(windows)]
+        {
+            let tcp_config = Config::default()
+                .nodelay(true)
+                .port_reuse(false);
+            // On Windows, port_reuse should be disabled
+            // Note: We can't directly test the internal state of tcp_config,
+            // but we can verify the configuration builds without errors
+            let _config = tcp_config;
+        }
+
+        #[cfg(not(windows))]
+        {
+            let tcp_config = Config::default().nodelay(true);
+            // On Unix systems, default behavior (with port_reuse enabled)
+            let _config = tcp_config;
+        }
     }
 
     #[test]

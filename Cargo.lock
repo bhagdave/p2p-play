@@ -2298,7 +2298,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p2p-play"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "bytes",
  "chrono",
