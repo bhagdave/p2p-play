@@ -1081,6 +1081,51 @@ mod tests {
         maintain_connections(&mut swarm).await;
     }
 
+    #[tokio::test]
+    async fn test_story_publishing_non_blocking() {
+        use crate::network::create_swarm;
+        use crate::types::Story;
+        use std::time::Instant;
+
+        let mut swarm = create_swarm().expect("Failed to create swarm");
+        let story = Story {
+            id: 1,
+            name: "Test Story".to_string(),
+            header: "Test Header".to_string(),
+            body: "Test Body".to_string(),
+            public: true,
+            channel: "general".to_string(),
+        };
+
+        // Measure time taken for story publishing (should be very fast now)
+        let start = Instant::now();
+        handle_publish_story_event(story, &mut swarm).await;
+        let duration = start.elapsed();
+
+        // Story publishing should complete in well under 500ms (previously took 1+ seconds)
+        assert!(
+            duration.as_millis() < 500,
+            "Story publishing took too long: {}ms",
+            duration.as_millis()
+        );
+    }
+
+    #[test]
+    fn test_ui_logger_cloneable() {
+        use crate::handlers::UILogger;
+        use tokio::sync::mpsc;
+
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+        
+        // Should be able to clone UILogger for background tasks
+        let ui_logger_clone = ui_logger.clone();
+        
+        // Both loggers should work
+        ui_logger.log("Test message 1".to_string());
+        ui_logger_clone.log("Test message 2".to_string());
+    }
+
     #[test]
     fn test_event_handling_error_paths() {
         // Test serialization/deserialization edge cases that might occur in floodsub handling
