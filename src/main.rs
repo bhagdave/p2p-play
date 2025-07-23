@@ -205,7 +205,7 @@ async fn main() {
 
     // Main application loop
     loop {
-        // Handle UI events
+        // Handle UI events first to ensure responsiveness
         if let Err(e) = handle_ui_events(&mut app, ui_sender.clone()).await {
             error!("UI event handling error: {}", e);
         }
@@ -220,13 +220,13 @@ async fn main() {
             break;
         }
 
-        // Add a small yield to prevent blocking
+        // Yield control to allow other tasks to run
         tokio::task::yield_now().await;
 
         let evt = {
             tokio::select! {
-                // Add a timeout to ensure the loop doesn't get stuck
-                _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
+                // Shorter timeout to ensure UI responsiveness
+                _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
                     None
                 }
                 ui_log_msg = ui_log_rcv.recv() => {
@@ -281,15 +281,17 @@ async fn main() {
                     None
                 },
                 _ = bootstrap_retry_interval.tick() => {
-                    // Automatic bootstrap retry
-                    run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &ui_logger).await;
+                    // Automatic bootstrap retry - only if should retry and time is right
+                    if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
+                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &ui_logger).await;
+                    }
                     None
                 },
                 _ = bootstrap_status_log_interval.tick() => {
-                    // Periodically log bootstrap status
-                    {
-                        let status = auto_bootstrap.status.lock().unwrap();
+                    // Periodically log bootstrap status - use try_lock to avoid blocking
+                    if let Ok(status) = auto_bootstrap.status.try_lock() {
                         if !matches!(*status, bootstrap::BootstrapStatus::NotStarted) {
+                            drop(status); // Release lock before expensive operation
                             let status_msg = auto_bootstrap.get_status_string();
                             ui_logger.log(format!("Bootstrap Status: {}", status_msg));
                         }
