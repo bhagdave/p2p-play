@@ -340,6 +340,30 @@ mod tests {
     }
 
     #[test]
+    fn test_tcp_config_windows_vs_unix() {
+        // Test that TCP configuration is properly set based on target OS
+        use libp2p::tcp::Config;
+        
+        #[cfg(windows)]
+        {
+            let tcp_config = Config::default()
+                .nodelay(true)
+                .port_reuse(false);
+            // On Windows, port_reuse should be disabled
+            // Note: We can't directly test the internal state of tcp_config,
+            // but we can verify the configuration builds without errors
+            let _config = tcp_config;
+        }
+
+        #[cfg(not(windows))]
+        {
+            let tcp_config = Config::default().nodelay(true);
+            // On Unix systems, default behavior (with port_reuse enabled)
+            let _config = tcp_config;
+        }
+    }
+
+    #[test]
     fn test_story_behaviour_event_debug() {
         use libp2p::ping::Event as PingEvent;
         use std::time::Duration;

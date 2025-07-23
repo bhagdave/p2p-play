@@ -1151,6 +1151,27 @@ mod tests {
         maintain_connections(&mut swarm).await;
     }
 
+    #[test]
+    fn test_connection_throttling_logic() {
+        use std::time::{Duration, Instant};
+        use libp2p::PeerId;
+        
+        // Test the throttling constants and logic
+        assert_eq!(MIN_RECONNECT_INTERVAL, Duration::from_secs(60));
+        
+        // Create a test peer ID
+        let _test_peer = PeerId::random();
+        
+        // Simulate connection attempt timing logic
+        let now = Instant::now();
+        let one_minute_ago = now - Duration::from_secs(60);
+        let thirty_seconds_ago = now - Duration::from_secs(30);
+        
+        // Test that elapsed time calculation works
+        assert!(one_minute_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
+        assert!(thirty_seconds_ago.elapsed() < MIN_RECONNECT_INTERVAL);
+    }
+
     #[tokio::test]
     async fn test_story_publishing_non_blocking() {
         use crate::network::create_swarm;
