@@ -5,6 +5,22 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Enhanced DHT Bootstrap Functionality**: Comprehensive bootstrap management for better node connectivity and reliability
+  - **Persistent Bootstrap Configuration**: Bootstrap peers saved to `bootstrap_config.json` with default peers from libp2p.io for immediate connectivity
+  - **Automatic Bootstrap on Startup**: DHT automatically bootstraps using configured peers on application startup
+  - **Smart Retry Logic**: Exponential backoff retry mechanism (5s → 10s → 20s → 40s → 80s) with background operation that doesn't block user interaction
+  - **Enhanced Command System**: Six new bootstrap management commands with backward compatibility:
+    - `dht bootstrap add <multiaddr>` - Add peer to persistent configuration
+    - `dht bootstrap remove <multiaddr>` - Remove peer from configuration with validation preventing removal of last peer
+    - `dht bootstrap list` - Show all configured peers with status details
+    - `dht bootstrap clear` - Clear all configured bootstrap peers
+    - `dht bootstrap retry` - Manually trigger bootstrap retry with all configured peers
+    - `dht bootstrap <multiaddr>` - Direct bootstrap (original functionality preserved)
+  - **Real-time Status Monitoring**: Bootstrap status tracking (`NotStarted` → `InProgress` → `Connected`/`Failed`) with DHT event integration
+  - **Thread-safe Implementation**: AutoBootstrap component with Arc&lt;Mutex&gt; protection for concurrent access safety
+  - **Comprehensive Validation**: Bootstrap peer validation with graceful error handling for malformed addresses
+  - **Multiple Bootstrap Peer Support**: Redundancy through multiple bootstrap peers tried in sequence until successful
+  - **Periodic Status Logging**: Bootstrap progress visibility with status updates every 30 seconds in application logs
 - **Node Descriptions**: Optional node descriptions that can be shared between peers on the P2P network
   - `create desc <description>` command to create a node description (max 1024 bytes)
   - `show desc` command to display your current node description with byte count
