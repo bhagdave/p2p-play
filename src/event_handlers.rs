@@ -1,9 +1,13 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::*;
-use crate::network::{DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour, TOPIC};
-use crate::storage::{save_received_story, load_node_description};
+use crate::network::{
+    DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
+    PEER_ID, StoryBehaviour, TOPIC,
+};
+use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
-    ActionResult, DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName, PublishedStory,
+    ActionResult, DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName,
+    PublishedStory,
 };
 
 use bytes::Bytes;
@@ -88,9 +92,7 @@ pub async fn handle_input_event(
         cmd if cmd.starts_with("create ch") => {
             return handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await;
         }
-        cmd if cmd.starts_with("create desc") => {
-            handle_create_description(cmd, ui_logger).await
-        }
+        cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
         cmd if cmd.starts_with("sub ") => {
             handle_subscribe_channel(cmd, ui_logger, error_logger).await
         }
@@ -109,7 +111,9 @@ pub async fn handle_input_event(
             return handle_delete_story(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
-        cmd if cmd.starts_with("dht bootstrap") => handle_dht_bootstrap(cmd, swarm, ui_logger).await,
+        cmd if cmd.starts_with("dht bootstrap") => {
+            handle_dht_bootstrap(cmd, swarm, ui_logger).await
+        }
         cmd if cmd.starts_with("dht peers") => handle_dht_get_peers(cmd, swarm, ui_logger).await,
         cmd if cmd.starts_with("quit") => process::exit(0),
         "name" => {
@@ -241,7 +245,8 @@ pub async fn handle_floodsub_event(
                             if let Err(e) = save_received_story(story_to_save).await {
                                 // Log error but don't block the main event loop
                                 error!("Failed to save received story: {}", e);
-                                ui_logger_clone.log(format!("Warning: Failed to save received story: {}", e));
+                                ui_logger_clone
+                                    .log(format!("Warning: Failed to save received story: {}", e));
                             }
                         });
 
@@ -319,12 +324,20 @@ pub async fn handle_floodsub_event(
 }
 
 /// Handle DHT bootstrap command
-pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+pub async fn handle_dht_bootstrap(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
     crate::handlers::handle_dht_bootstrap(cmd, swarm, ui_logger).await;
 }
 
 /// Handle DHT get closest peers command
-pub async fn handle_dht_get_peers(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+pub async fn handle_dht_get_peers(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
     crate::handlers::handle_dht_get_peers(cmd, swarm, ui_logger).await;
 }
 
@@ -335,55 +348,65 @@ pub async fn handle_kad_event(
     ui_logger: &UILogger,
 ) {
     match kad_event {
-        libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
-            match result {
-                libp2p::kad::QueryResult::Bootstrap(Ok(bootstrap_ok)) => {
-                    debug!("Kademlia bootstrap successful with peer: {}", bootstrap_ok.peer);
-                    ui_logger.log(format!("DHT bootstrap successful with peer: {}", bootstrap_ok.peer));
-                }
-                libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
-                    error!("Kademlia bootstrap failed: {:?}", e);
-                    ui_logger.log(format!("DHT bootstrap failed: {:?}", e));
-                }
-                libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
-                    debug!("Found {} closest peers to key", get_closest_peers_ok.peers.len());
-                    for peer in &get_closest_peers_ok.peers {
-                        debug!("Closest peer: {:?}", peer);
-                    }
-                }
-                libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
-                    error!("Failed to get closest peers: {:?}", e);
-                }
-                _ => {
-                    debug!("Other Kademlia query result: {:?}", result);
+        libp2p::kad::Event::OutboundQueryProgressed { result, .. } => match result {
+            libp2p::kad::QueryResult::Bootstrap(Ok(bootstrap_ok)) => {
+                debug!(
+                    "Kademlia bootstrap successful with peer: {}",
+                    bootstrap_ok.peer
+                );
+                ui_logger.log(format!(
+                    "DHT bootstrap successful with peer: {}",
+                    bootstrap_ok.peer
+                ));
+            }
+            libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
+                error!("Kademlia bootstrap failed: {:?}", e);
+                ui_logger.log(format!("DHT bootstrap failed: {:?}", e));
+            }
+            libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
+                debug!(
+                    "Found {} closest peers to key",
+                    get_closest_peers_ok.peers.len()
+                );
+                for peer in &get_closest_peers_ok.peers {
+                    debug!("Closest peer: {:?}", peer);
                 }
             }
-        }
-        libp2p::kad::Event::RoutingUpdated { peer, is_new_peer, .. } => {
+            libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
+                error!("Failed to get closest peers: {:?}", e);
+            }
+            _ => {
+                debug!("Other Kademlia query result: {:?}", result);
+            }
+        },
+        libp2p::kad::Event::RoutingUpdated {
+            peer, is_new_peer, ..
+        } => {
             if is_new_peer {
                 debug!("New peer added to DHT routing table: {}", peer);
                 ui_logger.log(format!("New peer added to DHT: {}", peer));
-                
+
                 // Add the peer to floodsub partial view if connected
                 if swarm.is_connected(&peer) {
-                    swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer);
+                    swarm
+                        .behaviour_mut()
+                        .floodsub
+                        .add_node_to_partial_view(peer);
                     debug!("Added DHT peer {} to floodsub partial view", peer);
                 }
             }
         }
-        libp2p::kad::Event::InboundRequest { request } => {
-            match request {
-                libp2p::kad::InboundRequest::FindNode { .. } => {
-                    debug!("Received DHT FindNode request");
-                }
-                libp2p::kad::InboundRequest::GetProvider { .. } => {
-                    debug!("Received DHT GetProvider request");
-                }
-                _ => {
-                    debug!("Received other DHT inbound request: {:?}", request);
-                }
+        libp2p::kad::Event::InboundRequest { request } => match request {
+            libp2p::kad::InboundRequest::FindNode { .. } => {
+                debug!("Received DHT FindNode request");
             }
-        }
+            libp2p::kad::InboundRequest::GetProvider { .. } => {
+                debug!("Received DHT GetProvider request");
+            }
+            _ => {
+                debug!("Received other DHT inbound request: {:?}", request);
+            }
+        },
         libp2p::kad::Event::ModeChanged { new_mode } => {
             debug!("Kademlia mode changed to: {:?}", new_mode);
             ui_logger.log(format!("DHT mode changed to: {:?}", new_mode));
@@ -571,10 +594,7 @@ pub async fn handle_node_description_event(
                         request.from_name, request.from_peer_id
                     );
 
-                    ui_logger.log(format!(
-                        "📋 Description request from {}",
-                        request.from_name
-                    ));
+                    ui_logger.log(format!("📋 Description request from {}", request.from_name));
 
                     // Load our description and send it back
                     match load_node_description().await {
@@ -582,7 +602,10 @@ pub async fn handle_node_description_event(
                             let response = NodeDescriptionResponse {
                                 description,
                                 from_peer_id: PEER_ID.to_string(),
-                                from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
+                                from_name: local_peer_name
+                                    .as_deref()
+                                    .unwrap_or("Unknown")
+                                    .to_string(),
                                 timestamp: std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap_or_default()
@@ -595,7 +618,10 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                error!("Failed to send node description response to {}: {:?}", peer, e);
+                                error!(
+                                    "Failed to send node description response to {}: {:?}",
+                                    peer, e
+                                );
                                 ui_logger.log(format!(
                                     "❌ Failed to send description response to {}: {:?}",
                                     peer, e
@@ -606,12 +632,15 @@ pub async fn handle_node_description_event(
                         }
                         Err(e) => {
                             error!("Failed to load description: {}", e);
-                            
+
                             // Send empty response to indicate no description
                             let response = NodeDescriptionResponse {
                                 description: None,
                                 from_peer_id: PEER_ID.to_string(),
-                                from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
+                                from_name: local_peer_name
+                                    .as_deref()
+                                    .unwrap_or("Unknown")
+                                    .to_string(),
                                 timestamp: std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap_or_default()
@@ -623,7 +652,10 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                error!("Failed to send empty description response to {}: {:?}", peer, e);
+                                error!(
+                                    "Failed to send empty description response to {}: {:?}",
+                                    peer, e
+                                );
                             }
                         }
                     }
@@ -639,32 +671,40 @@ pub async fn handle_node_description_event(
                         Some(description) => {
                             ui_logger.log(format!(
                                 "📋 Description from {} ({} bytes):",
-                                response.from_name, description.len()
+                                response.from_name,
+                                description.len()
                             ));
                             ui_logger.log(description);
                         }
                         None => {
-                            ui_logger.log(format!(
-                                "📋 {} has no description set",
-                                response.from_name
-                            ));
+                            ui_logger
+                                .log(format!("📋 {} has no description set", response.from_name));
                         }
                     }
                 }
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            error!("Failed to send description request to {}: {:?}", peer, error);
-            
+            error!(
+                "Failed to send description request to {}: {:?}",
+                peer, error
+            );
+
             let user_message = match error {
                 request_response::OutboundFailure::UnsupportedProtocols => {
-                    format!("❌ Peer {} doesn't support node descriptions (version mismatch)", peer)
+                    format!(
+                        "❌ Peer {} doesn't support node descriptions (version mismatch)",
+                        peer
+                    )
                 }
                 _ => {
-                    format!("❌ Failed to request description from {}: {:?}", peer, error)
+                    format!(
+                        "❌ Failed to request description from {}: {:?}",
+                        peer, error
+                    )
                 }
             };
-            
+
             ui_logger.log(user_message);
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
@@ -743,13 +783,7 @@ pub async fn handle_event(
             .await;
         }
         EventType::NodeDescriptionEvent(node_desc_event) => {
-            handle_node_description_event(
-                node_desc_event,
-                swarm,
-                local_peer_name,
-                ui_logger,
-            )
-            .await;
+            handle_node_description_event(node_desc_event, swarm, local_peer_name, ui_logger).await;
         }
         EventType::KadEvent(kad_event) => {
             handle_kad_event(kad_event, swarm, ui_logger).await;
@@ -1117,10 +1151,10 @@ mod tests {
 
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
         let ui_logger = UILogger::new(sender);
-        
+
         // Should be able to clone UILogger for background tasks
         let ui_logger_clone = ui_logger.clone();
-        
+
         // Both loggers should work
         ui_logger.log("Test message 1".to_string());
         ui_logger_clone.log("Test message 2".to_string());

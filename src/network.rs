@@ -1,6 +1,6 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
-use libp2p::{PeerId, StreamProtocol, identity, mdns, ping, request_response, kad};
+use libp2p::{PeerId, StreamProtocol, identity, kad, mdns, ping, request_response};
 use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::fs;
@@ -129,7 +129,9 @@ impl From<request_response::Event<DirectMessageRequest, DirectMessageResponse>>
 impl From<request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>>
     for StoryBehaviourEvent
 {
-    fn from(event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>) -> Self {
+    fn from(
+        event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>,
+    ) -> Self {
         StoryBehaviourEvent::NodeDescription(event)
     }
 }
@@ -166,7 +168,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     let desc_protocol_support = request_response::ProtocolSupport::Full;
     let desc_protocol = StreamProtocol::new("/node-desc/1.0.0");
     let desc_protocols = iter::once((desc_protocol, desc_protocol_support));
-    
+
     let node_description = request_response::cbor::Behaviour::new(desc_protocols, cfg);
 
     // Create Kademlia DHT
@@ -291,7 +293,9 @@ mod tests {
         use libp2p::kad::Event as KadEvent;
 
         // Create a mock kad event - using the simplest variant
-        let kad_event = KadEvent::ModeChanged { new_mode: libp2p::kad::Mode::Client };
+        let kad_event = KadEvent::ModeChanged {
+            new_mode: libp2p::kad::Mode::Client,
+        };
 
         // Test conversion
         let story_event = StoryBehaviourEvent::from(kad_event);
@@ -310,7 +314,7 @@ mod tests {
         let kad_config = kad::Config::default();
         let mut kad = kad::Behaviour::with_config(*PEER_ID, store, kad_config);
         kad.set_mode(Some(kad::Mode::Server));
-        
+
         // Verify kad mode was set
         // We can't easily test the internal state, but this verifies compilation
         let _kad = kad;

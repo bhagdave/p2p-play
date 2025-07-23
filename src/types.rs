@@ -1,6 +1,8 @@
-use crate::network::{DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse};
+use crate::network::{
+    DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
+};
 use libp2p::floodsub::Event;
-use libp2p::{mdns, ping, request_response, kad};
+use libp2p::{kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
 
 pub type Stories = Vec<Story>;
@@ -229,8 +231,10 @@ impl BootstrapConfig {
     pub fn new() -> Self {
         Self {
             bootstrap_peers: vec![
-                "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN".to_string(),
-                "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa".to_string(),
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN"
+                    .to_string(),
+                "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
+                    .to_string(),
             ],
             retry_interval_ms: 5000,
             max_retry_attempts: 5,
@@ -261,7 +265,7 @@ impl BootstrapConfig {
         if self.bootstrap_peers.is_empty() {
             return Err("No bootstrap peers configured".to_string());
         }
-        
+
         for peer in &self.bootstrap_peers {
             if let Err(e) = peer.parse::<libp2p::Multiaddr>() {
                 return Err(format!("Invalid multiaddr '{}': {}", peer, e));
@@ -634,16 +638,15 @@ mod tests {
         assert_ne!(dm1, dm3);
     }
 
-  
     fn test_action_result_variants() {
         let refresh = ActionResult::RefreshStories;
         let start_creation = ActionResult::StartStoryCreation;
-        
+
         assert_eq!(refresh, ActionResult::RefreshStories);
         assert_eq!(start_creation, ActionResult::StartStoryCreation);
         assert_ne!(refresh, start_creation);
     }
-  
+
     #[test]
     fn test_story_new_with_channel() {
         let story = Story::new_with_channel(
@@ -852,7 +855,12 @@ mod tests {
         assert_eq!(config.retry_interval_ms, 5000);
         assert_eq!(config.max_retry_attempts, 5);
         assert_eq!(config.bootstrap_timeout_ms, 30000);
-        assert!(config.bootstrap_peers.contains(&"/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN".to_string()));
+        assert!(
+            config.bootstrap_peers.contains(
+                &"/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
@@ -866,13 +874,15 @@ mod tests {
     #[test]
     fn test_bootstrap_config_add_peer() {
         let mut config = BootstrapConfig::new();
-        let test_peer = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string();
-        
+        let test_peer =
+            "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+                .to_string();
+
         let initial_len = config.bootstrap_peers.len();
         assert!(config.add_peer(test_peer.clone()));
         assert_eq!(config.bootstrap_peers.len(), initial_len + 1);
         assert!(config.bootstrap_peers.contains(&test_peer));
-        
+
         // Adding duplicate should return false and not increase length
         assert!(!config.add_peer(test_peer.clone()));
         assert_eq!(config.bootstrap_peers.len(), initial_len + 1);
@@ -881,17 +891,19 @@ mod tests {
     #[test]
     fn test_bootstrap_config_remove_peer() {
         let mut config = BootstrapConfig::new();
-        let test_peer = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string();
-        
+        let test_peer =
+            "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+                .to_string();
+
         // Add peer first
         config.add_peer(test_peer.clone());
         let len_after_add = config.bootstrap_peers.len();
-        
+
         // Remove peer
         assert!(config.remove_peer(&test_peer));
         assert_eq!(config.bootstrap_peers.len(), len_after_add - 1);
         assert!(!config.bootstrap_peers.contains(&test_peer));
-        
+
         // Removing non-existent peer should return false
         assert!(!config.remove_peer(&test_peer));
         assert_eq!(config.bootstrap_peers.len(), len_after_add - 1);
@@ -901,7 +913,7 @@ mod tests {
     fn test_bootstrap_config_clear_peers() {
         let mut config = BootstrapConfig::new();
         assert!(!config.bootstrap_peers.is_empty());
-        
+
         config.clear_peers();
         assert!(config.bootstrap_peers.is_empty());
     }
@@ -909,34 +921,42 @@ mod tests {
     #[test]
     fn test_bootstrap_config_validate() {
         let mut config = BootstrapConfig::new();
-        
+
         // Valid config should pass
         assert!(config.validate().is_ok());
-        
+
         // Empty peers should fail
         config.clear_peers();
         assert!(config.validate().is_err());
-        assert!(config.validate().unwrap_err().contains("No bootstrap peers"));
-        
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .contains("No bootstrap peers")
+        );
+
         // Invalid multiaddr should fail
         config.bootstrap_peers.push("invalid-multiaddr".to_string());
         let result = config.validate();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid multiaddr"));
-        
+
         // Valid multiaddr should pass
         config.bootstrap_peers.clear();
-        config.bootstrap_peers.push("/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+        config.bootstrap_peers.push(
+            "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+                .to_string(),
+        );
         assert!(config.validate().is_ok());
     }
 
     #[test]
     fn test_bootstrap_config_serialization() {
         let config = BootstrapConfig::new();
-        
+
         let json = serde_json::to_string(&config).unwrap();
         let deserialized: BootstrapConfig = serde_json::from_str(&json).unwrap();
-        
+
         assert_eq!(config, deserialized);
     }
 

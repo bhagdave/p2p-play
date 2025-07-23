@@ -163,7 +163,10 @@ impl App {
                     }
                     _ => {}
                 },
-                InputMode::CreatingStory { step, partial_story } => {
+                InputMode::CreatingStory {
+                    step,
+                    partial_story,
+                } => {
                     match key.code {
                         KeyCode::Esc => {
                             self.cancel_story_creation();
@@ -171,14 +174,17 @@ impl App {
                         KeyCode::Enter => {
                             let input = self.input.trim().to_string();
                             self.input.clear();
-                            
+
                             let mut new_partial = partial_story.clone();
                             let mut next_step = None;
-                            
+
                             match step {
                                 StoryCreationStep::Name => {
                                     if input.is_empty() {
-                                        self.add_to_log("❌ Story name cannot be empty. Please try again:".to_string());
+                                        self.add_to_log(
+                                            "❌ Story name cannot be empty. Please try again:"
+                                                .to_string(),
+                                        );
                                         return None;
                                     }
                                     new_partial.name = Some(input);
@@ -188,7 +194,10 @@ impl App {
                                 }
                                 StoryCreationStep::Header => {
                                     if input.is_empty() {
-                                        self.add_to_log("❌ Story header cannot be empty. Please try again:".to_string());
+                                        self.add_to_log(
+                                            "❌ Story header cannot be empty. Please try again:"
+                                                .to_string(),
+                                        );
                                         return None;
                                     }
                                     new_partial.header = Some(input);
@@ -198,29 +207,44 @@ impl App {
                                 }
                                 StoryCreationStep::Body => {
                                     if input.is_empty() {
-                                        self.add_to_log("❌ Story body cannot be empty. Please try again:".to_string());
+                                        self.add_to_log(
+                                            "❌ Story body cannot be empty. Please try again:"
+                                                .to_string(),
+                                        );
                                         return None;
                                     }
                                     new_partial.body = Some(input);
                                     next_step = Some(StoryCreationStep::Channel);
                                     self.add_to_log("✅ Story body saved".to_string());
-                                    self.add_to_log("📂 Enter channel (or press Enter for 'general'):".to_string());
+                                    self.add_to_log(
+                                        "📂 Enter channel (or press Enter for 'general'):"
+                                            .to_string(),
+                                    );
                                 }
                                 StoryCreationStep::Channel => {
-                                    let channel = if input.is_empty() { "general".to_string() } else { input };
+                                    let channel = if input.is_empty() {
+                                        "general".to_string()
+                                    } else {
+                                        input
+                                    };
                                     new_partial.channel = Some(channel);
-                                    
+
                                     // Story creation complete - create the command string
-                                    if let (Some(name), Some(header), Some(body), Some(ch)) = 
-                                        (&new_partial.name, &new_partial.header, &new_partial.body, &new_partial.channel) {
-                                        let create_command = format!("create s {}|{}|{}|{}", name, header, body, ch);
+                                    if let (Some(name), Some(header), Some(body), Some(ch)) = (
+                                        &new_partial.name,
+                                        &new_partial.header,
+                                        &new_partial.body,
+                                        &new_partial.channel,
+                                    ) {
+                                        let create_command =
+                                            format!("create s {}|{}|{}|{}", name, header, body, ch);
                                         self.input_mode = InputMode::Normal;
                                         self.add_to_log("✅ Story creation complete!".to_string());
                                         return Some(AppEvent::Input(create_command));
                                     }
                                 }
                             }
-                            
+
                             // Update to next step if not complete
                             if let Some(step) = next_step {
                                 self.input_mode = InputMode::CreatingStory {
@@ -317,7 +341,9 @@ impl App {
                 StoryCreationStep::Name => "📝 Enter story name:".to_string(),
                 StoryCreationStep::Header => "📄 Enter story header:".to_string(),
                 StoryCreationStep::Body => "📖 Enter story body:".to_string(),
-                StoryCreationStep::Channel => "📂 Enter channel (or press Enter for 'general'):".to_string(),
+                StoryCreationStep::Channel => {
+                    "📂 Enter channel (or press Enter for 'general'):".to_string()
+                }
             },
             _ => "".to_string(),
         }
@@ -648,7 +674,11 @@ mod tests {
         assert_ne!(editing_mode, creating_mode);
 
         // Test that story creation mode holds the right data
-        if let InputMode::CreatingStory { step, partial_story } = creating_mode {
+        if let InputMode::CreatingStory {
+            step,
+            partial_story,
+        } = creating_mode
+        {
             assert_eq!(step, StoryCreationStep::Name);
             assert!(partial_story.name.is_none());
         } else {
