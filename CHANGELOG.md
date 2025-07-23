@@ -2,6 +2,16 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Windows Socket Error 10048**: Fixed "Address already in use" (WSAEADDRINUSE) error that frequently occurred on Windows 10, causing connection failures during transport protocol negotiation
+  - **Platform-specific TCP Configuration**: Added conditional compilation to disable port reuse on Windows systems while maintaining optimal performance on Unix systems
+  - **Connection Throttling**: Implemented 60-second minimum interval between reconnection attempts to the same peer to reduce rapid reconnection issues
+  - **Enhanced Error Handling**: Replaced blocking mutex operations with non-blocking `try_lock()` and graceful fallback mechanisms
+  - **Memory Management**: Added periodic cleanup of old connection attempt entries to prevent memory leaks
+  - Fixes issue #52
+
 ## [0.7.1] - 2025-07-23
 
 ### Fixed
