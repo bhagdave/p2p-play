@@ -1,10 +1,12 @@
 use crate::error_logger::ErrorLogger;
-use crate::network::{DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC};
+use crate::network::{
+    DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC,
+};
 use crate::storage::{
-    create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config, 
-    load_node_description, publish_story, read_channels, read_local_stories, read_subscribed_channels, 
-    save_bootstrap_config, save_local_peer_name, save_node_description, subscribe_to_channel,
-    unsubscribe_from_channel,
+    create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config,
+    load_node_description, publish_story, read_channels, read_local_stories,
+    read_subscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
+    subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
 use bytes::Bytes;
@@ -174,7 +176,8 @@ pub async fn handle_create_stories(
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
             ui_logger.log("📖 Starting interactive story creation...".to_string());
-            ui_logger.log("📝 This will guide you through creating a story step by step.".to_string());
+            ui_logger
+                .log("📝 This will guide you through creating a story step by step.".to_string());
             ui_logger.log("📌 Use Esc at any time to cancel.".to_string());
             return Some(ActionResult::StartStoryCreation);
         } else {
@@ -267,22 +270,20 @@ pub async fn handle_delete_story(
 ) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("delete s ") {
         match rest.trim().parse::<usize>() {
-            Ok(id) => {
-                match delete_local_story(id).await {
-                    Ok(deleted) => {
-                        if deleted {
-                            ui_logger.log(format!("Story with id {} deleted successfully", id));
-                            return Some(ActionResult::RefreshStories);
-                        } else {
-                            ui_logger.log(format!("Story with id {} not found", id));
-                        }
-                    }
-                    Err(e) => {
-                        error_logger
-                            .log_error(&format!("Failed to delete story with id {}: {}", id, e));
+            Ok(id) => match delete_local_story(id).await {
+                Ok(deleted) => {
+                    if deleted {
+                        ui_logger.log(format!("Story with id {} deleted successfully", id));
+                        return Some(ActionResult::RefreshStories);
+                    } else {
+                        ui_logger.log(format!("Story with id {} not found", id));
                     }
                 }
-            }
+                Err(e) => {
+                    error_logger
+                        .log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                }
+            },
             Err(e) => {
                 ui_logger.log(format!("Invalid story id '{}': {}", rest.trim(), e));
             }
@@ -625,7 +626,7 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     }
 
     let description = parts[2].trim();
-    
+
     if description.is_empty() {
         ui_logger.log("Usage: create desc <description>".to_string());
         return;
@@ -633,7 +634,10 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
 
     match save_node_description(description).await {
         Ok(()) => {
-            ui_logger.log(format!("Node description saved: {} bytes", description.len()));
+            ui_logger.log(format!(
+                "Node description saved: {} bytes",
+                description.len()
+            ));
         }
         Err(e) => {
             ui_logger.log(format!("Failed to save description: {}", e));
@@ -643,7 +647,7 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
 
 /// Handle requesting node description from a peer
 pub async fn handle_get_description(
-    cmd: &str, 
+    cmd: &str,
     ui_logger: &UILogger,
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
@@ -656,29 +660,36 @@ pub async fn handle_get_description(
     }
 
     let peer_alias = parts[2];
-    
+
     // Find the peer by their alias
-    let target_peer = peer_names.iter()
+    let target_peer = peer_names
+        .iter()
         .find(|(_, name)| name.as_str() == peer_alias)
         .map(|(peer_id, _)| *peer_id);
 
     let target_peer = match target_peer {
         Some(peer) => peer,
         None => {
-            ui_logger.log(format!("Peer '{}' not found. Use 'ls p' to see discovered peers.", peer_alias));
+            ui_logger.log(format!(
+                "Peer '{}' not found. Use 'ls p' to see discovered peers.",
+                peer_alias
+            ));
             return;
         }
     };
 
     // Check if we're connected to this peer
     if !swarm.is_connected(&target_peer) {
-        ui_logger.log(format!("Not connected to peer '{}'. Use 'connect' to establish connection.", peer_alias));
+        ui_logger.log(format!(
+            "Not connected to peer '{}'. Use 'connect' to establish connection.",
+            peer_alias
+        ));
         return;
     }
 
     // Send a node description request using the dedicated protocol
     let from_name = local_peer_name.as_deref().unwrap_or("Unknown");
-    
+
     let description_request = NodeDescriptionRequest {
         from_peer_id: PEER_ID.to_string(),
         from_name: from_name.to_string(),
@@ -692,7 +703,7 @@ pub async fn handle_get_description(
         .behaviour_mut()
         .node_description
         .send_request(&target_peer, description_request);
-    
+
     ui_logger.log(format!("Requesting description from '{}'...", peer_alias));
 }
 
@@ -700,11 +711,17 @@ pub async fn handle_get_description(
 pub async fn handle_show_description(ui_logger: &UILogger) {
     match load_node_description().await {
         Ok(Some(description)) => {
-            ui_logger.log(format!("Your node description ({} bytes):", description.len()));
+            ui_logger.log(format!(
+                "Your node description ({} bytes):",
+                description.len()
+            ));
             ui_logger.log(description);
         }
         Ok(None) => {
-            ui_logger.log("No node description set. Use 'create desc <description>' to create one.".to_string());
+            ui_logger.log(
+                "No node description set. Use 'create desc <description>' to create one."
+                    .to_string(),
+            );
         }
         Err(e) => {
             ui_logger.log(format!("Failed to load description: {}", e));
@@ -713,14 +730,18 @@ pub async fn handle_show_description(ui_logger: &UILogger) {
 }
 
 /// Handle DHT bootstrap command with subcommands
-pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+pub async fn handle_dht_bootstrap(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
-    
+
     if parts.len() < 3 {
         show_bootstrap_usage(ui_logger);
         return;
     }
-    
+
     match parts[2] {
         "add" => handle_bootstrap_add(&parts[3..], ui_logger).await,
         "remove" => handle_bootstrap_remove(&parts[3..], ui_logger).await,
@@ -739,10 +760,13 @@ pub async fn handle_dht_bootstrap(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, 
 fn show_bootstrap_usage(ui_logger: &UILogger) {
     ui_logger.log("DHT Bootstrap Commands:".to_string());
     ui_logger.log("  dht bootstrap add <multiaddr>    - Add bootstrap peer to config".to_string());
-    ui_logger.log("  dht bootstrap remove <multiaddr> - Remove bootstrap peer from config".to_string());
-    ui_logger.log("  dht bootstrap list               - Show configured bootstrap peers".to_string());
+    ui_logger
+        .log("  dht bootstrap remove <multiaddr> - Remove bootstrap peer from config".to_string());
+    ui_logger
+        .log("  dht bootstrap list               - Show configured bootstrap peers".to_string());
     ui_logger.log("  dht bootstrap clear              - Clear all bootstrap peers".to_string());
-    ui_logger.log("  dht bootstrap retry              - Retry bootstrap with config peers".to_string());
+    ui_logger
+        .log("  dht bootstrap retry              - Retry bootstrap with config peers".to_string());
     ui_logger.log("  dht bootstrap <multiaddr>        - Bootstrap directly with peer".to_string());
     ui_logger.log("Example: dht bootstrap add /dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN".to_string());
 }
@@ -752,15 +776,15 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
         ui_logger.log("Usage: dht bootstrap add <multiaddr>".to_string());
         return;
     }
-    
+
     let multiaddr = args.join(" ");
-    
+
     // Validate the multiaddr format
     if let Err(e) = multiaddr.parse::<libp2p::Multiaddr>() {
         ui_logger.log(format!("Invalid multiaddr '{}': {}", multiaddr, e));
         return;
     }
-    
+
     // Load current config, add peer, and save
     match load_bootstrap_config().await {
         Ok(mut config) => {
@@ -768,7 +792,10 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
                 match save_bootstrap_config(&config).await {
                     Ok(_) => {
                         ui_logger.log(format!("Added bootstrap peer: {}", multiaddr));
-                        ui_logger.log(format!("Total bootstrap peers: {}", config.bootstrap_peers.len()));
+                        ui_logger.log(format!(
+                            "Total bootstrap peers: {}",
+                            config.bootstrap_peers.len()
+                        ));
                     }
                     Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
                 }
@@ -785,9 +812,9 @@ async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
         ui_logger.log("Usage: dht bootstrap remove <multiaddr>".to_string());
         return;
     }
-    
+
     let multiaddr = args.join(" ");
-    
+
     // Load current config, remove peer, and save
     match load_bootstrap_config().await {
         Ok(mut config) => {
@@ -797,12 +824,15 @@ async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
                 ui_logger.log("Use 'dht bootstrap add <multiaddr>' to add another peer first, or 'dht bootstrap clear' to remove all peers.".to_string());
                 return;
             }
-            
+
             if config.remove_peer(&multiaddr) {
                 match save_bootstrap_config(&config).await {
                     Ok(_) => {
                         ui_logger.log(format!("Removed bootstrap peer: {}", multiaddr));
-                        ui_logger.log(format!("Total bootstrap peers: {}", config.bootstrap_peers.len()));
+                        ui_logger.log(format!(
+                            "Total bootstrap peers: {}",
+                            config.bootstrap_peers.len()
+                        ));
                     }
                     Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
                 }
@@ -817,13 +847,19 @@ async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
 async fn handle_bootstrap_list(ui_logger: &UILogger) {
     match load_bootstrap_config().await {
         Ok(config) => {
-            ui_logger.log(format!("Bootstrap Configuration ({} peers):", config.bootstrap_peers.len()));
+            ui_logger.log(format!(
+                "Bootstrap Configuration ({} peers):",
+                config.bootstrap_peers.len()
+            ));
             for (i, peer) in config.bootstrap_peers.iter().enumerate() {
                 ui_logger.log(format!("  {}. {}", i + 1, peer));
             }
             ui_logger.log(format!("Retry Interval: {}ms", config.retry_interval_ms));
             ui_logger.log(format!("Max Retry Attempts: {}", config.max_retry_attempts));
-            ui_logger.log(format!("Bootstrap Timeout: {}ms", config.bootstrap_timeout_ms));
+            ui_logger.log(format!(
+                "Bootstrap Timeout: {}ms",
+                config.bootstrap_timeout_ms
+            ));
         }
         Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
     }
@@ -853,23 +889,32 @@ async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &U
                 ui_logger.log("No bootstrap peers configured. Use 'dht bootstrap add <multiaddr>' to add peers.".to_string());
                 return;
             }
-            
-            ui_logger.log(format!("Retrying bootstrap with {} configured peers...", config.bootstrap_peers.len()));
-            
+
+            ui_logger.log(format!(
+                "Retrying bootstrap with {} configured peers...",
+                config.bootstrap_peers.len()
+            ));
+
             for peer_addr in &config.bootstrap_peers {
                 match peer_addr.parse::<libp2p::Multiaddr>() {
                     Ok(addr) => {
                         if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
-                            swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                            swarm
+                                .behaviour_mut()
+                                .kad
+                                .add_address(&peer_id, addr.clone());
                             ui_logger.log(format!("Added bootstrap peer to DHT: {}", peer_addr));
                         } else {
                             ui_logger.log(format!("Failed to extract peer ID from: {}", peer_addr));
                         }
                     }
-                    Err(e) => ui_logger.log(format!("Invalid multiaddr in config '{}': {}", peer_addr, e)),
+                    Err(e) => ui_logger.log(format!(
+                        "Invalid multiaddr in config '{}': {}",
+                        peer_addr, e
+                    )),
                 }
             }
-            
+
             // Start bootstrap process
             if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
                 ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
@@ -881,9 +926,13 @@ async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &U
     }
 }
 
-async fn handle_direct_bootstrap(addr_str: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+async fn handle_direct_bootstrap(
+    addr_str: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
     let addr_str = addr_str.trim();
-    
+
     if addr_str.is_empty() {
         show_bootstrap_usage(ui_logger);
         return;
@@ -891,12 +940,18 @@ async fn handle_direct_bootstrap(addr_str: &str, swarm: &mut Swarm<StoryBehaviou
 
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
-            ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {}", addr));
-            
+            ui_logger.log(format!(
+                "Attempting to bootstrap DHT with peer at: {}",
+                addr
+            ));
+
             // Add the address as a bootstrap peer in the DHT
             if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
-                swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
-                
+                swarm
+                    .behaviour_mut()
+                    .kad
+                    .add_address(&peer_id, addr.clone());
+
                 // Start bootstrap process (this will handle dialing the peer internally)
                 if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
                     ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
@@ -912,9 +967,13 @@ async fn handle_direct_bootstrap(addr_str: &str, swarm: &mut Swarm<StoryBehaviou
 }
 
 /// Handle DHT get closest peers command
-pub async fn handle_dht_get_peers(_cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
+pub async fn handle_dht_get_peers(
+    _cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
     ui_logger.log("Searching for closest peers in DHT...".to_string());
-    
+
     // Get closest peers to our own peer ID
     let _query_id = swarm.behaviour_mut().kad.get_closest_peers(*PEER_ID);
     ui_logger.log("DHT peer search started (results will appear in events)".to_string());
@@ -1019,22 +1078,22 @@ mod tests {
     #[test]
     fn test_extract_peer_id_from_multiaddr() {
         use libp2p::multiaddr::Protocol;
-        
+
         // Test with valid multiaddr containing peer ID
         let peer_id = *PEER_ID;
         let mut addr = libp2p::Multiaddr::empty();
         addr.push(Protocol::Ip4([127, 0, 0, 1].into()));
         addr.push(Protocol::Tcp(8080));
         addr.push(Protocol::P2p(peer_id));
-        
+
         let extracted = super::extract_peer_id_from_multiaddr(&addr);
         assert_eq!(extracted, Some(peer_id));
-        
+
         // Test with multiaddr without peer ID
         let mut addr_no_peer = libp2p::Multiaddr::empty();
         addr_no_peer.push(Protocol::Ip4([127, 0, 0, 1].into()));
         addr_no_peer.push(Protocol::Tcp(8080));
-        
+
         let extracted_none = super::extract_peer_id_from_multiaddr(&addr_no_peer);
         assert_eq!(extracted_none, None);
     }
@@ -1088,13 +1147,17 @@ mod tests {
             // Test empty create s command should trigger interactive mode
             let result = handle_create_stories("create s", &ui_logger, &error_logger).await;
             assert_eq!(result, Some(ActionResult::StartStoryCreation));
-            
+
             // Check that appropriate messages were logged
             let mut messages = Vec::new();
             while let Ok(msg) = receiver.try_recv() {
                 messages.push(msg);
             }
-            assert!(messages.iter().any(|m| m.contains("interactive story creation")));
+            assert!(
+                messages
+                    .iter()
+                    .any(|m| m.contains("interactive story creation"))
+            );
         });
     }
 
@@ -1108,10 +1171,11 @@ mod tests {
         rt.block_on(async {
             // Test pipe-separated format still works but may fail due to file system
             let result = handle_create_stories(
-                "create s Test|Header|Body|general", 
-                &ui_logger, 
-                &error_logger
-            ).await;
+                "create s Test|Header|Body|general",
+                &ui_logger,
+                &error_logger,
+            )
+            .await;
             // The result depends on whether the storage operation succeeds
             // We're mainly testing that the parsing doesn't panic
             assert!(result.is_some() || result.is_none());
@@ -1424,13 +1488,13 @@ mod tests {
 
         // Test valid description
         handle_create_description("create desc This is my node", &ui_logger).await;
-        
+
         // Collect messages
         let mut messages = Vec::new();
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        
+
         assert!(!messages.is_empty());
         // Should contain success message about saved description
         assert!(messages.iter().any(|m| m.contains("saved")));
@@ -1446,12 +1510,12 @@ mod tests {
 
         // Test invalid format
         handle_create_description("create desc", &ui_logger).await;
-        
+
         let mut messages = Vec::new();
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        
+
         assert!(!messages.is_empty());
         assert!(messages.iter().any(|m| m.contains("Usage:")));
     }
@@ -1463,12 +1527,12 @@ mod tests {
 
         // Test empty description
         handle_create_description("create desc ", &ui_logger).await;
-        
+
         let mut messages = Vec::new();
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        
+
         assert!(!messages.is_empty());
         assert!(messages.iter().any(|m| m.contains("Usage:")));
     }
@@ -1480,19 +1544,23 @@ mod tests {
 
         // Test when no description exists - remove file and ensure it's gone
         let _ = tokio::fs::remove_file(crate::storage::NODE_DESCRIPTION_FILE_PATH).await;
-        
+
         // Wait a bit to ensure file is deleted
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        
+
         handle_show_description(&ui_logger).await;
-        
+
         let mut messages = Vec::new();
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        
+
         assert!(!messages.is_empty());
-        assert!(messages.iter().any(|m| m.contains("No node description set")));
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("No node description set"))
+        );
     }
 
     #[tokio::test]
@@ -1501,18 +1569,24 @@ mod tests {
         let ui_logger = UILogger::new(sender);
 
         // First create a description
-        save_node_description("Test description content").await.unwrap();
-        
+        save_node_description("Test description content")
+            .await
+            .unwrap();
+
         // Then show it
         handle_show_description(&ui_logger).await;
-        
+
         let mut messages = Vec::new();
         while let Ok(msg) = receiver.try_recv() {
             messages.push(msg);
         }
-        
+
         assert!(!messages.is_empty());
-        assert!(messages.iter().any(|m| m.contains("Test description content")));
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("Test description content"))
+        );
         assert!(messages.iter().any(|m| m.contains("Your node description")));
 
         // Clean up

@@ -1,4 +1,6 @@
-use crate::types::{BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story};
+use crate::types::{
+    BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story,
+};
 use log::{debug, error};
 use rusqlite::Connection;
 use std::error::Error;
@@ -644,7 +646,7 @@ pub async fn save_node_description(description: &str) -> Result<(), Box<dyn Erro
     if description.len() > 1024 {
         return Err("Description exceeds 1024 bytes limit".into());
     }
-    
+
     fs::write(NODE_DESCRIPTION_FILE_PATH, description).await?;
     Ok(())
 }
@@ -674,13 +676,19 @@ pub async fn save_bootstrap_config(config: &BootstrapConfig) -> Result<(), Box<d
 }
 
 /// Save bootstrap configuration to specific path
-pub async fn save_bootstrap_config_to_path(config: &BootstrapConfig, path: &str) -> Result<(), Box<dyn Error>> {
+pub async fn save_bootstrap_config_to_path(
+    config: &BootstrapConfig,
+    path: &str,
+) -> Result<(), Box<dyn Error>> {
     // Validate the config before saving
     config.validate()?;
-    
+
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
-    debug!("Bootstrap config saved with {} peers", config.bootstrap_peers.len());
+    debug!(
+        "Bootstrap config saved with {} peers",
+        config.bootstrap_peers.len()
+    );
     Ok(())
 }
 
@@ -690,24 +698,29 @@ pub async fn load_bootstrap_config() -> Result<BootstrapConfig, Box<dyn Error>> 
 }
 
 /// Load bootstrap configuration from specific path, creating default if missing
-pub async fn load_bootstrap_config_from_path(path: &str) -> Result<BootstrapConfig, Box<dyn Error>> {
+pub async fn load_bootstrap_config_from_path(
+    path: &str,
+) -> Result<BootstrapConfig, Box<dyn Error>> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: BootstrapConfig = serde_json::from_str(&content)?;
-            
+
             // Validate the loaded config
             config.validate()?;
-            
-            debug!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len());
+
+            debug!(
+                "Loaded bootstrap config with {} peers",
+                config.bootstrap_peers.len()
+            );
             Ok(config)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             debug!("No bootstrap config file found, creating default");
             let default_config = BootstrapConfig::default();
-            
+
             // Save the default config for future use
             save_bootstrap_config_to_path(&default_config, path).await?;
-            
+
             Ok(default_config)
         }
         Err(e) => Err(e.into()),
@@ -716,7 +729,7 @@ pub async fn load_bootstrap_config_from_path(path: &str) -> Result<BootstrapConf
 
 /// Ensure bootstrap config file exists with defaults
 pub async fn ensure_bootstrap_config_exists() -> Result<(), Box<dyn Error>> {
-    if !tokio::fs::metadata("bootstrap_config.json").await.is_ok() {
+    if tokio::fs::metadata("bootstrap_config.json").await.is_err() {
         let default_config = BootstrapConfig::default();
         save_bootstrap_config(&default_config).await?;
         debug!("Created default bootstrap config file");
@@ -1202,7 +1215,7 @@ mod tests {
     async fn test_load_node_description_no_file() {
         // Delete the file if it exists
         let _ = tokio::fs::remove_file("node_description.txt").await;
-        
+
         let result = load_node_description().await.unwrap();
         assert_eq!(result, None);
     }
@@ -1211,7 +1224,7 @@ mod tests {
     async fn test_save_empty_node_description() {
         // Test saving empty description
         save_node_description("").await.unwrap();
-        
+
         let loaded = load_node_description().await.unwrap();
         assert_eq!(loaded, None); // Empty should return None
     }
@@ -1221,7 +1234,7 @@ mod tests {
         // Test description at exactly 1024 bytes
         let description = "A".repeat(1024);
         save_node_description(&description).await.unwrap();
-        
+
         let loaded = load_node_description().await.unwrap();
         assert_eq!(loaded, Some(description));
     }
@@ -1233,7 +1246,10 @@ mod tests {
 
         let mut config = BootstrapConfig::new();
         // Add a valid multiaddr for testing
-        config.add_peer("/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+        config.add_peer(
+            "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+                .to_string(),
+        );
         config.retry_interval_ms = 10000;
 
         // Save the config
@@ -1249,7 +1265,7 @@ mod tests {
     async fn test_bootstrap_config_default_creation() {
         let temp_file = NamedTempFile::new().unwrap();
         let path = temp_file.path().to_str().unwrap();
-        
+
         // Remove the temp file so it doesn't exist
         std::fs::remove_file(path).unwrap();
 
@@ -1280,19 +1296,21 @@ mod tests {
     #[tokio::test]
     async fn test_bootstrap_config_add_remove_peers() {
         let mut config = BootstrapConfig::new();
-        let peer = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string();
-        
+        let peer =
+            "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+                .to_string();
+
         // Add peer
         assert!(config.add_peer(peer.clone()));
         assert!(config.bootstrap_peers.contains(&peer));
-        
+
         // Adding same peer again should return false
         assert!(!config.add_peer(peer.clone()));
-        
+
         // Remove peer
         assert!(config.remove_peer(&peer));
         assert!(!config.bootstrap_peers.contains(&peer));
-        
+
         // Removing same peer again should return false
         assert!(!config.remove_peer(&peer));
     }
@@ -1301,7 +1319,7 @@ mod tests {
     async fn test_bootstrap_config_clear_peers() {
         let mut config = BootstrapConfig::new();
         assert!(!config.bootstrap_peers.is_empty());
-        
+
         config.clear_peers();
         assert!(config.bootstrap_peers.is_empty());
     }
@@ -1309,18 +1327,21 @@ mod tests {
     #[tokio::test]
     async fn test_bootstrap_config_validation_edge_cases() {
         let mut config = BootstrapConfig::new();
-        
+
         // Empty peers should fail validation
         config.clear_peers();
         assert!(config.validate().is_err());
-        
+
         // Invalid multiaddr should fail validation
         config.bootstrap_peers.push("not-a-multiaddr".to_string());
         assert!(config.validate().is_err());
-        
+
         // Valid multiaddr should pass
         config.bootstrap_peers.clear();
-        config.bootstrap_peers.push("/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN".to_string());
+        config.bootstrap_peers.push(
+            "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+                .to_string(),
+        );
         assert!(config.validate().is_ok());
     }
 }

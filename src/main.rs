@@ -13,7 +13,10 @@ use error_logger::ErrorLogger;
 use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
-use storage::{ensure_bootstrap_config_exists, ensure_stories_file_exists, load_bootstrap_config, load_local_peer_name};
+use storage::{
+    ensure_bootstrap_config_exists, ensure_stories_file_exists, load_bootstrap_config,
+    load_local_peer_name,
+};
 use types::{ActionResult, EventType, PeerName};
 use ui::{App, AppEvent, handle_ui_events};
 
@@ -26,7 +29,11 @@ use std::process;
 use tokio::sync::mpsc;
 
 /// Update bootstrap status based on DHT events
-fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut AutoBootstrap, swarm: &mut Swarm<network::StoryBehaviour>) {
+fn update_bootstrap_status(
+    kad_event: &libp2p::kad::Event,
+    auto_bootstrap: &mut AutoBootstrap,
+    swarm: &mut Swarm<network::StoryBehaviour>,
+) {
     match kad_event {
         libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
             match result {
@@ -40,17 +47,22 @@ fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut 
                 _ => {}
             }
         }
-        libp2p::kad::Event::RoutingUpdated { is_new_peer: true, .. } => {
+        libp2p::kad::Event::RoutingUpdated {
+            is_new_peer: true, ..
+        } => {
             // New peer added to routing table - this indicates successful DHT connectivity
             // We'll count peers by checking the current status and updating if needed
             let status = auto_bootstrap.status.lock().unwrap();
             let is_in_progress = matches!(*status, bootstrap::BootstrapStatus::InProgress { .. });
             drop(status); // Release lock before calling mark_connected
-            
+
             if is_in_progress {
                 // Get the actual number of peers in the routing table
                 let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
-                debug!("Bootstrap marked as connected with {} peers in routing table", peer_count);
+                debug!(
+                    "Bootstrap marked as connected with {} peers in routing table",
+                    peer_count
+                );
                 auto_bootstrap.mark_connected(peer_count);
             }
         }
@@ -139,8 +151,14 @@ async fn main() {
     // Load bootstrap configuration
     let _bootstrap_config = match load_bootstrap_config().await {
         Ok(config) => {
-            debug!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len());
-            app.add_to_log(format!("Loaded bootstrap config with {} peers", config.bootstrap_peers.len()));
+            debug!(
+                "Loaded bootstrap config with {} peers",
+                config.bootstrap_peers.len()
+            );
+            app.add_to_log(format!(
+                "Loaded bootstrap config with {} peers",
+                config.bootstrap_peers.len()
+            ));
             Some(config)
         }
         Err(e) => {
@@ -155,8 +173,7 @@ async fn main() {
     auto_bootstrap.initialize(&ui_logger).await;
 
     // Create a timer for automatic bootstrap retry
-    let mut bootstrap_retry_interval =
-        tokio::time::interval(tokio::time::Duration::from_secs(10));
+    let mut bootstrap_retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
 
     // Create a timer for periodic bootstrap status logging
     let mut bootstrap_status_log_interval =
@@ -580,7 +597,9 @@ mod tests {
         let _ping_event_type = EventType::PingEvent(ping_event);
 
         // Test kad event
-        let kad_event = libp2p::kad::Event::ModeChanged { new_mode: libp2p::kad::Mode::Client };
+        let kad_event = libp2p::kad::Event::ModeChanged {
+            new_mode: libp2p::kad::Mode::Client,
+        };
         let _kad_event_type = EventType::KadEvent(kad_event);
     }
 
