@@ -26,7 +26,7 @@ use std::process;
 use tokio::sync::mpsc;
 
 /// Update bootstrap status based on DHT events
-fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut AutoBootstrap) {
+fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut AutoBootstrap, swarm: &mut Swarm<network::StoryBehaviour>) {
     match kad_event {
         libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
             match result {
@@ -48,11 +48,10 @@ fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut 
             drop(status); // Release lock before calling mark_connected
             
             if is_in_progress {
-                // Bootstrap was in progress, mark as connected with at least 1 peer
-                // We use 1 as a conservative estimate since getting exact peer count 
-                // would require accessing the routing table, which isn't available here
-                auto_bootstrap.mark_connected(1);
-                debug!("Bootstrap marked as connected due to new peer in routing table");
+                // Get the actual number of peers in the routing table
+                let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
+                debug!("Bootstrap marked as connected with {} peers in routing table", peer_count);
+                auto_bootstrap.mark_connected(peer_count);
             }
         }
         _ => {}
@@ -306,7 +305,7 @@ async fn main() {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::NodeDescription(event)) => Some(EventType::NodeDescriptionEvent(event)),
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => {
                             // Update bootstrap status based on DHT events
-                            update_bootstrap_status(&event, &mut auto_bootstrap);
+                            update_bootstrap_status(&event, &mut auto_bootstrap, &mut swarm);
                             Some(EventType::KadEvent(event))
                         },
                         SwarmEvent::NewListenAddr { address, .. } => {
