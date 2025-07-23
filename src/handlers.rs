@@ -15,6 +15,7 @@ use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc;
 
 /// Simple UI logger that can be passed around
+#[derive(Clone)]
 pub struct UILogger {
     pub sender: mpsc::UnboundedSender<String>,
 }
@@ -598,15 +599,9 @@ pub async fn establish_direct_connection(
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
                     debug!("Number of connected peers: {}", connected_peers.len());
 
-                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                    let connected_peers_after: Vec<_> = swarm.connected_peers().cloned().collect();
-                    debug!(
-                        "Number of connected peers after 2 seconds: {}",
-                        connected_peers_after.len()
-                    );
+                    // Add existing connected peers to floodsub immediately
                     for peer in connected_peers {
                         debug!("Connected to peer: {}", peer);
-
                         debug!("Adding peer to floodsub: {}", peer);
                         swarm
                             .behaviour_mut()

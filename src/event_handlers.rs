@@ -34,9 +34,6 @@ pub async fn handle_publish_story_event(
     // Pre-publish connection check and reconnection
     maintain_connections(swarm).await;
 
-    // Allow connections to stabilize
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
     // Debug: Show connected peers and floodsub state
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
     debug!("Currently connected peers: {}", connected_peers.len());
@@ -237,11 +234,14 @@ pub async fn handle_floodsub_event(
                             published.story.name, msg.source, published.story.channel
                         ));
 
-                        // Save received story to local storage asynchronously
+                        // Save received story to local storage asynchronously (non-blocking)
                         let story_to_save = published.story.clone();
+                        let ui_logger_clone = ui_logger.clone();
                         tokio::spawn(async move {
                             if let Err(e) = save_received_story(story_to_save).await {
+                                // Log error but don't block the main event loop
                                 error!("Failed to save received story: {}", e);
+                                ui_logger_clone.log(format!("Warning: Failed to save received story: {}", e));
                             }
                         });
 
