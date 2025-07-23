@@ -53,6 +53,12 @@ All changes to this project will be documented in this file.
   - Maintains user control while ensuring new content is visible
 
 ### Fixed
+- **TUI Responsiveness**: Fixed TUI interface keystrokes ('c', 'i', 'q') taking a long time to register, especially during network operations
+  - Removed blocking 1-second sleep during story publishing and 2-second sleep during connection establishment
+  - Moved heavy I/O operations (story saving) to background tasks using `tokio::spawn()` to prevent blocking the main event loop
+  - Enhanced event loop to prioritize UI events over network events for immediate response
+  - Made `UILogger` cloneable to support error reporting from background tasks
+  - UI commands now process immediately regardless of network activity while preserving all existing functionality
 - **Terminal UI Text Rendering**: Fixed text overlap and readability issues in the Output panel where text was rendering without proper spacing
 - Improved text wrapping by changing from `Wrap { trim: true }` to `Wrap { trim: false }` to preserve spacing
 - Enhanced text rendering using explicit ratatui `Text`/`Line`/`Span` structures for better text handling

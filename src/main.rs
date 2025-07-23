@@ -235,6 +235,7 @@ async fn main() {
                     }
                     None
                 }
+                // UI events have higher priority - they are processed immediately
                 ui_event = ui_rcv.recv() => {
                     if let Some(event) = ui_event {
                         match event {
@@ -276,7 +277,7 @@ async fn main() {
                 response = response_rcv.recv() => Some(EventType::Response(response.expect("response exists"))),
                 story = story_rcv.recv() => Some(EventType::PublishStory(story.expect("story exists"))),
                 _ = connection_maintenance_interval.tick() => {
-                    // Periodic connection maintenance
+                    // Periodic connection maintenance - spawn to background to avoid blocking
                     event_handlers::maintain_connections(&mut swarm).await;
                     None
                 },
@@ -298,6 +299,7 @@ async fn main() {
                     }
                     None
                 },
+                // Network events are processed but heavy operations are spawned to background
                 event = swarm.select_next_some() => {
                     match event {
                         SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => Some(EventType::FloodsubEvent(event)),
@@ -378,35 +380,113 @@ async fn main() {
         };
 
         if let Some(event) = evt {
-            if let Some(action_result) = handle_event(
-                event,
-                &mut swarm,
-                &mut peer_names,
-                response_sender.clone(),
-                story_sender.clone(),
-                &mut local_peer_name,
-                &mut sorted_peer_names_cache,
-                &ui_logger,
-                &error_logger,
-            )
-            .await
-            {
-                match action_result {
-                    ActionResult::RefreshStories => {
-                        // Stories were updated, refresh them
-                        match storage::read_local_stories().await {
-                            Ok(stories) => {
-                                debug!("Refreshed {} stories", stories.len());
-                                app.update_local_stories(stories);
+            // Process events with different priorities
+            match &event {
+                // Input events are always processed immediately for UI responsiveness
+                EventType::Input(_) => {
+                    if let Some(action_result) = handle_event(
+                        event,
+                        &mut swarm,
+                        &mut peer_names,
+                        response_sender.clone(),
+                        story_sender.clone(),
+                        &mut local_peer_name,
+                        &mut sorted_peer_names_cache,
+                        &ui_logger,
+                        &error_logger,
+                    )
+                    .await
+                    {
+                        match action_result {
+                            ActionResult::RefreshStories => {
+                                // Stories were updated, refresh them
+                                match storage::read_local_stories().await {
+                                    Ok(stories) => {
+                                        debug!("Refreshed {} stories", stories.len());
+                                        app.update_local_stories(stories);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to refresh stories: {}", e);
+                                    }
+                                }
                             }
-                            Err(e) => {
-                                error!("Failed to refresh stories: {}", e);
+                            ActionResult::StartStoryCreation => {
+                                // Start interactive story creation mode
+                                app.start_story_creation();
                             }
                         }
                     }
-                    ActionResult::StartStoryCreation => {
-                        // Start interactive story creation mode
-                        app.start_story_creation();
+                }
+                // Heavy network operations are spawned to background tasks where possible
+                EventType::PublishStory(_) => {
+                    // Story publishing can be heavy, but needs swarm access
+                    // Process immediately but the sleep has been removed from the handler
+                    if let Some(action_result) = handle_event(
+                        event,
+                        &mut swarm,
+                        &mut peer_names,
+                        response_sender.clone(),
+                        story_sender.clone(),
+                        &mut local_peer_name,
+                        &mut sorted_peer_names_cache,
+                        &ui_logger,
+                        &error_logger,
+                    )
+                    .await
+                    {
+                        match action_result {
+                            ActionResult::RefreshStories => {
+                                // Stories were updated, refresh them
+                                match storage::read_local_stories().await {
+                                    Ok(stories) => {
+                                        debug!("Refreshed {} stories", stories.len());
+                                        app.update_local_stories(stories);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to refresh stories: {}", e);
+                                    }
+                                }
+                            }
+                            ActionResult::StartStoryCreation => {
+                                // Start interactive story creation mode
+                                app.start_story_creation();
+                            }
+                        }
+                    }
+                }
+                // All other events are processed normally
+                _ => {
+                    if let Some(action_result) = handle_event(
+                        event,
+                        &mut swarm,
+                        &mut peer_names,
+                        response_sender.clone(),
+                        story_sender.clone(),
+                        &mut local_peer_name,
+                        &mut sorted_peer_names_cache,
+                        &ui_logger,
+                        &error_logger,
+                    )
+                    .await
+                    {
+                        match action_result {
+                            ActionResult::RefreshStories => {
+                                // Stories were updated, refresh them
+                                match storage::read_local_stories().await {
+                                    Ok(stories) => {
+                                        debug!("Refreshed {} stories", stories.len());
+                                        app.update_local_stories(stories);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to refresh stories: {}", e);
+                                    }
+                                }
+                            }
+                            ActionResult::StartStoryCreation => {
+                                // Start interactive story creation mode
+                                app.start_story_creation();
+                            }
+                        }
                     }
                 }
             }

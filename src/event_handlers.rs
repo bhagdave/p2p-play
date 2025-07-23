@@ -34,9 +34,6 @@ pub async fn handle_publish_story_event(
     // Pre-publish connection check and reconnection
     maintain_connections(swarm).await;
 
-    // Allow connections to stabilize
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
     // Debug: Show connected peers and floodsub state
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
     debug!("Currently connected peers: {}", connected_peers.len());
@@ -237,11 +234,14 @@ pub async fn handle_floodsub_event(
                             published.story.name, msg.source, published.story.channel
                         ));
 
-                        // Save received story to local storage asynchronously
+                        // Save received story to local storage asynchronously (non-blocking)
                         let story_to_save = published.story.clone();
+                        let ui_logger_clone = ui_logger.clone();
                         tokio::spawn(async move {
                             if let Err(e) = save_received_story(story_to_save).await {
+                                // Log error but don't block the main event loop
                                 error!("Failed to save received story: {}", e);
+                                ui_logger_clone.log(format!("Warning: Failed to save received story: {}", e));
                             }
                         });
 
@@ -1079,6 +1079,51 @@ mod tests {
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
         maintain_connections(&mut swarm).await;
+    }
+
+    #[tokio::test]
+    async fn test_story_publishing_non_blocking() {
+        use crate::network::create_swarm;
+        use crate::types::Story;
+        use std::time::Instant;
+
+        let mut swarm = create_swarm().expect("Failed to create swarm");
+        let story = Story {
+            id: 1,
+            name: "Test Story".to_string(),
+            header: "Test Header".to_string(),
+            body: "Test Body".to_string(),
+            public: true,
+            channel: "general".to_string(),
+        };
+
+        // Measure time taken for story publishing (should be very fast now)
+        let start = Instant::now();
+        handle_publish_story_event(story, &mut swarm).await;
+        let duration = start.elapsed();
+
+        // Story publishing should complete in well under 500ms (previously took 1+ seconds)
+        assert!(
+            duration.as_millis() < 500,
+            "Story publishing took too long: {}ms",
+            duration.as_millis()
+        );
+    }
+
+    #[test]
+    fn test_ui_logger_cloneable() {
+        use crate::handlers::UILogger;
+        use tokio::sync::mpsc;
+
+        let (sender, _receiver) = mpsc::unbounded_channel::<String>();
+        let ui_logger = UILogger::new(sender);
+        
+        // Should be able to clone UILogger for background tasks
+        let ui_logger_clone = ui_logger.clone();
+        
+        // Both loggers should work
+        ui_logger.log("Test message 1".to_string());
+        ui_logger_clone.log("Test message 2".to_string());
     }
 
     #[test]
