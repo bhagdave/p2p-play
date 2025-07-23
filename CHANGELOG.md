@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.7.0] - 2025-07-23
 
 ### Added
 - **Enhanced DHT Bootstrap Functionality**: Comprehensive bootstrap management for better node connectivity and reliability
