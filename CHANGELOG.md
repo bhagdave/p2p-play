@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.7.2] - 2025-07-23
 
 ### Fixed
 - **Windows Socket Error 10048**: Fixed "Address already in use" (WSAEADDRINUSE) error that frequently occurred on Windows 10, causing connection failures during transport protocol negotiation
