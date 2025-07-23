@@ -18,6 +18,6 @@ TEST_DATABASE_PATH="./test_stories.db" cargo test --test integration_tests --qui
 # Clean up test database after tests
 rm -f ./test_stories.db
 
-echo "📊 Running All Tests ..."
+echo "📊 Running All Tests..."
 TEST_DATABASE_PATH="./test_stories.db" cargo test -- --test-threads=1
 
