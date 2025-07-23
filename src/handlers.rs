@@ -796,6 +796,13 @@ async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
     // Load current config, remove peer, and save
     match load_bootstrap_config().await {
         Ok(mut config) => {
+            // Check if this would remove the last bootstrap peer
+            if config.bootstrap_peers.len() <= 1 && config.bootstrap_peers.contains(&multiaddr) {
+                ui_logger.log("Warning: Cannot remove the last bootstrap peer. At least one peer is required for DHT connectivity.".to_string());
+                ui_logger.log("Use 'dht bootstrap add <multiaddr>' to add another peer first, or 'dht bootstrap clear' to remove all peers.".to_string());
+                return;
+            }
+            
             if config.remove_peer(&multiaddr) {
                 match save_bootstrap_config(&config).await {
                     Ok(_) => {

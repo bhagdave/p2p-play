@@ -43,15 +43,16 @@ fn update_bootstrap_status(kad_event: &libp2p::kad::Event, auto_bootstrap: &mut 
         libp2p::kad::Event::RoutingUpdated { is_new_peer: true, .. } => {
             // New peer added to routing table - this indicates successful DHT connectivity
             // We'll count peers by checking the current status and updating if needed
-            match &auto_bootstrap.status {
-                bootstrap::BootstrapStatus::InProgress { .. } => {
-                    // Bootstrap was in progress, mark as connected with at least 1 peer
-                    // We use 1 as a conservative estimate since getting exact peer count 
-                    // would require accessing the routing table, which isn't available here
-                    auto_bootstrap.mark_connected(1);
-                    debug!("Bootstrap marked as connected due to new peer in routing table");
-                }
-                _ => {}
+            let status = auto_bootstrap.status.lock().unwrap();
+            let is_in_progress = matches!(*status, bootstrap::BootstrapStatus::InProgress { .. });
+            drop(status); // Release lock before calling mark_connected
+            
+            if is_in_progress {
+                // Bootstrap was in progress, mark as connected with at least 1 peer
+                // We use 1 as a conservative estimate since getting exact peer count 
+                // would require accessing the routing table, which isn't available here
+                auto_bootstrap.mark_connected(1);
+                debug!("Bootstrap marked as connected due to new peer in routing table");
             }
         }
         _ => {}
@@ -287,9 +288,12 @@ async fn main() {
                 },
                 _ = bootstrap_status_log_interval.tick() => {
                     // Periodically log bootstrap status
-                    if !matches!(auto_bootstrap.status, bootstrap::BootstrapStatus::NotStarted) {
-                        let status_msg = auto_bootstrap.get_status_string();
-                        ui_logger.log(format!("Bootstrap Status: {}", status_msg));
+                    {
+                        let status = auto_bootstrap.status.lock().unwrap();
+                        if !matches!(*status, bootstrap::BootstrapStatus::NotStarted) {
+                            let status_msg = auto_bootstrap.get_status_string();
+                            ui_logger.log(format!("Bootstrap Status: {}", status_msg));
+                        }
                     }
                     None
                 },
