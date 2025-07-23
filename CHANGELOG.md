@@ -2,6 +2,11 @@
 
 All changes to this project will be documented in this file.
 
+## [0.7.1] - 2025-07-23
+
+### Fixed
+- Release workflow fixed
+
 ## [0.7.0] - 2025-07-23
 
 ### Added
