@@ -28,10 +28,10 @@ static mut LAST_KEY_EVENT: Option<(crossterm::event::KeyEvent, Instant)> = None;
 fn should_process_key_event(event: &crossterm::event::KeyEvent) -> bool {
     unsafe {
         if let Some((last_event, last_time)) = LAST_KEY_EVENT {
-            // Skip if same key pressed within 100ms (duplicate detection)
+            // Skip if same key pressed within 190ms (duplicate detection)
             if last_event.code == event.code 
                 && last_event.modifiers == event.modifiers 
-                && last_time.elapsed() < std::time::Duration::from_millis(100) {
+                && last_time.elapsed() < std::time::Duration::from_millis(190) {
                 return false;
             }
         }
@@ -607,7 +607,7 @@ pub async fn handle_ui_events(
     ui_sender: mpsc::UnboundedSender<AppEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
-    let poll_timeout = std::time::Duration::from_millis(50); // Slower polling on Windows
+    let poll_timeout = std::time::Duration::from_millis(80); // Slower polling on Windows
 
     #[cfg(not(windows))]
     let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix    
