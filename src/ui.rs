@@ -18,6 +18,30 @@ use std::collections::HashMap;
 use std::io::{self, Stdout};
 use tokio::sync::mpsc;
 
+#[cfg(windows)]
+use std::time::Instant;
+
+#[cfg(windows)]
+static mut LAST_KEY_EVENT: Option<(crossterm::event::KeyEvent, Instant)> = None;
+
+#[cfg(windows)]
+fn should_process_key_event(event: &crossterm::event::KeyEvent) -> bool {
+    unsafe {
+        if let Some((last_event, last_time)) = LAST_KEY_EVENT {
+            // Skip if same key pressed within 100ms (duplicate detection)
+            if last_event.code == event.code 
+                && last_event.modifiers == event.modifiers 
+                && last_time.elapsed() < std::time::Duration::from_millis(100) {
+                return false;
+            }
+        }
+        
+        LAST_KEY_EVENT = Some((*event, Instant::now()));
+        true
+    }
+}
+
+
 pub struct App {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
     pub should_quit: bool,
@@ -109,6 +133,12 @@ impl App {
 
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         if let Event::Key(key) = event {
+            #[cfg(windows)]
+            {
+                if !should_process_key_event(&key) {
+                    return None; // Skip duplicate event
+                }
+            }            
             match &self.input_mode {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => {
