@@ -28,11 +28,6 @@ use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
 
-#[cfg(windows)]
-let main_loop_timeout = std::time::Duration::from_millis(100); // Slower on Windows
-
-#[cfg(not(windows))]
-let main_loop_timeout = std::time::Duration::from_millis(50); // Keep existing on Unix
 
 /// Update bootstrap status based on DHT events
 fn update_bootstrap_status(
@@ -249,6 +244,12 @@ async fn main() {
 
         // Yield control to allow other tasks to run
         tokio::task::yield_now().await;
+
+        #[cfg(windows)]
+        let main_loop_timeout = std::time::Duration::from_millis(100); // Slower on Windows
+
+        #[cfg(not(windows))]
+        let main_loop_timeout = std::time::Duration::from_millis(50); // Keep existing on Unix
 
         let evt = {
             tokio::select! {
