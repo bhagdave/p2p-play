@@ -6,6 +6,7 @@ All changes to this project will be documented in this file.
 
 ### Fixed
 - **Windows Socket Error 10048**: Fixed "Address already in use"  on Windows 10, causing connection failures during transport protocol negotiation
+- **Windows Keyboard Error**: Fudge on timeouts to get the key input working on widows 10
 
 ## [0.7.2] - 2025-07-23
 
