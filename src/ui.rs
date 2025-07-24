@@ -19,26 +19,29 @@ use std::io::{self, Stdout};
 use tokio::sync::mpsc;
 
 #[cfg(windows)]
+use std::sync::{Arc, Mutex};
+#[cfg(windows)]
 use std::time::Instant;
 
 #[cfg(windows)]
-static mut LAST_KEY_EVENT: Option<(crossterm::event::KeyEvent, Instant)> = None;
+static LAST_KEY_EVENT: std::sync::LazyLock<Arc<Mutex<Option<(crossterm::event::KeyEvent, Instant)>>>> = 
+    std::sync::LazyLock::new(|| Arc::new(Mutex::new(None)));
 
 #[cfg(windows)]
 fn should_process_key_event(event: &crossterm::event::KeyEvent) -> bool {
-    unsafe {
-        if let Some((last_event, last_time)) = LAST_KEY_EVENT {
-            // Skip if same key pressed within 190ms (duplicate detection)
-            if last_event.code == event.code 
-                && last_event.modifiers == event.modifiers 
-                && last_time.elapsed() < std::time::Duration::from_millis(190) {
-                return false;
-            }
+    let mut last_event_guard = LAST_KEY_EVENT.lock().unwrap();
+    
+    if let Some((last_event, last_time)) = *last_event_guard {
+        // Skip if same key pressed within 190ms (duplicate detection)
+        if last_event.code == event.code 
+            && last_event.modifiers == event.modifiers 
+            && last_time.elapsed() < std::time::Duration::from_millis(190) {
+            return false;
         }
-        
-        LAST_KEY_EVENT = Some((*event, Instant::now()));
-        true
     }
+    
+    *last_event_guard = Some((*event, Instant::now()));
+    true
 }
 
 
