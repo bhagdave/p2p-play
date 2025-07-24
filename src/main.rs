@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
 
+
 /// Update bootstrap status based on DHT events
 fn update_bootstrap_status(
     kad_event: &libp2p::kad::Event,
@@ -211,12 +212,16 @@ async fn main() {
             app.add_to_log(format!("Failed to load local stories: {}", e));
         }
     }
+    // Windows fix for port in use
+    #[cfg(windows)]
+    let listen_addr = "/ip4/127.0.0.1/tcp/0"; // Bind to localhost only on Windows to reduce conflicts
+
+    #[cfg(not(windows))]
+    let listen_addr = "/ip4/0.0.0.0/tcp/0"; // Bind to all interfaces on Unix
 
     Swarm::listen_on(
         &mut swarm,
-        "/ip4/0.0.0.0/tcp/0"
-            .parse()
-            .expect("can get a local socket"),
+        listen_addr.parse().expect("can get a local socket"),
     )
     .expect("swarm can be started");
 
@@ -240,10 +245,16 @@ async fn main() {
         // Yield control to allow other tasks to run
         tokio::task::yield_now().await;
 
+        #[cfg(windows)]
+        let main_loop_timeout = std::time::Duration::from_millis(100); // Slower on Windows
+
+        #[cfg(not(windows))]
+        let main_loop_timeout = std::time::Duration::from_millis(50); // Keep existing on Unix
+
         let evt = {
             tokio::select! {
                 // Shorter timeout to ensure UI responsiveness
-                _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
+                _ = tokio::time::sleep(main_loop_timeout) => {
                     None
                 }
                 ui_log_msg = ui_log_rcv.recv() => {

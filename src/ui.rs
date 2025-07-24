@@ -18,6 +18,33 @@ use std::collections::HashMap;
 use std::io::{self, Stdout};
 use tokio::sync::mpsc;
 
+#[cfg(windows)]
+use std::sync::{Arc, Mutex};
+#[cfg(windows)]
+use std::time::Instant;
+
+#[cfg(windows)]
+static LAST_KEY_EVENT: std::sync::LazyLock<Arc<Mutex<Option<(crossterm::event::KeyEvent, Instant)>>>> = 
+    std::sync::LazyLock::new(|| Arc::new(Mutex::new(None)));
+
+#[cfg(windows)]
+fn should_process_key_event(event: &crossterm::event::KeyEvent) -> bool {
+    let mut last_event_guard = LAST_KEY_EVENT.lock().unwrap();
+    
+    if let Some((last_event, last_time)) = *last_event_guard {
+        // Skip if same key pressed within 190ms (duplicate detection)
+        if last_event.code == event.code 
+            && last_event.modifiers == event.modifiers 
+            && last_time.elapsed() < std::time::Duration::from_millis(190) {
+            return false;
+        }
+    }
+    
+    *last_event_guard = Some((*event, Instant::now()));
+    true
+}
+
+
 pub struct App {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
     pub should_quit: bool,
@@ -109,6 +136,12 @@ impl App {
 
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         if let Event::Key(key) = event {
+            #[cfg(windows)]
+            {
+                if !should_process_key_event(&key) {
+                    return None; // Skip duplicate event
+                }
+            }            
             match &self.input_mode {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => {
@@ -576,8 +609,13 @@ pub async fn handle_ui_events(
     app: &mut App,
     ui_sender: mpsc::UnboundedSender<AppEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Use a shorter poll duration for more responsive input
-    if event::poll(std::time::Duration::from_millis(16))? {
+    #[cfg(windows)]
+    let poll_timeout = std::time::Duration::from_millis(80); // Slower polling on Windows
+
+    #[cfg(not(windows))]
+    let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix    
+
+    if event::poll(poll_timeout)? {
         if let Some(app_event) = app.handle_event(event::read()?) {
             ui_sender.send(app_event)?;
         }
