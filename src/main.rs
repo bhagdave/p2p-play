@@ -28,6 +28,12 @@ use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
 
+#[cfg(windows)]
+let main_loop_timeout = std::time::Duration::from_millis(100); // Slower on Windows
+
+#[cfg(not(windows))]
+let main_loop_timeout = std::time::Duration::from_millis(50); // Keep existing on Unix
+
 /// Update bootstrap status based on DHT events
 fn update_bootstrap_status(
     kad_event: &libp2p::kad::Event,
@@ -247,7 +253,7 @@ async fn main() {
         let evt = {
             tokio::select! {
                 // Shorter timeout to ensure UI responsiveness
-                _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {
+                _ = tokio::time::sleep(main_loop_timeout) => {
                     None
                 }
                 ui_log_msg = ui_log_rcv.recv() => {
