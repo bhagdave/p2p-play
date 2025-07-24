@@ -147,11 +147,12 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
 
     // Configure TCP transport with Windows-specific socket settings
+    // Windows doesn't allow immediate port reuse for sockets in TIME_WAIT state
     #[cfg(windows)]
     let tcp_config = Config::default()
-        .nodelay(true)
-        .port_reuse(false); // Disable port reuse on Windows to avoid WSAEADDRINUSE errors
-                            // Windows doesn't allow immediate port reuse for sockets in TIME_WAIT state
+        .nodelay(true) 
+        .port_reuse(false) // Disable port reuse on Windows to avoid WSAEADDRINUSE errors
+        .listen_backlog(1024); // Increase backlog to handle more connections
 
     #[cfg(not(windows))]
     let tcp_config = Config::default().nodelay(true);

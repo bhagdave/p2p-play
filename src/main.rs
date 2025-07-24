@@ -211,12 +211,16 @@ async fn main() {
             app.add_to_log(format!("Failed to load local stories: {}", e));
         }
     }
+    // Windows fix for port in use
+    #[cfg(windows)]
+    let listen_addr = "/ip4/127.0.0.1/tcp/0"; // Bind to localhost only on Windows to reduce conflicts
+
+    #[cfg(not(windows))]
+    let listen_addr = "/ip4/0.0.0.0/tcp/0"; // Bind to all interfaces on Unix
 
     Swarm::listen_on(
         &mut swarm,
-        "/ip4/0.0.0.0/tcp/0"
-            .parse()
-            .expect("can get a local socket"),
+        listen_addr.parse().expect("can get a local socket"),
     )
     .expect("swarm can be started");
 
