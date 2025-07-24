@@ -576,8 +576,13 @@ pub async fn handle_ui_events(
     app: &mut App,
     ui_sender: mpsc::UnboundedSender<AppEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Use a shorter poll duration for more responsive input
-    if event::poll(std::time::Duration::from_millis(16))? {
+    #[cfg(windows)]
+    let poll_timeout = std::time::Duration::from_millis(50); // Slower polling on Windows
+
+    #[cfg(not(windows))]
+    let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix    
+
+    if event::poll(poll_timeout)? {
         if let Some(app_event) = app.handle_event(event::read()?) {
             ui_sender.send(app_event)?;
         }
