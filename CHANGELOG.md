@@ -2,6 +2,11 @@
 
 All changes to this project will be documented in this file.
 
+## [0.7.3] - 2025-07-24
+
+### Fixed
+- **Windows Socket Error 10048**: Fixed "Address already in use"  on Windows 10, causing connection failures during transport protocol negotiation
+
 ## [0.7.2] - 2025-07-23
 
 ### Fixed
