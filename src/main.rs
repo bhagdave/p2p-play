@@ -28,7 +28,6 @@ use std::collections::HashMap;
 use std::process;
 use tokio::sync::mpsc;
 
-
 /// Update bootstrap status based on DHT events
 fn update_bootstrap_status(
     kad_event: &libp2p::kad::Event,

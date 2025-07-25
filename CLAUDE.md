@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-P2P-Play is a peer-to-peer story sharing application built with Rust using libp2p 0.55.0. The application allows users to create, publish, and share stories across a distributed network of peers using floodsub messaging and mDNS peer discovery.
+P2P-Play is a peer-to-peer story sharing application built with Rust using libp2p 0.56.0. The application allows users to create, publish, and share stories across a distributed network of peers using floodsub messaging with mDNS and DHT peer discovery.  Additional features include direct messaging between peers, local story management, and a command-line interface for user interactions.
 
 ## Development Commands
 

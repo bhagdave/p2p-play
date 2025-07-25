@@ -24,26 +24,27 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 #[cfg(windows)]
-static LAST_KEY_EVENT: std::sync::LazyLock<Arc<Mutex<Option<(crossterm::event::KeyEvent, Instant)>>>> = 
-    std::sync::LazyLock::new(|| Arc::new(Mutex::new(None)));
+static LAST_KEY_EVENT: std::sync::LazyLock<
+    Arc<Mutex<Option<(crossterm::event::KeyEvent, Instant)>>>,
+> = std::sync::LazyLock::new(|| Arc::new(Mutex::new(None)));
 
 #[cfg(windows)]
 fn should_process_key_event(event: &crossterm::event::KeyEvent) -> bool {
     let mut last_event_guard = LAST_KEY_EVENT.lock().unwrap();
-    
+
     if let Some((last_event, last_time)) = *last_event_guard {
         // Skip if same key pressed within 190ms (duplicate detection)
-        if last_event.code == event.code 
-            && last_event.modifiers == event.modifiers 
-            && last_time.elapsed() < std::time::Duration::from_millis(190) {
+        if last_event.code == event.code
+            && last_event.modifiers == event.modifiers
+            && last_time.elapsed() < std::time::Duration::from_millis(190)
+        {
             return false;
         }
     }
-    
+
     *last_event_guard = Some((*event, Instant::now()));
     true
 }
-
 
 pub struct App {
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
@@ -141,7 +142,7 @@ impl App {
                 if !should_process_key_event(&key) {
                     return None; // Skip duplicate event
                 }
-            }            
+            }
             match &self.input_mode {
                 InputMode::Normal => match key.code {
                     KeyCode::Char('q') => {
@@ -671,10 +672,12 @@ mod tests {
     #[test]
     fn test_story_creation_states() {
         // Test story creation step enumeration
-        let steps = [StoryCreationStep::Name,
+        let steps = [
+            StoryCreationStep::Name,
             StoryCreationStep::Header,
             StoryCreationStep::Body,
-            StoryCreationStep::Channel];
+            StoryCreationStep::Channel,
+        ];
         assert_eq!(steps.len(), 4);
 
         // Test partial story creation

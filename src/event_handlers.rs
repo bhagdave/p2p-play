@@ -13,11 +13,11 @@ use crate::types::{
 use bytes::Bytes;
 use libp2p::{PeerId, Swarm, request_response};
 use log::{debug, error};
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::process;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
-use once_cell::sync::Lazy;
 
 /// Handle response events by publishing them to the network
 pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBehaviour>) {
@@ -831,9 +831,9 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
                 Ok(mut attempts) => {
                     // Cleanup entries older than the threshold to prevent memory leaks
                     attempts.retain(|_, &mut last_time| last_time.elapsed() < CLEANUP_THRESHOLD);
-                    
+
                     let last_attempt = attempts.get(&peer);
-                    
+
                     match last_attempt {
                         Some(last_time) => {
                             let elapsed = last_time.elapsed();
@@ -842,8 +842,8 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
                                 true
                             } else {
                                 debug!(
-                                    "Throttling reconnection to peer {} (last attempt {} seconds ago)", 
-                                    peer, 
+                                    "Throttling reconnection to peer {} (last attempt {} seconds ago)",
+                                    peer,
                                     elapsed.as_secs()
                                 );
                                 false
@@ -1162,20 +1162,20 @@ mod tests {
 
     #[test]
     fn test_connection_throttling_logic() {
-        use std::time::{Duration, Instant};
         use libp2p::PeerId;
-        
+        use std::time::{Duration, Instant};
+
         // Test the throttling constants and logic
         assert_eq!(MIN_RECONNECT_INTERVAL, Duration::from_secs(60));
-        
+
         // Create a test peer ID
         let _test_peer = PeerId::random();
-        
+
         // Simulate connection attempt timing logic
         let now = Instant::now();
         let one_minute_ago = now - Duration::from_secs(60);
         let thirty_seconds_ago = now - Duration::from_secs(30);
-        
+
         // Test that elapsed time calculation works
         assert!(one_minute_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
         assert!(thirty_seconds_ago.elapsed() < MIN_RECONNECT_INTERVAL);
