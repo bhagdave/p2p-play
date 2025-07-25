@@ -150,7 +150,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     // Windows doesn't allow immediate port reuse for sockets in TIME_WAIT state
     #[cfg(windows)]
     let tcp_config = Config::default()
-        .nodelay(true) 
+        .nodelay(true)
         .port_reuse(false) // Disable port reuse on Windows to avoid WSAEADDRINUSE errors
         .listen_backlog(1024); // Increase backlog to handle more connections
 
@@ -345,12 +345,10 @@ mod tests {
     fn test_tcp_config_windows_vs_unix() {
         // Test that TCP configuration is properly set based on target OS
         use libp2p::tcp::Config;
-        
+
         #[cfg(windows)]
         {
-            let tcp_config = Config::default()
-                .nodelay(true)
-                .port_reuse(false);
+            let tcp_config = Config::default().nodelay(true).port_reuse(false);
             // On Windows, port_reuse should be disabled
             // Note: We can't directly test the internal state of tcp_config,
             // but we can verify the configuration builds without errors

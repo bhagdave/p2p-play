@@ -7,8 +7,7 @@ use log::{debug, error, warn};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum BootstrapStatus {
     #[default]
     NotStarted,
@@ -25,7 +24,6 @@ pub enum BootstrapStatus {
         last_error: String,
     },
 }
-
 
 pub struct AutoBootstrap {
     pub status: Arc<Mutex<BootstrapStatus>>,
