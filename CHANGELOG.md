@@ -5,7 +5,7 @@ All changes to this project will be documented in this file.
 ## [unreleased]
 
 ### Changes
-- Moved tests to their own files and out of th egeneral code
+- Moved tests to their own files and out of the general code
 - Ran `cargo fmt` and `cargo clippy --fix` to clean up the codebase
 
 ## [0.7.3] - 2025-07-24
