@@ -86,7 +86,6 @@ async fn test_handle_help() {
 #[test]
 fn test_extract_peer_id_from_multiaddr() {
     use libp2p::multiaddr::Protocol;
-    use libp2p::PeerId;
 
     // Test with valid multiaddr containing peer ID
     let peer_id = *PEER_ID;
@@ -291,15 +290,14 @@ fn test_direct_message_command_parsing() {
 
 #[test]
 fn test_parse_direct_message_command() {
-    use libp2p::PeerId;
     use std::collections::HashMap;
     use p2p_play::handlers::parse_direct_message_command;
 
     // Create a mock peer names map
     let mut peer_names = HashMap::new();
-    let peer_id1 = PeerId::random();
-    let peer_id2 = PeerId::random();
-    let peer_id3 = PeerId::random();
+    let peer_id1 = libp2p::PeerId::random();
+    let peer_id2 = libp2p::PeerId::random();
+    let peer_id3 = libp2p::PeerId::random();
 
     peer_names.insert(peer_id1, "Alice".to_string());
     peer_names.insert(peer_id2, "Alice Smith".to_string());
@@ -418,14 +416,13 @@ async fn test_handle_direct_message_invalid_format() {
 
 #[tokio::test]
 async fn test_handle_direct_message_with_spaces_in_names() {
-    use libp2p::PeerId;
     use std::collections::HashMap;
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
     let mut peer_names = HashMap::new();
-    let peer_id = PeerId::random();
+    let peer_id = libp2p::PeerId::random();
     peer_names.insert(peer_id, "Alice Smith".to_string());
 
     let local_peer_name = Some("Bob".to_string());
@@ -447,7 +444,6 @@ async fn test_handle_direct_message_with_spaces_in_names() {
 
 #[test]
 fn test_sorted_peer_names_cache() {
-    use libp2p::PeerId;
     use std::collections::HashMap;
 
     let mut cache = SortedPeerNamesCache::new();
@@ -455,9 +451,9 @@ fn test_sorted_peer_names_cache() {
 
     // Create test peer names
     let mut peer_names = HashMap::new();
-    let peer_id1 = PeerId::random();
-    let peer_id2 = PeerId::random();
-    let peer_id3 = PeerId::random();
+    let peer_id1 = libp2p::PeerId::random();
+    let peer_id2 = libp2p::PeerId::random();
+    let peer_id3 = libp2p::PeerId::random();
 
     peer_names.insert(peer_id1, "Alice".to_string());
     peer_names.insert(peer_id2, "Alice Smith".to_string());
@@ -546,7 +542,6 @@ async fn test_handle_create_description_empty() {
 
 #[tokio::test]
 async fn test_handle_show_description() {
-    use p2p_play::storage::save_node_description;
     
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
@@ -600,4 +595,71 @@ async fn test_handle_show_description_with_content() {
 
     // Clean up
     let _ = tokio::fs::remove_file("node_description.txt").await;
+}
+
+#[test]
+fn test_extract_peer_id_from_multiaddr_success() {
+    let peer_id = libp2p::PeerId::random();
+    let addr: libp2p::Multiaddr = format!("/ip4/127.0.0.1/tcp/8080/p2p/{}", peer_id).parse().unwrap();
+    let extracted = extract_peer_id_from_multiaddr(&addr);
+    assert_eq!(extracted, Some(peer_id));
+}
+
+#[test]
+fn test_extract_peer_id_from_multiaddr_no_peer() {
+    let addr: libp2p::Multiaddr = "/ip4/127.0.0.1/tcp/8080".parse().unwrap();
+    let extracted = extract_peer_id_from_multiaddr(&addr);
+    assert_eq!(extracted, None);
+}
+
+#[test]
+fn test_peer_name_caching() {
+    use std::collections::HashMap;
+    
+    let mut cache = SortedPeerNamesCache::new();
+    let mut peer_names = HashMap::new();
+    
+    let peer_id1 = libp2p::PeerId::random();
+    let peer_id2 = libp2p::PeerId::random();
+    peer_names.insert(peer_id1, "Alice Smith".to_string());
+    peer_names.insert(peer_id2, "Bob".to_string());
+    
+    cache.update(&peer_names);
+    let sorted = cache.get_sorted_names();
+    
+    // Should be sorted by length descending
+    assert_eq!(sorted[0], "Alice Smith");
+    assert_eq!(sorted[1], "Bob");
+}
+
+#[test]
+fn test_parse_direct_message_simple() {
+    let peer_names = vec!["Alice".to_string(), "Bob".to_string()];
+    let result = parse_direct_message_command("Alice Hello world", &peer_names);
+    assert_eq!(result, Some(("Alice".to_string(), "Hello world".to_string())));
+}
+
+#[test]
+fn test_parse_direct_message_with_spaces() {
+    let peer_names = vec!["Alice Smith".to_string(), "Bob".to_string()];
+    let result = parse_direct_message_command("Alice Smith Hello world", &peer_names);
+    assert_eq!(result, Some(("Alice Smith".to_string(), "Hello world".to_string())));
+}
+
+#[test]
+fn test_parse_direct_message_no_message() {
+    let peer_names = vec!["Alice".to_string()];
+    let result = parse_direct_message_command("Alice", &peer_names);
+    assert_eq!(result, None);
+}
+
+#[tokio::test]
+async fn test_ui_logger_functionality() {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    
+    ui_logger.log("Test message".to_string());
+    
+    let message = receiver.try_recv().unwrap();
+    assert_eq!(message, "Test message");
 }

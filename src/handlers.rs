@@ -988,4 +988,3 @@ pub fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId
     }
     None
 }
-
