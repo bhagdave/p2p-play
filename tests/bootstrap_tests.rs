@@ -1,7 +1,6 @@
 use p2p_play::bootstrap::{AutoBootstrap, BootstrapStatus};
 use p2p_play::handlers::UILogger;
 use p2p_play::network::create_swarm;
-use p2p_play::storage::save_bootstrap_config;
 use p2p_play::types::BootstrapConfig;
 use tokio::sync::mpsc;
 use std::fs;
@@ -20,6 +19,9 @@ async fn create_test_bootstrap_config_with_name(peers: Vec<String>, filename: &s
     };
     let config_json = serde_json::to_string_pretty(&config)?;
     tokio::fs::write(filename, config_json).await?;
+    
+    // Copy to the standard location that bootstrap.initialize() expects
+    tokio::fs::copy(filename, "bootstrap_config.json").await?;
     Ok(())
 }
 
@@ -32,6 +34,9 @@ async fn create_test_bootstrap_config_raw_with_name(peers: Vec<String>, filename
         "bootstrap_timeout_ms": 30000
     });
     tokio::fs::write(filename, config_json.to_string()).await?;
+    
+    // Copy to the standard location that bootstrap.initialize() expects
+    tokio::fs::copy(filename, "bootstrap_config.json").await?;
     Ok(())
 }
 
@@ -57,7 +62,8 @@ async fn test_attempt_bootstrap_empty_peers() {
     let ui_logger = create_test_ui_logger();
 
     // Create config file with empty peers using raw creation
-    create_test_bootstrap_config_raw(vec![]).await.expect("Failed to create config");
+    let config_file = "bootstrap_config_empty_test.json";
+    create_test_bootstrap_config_raw_with_name(vec![], config_file).await.expect("Failed to create config");
     
     // Initialize bootstrap with the config
     bootstrap.initialize(&ui_logger).await;
@@ -71,6 +77,7 @@ async fn test_attempt_bootstrap_empty_peers() {
     assert!(matches!(*status, BootstrapStatus::NotStarted));
     
     // Cleanup
+    let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
 
@@ -81,17 +88,17 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     let ui_logger = create_test_ui_logger();
 
     // Create config file with invalid multiaddrs using raw creation
-    create_test_bootstrap_config_raw(vec![
+    let config_file = "bootstrap_config_invalid_test.json";
+    create_test_bootstrap_config_raw_with_name(vec![
         "invalid-multiaddr".to_string(),
         "also-invalid".to_string(),
-    ]).await.expect("Failed to create config");
+    ], config_file).await.expect("Failed to create config");
     
     // Initialize bootstrap with the config
     bootstrap.initialize(&ui_logger).await;
 
     let result = bootstrap.attempt_bootstrap(&mut swarm, &ui_logger).await;
     
-    println!("Invalid multiaddr test result: {}", result);
     assert!(!result); // Should return false when no valid peers
     
     // Verify status is still NotStarted because initialization failed
@@ -99,6 +106,7 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     assert!(matches!(*status, BootstrapStatus::NotStarted));
     
     // Cleanup
+    let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
 
@@ -109,9 +117,10 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     let ui_logger = create_test_ui_logger();
 
     // Create config file with valid multiaddr but no peer ID
-    create_test_bootstrap_config(vec![
+    let config_file = "bootstrap_config_no_peer_id_test.json";
+    create_test_bootstrap_config_with_name(vec![
         "/ip4/127.0.0.1/tcp/8080".to_string(), // Valid multiaddr but no peer ID
-    ]).await.expect("Failed to create config");
+    ], config_file).await.expect("Failed to create config");
     
     // Initialize bootstrap with the config
     bootstrap.initialize(&ui_logger).await;
@@ -131,6 +140,7 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     }
     
     // Cleanup
+    let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
 
@@ -141,16 +151,16 @@ async fn test_attempt_bootstrap_valid_peer() {
     let ui_logger = create_test_ui_logger();
 
     // Create config file with valid multiaddr including peer ID
-    create_test_bootstrap_config(vec![
+    let config_file = "bootstrap_config_valid_test.json";
+    create_test_bootstrap_config_with_name(vec![
         "/ip4/127.0.0.1/tcp/8080/p2p/12D3KooWGqcJhZLALpLwjJHCRE4zepYzxTruktZF4jX8E6tQ1234".to_string(),
-    ]).await.expect("Failed to create config");
+    ], config_file).await.expect("Failed to create config");
     
     // Initialize bootstrap with the config
     bootstrap.initialize(&ui_logger).await;
 
     let result = bootstrap.attempt_bootstrap(&mut swarm, &ui_logger).await;
     
-    println!("Valid peer test result: {}", result);
     // This should succeed in adding the peer and starting bootstrap
     assert!(result);
     
@@ -164,6 +174,7 @@ async fn test_attempt_bootstrap_valid_peer() {
     }
     
     // Cleanup
+    let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
 
@@ -174,10 +185,11 @@ async fn test_attempt_bootstrap_mixed_peers() {
     let ui_logger = create_test_ui_logger();
 
     // Create config file with mix of valid multiaddrs - some with peer IDs, some without
-    create_test_bootstrap_config(vec![
+    let config_file = "bootstrap_config_mixed_test.json";
+    create_test_bootstrap_config_with_name(vec![
         "/ip4/127.0.0.1/tcp/8080".to_string(), // Valid addr but no peer ID
         "/ip4/192.168.1.1/tcp/9000/p2p/12D3KooWGqcJhZLALpLwjJHCRE4zepYzxTruktZF4jX8E6tQ5678".to_string(), // Valid with peer ID
-    ]).await.expect("Failed to create config");
+    ], config_file).await.expect("Failed to create config");
     
     // Initialize bootstrap with the config
     bootstrap.initialize(&ui_logger).await;
@@ -185,9 +197,6 @@ async fn test_attempt_bootstrap_mixed_peers() {
     let result = bootstrap.attempt_bootstrap(&mut swarm, &ui_logger).await;
     
     // Should succeed because at least one peer is valid
-    let status = bootstrap.status.lock().unwrap();
-    println!("Mixed peers test result: {}, status: {:?}", result, *status);
-    drop(status);
     assert!(result);
     
     // Verify status is set to InProgress
@@ -200,6 +209,7 @@ async fn test_attempt_bootstrap_mixed_peers() {
     }
     
     // Cleanup
+    let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
 
@@ -210,9 +220,10 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     let ui_logger = create_test_ui_logger();
 
     // Create config file with valid peer
-    create_test_bootstrap_config(vec![
+    let config_file = "bootstrap_config_retry_test.json";
+    create_test_bootstrap_config_with_name(vec![
         "/ip4/127.0.0.1/tcp/8080/p2p/12D3KooWGqcJhZLALpLwjJHCRE4zepYzxTruktZF4jX8E6tQ1234".to_string(),
-    ]).await.expect("Failed to create config");
+    ], config_file).await.expect("Failed to create config");
     
     // Initialize bootstrap with the config
     bootstrap.initialize(&ui_logger).await;
@@ -248,6 +259,7 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     }
     
     // Cleanup
+    let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
 
@@ -258,9 +270,10 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     let ui_logger = create_test_ui_logger();
 
     // Create config file with valid peer
-    create_test_bootstrap_config(vec![
+    let config_file = "bootstrap_config_timing_test.json";
+    create_test_bootstrap_config_with_name(vec![
         "/ip4/127.0.0.1/tcp/8080/p2p/12D3KooWGqcJhZLALpLwjJHCRE4zepYzxTruktZF4jX8E6tQ1234".to_string(),
-    ]).await.expect("Failed to create config");
+    ], config_file).await.expect("Failed to create config");
     
     // Initialize bootstrap with the config
     bootstrap.initialize(&ui_logger).await;
@@ -282,5 +295,6 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     }
     
     // Cleanup
+    let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
