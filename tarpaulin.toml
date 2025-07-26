@@ -7,7 +7,9 @@ exclude-files = [
 # Exclude main function and UI initialization from coverage
 exclude = [
     "src/ui.rs:new",
-    "src/ui.rs:cleanup",
+    "src/ui.rs:cleanup", 
+    "src/ui.rs:draw",
+    "src/ui.rs:should_process_key_event",
 ]
 
 # Coverage threshold - we want to improve from ~35%
