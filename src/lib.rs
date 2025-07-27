@@ -6,6 +6,7 @@ pub mod migrations;
 pub mod network;
 pub mod storage;
 pub mod types;
+pub mod ui;
 
 pub use storage::*;
 pub use types::*;
