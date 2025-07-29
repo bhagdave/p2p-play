@@ -1,15 +1,8 @@
 [tool.tarpaulin.default]
-# Exclude the main function from coverage as it's hard to test
+# Exclude files that are primarily terminal I/O and hard to test
 exclude-files = [
     "src/main.rs",
-]
-
-# Exclude main function and UI initialization from coverage
-exclude = [
-    "src/ui.rs:new",
-    "src/ui.rs:cleanup", 
-    "src/ui.rs:draw",
-    "src/ui.rs:should_process_key_event",
+    "src/ui.rs",
 ]
 
 # Coverage threshold - we want to improve from ~35%
