@@ -1,4 +1,3 @@
-[tool.tarpaulin.default]
 # Exclude files that are primarily terminal I/O and hard to test
 exclude-files = [
     "src/main.rs",
