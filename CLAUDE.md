@@ -93,6 +93,26 @@ The application runs interactively with these commands:
 - `help` - Show available commands
 - `quit` - Exit application
 
+## Logging
+The application uses multiple logging mechanisms:
+
+### TUI Logging
+- User interactions and responses are shown in the terminal UI
+- Connection status and peer information
+- Story management feedback
+
+### File Logging
+- **Bootstrap Log** (`bootstrap.log`): Automatic bootstrap connection attempts, status updates, and DHT connectivity information
+- **Error Log** (`errors.log`): Network errors and connection issues that would otherwise clutter the UI
+- **Standard Log**: Debug and info messages via `env_logger` (can be directed to files using `RUST_LOG` environment variable)
+
+### Log Categories
+- `BOOTSTRAP_INIT`: Bootstrap configuration and initialization
+- `BOOTSTRAP_ATTEMPT`: Automatic bootstrap retry attempts  
+- `BOOTSTRAP_STATUS`: DHT connection status and peer counts
+- `BOOTSTRAP_ERROR`: Bootstrap failures and errors
+- `NETWORK_ERROR`: Network connection and protocol errors
+
 ## Testing Strategy
 - Unit tests for individual components and functions
 - Integration tests for end-to-end functionality
