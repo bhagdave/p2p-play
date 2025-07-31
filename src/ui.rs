@@ -385,19 +385,64 @@ impl App {
         }
     }
 
+    /// Calculate the current scroll position based on auto_scroll state and available height
+    /// Returns the scroll offset that should be used for display
+    fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
+        let total_lines = self.output_log.len();
+        
+        if self.auto_scroll {
+            // Auto-scroll: show the bottom of the log
+            if total_lines <= available_height {
+                0
+            } else {
+                total_lines.saturating_sub(available_height)
+            }
+        } else {
+            // Manual scroll: use the current scroll_offset, but clamp it
+            if total_lines <= available_height {
+                0
+            } else {
+                let max_scroll = total_lines.saturating_sub(available_height);
+                self.scroll_offset.min(max_scroll)
+            }
+        }
+    }
+
     fn scroll_up(&mut self) {
-        // Always disable auto-scroll when user manually scrolls
+        // If auto-scroll is currently enabled, we need to transition smoothly
+        // by setting scroll_offset to the current auto-scroll position first
+        if self.auto_scroll {
+            // Estimate available height (terminal height minus UI elements)
+            // This is an approximation since we don't have the exact terminal size here
+            // In practice, this will be close enough for smooth transition
+            let estimated_height = 20; // Conservative estimate for available output height
+            self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
+        }
+        
+        // Disable auto-scroll when user manually scrolls
         self.auto_scroll = false;
+        
+        // Now perform the scroll up operation
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
         }
     }
 
     fn scroll_down(&mut self) {
-        // Don't use the old max_scroll calculation that was based on line index
-        // Instead, we'll let the draw() method handle proper clamping
+        // If auto-scroll is currently enabled, we need to transition smoothly
+        // by setting scroll_offset to the current auto-scroll position first
+        if self.auto_scroll {
+            // Estimate available height (terminal height minus UI elements)
+            let estimated_height = 20; // Conservative estimate
+            self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
+        }
+        
+        // Disable auto-scroll when user manually scrolls
+        self.auto_scroll = false;
+        
+        // Now perform the scroll down operation
+        // We'll let the draw() method handle proper clamping of the scroll_offset
         self.scroll_offset += 1;
-        self.auto_scroll = false; // Disable auto-scroll when user manually scrolls
     }
 
     pub fn draw(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -863,18 +908,121 @@ mod tests {
     }
 
     #[test]
-    fn test_auto_scroll_status_display() {
-        // Test that auto-scroll status is properly displayed
-        let mut mock_app = MockAppWithAutoScroll {
-            output_log: vec!["Test".to_string()],
+    fn test_auto_scroll_to_manual_scroll_transition() {
+        // Test the smooth transition from auto-scroll to manual scroll
+        let mut mock_app = MockAppWithAutoScrollTransition {
+            output_log: vec![
+                "Line 1".to_string(),
+                "Line 2".to_string(),
+                "Line 3".to_string(),
+                "Line 4".to_string(),
+                "Line 5".to_string(),
+                "Line 6".to_string(),
+                "Line 7".to_string(),
+                "Line 8".to_string(),
+                "Line 9".to_string(),
+                "Line 10".to_string(),
+            ],
             scroll_offset: 0,
             auto_scroll: true,
         };
 
+        // Initially auto-scroll is enabled
         assert!(mock_app.auto_scroll);
+        assert_eq!(mock_app.scroll_offset, 0);
 
-        mock_app.scroll_up();
+        // When we have more lines than display height, auto-scroll should show bottom
+        let display_height = 5;
+        let expected_auto_scroll_position = mock_app.output_log.len().saturating_sub(display_height);
+        assert_eq!(expected_auto_scroll_position, 5); // Should show lines 6-10
+
+        // When user scrolls up while auto-scroll is active, it should:
+        // 1. Set scroll_offset to current auto-scroll position
+        // 2. Disable auto-scroll
+        // 3. Then perform the scroll operation
+        mock_app.scroll_up_with_height(display_height);
+
+        // After scroll_up: auto-scroll should be disabled and scroll_offset should be set appropriately
         assert!(!mock_app.auto_scroll);
+        // Should start from the auto-scroll position (5) and then scroll up by 1, so 4
+        assert_eq!(mock_app.scroll_offset, 4);
+
+        // Further manual scroll should work normally
+        mock_app.scroll_up_with_height(display_height);
+        assert!(!mock_app.auto_scroll);
+        assert_eq!(mock_app.scroll_offset, 3);
+
+        // Test scroll down transition as well
+        let mut mock_app2 = MockAppWithAutoScrollTransition {
+            output_log: vec![
+                "Line 1".to_string(),
+                "Line 2".to_string(),
+                "Line 3".to_string(),
+                "Line 4".to_string(),
+                "Line 5".to_string(),
+                "Line 6".to_string(),
+                "Line 7".to_string(),
+                "Line 8".to_string(),
+                "Line 9".to_string(),
+                "Line 10".to_string(),
+            ],
+            scroll_offset: 0,
+            auto_scroll: true,
+        };
+
+        mock_app2.scroll_down_with_height(display_height);
+        assert!(!mock_app2.auto_scroll);
+        // Should start from auto-scroll position (5) and scroll down by 1, so 6
+        // But since max scroll is 5, it should be clamped to 5 in practice (handled by draw method)
+        assert_eq!(mock_app2.scroll_offset, 6);
+    }
+
+    #[test]
+    fn test_calculate_current_scroll_position() {
+        // Test the scroll position calculation method
+        let mut mock_app = MockAppWithCalculation {
+            output_log: vec![
+                "Line 1".to_string(),
+                "Line 2".to_string(),
+                "Line 3".to_string(),
+                "Line 4".to_string(),
+                "Line 5".to_string(),
+                "Line 6".to_string(),
+                "Line 7".to_string(),
+                "Line 8".to_string(),
+                "Line 9".to_string(),
+                "Line 10".to_string(),
+            ],
+            scroll_offset: 2,
+            auto_scroll: true,
+        };
+
+        let display_height = 5;
+
+        // When auto_scroll is true, should return bottom position
+        let pos = mock_app.calculate_current_scroll_position(display_height);
+        assert_eq!(pos, 5); // 10 lines - 5 display height = 5
+
+        // When auto_scroll is false, should return clamped scroll_offset
+        mock_app.auto_scroll = false;
+        let pos = mock_app.calculate_current_scroll_position(display_height);
+        assert_eq!(pos, 2); // Should use scroll_offset
+
+        // Test with scroll_offset beyond max
+        mock_app.scroll_offset = 10; // Beyond max
+        let pos = mock_app.calculate_current_scroll_position(display_height);
+        assert_eq!(pos, 5); // Should be clamped to max (10 - 5 = 5)
+
+        // Test when total lines <= display height
+        mock_app.output_log = vec!["Line 1".to_string(), "Line 2".to_string()];
+        mock_app.auto_scroll = true;
+        let pos = mock_app.calculate_current_scroll_position(display_height);
+        assert_eq!(pos, 0); // Should return 0 when everything fits
+
+        mock_app.auto_scroll = false;
+        mock_app.scroll_offset = 10;
+        let pos = mock_app.calculate_current_scroll_position(display_height);
+        assert_eq!(pos, 0); // Should return 0 when everything fits, regardless of scroll_offset
     }
 
     // Mock App structure for testing since we can't create a full App with terminal
@@ -920,6 +1068,94 @@ mod tests {
             self.auto_scroll = false;
             if self.scroll_offset > 0 {
                 self.scroll_offset -= 1;
+            }
+        }
+    }
+
+    // Mock App structure for testing smooth transition from auto-scroll to manual scroll
+    struct MockAppWithAutoScrollTransition {
+        output_log: Vec<String>,
+        scroll_offset: usize,
+        auto_scroll: bool,
+    }
+
+    impl MockAppWithAutoScrollTransition {
+        fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
+            let total_lines = self.output_log.len();
+            
+            if self.auto_scroll {
+                // Auto-scroll: show the bottom of the log
+                if total_lines <= available_height {
+                    0
+                } else {
+                    total_lines.saturating_sub(available_height)
+                }
+            } else {
+                // Manual scroll: use the current scroll_offset, but clamp it
+                if total_lines <= available_height {
+                    0
+                } else {
+                    let max_scroll = total_lines.saturating_sub(available_height);
+                    self.scroll_offset.min(max_scroll)
+                }
+            }
+        }
+
+        fn scroll_up_with_height(&mut self, available_height: usize) {
+            // If auto-scroll is currently enabled, we need to transition smoothly
+            if self.auto_scroll {
+                self.scroll_offset = self.calculate_current_scroll_position(available_height);
+            }
+            
+            // Disable auto-scroll when user manually scrolls
+            self.auto_scroll = false;
+            
+            // Now perform the scroll up operation
+            if self.scroll_offset > 0 {
+                self.scroll_offset -= 1;
+            }
+        }
+
+        fn scroll_down_with_height(&mut self, available_height: usize) {
+            // If auto-scroll is currently enabled, we need to transition smoothly
+            if self.auto_scroll {
+                self.scroll_offset = self.calculate_current_scroll_position(available_height);
+            }
+            
+            // Disable auto-scroll when user manually scrolls
+            self.auto_scroll = false;
+            
+            // Now perform the scroll down operation
+            self.scroll_offset += 1;
+        }
+    }
+
+    // Mock App structure for testing the scroll position calculation method
+    struct MockAppWithCalculation {
+        output_log: Vec<String>,
+        scroll_offset: usize,
+        auto_scroll: bool,
+    }
+
+    impl MockAppWithCalculation {
+        fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
+            let total_lines = self.output_log.len();
+            
+            if self.auto_scroll {
+                // Auto-scroll: show the bottom of the log
+                if total_lines <= available_height {
+                    0
+                } else {
+                    total_lines.saturating_sub(available_height)
+                }
+            } else {
+                // Manual scroll: use the current scroll_offset, but clamp it
+                if total_lines <= available_height {
+                    0
+                } else {
+                    let max_scroll = total_lines.saturating_sub(available_height);
+                    self.scroll_offset.min(max_scroll)
+                }
             }
         }
     }
