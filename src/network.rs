@@ -211,4 +211,3 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     );
     Ok(swarm)
 }
-

@@ -5,6 +5,13 @@ All changes to this project will be documented in this file.
 ## [unreleased]
 
 ### Added
+- **Channel Broadcasting**: Implemented channel sharing functionality between P2P nodes to enable automatic propagation of channels across the network
+  - Enhanced `create ch` command to broadcast newly created channels via floodsub to all connected peers
+  - Added automatic reception and local storage of channels shared by other peers
+  - Channels are serialized to JSON and transmitted using the existing floodsub infrastructure
+  - Remote channels are automatically saved to local SQLite database upon reception
+  - Provides user feedback for both channel creation ("Channel 'name' created successfully") and reception ("📺 Received channel 'name' from network")
+  - Leverages existing P2P networking protocols for seamless channel distribution without requiring additional network configuration
 - **Bootstrap Logging**: Added dedicated bootstrap.log file for bootstrap connection attempts and status updates to reduce TUI clutter
   - Created BootstrapLogger module with categorized logging levels (BOOTSTRAP_INIT, BOOTSTRAP_ATTEMPT, BOOTSTRAP_STATUS, BOOTSTRAP_ERROR)
   - All bootstrap activity now logged to bootstrap.log with UTC timestamps

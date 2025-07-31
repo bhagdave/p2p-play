@@ -131,7 +131,8 @@ impl AutoBootstrap {
             // Start bootstrap process
             match swarm.behaviour_mut().kad.bootstrap() {
                 Ok(_) => {
-                    bootstrap_logger.log(&format!("DHT bootstrap started with {} peers", peers_added));
+                    bootstrap_logger
+                        .log(&format!("DHT bootstrap started with {} peers", peers_added));
                     true
                 }
                 Err(e) => {
@@ -317,7 +318,10 @@ pub async fn run_auto_bootstrap_with_retry(
     }
 
     // Attempt bootstrap
-    if auto_bootstrap.attempt_bootstrap(swarm, bootstrap_logger).await {
+    if auto_bootstrap
+        .attempt_bootstrap(swarm, bootstrap_logger)
+        .await
+    {
         // Bootstrap started successfully, but we need to wait for results
         // The actual success/failure will be handled by DHT events
     } else {

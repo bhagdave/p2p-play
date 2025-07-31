@@ -230,7 +230,9 @@ async fn test_invalid_json_file() {
     let path = temp_file.path().to_str().unwrap();
 
     // Write invalid JSON
-    tokio::fs::write(path, "invalid json content").await.unwrap();
+    tokio::fs::write(path, "invalid json content")
+        .await
+        .unwrap();
 
     let result = read_local_stories_from_path(path).await;
     assert!(result.is_err());
@@ -407,15 +409,18 @@ async fn test_delete_local_story_database() {
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
         ["0", "Story 1", "Header 1", "Body 1", "0", "general"],
-    ).unwrap();
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
         ["1", "Story 2", "Header 2", "Body 2", "0", "general"],
-    ).unwrap();
+    )
+    .unwrap();
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
         ["2", "Story 3", "Header 3", "Body 3", "0", "general"],
-    ).unwrap();
+    )
+    .unwrap();
 
     // Verify stories exist
     let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories").unwrap();
@@ -557,9 +562,8 @@ async fn test_bootstrap_config_validation() {
 #[tokio::test]
 async fn test_bootstrap_config_add_remove_peers() {
     let mut config = BootstrapConfig::new();
-    let peer =
-        "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
-            .to_string();
+    let peer = "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWDpJ7As7BWAwRMfu1VU2WCqNjvq387JEYKDBj4kx6nXTN"
+        .to_string();
 
     // Add peer
     assert!(config.add_peer(peer.clone()));

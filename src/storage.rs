@@ -736,4 +736,3 @@ pub async fn ensure_bootstrap_config_exists() -> Result<(), Box<dyn Error>> {
     }
     Ok(())
 }
-

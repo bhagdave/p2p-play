@@ -92,7 +92,8 @@ pub async fn handle_input_event(
             return handle_create_stories(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("create ch") => {
-            return handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await;
+            return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger)
+                .await;
         }
         cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
         cmd if cmd.starts_with("sub ") => {
@@ -301,6 +302,52 @@ pub async fn handle_floodsub_event(
                         }
                     }
                 }
+            } else if let Ok(channel) = serde_json::from_slice::<crate::types::Channel>(&msg.data) {
+                debug!(
+                    "Received channel '{}' - {} from {}",
+                    channel.name, channel.description, msg.source
+                );
+                ui_logger.log(format!(
+                    "📺 Received channel '{}' - {} from network",
+                    channel.name, channel.description
+                ));
+
+                // Save the received channel to local storage asynchronously
+                let channel_to_save = channel.clone();
+                let ui_logger_clone = ui_logger.clone();
+                tokio::spawn(async move {
+                    // Add validation before saving
+                    if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
+                        debug!("Ignoring invalid channel with empty name or description");
+                        return;
+                    }
+                    
+                    // Distinguish error types
+                    match crate::storage::create_channel(
+                        &channel_to_save.name,
+                        &channel_to_save.description,
+                        &channel_to_save.created_by,
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            ui_logger_clone.log(format!(
+                                "📺 Channel '{}' added to your channels list",
+                                channel_to_save.name
+                            ));
+                        }
+                        Err(e) if e.to_string().contains("UNIQUE constraint") => {
+                            debug!("Channel '{}' already exists", channel_to_save.name);
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "Failed to save received channel '{}': {}",
+                                channel_to_save.name,
+                                e
+                            );
+                        }
+                    }
+                });
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                 match req.mode {
                     ListMode::ALL => {

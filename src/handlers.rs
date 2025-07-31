@@ -472,6 +472,7 @@ pub async fn handle_direct_message(
 
 pub async fn handle_create_channel(
     cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
@@ -502,6 +503,7 @@ pub async fn handle_create_channel(
             error_logger.log_error(&format!("Failed to create channel: {}", e));
         } else {
             ui_logger.log(format!("Channel '{}' created successfully", name));
+
             // Auto-subscribe to the channel we created
             if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), name).await {
                 error_logger.log_error(&format!(
@@ -509,6 +511,25 @@ pub async fn handle_create_channel(
                     e
                 ));
             }
+
+            // Broadcast the channel to other peers
+            let channel =
+                crate::types::Channel::new(name.to_string(), description.to_string(), creator);
+            let json = match serde_json::to_string(&channel) {
+                Ok(json) => json,
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to serialize channel: {}", e));
+                    return Some(ActionResult::RefreshStories);
+                }
+            };
+            let json_bytes = Bytes::from(json.into_bytes());
+            swarm
+                .behaviour_mut()
+                .floodsub
+                .publish(TOPIC.clone(), json_bytes);
+            debug!("Broadcasted channel '{}' to connected peers", name);
+            ui_logger.log(format!("Channel '{}' shared with network", name));
+
             return Some(ActionResult::RefreshStories);
         }
     }
