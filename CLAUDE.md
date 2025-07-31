@@ -22,7 +22,7 @@ RUST_LOG=debug cargo run
 ### Testing
 ```bash
 # Run all tests using the test runner script
-./test_runner.sh
+./scripts/test_runner.sh
 
 # Run unit tests only
 cargo test --lib
