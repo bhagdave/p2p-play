@@ -100,10 +100,11 @@ pub enum AppEvent {
 
 impl App {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        // UI initialization code that's difficult to test without a real terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
-        let backend = CrosstermBackend::new(stdout);
+        let backend = CrosstermBackend::new(io::stdout());
         let terminal = Terminal::new(backend)?;
 
         Ok(App {
@@ -130,6 +131,7 @@ impl App {
     }
 
     pub fn cleanup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // Terminal cleanup code that's difficult to test
         disable_raw_mode()?;
         execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
         Ok(())

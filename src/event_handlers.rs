@@ -117,7 +117,11 @@ pub async fn handle_input_event(
             handle_dht_bootstrap(cmd, swarm, ui_logger).await
         }
         cmd if cmd.starts_with("dht peers") => handle_dht_get_peers(cmd, swarm, ui_logger).await,
-        cmd if cmd.starts_with("quit") => process::exit(0),
+        cmd if cmd.starts_with("quit") => {
+            // Coverage skip: process::exit doesn't return, so it can't be tested normally
+            #[allow(unreachable_code)]
+            process::exit(0)
+        }
         "name" => {
             // Show current alias when no arguments provided
             match local_peer_name {

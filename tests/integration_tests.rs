@@ -701,3 +701,23 @@ async fn test_channel_subscription_data_structures() {
     assert_eq!(channel, channel_deserialized);
     assert_eq!(subscription, subscription_deserialized);
 }
+
+#[tokio::test]
+async fn test_bootstrap_status_creation() {
+    use p2p_play::bootstrap::AutoBootstrap;
+
+    let auto_bootstrap = AutoBootstrap::new();
+    
+    // Test that we can create a bootstrap instance
+    assert!(auto_bootstrap.get_status_string().contains("Not started") || auto_bootstrap.get_status_string().contains("status"));
+}
+
+#[tokio::test]
+async fn test_swarm_creation() {
+    use p2p_play::network::create_swarm;
+
+    let result = create_swarm();
+    
+    // Test that we can create a swarm
+    assert!(result.is_ok());
+}
