@@ -4,7 +4,16 @@ All changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### Added
+- **Bootstrap Logging**: Added dedicated bootstrap.log file for bootstrap connection attempts and status updates to reduce TUI clutter
+  - Created BootstrapLogger module with categorized logging levels (BOOTSTRAP_INIT, BOOTSTRAP_ATTEMPT, BOOTSTRAP_STATUS, BOOTSTRAP_ERROR)
+  - All bootstrap activity now logged to bootstrap.log with UTC timestamps
+  - Moved periodic bootstrap status logging from TUI to file for cleaner user interface
+  - Bootstrap configuration loading and DHT connection status updates no longer appear in terminal interface
+  - Fallback to standard logging if file operations fail
+
 ### Fixed
+- **TUI Connection Error Display**: Removed "Failed to connect" messages from TUI output while preserving error logging to `errors.log` file for debugging purposes. This eliminates unnecessary noise in the user interface while maintaining full error tracking capabilities. Fixes issue #100.
 - Fixed test coverage reporting configuration with tarpaulin.
 
 ### Changes

@@ -1,4 +1,5 @@
-use crate::handlers::{UILogger, extract_peer_id_from_multiaddr};
+use crate::bootstrap_logger::BootstrapLogger;
+use crate::handlers::extract_peer_id_from_multiaddr;
 use crate::network::StoryBehaviour;
 use crate::storage::load_bootstrap_config;
 use crate::types::BootstrapConfig;
@@ -43,7 +44,7 @@ impl AutoBootstrap {
     }
 
     /// Initialize the auto bootstrap with config
-    pub async fn initialize(&mut self, ui_logger: &UILogger) {
+    pub async fn initialize(&mut self, bootstrap_logger: &BootstrapLogger) {
         match load_bootstrap_config().await {
             Ok(config) => {
                 self.config = Some(config.clone());
@@ -51,14 +52,14 @@ impl AutoBootstrap {
                     "AutoBootstrap initialized with {} peers",
                     config.bootstrap_peers.len()
                 );
-                ui_logger.log(format!(
+                bootstrap_logger.log_init(&format!(
                     "Bootstrap initialized with {} configured peers",
                     config.bootstrap_peers.len()
                 ));
             }
             Err(e) => {
                 error!("Failed to load bootstrap config for AutoBootstrap: {}", e);
-                ui_logger.log(format!("Bootstrap initialization failed: {}", e));
+                bootstrap_logger.log_error(&format!("Bootstrap initialization failed: {}", e));
             }
         }
     }
@@ -67,7 +68,7 @@ impl AutoBootstrap {
     pub async fn attempt_bootstrap(
         &mut self,
         swarm: &mut Swarm<StoryBehaviour>,
-        ui_logger: &UILogger,
+        bootstrap_logger: &BootstrapLogger,
     ) -> bool {
         let config = match &self.config {
             Some(config) => config,
@@ -100,7 +101,7 @@ impl AutoBootstrap {
         }
 
         let current_retry_count = *self.retry_count.lock().unwrap();
-        ui_logger.log(format!(
+        bootstrap_logger.log_attempt(&format!(
             "Attempting automatic DHT bootstrap (attempt {}/{})",
             current_retry_count, config.max_retry_attempts
         ));
@@ -130,13 +131,13 @@ impl AutoBootstrap {
             // Start bootstrap process
             match swarm.behaviour_mut().kad.bootstrap() {
                 Ok(_) => {
-                    ui_logger.log(format!("DHT bootstrap started with {} peers", peers_added));
+                    bootstrap_logger.log(&format!("DHT bootstrap started with {} peers", peers_added));
                     true
                 }
                 Err(e) => {
                     let error_msg = format!("Failed to start DHT bootstrap: {:?}", e);
                     error!("{}", error_msg);
-                    ui_logger.log(error_msg.clone());
+                    bootstrap_logger.log_error(&error_msg);
                     {
                         let retry_count = *self.retry_count.lock().unwrap();
                         let mut status = self.status.lock().unwrap();
@@ -159,7 +160,7 @@ impl AutoBootstrap {
                     last_error: error_msg.clone(),
                 };
             }
-            ui_logger.log(error_msg);
+            bootstrap_logger.log_error(&error_msg);
             false
         }
     }
@@ -305,7 +306,7 @@ impl Default for AutoBootstrap {
 pub async fn run_auto_bootstrap_with_retry(
     auto_bootstrap: &mut AutoBootstrap,
     swarm: &mut Swarm<StoryBehaviour>,
-    ui_logger: &UILogger,
+    bootstrap_logger: &BootstrapLogger,
 ) {
     if !auto_bootstrap.should_retry() {
         return;
@@ -316,7 +317,7 @@ pub async fn run_auto_bootstrap_with_retry(
     }
 
     // Attempt bootstrap
-    if auto_bootstrap.attempt_bootstrap(swarm, ui_logger).await {
+    if auto_bootstrap.attempt_bootstrap(swarm, bootstrap_logger).await {
         // Bootstrap started successfully, but we need to wait for results
         // The actual success/failure will be handled by DHT events
     } else {
@@ -328,11 +329,12 @@ pub async fn run_auto_bootstrap_with_retry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::sync::mpsc;
+    use tempfile::NamedTempFile;
 
-    fn create_test_ui_logger() -> UILogger {
-        let (sender, _receiver) = mpsc::unbounded_channel();
-        UILogger::new(sender)
+    fn create_test_bootstrap_logger() -> BootstrapLogger {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path().to_str().unwrap();
+        BootstrapLogger::new(path)
     }
 
     #[test]
@@ -533,10 +535,10 @@ mod tests {
     #[tokio::test]
     async fn test_initialize_without_config_file() {
         let mut bootstrap = AutoBootstrap::new();
-        let ui_logger = create_test_ui_logger();
+        let bootstrap_logger = create_test_bootstrap_logger();
 
         // This will try to load config and may succeed if bootstrap_config.json exists
-        bootstrap.initialize(&ui_logger).await;
+        bootstrap.initialize(&bootstrap_logger).await;
 
         // The test just ensures initialization doesn't panic
     }
