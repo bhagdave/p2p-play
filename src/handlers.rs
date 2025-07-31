@@ -8,12 +8,13 @@ use crate::storage::{
     read_subscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
     subscribe_to_channel, unsubscribe_from_channel,
 };
-use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
+use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story, DirectMessageConfig, PendingDirectMessage};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use log::debug;
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 /// Simple UI logger that can be passed around
@@ -400,6 +401,8 @@ pub async fn handle_direct_message(
     local_peer_name: &Option<String>,
     sorted_peer_names_cache: &SortedPeerNamesCache,
     ui_logger: &UILogger,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) {
     if let Some(rest) = cmd.strip_prefix("msg ") {
         let (to_name, message) =
@@ -454,15 +457,28 @@ pub async fn handle_direct_message(
                 .as_secs(),
         };
 
-        // Send the direct message using request-response protocol
+        // Add message to retry queue instead of sending immediately
+        let pending_msg = PendingDirectMessage::new(
+            target_peer_id,
+            to_name.clone(),
+            direct_msg_request.clone(),
+            dm_config.max_retry_attempts,
+        );
+
+        // Try to send immediately, but queue for retry if it fails
         let request_id = swarm
             .behaviour_mut()
             .request_response
             .send_request(&target_peer_id, direct_msg_request);
 
-        ui_logger.log(format!("Direct message sent to {}: {}", to_name, message));
+        // Add to pending queue regardless - will be removed on successful delivery
+        if let Ok(mut queue) = pending_messages.lock() {
+            queue.push(pending_msg);
+        }
+
+        ui_logger.log(format!("Direct message queued for {}: {}", to_name, message));
         debug!(
-            "Sent direct message to {} from {} (request_id: {:?})",
+            "Queued direct message to {} from {} (request_id: {:?})",
             to_name, from_name, request_id
         );
     } else {

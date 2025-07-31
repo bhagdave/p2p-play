@@ -19,7 +19,7 @@ use storage::{
     ensure_bootstrap_config_exists, ensure_stories_file_exists, load_bootstrap_config,
     load_local_peer_name,
 };
-use types::{ActionResult, EventType, PeerName};
+use types::{ActionResult, EventType, PeerName, DirectMessageConfig, PendingDirectMessage};
 use ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -28,6 +28,7 @@ use libp2p::{PeerId, Swarm, futures::StreamExt};
 use log::{debug, error};
 use std::collections::HashMap;
 use std::process;
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 /// Update bootstrap status based on DHT events
@@ -130,6 +131,10 @@ async fn main() {
     // Cache for sorted peer names to avoid repeated sorting on every direct message
     let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
+    // Initialize direct message retry configuration and queue
+    let dm_config = DirectMessageConfig::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+
     // Load saved peer name if it exists
     let mut local_peer_name: Option<String> = match load_local_peer_name().await {
         Ok(saved_name) => {
@@ -183,6 +188,10 @@ async fn main() {
     // Create a timer for periodic bootstrap status logging
     let mut bootstrap_status_log_interval =
         tokio::time::interval(tokio::time::Duration::from_secs(30));
+
+    // Create a timer for direct message retry attempts
+    let mut dm_retry_interval =
+        tokio::time::interval(tokio::time::Duration::from_secs(dm_config.retry_interval_seconds));
 
     // Auto-subscribe to general channel if not already subscribed
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
@@ -331,6 +340,16 @@ async fn main() {
                     }
                     None
                 },
+                _ = dm_retry_interval.tick() => {
+                    // Process pending direct messages for retry
+                    event_handlers::process_pending_messages(
+                        &mut swarm,
+                        &dm_config,
+                        &pending_messages,
+                        &ui_logger,
+                    ).await;
+                    None
+                },
                 // Network events are processed but heavy operations are spawned to background
                 event = swarm.select_next_some() => {
                     match event {
@@ -363,6 +382,14 @@ async fn main() {
                                 swarm.behaviour_mut().floodsub.publish(TOPIC.clone(), json_bytes);
                                 debug!("Sent local peer name '{}' to newly connected peer {}", name, peer_id);
                             }
+
+                            // Retry any pending direct messages for this peer
+                            event_handlers::retry_messages_for_peer(
+                                peer_id,
+                                &mut swarm,
+                                &dm_config,
+                                &pending_messages,
+                            ).await;
 
                             None
                         },
@@ -422,6 +449,8 @@ async fn main() {
                         &mut sorted_peer_names_cache,
                         &ui_logger,
                         &error_logger,
+                        &dm_config,
+                        &pending_messages,
                     )
                     .await
                     {
@@ -459,6 +488,8 @@ async fn main() {
                         &mut sorted_peer_names_cache,
                         &ui_logger,
                         &error_logger,
+                        &dm_config,
+                        &pending_messages,
                     )
                     .await
                     {
@@ -494,6 +525,8 @@ async fn main() {
                         &mut sorted_peer_names_cache,
                         &ui_logger,
                         &error_logger,
+                        &dm_config,
+                        &pending_messages,
                     )
                     .await
                     {

@@ -7,7 +7,7 @@ use crate::network::{
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
     ActionResult, DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName,
-    PublishedStory,
+    PublishedStory, DirectMessageConfig, PendingDirectMessage,
 };
 
 use bytes::Bytes;
@@ -16,6 +16,7 @@ use log::{debug, error};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::process;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
@@ -79,6 +80,8 @@ pub async fn handle_input_event(
     sorted_peer_names_cache: &SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) -> Option<ActionResult> {
     match line.as_str() {
         "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
@@ -155,6 +158,8 @@ pub async fn handle_input_event(
                 local_peer_name,
                 sorted_peer_names_cache,
                 ui_logger,
+                dm_config,
+                pending_messages,
             )
             .await;
         }
@@ -506,6 +511,7 @@ pub async fn handle_request_response_event(
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) {
     match event {
         request_response::Event::Message { peer, message, .. } => {
@@ -572,11 +578,23 @@ pub async fn handle_request_response_event(
                     // Handle response to our direct message request
                     if response.received {
                         debug!("Direct message was received by peer {}", peer);
-                        ui_logger.log(format!("✅ Message delivered to peer {}", peer));
+                        
+                        // Remove successful message from retry queue
+                        if let Ok(mut queue) = pending_messages.lock() {
+                            queue.retain(|msg| msg.target_peer_id != peer);
+                        }
+                        
+                        ui_logger.log(format!("✅ Message delivered to {}", peer));
                     } else {
                         error!("Direct message was rejected by peer {}", peer);
+                        
+                        // Message was rejected, but don't retry validation failures
+                        if let Ok(mut queue) = pending_messages.lock() {
+                            queue.retain(|msg| msg.target_peer_id != peer);
+                        }
+                        
                         ui_logger.log(format!(
-                            "❌ Message rejected by peer {} (identity validation failed)",
+                            "❌ Message rejected by {} (identity validation failed)",
                             peer
                         ));
                     }
@@ -585,10 +603,8 @@ pub async fn handle_request_response_event(
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
             error!("Failed to send direct message to {}: {:?}", peer, error);
-            ui_logger.log(format!(
-                "❌ Failed to send direct message to {}: {:?}",
-                peer, error
-            ));
+            // Don't immediately report failure to user - let retry logic handle it
+            debug!("Direct message to {} failed, will be retried automatically", peer);
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
             error!(
@@ -783,6 +799,8 @@ pub async fn handle_event(
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) -> Option<ActionResult> {
     debug!("Event Received");
     match event {
@@ -802,6 +820,8 @@ pub async fn handle_event(
                 sorted_peer_names_cache,
                 ui_logger,
                 error_logger,
+                dm_config,
+                pending_messages,
             )
             .await;
         }
@@ -832,6 +852,7 @@ pub async fn handle_event(
                 swarm,
                 local_peer_name,
                 ui_logger,
+                pending_messages,
             )
             .await;
         }
@@ -968,6 +989,110 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             error!("error sending response via channel, {}", e);
         }
     });
+}
+
+/// Process pending direct messages and retry failed ones
+pub async fn process_pending_messages(
+    swarm: &mut Swarm<StoryBehaviour>,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+    ui_logger: &UILogger,
+) {
+    if !dm_config.enable_timed_retries {
+        return;
+    }
+
+    let mut messages_to_retry = Vec::new();
+    let mut exhausted_messages = Vec::new();
+
+    // Collect messages that need retry or are exhausted
+    if let Ok(mut queue) = pending_messages.lock() {
+        let mut i = 0;
+        while i < queue.len() {
+            let msg = &mut queue[i];
+            
+            if msg.is_exhausted() {
+                // Message has exceeded max retry attempts
+                exhausted_messages.push(msg.clone());
+                queue.remove(i);
+            } else if msg.should_retry(dm_config.retry_interval_seconds) {
+                // Message is ready for retry
+                msg.increment_attempt();
+                messages_to_retry.push(msg.clone());
+                i += 1;
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    // Report exhausted messages to user
+    for msg in exhausted_messages {
+        ui_logger.log(format!(
+            "❌ Failed to deliver message to {} after {} attempts",
+            msg.target_name, msg.max_attempts
+        ));
+    }
+
+    // Retry messages
+    for msg in messages_to_retry {
+        debug!(
+            "Retrying direct message to {} (attempt {}/{})",
+            msg.target_name, msg.attempts, msg.max_attempts
+        );
+
+        let request_id = swarm
+            .behaviour_mut()
+            .request_response
+            .send_request(&msg.target_peer_id, msg.message.clone());
+
+        debug!(
+            "Retry request sent to {} (request_id: {:?})",
+            msg.target_name, request_id
+        );
+    }
+}
+
+/// Process pending messages when new connections are established
+pub async fn retry_messages_for_peer(
+    peer_id: PeerId,
+    swarm: &mut Swarm<StoryBehaviour>,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+) {
+    if !dm_config.enable_connection_retries {
+        return;
+    }
+
+    let mut messages_to_retry = Vec::new();
+
+    // Find messages for this specific peer
+    if let Ok(mut queue) = pending_messages.lock() {
+        for msg in queue.iter_mut() {
+            if msg.target_peer_id == peer_id && !msg.is_exhausted() {
+                msg.increment_attempt();
+                messages_to_retry.push(msg.clone());
+            }
+        }
+    }
+
+    // Retry messages for the newly connected peer
+    for msg in messages_to_retry {
+        debug!(
+            "Retrying direct message to {} due to new connection (attempt {}/{})",
+            msg.target_name, msg.attempts, msg.max_attempts
+        );
+
+        let request_id = swarm
+            .behaviour_mut()
+            .request_response
+            .send_request(&msg.target_peer_id, msg.message.clone());
+
+        debug!(
+            "Connection-based retry request sent to {} (request_id: {:?})",
+            msg.target_name, request_id
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1313,5 +1438,60 @@ mod tests {
                 panic!("Expected ListMode::One");
             }
         }
+    }
+
+    #[test]
+    fn test_pending_direct_message_retry_logic() {
+        use crate::types::{DirectMessageConfig, PendingDirectMessage};
+        use crate::network::DirectMessageRequest;
+
+        let config = DirectMessageConfig::new();
+        let peer_id = PeerId::random();
+        let request = DirectMessageRequest {
+            from_peer_id: "test_sender".to_string(),
+            from_name: "TestSender".to_string(),
+            to_name: "TestReceiver".to_string(),
+            message: "Hello!".to_string(),
+            timestamp: 1234567890,
+        };
+
+        let mut pending_msg = PendingDirectMessage::new(
+            peer_id,
+            "TestReceiver".to_string(),
+            request,
+            config.max_retry_attempts,
+        );
+
+        // Test initial state
+        assert_eq!(pending_msg.attempts, 0);
+        assert_eq!(pending_msg.max_attempts, 3);
+        assert!(!pending_msg.is_exhausted());
+        assert!(pending_msg.should_retry(30)); // Should retry initially
+
+        // Test after first attempt
+        pending_msg.increment_attempt();
+        assert_eq!(pending_msg.attempts, 1);
+        assert!(!pending_msg.is_exhausted());
+        assert!(!pending_msg.should_retry(30)); // Shouldn't retry immediately after attempt
+
+        // Test when exhausted
+        pending_msg.attempts = 3;
+        assert!(pending_msg.is_exhausted());
+        assert!(!pending_msg.should_retry(30)); // Shouldn't retry when exhausted
+    }
+
+    #[test]
+    fn test_direct_message_config_defaults() {
+        use crate::types::DirectMessageConfig;
+
+        let config = DirectMessageConfig::new();
+        assert_eq!(config.max_retry_attempts, 3);
+        assert_eq!(config.retry_interval_seconds, 30);
+        assert!(config.enable_connection_retries);
+        assert!(config.enable_timed_retries);
+
+        let default_config = DirectMessageConfig::default();
+        assert_eq!(config.max_retry_attempts, default_config.max_retry_attempts);
+        assert_eq!(config.retry_interval_seconds, default_config.retry_interval_seconds);
     }
 }
