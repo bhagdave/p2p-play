@@ -10,6 +10,7 @@ All changes to this project will be documented in this file.
 ### Changes
 - Moved tests to their own files and out of the general code
 - Ran `cargo fmt` and `cargo clippy --fix` to clean up the codebase
+- Created docs folder and moved any docs into it
 
 ### Added
 - More tests to increase test coverage
