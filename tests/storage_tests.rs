@@ -32,7 +32,29 @@ async fn test_write_and_read_stories() {
     write_local_stories_to_path(&stories, path).await.unwrap();
     let read_stories = read_local_stories_from_path(path).await.unwrap();
 
-    assert_eq!(stories, read_stories);
+    // Stories should be returned in chronological order (newest first by created_at)
+    let expected_order = vec![
+        Story {
+            id: 2,
+            name: "Another Story".to_string(),
+            header: "Another Header".to_string(),
+            body: "Another Body".to_string(),
+            public: false,
+            channel: "tech".to_string(),
+            created_at: 1234567891, // Newer timestamp
+        },
+        Story {
+            id: 1,
+            name: "Test Story".to_string(),
+            header: "Test Header".to_string(),
+            body: "Test Body".to_string(),
+            public: true,
+            channel: "general".to_string(),
+            created_at: 1234567890, // Older timestamp
+        },
+    ];
+
+    assert_eq!(expected_order, read_stories);
 }
 
 #[tokio::test]
