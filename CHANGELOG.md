@@ -5,6 +5,7 @@ All changes to this project will be documented in this file.
 ## [unreleased]
 
 ### Fixed
+- **TUI Connection Error Display**: Removed "Failed to connect" messages from TUI output while preserving error logging to `errors.log` file for debugging purposes. This eliminates unnecessary noise in the user interface while maintaining full error tracking capabilities. Fixes issue #100.
 - Fixed test coverage reporting configuration with tarpaulin.
 
 ### Changes
