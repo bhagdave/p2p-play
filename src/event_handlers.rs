@@ -321,7 +321,7 @@ pub async fn handle_floodsub_event(
                         debug!("Ignoring invalid channel with empty name or description");
                         return;
                     }
-                    
+
                     // Distinguish error types
                     match crate::storage::create_channel(
                         &channel_to_save.name,

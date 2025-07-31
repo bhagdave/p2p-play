@@ -389,7 +389,7 @@ impl App {
     /// Returns the scroll offset that should be used for display
     fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
         let total_lines = self.output_log.len();
-        
+
         if self.auto_scroll {
             // Auto-scroll: show the bottom of the log
             if total_lines <= available_height {
@@ -413,15 +413,15 @@ impl App {
         // by setting scroll_offset to the current auto-scroll position first
         if self.auto_scroll {
             // Estimate available height (terminal height minus UI elements)
-            // This is an approximation since we don't have the exact terminal size here
-            // In practice, this will be close enough for smooth transition
-            let estimated_height = 20; // Conservative estimate for available output height
+            // Conservative estimate: assume terminal is at least 24 lines,
+            // minus 3 for status, 3 for input, 2 for borders = ~16 lines for output
+            let estimated_height = 16;
             self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
         }
-        
+
         // Disable auto-scroll when user manually scrolls
         self.auto_scroll = false;
-        
+
         // Now perform the scroll up operation
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
@@ -433,13 +433,13 @@ impl App {
         // by setting scroll_offset to the current auto-scroll position first
         if self.auto_scroll {
             // Estimate available height (terminal height minus UI elements)
-            let estimated_height = 20; // Conservative estimate
+            let estimated_height = 16;
             self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
         }
-        
+
         // Disable auto-scroll when user manually scrolls
         self.auto_scroll = false;
-        
+
         // Now perform the scroll down operation
         // We'll let the draw() method handle proper clamping of the scroll_offset
         self.scroll_offset += 1;
@@ -933,7 +933,8 @@ mod tests {
 
         // When we have more lines than display height, auto-scroll should show bottom
         let display_height = 5;
-        let expected_auto_scroll_position = mock_app.output_log.len().saturating_sub(display_height);
+        let expected_auto_scroll_position =
+            mock_app.output_log.len().saturating_sub(display_height);
         assert_eq!(expected_auto_scroll_position, 5); // Should show lines 6-10
 
         // When user scrolls up while auto-scroll is active, it should:
@@ -1082,7 +1083,7 @@ mod tests {
     impl MockAppWithAutoScrollTransition {
         fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
             let total_lines = self.output_log.len();
-            
+
             if self.auto_scroll {
                 // Auto-scroll: show the bottom of the log
                 if total_lines <= available_height {
@@ -1106,10 +1107,10 @@ mod tests {
             if self.auto_scroll {
                 self.scroll_offset = self.calculate_current_scroll_position(available_height);
             }
-            
+
             // Disable auto-scroll when user manually scrolls
             self.auto_scroll = false;
-            
+
             // Now perform the scroll up operation
             if self.scroll_offset > 0 {
                 self.scroll_offset -= 1;
@@ -1121,10 +1122,10 @@ mod tests {
             if self.auto_scroll {
                 self.scroll_offset = self.calculate_current_scroll_position(available_height);
             }
-            
+
             // Disable auto-scroll when user manually scrolls
             self.auto_scroll = false;
-            
+
             // Now perform the scroll down operation
             self.scroll_offset += 1;
         }
@@ -1140,7 +1141,7 @@ mod tests {
     impl MockAppWithCalculation {
         fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
             let total_lines = self.output_log.len();
-            
+
             if self.auto_scroll {
                 // Auto-scroll: show the bottom of the log
                 if total_lines <= available_height {
