@@ -92,7 +92,7 @@ pub async fn handle_input_event(
             return handle_create_stories(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("create ch") => {
-            return handle_create_channel(cmd, local_peer_name, ui_logger, error_logger).await;
+            return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
         cmd if cmd.starts_with("sub ") => {
@@ -301,6 +301,37 @@ pub async fn handle_floodsub_event(
                         }
                     }
                 }
+            } else if let Ok(channel) = serde_json::from_slice::<crate::types::Channel>(&msg.data) {
+                debug!(
+                    "Received channel '{}' - {} from {}",
+                    channel.name, channel.description, msg.source
+                );
+                ui_logger.log(format!(
+                    "📺 Received channel '{}' - {} from network",
+                    channel.name, channel.description
+                ));
+
+                // Save the received channel to local storage asynchronously
+                let channel_to_save = channel.clone();
+                let ui_logger_clone = ui_logger.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = crate::storage::create_channel(
+                        &channel_to_save.name,
+                        &channel_to_save.description,
+                        &channel_to_save.created_by,
+                    )
+                    .await
+                    {
+                        // Log error but don't block the main event loop
+                        // Note: This might fail if channel already exists, which is expected
+                        debug!("Channel already exists or failed to save: {}", e);
+                    } else {
+                        ui_logger_clone.log(format!(
+                            "📺 Channel '{}' added to your channels list",
+                            channel_to_save.name
+                        ));
+                    }
+                });
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                 match req.mode {
                     ListMode::ALL => {
