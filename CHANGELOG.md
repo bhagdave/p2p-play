@@ -4,9 +4,16 @@ All changes to this project will be documented in this file.
 
 ## [unreleased]
 
+### Fixed
+- Test coverage with tarpaulin.
+
 ### Changes
 - Moved tests to their own files and out of the general code
 - Ran `cargo fmt` and `cargo clippy --fix` to clean up the codebase
+
+### Added
+- More tests to increase test coverage
+- Added test_coverage.sh file to check current coverage
 
 ## [0.7.3] - 2025-07-24
 
