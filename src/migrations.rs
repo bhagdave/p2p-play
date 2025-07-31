@@ -12,7 +12,8 @@ pub fn create_tables(conn: &Connection) -> Result<(), Box<dyn Error>> {
             header TEXT NOT NULL,
             body TEXT NOT NULL,
             public BOOLEAN NOT NULL DEFAULT 0,
-            channel TEXT NOT NULL DEFAULT 'general'
+            channel TEXT NOT NULL DEFAULT 'general',
+            created_at INTEGER NOT NULL DEFAULT 0
         )
         "#,
         [],
@@ -63,6 +64,14 @@ pub fn create_tables(conn: &Connection) -> Result<(), Box<dyn Error>> {
     );
     // Ignore error if column already exists
     let _ = add_channel_result;
+
+    // Add created_at column to existing stories if it doesn't exist
+    let add_created_at_result = conn.execute(
+        "ALTER TABLE stories ADD COLUMN created_at INTEGER DEFAULT 0",
+        [],
+    );
+    // Ignore error if column already exists
+    let _ = add_created_at_result;
 
     // Insert default 'general' channel if it doesn't exist
     conn.execute(
@@ -117,6 +126,7 @@ mod tests {
         assert!(sql.contains("body TEXT NOT NULL"));
         assert!(sql.contains("public BOOLEAN NOT NULL DEFAULT 0"));
         assert!(sql.contains("channel TEXT NOT NULL DEFAULT 'general'"));
+        assert!(sql.contains("created_at INTEGER NOT NULL DEFAULT 0"));
     }
 
     #[test]
@@ -272,6 +282,10 @@ mod tests {
         assert!(
             columns.contains(&"channel".to_string()),
             "Channel column should exist"
+        );
+        assert!(
+            columns.contains(&"created_at".to_string()),
+            "Created_at column should exist"
         );
     }
 }
