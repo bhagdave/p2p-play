@@ -1,7 +1,7 @@
-use p2p_play::handlers::*;
 use p2p_play::error_logger::ErrorLogger;
-use p2p_play::types::{Story, ActionResult};
-use p2p_play::network::{create_swarm, PEER_ID};
+use p2p_play::handlers::*;
+use p2p_play::network::{PEER_ID, create_swarm};
+use p2p_play::types::{ActionResult, Story};
 use tokio::sync::mpsc;
 
 #[tokio::test]
@@ -290,8 +290,8 @@ fn test_direct_message_command_parsing() {
 
 #[test]
 fn test_parse_direct_message_command() {
-    use std::collections::HashMap;
     use p2p_play::handlers::parse_direct_message_command;
+    use std::collections::HashMap;
 
     // Create a mock peer names map
     let mut peer_names = HashMap::new();
@@ -315,8 +315,7 @@ fn test_parse_direct_message_command() {
     );
 
     // Test name with spaces
-    let result =
-        parse_direct_message_command("Alice Smith Hello world", cache.get_sorted_names());
+    let result = parse_direct_message_command("Alice Smith Hello world", cache.get_sorted_names());
     assert_eq!(
         result,
         Some(("Alice Smith".to_string(), "Hello world".to_string()))
@@ -470,7 +469,8 @@ fn test_sorted_peer_names_cache() {
     assert_eq!(sorted_names[2], "Bob");
 
     // Test that parsing still works correctly with the sorted cache
-    let result = p2p_play::handlers::parse_direct_message_command("Alice Smith Hello world", sorted_names);
+    let result =
+        p2p_play::handlers::parse_direct_message_command("Alice Smith Hello world", sorted_names);
     assert_eq!(
         result,
         Some(("Alice Smith".to_string(), "Hello world".to_string()))
@@ -542,7 +542,6 @@ async fn test_handle_create_description_empty() {
 
 #[tokio::test]
 async fn test_handle_show_description() {
-    
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
@@ -600,7 +599,9 @@ async fn test_handle_show_description_with_content() {
 #[test]
 fn test_extract_peer_id_from_multiaddr_success() {
     let peer_id = libp2p::PeerId::random();
-    let addr: libp2p::Multiaddr = format!("/ip4/127.0.0.1/tcp/8080/p2p/{}", peer_id).parse().unwrap();
+    let addr: libp2p::Multiaddr = format!("/ip4/127.0.0.1/tcp/8080/p2p/{}", peer_id)
+        .parse()
+        .unwrap();
     let extracted = extract_peer_id_from_multiaddr(&addr);
     assert_eq!(extracted, Some(peer_id));
 }
@@ -615,18 +616,18 @@ fn test_extract_peer_id_from_multiaddr_no_peer() {
 #[test]
 fn test_peer_name_caching() {
     use std::collections::HashMap;
-    
+
     let mut cache = SortedPeerNamesCache::new();
     let mut peer_names = HashMap::new();
-    
+
     let peer_id1 = libp2p::PeerId::random();
     let peer_id2 = libp2p::PeerId::random();
     peer_names.insert(peer_id1, "Alice Smith".to_string());
     peer_names.insert(peer_id2, "Bob".to_string());
-    
+
     cache.update(&peer_names);
     let sorted = cache.get_sorted_names();
-    
+
     // Should be sorted by length descending
     assert_eq!(sorted[0], "Alice Smith");
     assert_eq!(sorted[1], "Bob");
@@ -636,14 +637,20 @@ fn test_peer_name_caching() {
 fn test_parse_direct_message_simple() {
     let peer_names = vec!["Alice".to_string(), "Bob".to_string()];
     let result = parse_direct_message_command("Alice Hello world", &peer_names);
-    assert_eq!(result, Some(("Alice".to_string(), "Hello world".to_string())));
+    assert_eq!(
+        result,
+        Some(("Alice".to_string(), "Hello world".to_string()))
+    );
 }
 
 #[test]
 fn test_parse_direct_message_with_spaces() {
     let peer_names = vec!["Alice Smith".to_string(), "Bob".to_string()];
     let result = parse_direct_message_command("Alice Smith Hello world", &peer_names);
-    assert_eq!(result, Some(("Alice Smith".to_string(), "Hello world".to_string())));
+    assert_eq!(
+        result,
+        Some(("Alice Smith".to_string(), "Hello world".to_string()))
+    );
 }
 
 #[test]
@@ -657,9 +664,9 @@ fn test_parse_direct_message_no_message() {
 async fn test_ui_logger_functionality() {
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
-    
+
     ui_logger.log("Test message".to_string());
-    
+
     let message = receiver.try_recv().unwrap();
     assert_eq!(message, "Test message");
 }

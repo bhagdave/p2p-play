@@ -244,8 +244,7 @@ fn test_list_response_fields() {
 #[test]
 fn test_empty_story_collections() {
     let empty_stories: Stories = vec![];
-    let response =
-        ListResponse::new(ListMode::ALL, "receiver".to_string(), empty_stories.clone());
+    let response = ListResponse::new(ListMode::ALL, "receiver".to_string(), empty_stories.clone());
 
     assert_eq!(response.data.len(), 0);
     assert!(response.data.is_empty());

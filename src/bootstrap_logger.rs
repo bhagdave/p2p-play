@@ -99,4 +99,3 @@ impl BootstrapLogger {
         Ok(())
     }
 }
-

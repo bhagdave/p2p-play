@@ -92,7 +92,8 @@ pub async fn handle_input_event(
             return handle_create_stories(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("create ch") => {
-            return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger).await;
+            return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger)
+                .await;
         }
         cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
         cmd if cmd.starts_with("sub ") => {

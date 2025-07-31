@@ -503,7 +503,7 @@ pub async fn handle_create_channel(
             error_logger.log_error(&format!("Failed to create channel: {}", e));
         } else {
             ui_logger.log(format!("Channel '{}' created successfully", name));
-            
+
             // Auto-subscribe to the channel we created
             if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), name).await {
                 error_logger.log_error(&format!(
@@ -513,11 +513,8 @@ pub async fn handle_create_channel(
             }
 
             // Broadcast the channel to other peers
-            let channel = crate::types::Channel::new(
-                name.to_string(),
-                description.to_string(),
-                creator,
-            );
+            let channel =
+                crate::types::Channel::new(name.to_string(), description.to_string(), creator);
             let json = serde_json::to_string(&channel).expect("can jsonify channel");
             let json_bytes = Bytes::from(json.into_bytes());
             swarm
