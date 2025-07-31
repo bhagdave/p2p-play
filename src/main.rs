@@ -1,4 +1,5 @@
 mod bootstrap;
+mod bootstrap_logger;
 mod error_logger;
 mod event_handlers;
 mod handlers;
@@ -9,6 +10,7 @@ mod types;
 mod ui;
 
 use bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
+use bootstrap_logger::BootstrapLogger;
 use error_logger::ErrorLogger;
 use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
@@ -113,6 +115,9 @@ async fn main() {
     // Create error logger that writes to file
     let error_logger = ErrorLogger::new("errors.log");
 
+    // Create bootstrap logger that writes to file
+    let bootstrap_logger = BootstrapLogger::new("bootstrap.log");
+
     // Create a timer for periodic connection maintenance
     let mut connection_maintenance_interval =
         tokio::time::interval(tokio::time::Duration::from_secs(30));
@@ -145,7 +150,7 @@ async fn main() {
     // Ensure bootstrap config file exists and load it
     if let Err(e) = ensure_bootstrap_config_exists().await {
         error!("Failed to initialize bootstrap config: {}", e);
-        app.add_to_log(format!("Failed to initialize bootstrap config: {}", e));
+        bootstrap_logger.log_error(&format!("Failed to initialize bootstrap config: {}", e));
     }
 
     // Load bootstrap configuration
@@ -155,7 +160,7 @@ async fn main() {
                 "Loaded bootstrap config with {} peers",
                 config.bootstrap_peers.len()
             );
-            app.add_to_log(format!(
+            bootstrap_logger.log_init(&format!(
                 "Loaded bootstrap config with {} peers",
                 config.bootstrap_peers.len()
             ));
@@ -163,14 +168,14 @@ async fn main() {
         }
         Err(e) => {
             error!("Failed to load bootstrap config: {}", e);
-            app.add_to_log(format!("Failed to load bootstrap config: {}", e));
+            bootstrap_logger.log_error(&format!("Failed to load bootstrap config: {}", e));
             None
         }
     };
 
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
-    auto_bootstrap.initialize(&ui_logger).await;
+    auto_bootstrap.initialize(&bootstrap_logger).await;
 
     // Create a timer for automatic bootstrap retry
     let mut bootstrap_retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
@@ -311,7 +316,7 @@ async fn main() {
                 _ = bootstrap_retry_interval.tick() => {
                     // Automatic bootstrap retry - only if should retry and time is right
                     if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
-                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &ui_logger).await;
+                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &bootstrap_logger).await;
                     }
                     None
                 },
@@ -321,7 +326,7 @@ async fn main() {
                         if !matches!(*status, bootstrap::BootstrapStatus::NotStarted) {
                             drop(status); // Release lock before expensive operation
                             let status_msg = auto_bootstrap.get_status_string();
-                            ui_logger.log(format!("Bootstrap Status: {}", status_msg));
+                            bootstrap_logger.log_status(&status_msg);
                         }
                     }
                     None
