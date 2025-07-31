@@ -59,9 +59,9 @@ jobs:
 
     - name: Run tests
       run: |
-        if [ -f "./test_runner.sh" ]; then
-          chmod +x ./test_runner.sh
-          ./test_runner.sh
+        if [ -f "./scripts/test_runner.sh" ]; then
+          chmod +x ./scripts/test_runner.sh
+          ./scripts/test_runner.sh
         else
           cargo test
         fi

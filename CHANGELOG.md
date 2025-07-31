@@ -11,6 +11,11 @@ All changes to this project will be documented in this file.
 - Moved tests to their own files and out of the general code
 - Ran `cargo fmt` and `cargo clippy --fix` to clean up the codebase
 - Created docs folder and moved any docs into it
+- Created new `scripts/` directory
+- Moved `test_runner.sh` → `scripts/test_runner.sh`
+- Moved `test_coverge.sh` → `scripts/test_coverge.sh`
+- **GitHub Workflow**: Updated `.github/workflows/release.yml` to reference `./scripts/test_runner.sh` instead of `./test_runner.sh`
+- **Documentation**: Updated `CLAUDE.md` test runner command to use new path
 
 ### Added
 - More tests to increase test coverage
