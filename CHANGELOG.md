@@ -5,7 +5,7 @@ All changes to this project will be documented in this file.
 ## [unreleased]
 
 ### Fixed
-- Test coverage with tarpaulin.
+- Fixed test coverage reporting configuration with tarpaulin.
 
 ### Changes
 - Moved tests to their own files and out of the general code
