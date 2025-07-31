@@ -515,7 +515,13 @@ pub async fn handle_create_channel(
             // Broadcast the channel to other peers
             let channel =
                 crate::types::Channel::new(name.to_string(), description.to_string(), creator);
-            let json = serde_json::to_string(&channel).expect("can jsonify channel");
+            let json = match serde_json::to_string(&channel) {
+                Ok(json) => json,
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to serialize channel: {}", e));
+                    return Some(ActionResult::RefreshStories);
+                }
+            };
             let json_bytes = Bytes::from(json.into_bytes());
             swarm
                 .behaviour_mut()

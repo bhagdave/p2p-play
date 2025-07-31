@@ -316,21 +316,36 @@ pub async fn handle_floodsub_event(
                 let channel_to_save = channel.clone();
                 let ui_logger_clone = ui_logger.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = crate::storage::create_channel(
+                    // Add validation before saving
+                    if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
+                        debug!("Ignoring invalid channel with empty name or description");
+                        return;
+                    }
+                    
+                    // Distinguish error types
+                    match crate::storage::create_channel(
                         &channel_to_save.name,
                         &channel_to_save.description,
                         &channel_to_save.created_by,
                     )
                     .await
                     {
-                        // Log error but don't block the main event loop
-                        // Note: This might fail if channel already exists, which is expected
-                        debug!("Channel already exists or failed to save: {}", e);
-                    } else {
-                        ui_logger_clone.log(format!(
-                            "📺 Channel '{}' added to your channels list",
-                            channel_to_save.name
-                        ));
+                        Ok(_) => {
+                            ui_logger_clone.log(format!(
+                                "📺 Channel '{}' added to your channels list",
+                                channel_to_save.name
+                            ));
+                        }
+                        Err(e) if e.to_string().contains("UNIQUE constraint") => {
+                            debug!("Channel '{}' already exists", channel_to_save.name);
+                        }
+                        Err(e) => {
+                            log::error!(
+                                "Failed to save received channel '{}': {}",
+                                channel_to_save.name,
+                                e
+                            );
+                        }
                     }
                 });
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
