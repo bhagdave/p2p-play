@@ -16,11 +16,11 @@ use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_bootstrap_config_exists, ensure_direct_message_config_exists,
-    ensure_stories_file_exists, load_bootstrap_config, load_direct_message_config,
+    ensure_bootstrap_config_exists, ensure_direct_message_config_exists, ensure_network_config_exists,
+    ensure_stories_file_exists, load_bootstrap_config, load_direct_message_config, load_network_config,
     load_local_peer_name,
 };
-use types::{ActionResult, DirectMessageConfig, EventType, PeerName, PendingDirectMessage};
+use types::{ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage};
 use ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -120,9 +120,34 @@ async fn main() {
     // Create bootstrap logger that writes to file
     let bootstrap_logger = BootstrapLogger::new("bootstrap.log");
 
-    // Create a timer for periodic connection maintenance
+    // Load network configuration
+    if let Err(e) = ensure_network_config_exists().await {
+        error!("Failed to initialize network config: {}", e);
+        app.add_to_log(format!("Failed to initialize network config: {}", e));
+    }
+
+    let network_config = match load_network_config().await {
+        Ok(config) => {
+            debug!(
+                "Loaded network config: connection_maintenance_interval_seconds={}",
+                config.connection_maintenance_interval_seconds
+            );
+            app.add_to_log(format!("Loaded network config from file"));
+            config
+        }
+        Err(e) => {
+            error!("Failed to load network config: {}", e);
+            app.add_to_log(format!(
+                "Failed to load network config: {}, using defaults",
+                e
+            ));
+            NetworkConfig::new()
+        }
+    };
+
+    // Create a timer for periodic connection maintenance using configurable interval
     let mut connection_maintenance_interval =
-        tokio::time::interval(tokio::time::Duration::from_secs(30));
+        tokio::time::interval(tokio::time::Duration::from_secs(network_config.connection_maintenance_interval_seconds));
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
 

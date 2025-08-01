@@ -81,6 +81,12 @@ pub struct BootstrapConfig {
     pub bootstrap_timeout_ms: u64,
 }
 
+/// Configuration for network connectivity settings
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NetworkConfig {
+    pub connection_maintenance_interval_seconds: u64,
+}
+
 /// Configuration for direct message retry logic
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DirectMessageConfig {
@@ -312,6 +318,32 @@ impl BootstrapConfig {
 }
 
 impl Default for BootstrapConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NetworkConfig {
+    pub fn new() -> Self {
+        Self {
+            connection_maintenance_interval_seconds: 300, // 5 minutes default
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.connection_maintenance_interval_seconds < 60 {
+            return Err("connection_maintenance_interval_seconds must be at least 60 seconds to avoid excessive connection churn".to_string());
+        }
+
+        if self.connection_maintenance_interval_seconds > 3600 {
+            return Err("connection_maintenance_interval_seconds must be at most 3600 seconds (1 hour) to maintain network responsiveness".to_string());
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for NetworkConfig {
     fn default() -> Self {
         Self::new()
     }

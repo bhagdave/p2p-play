@@ -1,6 +1,6 @@
 use crate::types::{
     BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
-    DirectMessageConfig, Stories, Story,
+    DirectMessageConfig, NetworkConfig, Stories, Story,
 };
 use log::{debug, error};
 use rusqlite::Connection;
@@ -822,6 +822,69 @@ pub async fn ensure_direct_message_config_exists() -> Result<(), Box<dyn Error>>
         let default_config = DirectMessageConfig::default();
         save_direct_message_config(&default_config).await?;
         debug!("Created default direct message config file");
+    }
+    Ok(())
+}
+
+/// Save network configuration to file
+pub async fn save_network_config(
+    config: &NetworkConfig,
+) -> Result<(), Box<dyn Error>> {
+    save_network_config_to_path(config, "network_config.json").await
+}
+
+/// Save network configuration to specific path
+pub async fn save_network_config_to_path(
+    config: &NetworkConfig,
+    path: &str,
+) -> Result<(), Box<dyn Error>> {
+    let json = serde_json::to_string_pretty(config)?;
+    fs::write(path, json).await?;
+    debug!("Saved network config to {}", path);
+    Ok(())
+}
+
+/// Load network configuration from file, creating default if missing
+pub async fn load_network_config() -> Result<NetworkConfig, Box<dyn Error>> {
+    load_network_config_from_path("network_config.json").await
+}
+
+/// Load network configuration from specific path, creating default if missing
+pub async fn load_network_config_from_path(
+    path: &str,
+) -> Result<NetworkConfig, Box<dyn Error>> {
+    match fs::read_to_string(path).await {
+        Ok(content) => {
+            let config: NetworkConfig = serde_json::from_str(&content)?;
+
+            // Validate the loaded config
+            config.validate()?;
+
+            debug!("Loaded network config from {}", path);
+            Ok(config)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            debug!("No network config file found, creating default");
+            let default_config = NetworkConfig::default();
+
+            // Save the default config for future use
+            save_network_config_to_path(&default_config, path).await?;
+
+            Ok(default_config)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Ensure network config file exists with defaults
+pub async fn ensure_network_config_exists() -> Result<(), Box<dyn Error>> {
+    if tokio::fs::metadata("network_config.json")
+        .await
+        .is_err()
+    {
+        let default_config = NetworkConfig::default();
+        save_network_config(&default_config).await?;
+        debug!("Created default network config file");
     }
     Ok(())
 }
