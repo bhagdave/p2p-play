@@ -8,7 +8,9 @@ use crate::storage::{
     read_subscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
     subscribe_to_channel, unsubscribe_from_channel,
 };
-use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story, DirectMessageConfig, PendingDirectMessage};
+use crate::types::{
+    ActionResult, DirectMessageConfig, ListMode, ListRequest, PeerName, PendingDirectMessage, Story,
+};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -476,7 +478,10 @@ pub async fn handle_direct_message(
             queue.push(pending_msg);
         }
 
-        ui_logger.log(format!("Direct message queued for {}: {}", to_name, message));
+        ui_logger.log(format!(
+            "Direct message queued for {}: {}",
+            to_name, message
+        ));
         debug!(
             "Queued direct message to {} from {} (request_id: {:?})",
             to_name, from_name, request_id

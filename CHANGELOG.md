@@ -5,6 +5,15 @@ All changes to this project will be documented in this file.
 ## [unreleased]
 
 ### Added
+- **Direct Message Retry Logic**: Implemented robust retry mechanism for direct messages with automatic delivery attempts
+  - Messages automatically retry up to 3 times before reporting failure
+  - Connection-based retries: pending messages retry when target peer reconnects  
+  - Time-based retries: background task processes pending messages every 30 seconds
+  - Silent operation: users only see final success/failure, not individual retry attempts
+  - Configurable retry count, intervals, and enable/disable features via `direct_message_config.json`
+  - Thread-safe message queue with Arc<Mutex<Vec<PendingDirectMessage>>> for concurrent access
+  - Improved reliability of peer-to-peer communication with backward compatibility maintained
+  - Enhanced user experience with automatic retry handling instead of manual retry requirements
 - **Channel Broadcasting**: Implemented channel sharing functionality between P2P nodes to enable automatic propagation of channels across the network
   - Enhanced `create ch` command to broadcast newly created channels via floodsub to all connected peers
   - Added automatic reception and local storage of channels shared by other peers

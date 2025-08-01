@@ -2,7 +2,7 @@ use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
 };
 use libp2p::floodsub::Event;
-use libp2p::{kad, mdns, ping, request_response, PeerId};
+use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -81,12 +81,12 @@ pub struct BootstrapConfig {
 }
 
 /// Configuration for direct message retry logic
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DirectMessageConfig {
-    pub max_retry_attempts: u8,        // Default: 3
-    pub retry_interval_seconds: u64,   // Default: 30
-    pub enable_connection_retries: bool, // Default: true
-    pub enable_timed_retries: bool,    // Default: true
+    pub max_retry_attempts: u8,
+    pub retry_interval_seconds: u64,
+    pub enable_connection_retries: bool,
+    pub enable_timed_retries: bool,
 }
 
 /// Pending direct message for retry logic
@@ -311,6 +311,18 @@ impl DirectMessageConfig {
             enable_connection_retries: true,
             enable_timed_retries: true,
         }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_retry_attempts == 0 {
+            return Err("max_retry_attempts must be greater than 0".to_string());
+        }
+
+        if self.retry_interval_seconds == 0 {
+            return Err("retry_interval_seconds must be greater than 0".to_string());
+        }
+
+        Ok(())
     }
 }
 

@@ -16,10 +16,11 @@ use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_bootstrap_config_exists, ensure_stories_file_exists, load_bootstrap_config,
+    ensure_bootstrap_config_exists, ensure_direct_message_config_exists,
+    ensure_stories_file_exists, load_bootstrap_config, load_direct_message_config,
     load_local_peer_name,
 };
-use types::{ActionResult, EventType, PeerName, DirectMessageConfig, PendingDirectMessage};
+use types::{ActionResult, DirectMessageConfig, EventType, PeerName, PendingDirectMessage};
 use ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -132,7 +133,30 @@ async fn main() {
     let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
     // Initialize direct message retry configuration and queue
-    let dm_config = DirectMessageConfig::new();
+    // Ensure direct message config file exists and load it
+    if let Err(e) = ensure_direct_message_config_exists().await {
+        error!("Failed to initialize direct message config: {}", e);
+        app.add_to_log(format!("Failed to initialize direct message config: {}", e));
+    }
+
+    let dm_config = match load_direct_message_config().await {
+        Ok(config) => {
+            debug!(
+                "Loaded direct message config: max_retry_attempts={}, retry_interval_seconds={}",
+                config.max_retry_attempts, config.retry_interval_seconds
+            );
+            app.add_to_log(format!("Loaded direct message config from file"));
+            config
+        }
+        Err(e) => {
+            error!("Failed to load direct message config: {}", e);
+            app.add_to_log(format!(
+                "Failed to load direct message config: {}, using defaults",
+                e
+            ));
+            DirectMessageConfig::new()
+        }
+    };
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Load saved peer name if it exists
@@ -190,8 +214,9 @@ async fn main() {
         tokio::time::interval(tokio::time::Duration::from_secs(30));
 
     // Create a timer for direct message retry attempts
-    let mut dm_retry_interval =
-        tokio::time::interval(tokio::time::Duration::from_secs(dm_config.retry_interval_seconds));
+    let mut dm_retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(
+        dm_config.retry_interval_seconds,
+    ));
 
     // Auto-subscribe to general channel if not already subscribed
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {

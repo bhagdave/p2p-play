@@ -6,8 +6,8 @@ use crate::network::{
 };
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
-    ActionResult, DirectMessage, EventType, ListMode, ListRequest, ListResponse, PeerName,
-    PublishedStory, DirectMessageConfig, PendingDirectMessage,
+    ActionResult, DirectMessage, DirectMessageConfig, EventType, ListMode, ListRequest,
+    ListResponse, PeerName, PendingDirectMessage, PublishedStory,
 };
 
 use bytes::Bytes;
@@ -578,21 +578,21 @@ pub async fn handle_request_response_event(
                     // Handle response to our direct message request
                     if response.received {
                         debug!("Direct message was received by peer {}", peer);
-                        
+
                         // Remove successful message from retry queue
                         if let Ok(mut queue) = pending_messages.lock() {
                             queue.retain(|msg| msg.target_peer_id != peer);
                         }
-                        
+
                         ui_logger.log(format!("✅ Message delivered to {}", peer));
                     } else {
                         error!("Direct message was rejected by peer {}", peer);
-                        
+
                         // Message was rejected, but don't retry validation failures
                         if let Ok(mut queue) = pending_messages.lock() {
                             queue.retain(|msg| msg.target_peer_id != peer);
                         }
-                        
+
                         ui_logger.log(format!(
                             "❌ Message rejected by {} (identity validation failed)",
                             peer
@@ -604,7 +604,10 @@ pub async fn handle_request_response_event(
         request_response::Event::OutboundFailure { peer, error, .. } => {
             error!("Failed to send direct message to {}: {:?}", peer, error);
             // Don't immediately report failure to user - let retry logic handle it
-            debug!("Direct message to {} failed, will be retried automatically", peer);
+            debug!(
+                "Direct message to {} failed, will be retried automatically",
+                peer
+            );
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
             error!(
@@ -1010,7 +1013,7 @@ pub async fn process_pending_messages(
         let mut i = 0;
         while i < queue.len() {
             let msg = &mut queue[i];
-            
+
             if msg.is_exhausted() {
                 // Message has exceeded max retry attempts
                 exhausted_messages.push(msg.clone());
@@ -1442,8 +1445,8 @@ mod tests {
 
     #[test]
     fn test_pending_direct_message_retry_logic() {
-        use crate::types::{DirectMessageConfig, PendingDirectMessage};
         use crate::network::DirectMessageRequest;
+        use crate::types::{DirectMessageConfig, PendingDirectMessage};
 
         let config = DirectMessageConfig::new();
         let peer_id = PeerId::random();
@@ -1492,6 +1495,9 @@ mod tests {
 
         let default_config = DirectMessageConfig::default();
         assert_eq!(config.max_retry_attempts, default_config.max_retry_attempts);
-        assert_eq!(config.retry_interval_seconds, default_config.retry_interval_seconds);
+        assert_eq!(
+            config.retry_interval_seconds,
+            default_config.retry_interval_seconds
+        );
     }
 }
