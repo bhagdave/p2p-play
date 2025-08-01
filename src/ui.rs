@@ -167,6 +167,8 @@ impl App {
                     KeyCode::End => {
                         // Re-enable auto-scroll and go to bottom
                         self.auto_scroll = true;
+                        // Reset scroll offset to ensure clean transition to auto-scroll
+                        self.scroll_offset = 0;
                     }
                     _ => {}
                 },

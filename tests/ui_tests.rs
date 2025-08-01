@@ -485,3 +485,118 @@ impl MockAppWithCalculation {
         }
     }
 }
+
+#[test]
+fn test_auto_scroll_re_enable_functionality() {
+    // Create a mock app that simulates the auto-scroll re-enable behavior
+    struct MockAppAutoScrollReEnable {
+        output_log: Vec<String>,
+        scroll_offset: usize,
+        auto_scroll: bool,
+    }
+
+    impl MockAppAutoScrollReEnable {
+        fn new() -> Self {
+            Self {
+                output_log: vec![
+                    "Line 1".to_string(),
+                    "Line 2".to_string(),
+                    "Line 3".to_string(),
+                    "Line 4".to_string(),
+                    "Line 5".to_string(),
+                ],
+                scroll_offset: 0,
+                auto_scroll: true,
+            }
+        }
+
+        fn scroll_up(&mut self) {
+            // Simulate transition from auto-scroll to manual scroll
+            if self.auto_scroll {
+                let estimated_height = 3; // Simulate small display area
+                self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
+            }
+            self.auto_scroll = false;
+            if self.scroll_offset > 0 {
+                self.scroll_offset -= 1;
+            }
+        }
+
+        fn re_enable_auto_scroll(&mut self) {
+            // This simulates pressing 'End' key - the fix we implemented
+            self.auto_scroll = true;
+            self.scroll_offset = 0; // Reset scroll offset for clean transition
+        }
+
+        fn add_to_log(&mut self, message: String) {
+            self.output_log.push(message);
+        }
+
+        fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
+            let total_lines = self.output_log.len();
+
+            if self.auto_scroll {
+                // Auto-scroll: show the bottom of the log
+                if total_lines <= available_height {
+                    0
+                } else {
+                    total_lines.saturating_sub(available_height)
+                }
+            } else {
+                // Manual scroll: use the current scroll_offset, but clamp it
+                if total_lines <= available_height {
+                    0
+                } else {
+                    let max_scroll = total_lines.saturating_sub(available_height);
+                    self.scroll_offset.min(max_scroll)
+                }
+            }
+        }
+
+        fn get_visible_range(&self, available_height: usize) -> (usize, usize) {
+            let scroll_pos = self.calculate_current_scroll_position(available_height);
+            let visible_start = scroll_pos;
+            let visible_end =
+                std::cmp::min(visible_start + available_height, self.output_log.len());
+            (visible_start, visible_end)
+        }
+    }
+
+    let mut app = MockAppAutoScrollReEnable::new();
+    let display_height = 3;
+
+    // Initially in auto-scroll mode, should show bottom lines
+    assert!(app.auto_scroll);
+    assert_eq!(app.scroll_offset, 0);
+    let (start, end) = app.get_visible_range(display_height);
+    assert_eq!(start, 2); // Should show lines 2, 3, 4 (indices 2, 3, 4)
+    assert_eq!(end, 5);
+
+    // User does manual scrolling - this disables auto-scroll
+    app.scroll_up();
+    assert!(!app.auto_scroll); // Auto-scroll should be disabled
+    assert_eq!(app.scroll_offset, 1); // Should be scrolled up from bottom
+
+    // User scrolls up more
+    app.scroll_up();
+    assert!(!app.auto_scroll);
+    assert_eq!(app.scroll_offset, 0); // Should be at top now
+
+    // User re-enables auto-scroll (presses 'End' key)
+    app.re_enable_auto_scroll();
+    assert!(app.auto_scroll); // Auto-scroll should be re-enabled
+    assert_eq!(app.scroll_offset, 0); // Scroll offset should be reset
+
+    // Add a new message - should be visible at bottom when auto-scroll is on
+    app.add_to_log("New message".to_string());
+
+    // With auto-scroll enabled, should show the bottom including the new message
+    let (start, end) = app.get_visible_range(display_height);
+    // Now we have 6 lines total, display_height = 3, so should show lines 3, 4, 5 (indices 3, 4, 5)
+    assert_eq!(start, 3);
+    assert_eq!(end, 6);
+
+    // The visible content should include the new message
+    let visible_lines: Vec<&String> = app.output_log[start..end].iter().collect();
+    assert!(visible_lines.contains(&&"New message".to_string()));
+}
