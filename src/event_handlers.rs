@@ -1062,6 +1062,7 @@ pub async fn retry_messages_for_peer(
     swarm: &mut Swarm<StoryBehaviour>,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+    peer_names: &HashMap<PeerId, String>,
 ) {
     if !dm_config.enable_connection_retries {
         return;
@@ -1072,7 +1073,24 @@ pub async fn retry_messages_for_peer(
     // Find messages for this specific peer
     if let Ok(mut queue) = pending_messages.lock() {
         for msg in queue.iter_mut() {
-            if msg.target_peer_id == peer_id && !msg.is_exhausted() {
+            let should_retry = if msg.is_placeholder_peer_id {
+                // For placeholder PeerIds, match by peer name
+                if let Some(peer_name) = peer_names.get(&peer_id) {
+                    peer_name == &msg.target_name
+                } else {
+                    false
+                }
+            } else {
+                // For real PeerIds, match by PeerId
+                msg.target_peer_id == peer_id
+            };
+
+            if should_retry && !msg.is_exhausted() {
+                // Update placeholder PeerIds with the real PeerId
+                if msg.is_placeholder_peer_id {
+                    msg.target_peer_id = peer_id;
+                    msg.is_placeholder_peer_id = false;
+                }
                 msg.increment_attempt();
                 messages_to_retry.push(msg.clone());
             }
@@ -1464,6 +1482,7 @@ mod tests {
             "TestReceiver".to_string(),
             request,
             config.max_retry_attempts,
+            false, // Not a placeholder for test
         );
 
         // Test initial state

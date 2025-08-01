@@ -99,6 +99,7 @@ pub struct PendingDirectMessage {
     pub attempts: u8,
     pub last_attempt: Option<Instant>,
     pub max_attempts: u8,
+    pub is_placeholder_peer_id: bool,
 }
 
 pub type Channels = Vec<Channel>;
@@ -351,6 +352,7 @@ impl PendingDirectMessage {
         target_name: String,
         message: DirectMessageRequest,
         max_attempts: u8,
+        is_placeholder_peer_id: bool,
     ) -> Self {
         Self {
             target_peer_id,
@@ -359,6 +361,7 @@ impl PendingDirectMessage {
             attempts: 0,
             last_attempt: None,
             max_attempts,
+            is_placeholder_peer_id,
         }
     }
 

@@ -414,6 +414,7 @@ async fn main() {
                                 &mut swarm,
                                 &dm_config,
                                 &pending_messages,
+                                &peer_names,
                             ).await;
 
                             None

@@ -433,25 +433,36 @@ pub async fn handle_direct_message(
             }
         };
 
-        // Check if the target peer exists and find their PeerId
-        let target_peer_id = peer_names
+
+        if to_name.trim().is_empty() {
+            ui_logger.log("Peer name cannot be empty".to_string());
+            return;
+        }
+
+
+        if to_name.len() > 50 {
+            ui_logger.log("Peer name too long (max 50 characters)".to_string());
+            return;
+        }
+
+        // Try to find current peer ID, but don't require it
+        let (target_peer_id, is_placeholder) = peer_names
             .iter()
             .find(|(_, name)| name == &&to_name)
-            .map(|(peer_id, _)| *peer_id);
-
-        let target_peer_id = match target_peer_id {
-            Some(peer_id) => peer_id,
-            None => {
-                ui_logger.log(format!(
-                    "Peer '{}' not found. Use 'ls p' to see available peers.",
-                    to_name
-                ));
-                return;
-            }
-        };
+            .map(|(peer_id, _)| (*peer_id, false))
+            .unwrap_or_else(|| {
+                // Generate a placeholder PeerId for queueing - this will be resolved when peer connects
+                // For now, we'll use a hash of the peer name as a temporary PeerId
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                to_name.hash(&mut hasher);
+                let placeholder_id = PeerId::from_bytes(&hasher.finish().to_be_bytes())
+                    .unwrap_or(PeerId::random());
+                (placeholder_id, true)
+            });
 
         // Create a direct message request with validated sender identity
-        // The from_peer_id is guaranteed to be our actual peer ID since we control the creation
         let direct_msg_request = DirectMessageRequest {
             from_peer_id: PEER_ID.to_string(),
             from_name: from_name.clone(),
@@ -469,6 +480,7 @@ pub async fn handle_direct_message(
             to_name.clone(),
             direct_msg_request.clone(),
             dm_config.max_retry_attempts,
+            is_placeholder,
         );
 
         // Try to send immediately, but queue for retry if it fails
