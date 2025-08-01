@@ -1009,6 +1009,7 @@ pub async fn process_pending_messages(
     swarm: &mut Swarm<StoryBehaviour>,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+    peer_names: &HashMap<PeerId, String>,
     ui_logger: &UILogger,
 ) {
     if !dm_config.enable_timed_retries {
@@ -1054,10 +1055,35 @@ pub async fn process_pending_messages(
             msg.target_name, msg.attempts, msg.max_attempts
         );
 
+        // For placeholder PeerIds, try to find the real peer with matching name
+        let target_peer_id = if msg.is_placeholder_peer_id {
+            if let Some((real_peer_id, _)) = peer_names
+                .iter()
+                .find(|(_, name)| name == &&msg.target_name)
+            {
+                // Update the message with the real PeerId
+                if let Ok(mut queue) = pending_messages.lock() {
+                    if let Some(stored_msg) = queue.iter_mut().find(|m| 
+                        m.target_name == msg.target_name && m.is_placeholder_peer_id
+                    ) {
+                        stored_msg.target_peer_id = *real_peer_id;
+                        stored_msg.is_placeholder_peer_id = false;
+                    }
+                }
+                *real_peer_id
+            } else {
+                // Peer not connected or name not known yet, skip this retry
+                debug!("Peer {} not found or name not available yet, skipping retry", msg.target_name);
+                continue;
+            }
+        } else {
+            msg.target_peer_id
+        };
+
         let request_id = swarm
             .behaviour_mut()
             .request_response
-            .send_request(&msg.target_peer_id, msg.message.clone());
+            .send_request(&target_peer_id, msg.message.clone());
 
         debug!(
             "Retry request sent to {} (request_id: {:?})",
