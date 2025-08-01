@@ -16,6 +16,7 @@ pub struct Story {
     pub body: String,
     pub public: bool,
     pub channel: String,
+    pub created_at: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -127,6 +128,11 @@ pub enum EventType {
 
 impl Story {
     pub fn new(id: usize, name: String, header: String, body: String, public: bool) -> Self {
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
         Self {
             id,
             name,
@@ -134,6 +140,7 @@ impl Story {
             body,
             public,
             channel: "general".to_string(),
+            created_at,
         }
     }
 
@@ -145,6 +152,11 @@ impl Story {
         public: bool,
         channel: String,
     ) -> Self {
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
         Self {
             id,
             name,
@@ -152,6 +164,7 @@ impl Story {
             body,
             public,
             channel,
+            created_at,
         }
     }
 

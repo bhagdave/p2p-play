@@ -160,7 +160,10 @@ pub async fn handle_list_stories(
             match read_local_stories().await {
                 Ok(v) => {
                     ui_logger.log(format!("Local stories ({})", v.len()));
-                    v.iter().for_each(|r| ui_logger.log(format!("{:?}", r)));
+                    v.iter().for_each(|r| {
+                        let status = if r.public { "📖 Public" } else { "📕 Private" };
+                        ui_logger.log(format!("{} | Channel: {} | {}: {}", status, r.channel, r.id, r.name));
+                    });
                 }
                 Err(e) => error_logger.log_error(&format!("Failed to fetch local stories: {}", e)),
             };
@@ -242,6 +245,7 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger) {
                     Ok(stories) => {
                         if let Some(story) = stories.iter().find(|s| s.id == id) {
                             ui_logger.log(format!("📖 Story {}: {}", story.id, story.name));
+                            ui_logger.log(format!("Channel: {}", story.channel));
                             ui_logger.log(format!("Header: {}", story.header));
                             ui_logger.log(format!("Body: {}", story.body));
                             ui_logger.log(format!(

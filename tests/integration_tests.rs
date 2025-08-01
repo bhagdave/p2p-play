@@ -130,6 +130,7 @@ async fn test_story_deduplication() {
         body: "Same Body".to_string(),
         public: true,
         channel: "general".to_string(),
+        created_at: 1234567890,
     };
 
     // Save the same story multiple times
