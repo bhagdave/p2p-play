@@ -16,6 +16,7 @@ async fn test_write_and_read_stories() {
             body: "Test Body".to_string(),
             public: true,
             channel: "general".to_string(),
+            created_at: 1234567890,
         },
         Story {
             id: 2,
@@ -24,13 +25,36 @@ async fn test_write_and_read_stories() {
             body: "Another Body".to_string(),
             public: false,
             channel: "tech".to_string(),
+            created_at: 1234567891,
         },
     ];
 
     write_local_stories_to_path(&stories, path).await.unwrap();
     let read_stories = read_local_stories_from_path(path).await.unwrap();
 
-    assert_eq!(stories, read_stories);
+    // Stories should be returned in chronological order (newest first by created_at)
+    let expected_order = vec![
+        Story {
+            id: 2,
+            name: "Another Story".to_string(),
+            header: "Another Header".to_string(),
+            body: "Another Body".to_string(),
+            public: false,
+            channel: "tech".to_string(),
+            created_at: 1234567891, // Newer timestamp
+        },
+        Story {
+            id: 1,
+            name: "Test Story".to_string(),
+            header: "Test Header".to_string(),
+            body: "Test Body".to_string(),
+            public: true,
+            channel: "general".to_string(),
+            created_at: 1234567890, // Older timestamp
+        },
+    ];
+
+    assert_eq!(expected_order, read_stories);
 }
 
 #[tokio::test]
@@ -48,6 +72,7 @@ async fn create_temp_stories_file() -> NamedTempFile {
         body: "Initial Body".to_string(),
         public: false,
         channel: "general".to_string(),
+        created_at: 1234567800,
     }];
     write_local_stories_to_path(&initial_stories, temp_file.path().to_str().unwrap())
         .await
@@ -131,6 +156,7 @@ async fn test_save_received_story() {
         body: "Received Body".to_string(),
         public: false, // This should be set to true
         channel: "general".to_string(),
+        created_at: 1234567892,
     };
 
     let new_id = save_received_story_to_path(received_story, path)
@@ -159,6 +185,7 @@ async fn test_save_duplicate_received_story() {
         body: "Body".to_string(),
         public: false,
         channel: "general".to_string(),
+        created_at: 1234567893,
     };
 
     // Save first time

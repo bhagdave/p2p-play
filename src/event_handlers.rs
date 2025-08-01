@@ -1246,6 +1246,7 @@ mod tests {
             body: "Test Body".to_string(),
             public: true,
             channel: "general".to_string(),
+            created_at: 1234567890,
         };
 
         // Measure time taken for story publishing (should be very fast now)

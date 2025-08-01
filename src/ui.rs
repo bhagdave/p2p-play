@@ -540,7 +540,7 @@ impl App {
                 .chain(self.received_stories.iter())
                 .map(|story| {
                     let status = if story.public { "📖" } else { "📕" };
-                    ListItem::new(format!("{} {}: {}", status, story.id, story.name))
+                    ListItem::new(format!("{} [{}] {}: {}", status, story.channel, story.id, story.name))
                 })
                 .collect();
 
@@ -753,12 +753,13 @@ mod tests {
             body: "Test Body".to_string(),
             public: true,
             channel: "general".to_string(),
+            created_at: 1234567890,
         };
 
         let status = if story.public { "📖" } else { "📕" };
-        let formatted = format!("{} {}: {}", status, story.id, story.name);
+        let formatted = format!("{} [{}] {}: {}", status, story.channel, story.id, story.name);
 
-        assert_eq!(formatted, "📖 1: Test Story");
+        assert_eq!(formatted, "📖 [general] 1: Test Story");
     }
 
     #[test]

@@ -5,6 +5,17 @@ All changes to this project will be documented in this file.
 ## [unreleased]
 
 ### Added
+- **Chronological Story Ordering**: Stories are now displayed in chronological order with newest stories appearing first
+  - Added `created_at` timestamp field to stories table in SQLite database
+  - Database queries changed from `ORDER BY id` to `ORDER BY created_at DESC` for proper chronological sorting
+  - Automatic timestamp assignment for all new stories using system time
+  - Backwards compatibility through database migration that adds `created_at` column to existing stories
+  - Existing stories without timestamps initially show with `created_at = 0` and appear last in chronological order
+- **Enhanced Story Display Format**: Improved story list formatting with channel information and visual indicators
+  - Updated story list format to show: `📖 [channel] id: Story Name` 
+  - Enhanced command-line display: `📖 Public | Channel: general | id: Story Name`
+  - Added channel information to story details view for better organization
+  - Different emoji indicators for public (📖) vs private (📕) stories
 - **Channel Broadcasting**: Implemented channel sharing functionality between P2P nodes to enable automatic propagation of channels across the network
   - Enhanced `create ch` command to broadcast newly created channels via floodsub to all connected peers
   - Added automatic reception and local storage of channels shared by other peers
