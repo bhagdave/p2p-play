@@ -1,5 +1,0 @@
-[2025-07-31 22:08:31 UTC] BOOTSTRAP_INIT: Loaded bootstrap config with 2 peers
-[2025-07-31 22:08:31 UTC] BOOTSTRAP_INIT: Bootstrap initialized with 2 configured peers
-[2025-07-31 22:08:31 UTC] BOOTSTRAP_ATTEMPT: Attempting automatic DHT bootstrap (attempt 1/5)
-[2025-07-31 22:08:31 UTC] BOOTSTRAP: DHT bootstrap started with 2 peers
-[2025-07-31 22:08:31 UTC] BOOTSTRAP_STATUS: DHT: Bootstrapping (attempt 1)
