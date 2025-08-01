@@ -2,8 +2,9 @@ use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
 };
 use libp2p::floodsub::Event;
-use libp2p::{kad, mdns, ping, request_response};
+use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 pub type Stories = Vec<Story>;
 
@@ -78,6 +79,27 @@ pub struct BootstrapConfig {
     pub retry_interval_ms: u64,
     pub max_retry_attempts: u32,
     pub bootstrap_timeout_ms: u64,
+}
+
+/// Configuration for direct message retry logic
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DirectMessageConfig {
+    pub max_retry_attempts: u8,
+    pub retry_interval_seconds: u64,
+    pub enable_connection_retries: bool,
+    pub enable_timed_retries: bool,
+}
+
+/// Pending direct message for retry logic
+#[derive(Debug, Clone)]
+pub struct PendingDirectMessage {
+    pub target_peer_id: PeerId,
+    pub target_name: String,
+    pub message: DirectMessageRequest,
+    pub attempts: u8,
+    pub last_attempt: Option<Instant>,
+    pub max_attempts: u8,
+    pub is_placeholder_peer_id: bool,
 }
 
 pub type Channels = Vec<Channel>;
@@ -292,5 +314,77 @@ impl BootstrapConfig {
 impl Default for BootstrapConfig {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl DirectMessageConfig {
+    pub fn new() -> Self {
+        Self {
+            max_retry_attempts: 3,
+            retry_interval_seconds: 30,
+            enable_connection_retries: true,
+            enable_timed_retries: true,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_retry_attempts == 0 {
+            return Err("max_retry_attempts must be greater than 0".to_string());
+        }
+
+        if self.retry_interval_seconds == 0 {
+            return Err("retry_interval_seconds must be greater than 0".to_string());
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for DirectMessageConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PendingDirectMessage {
+    pub fn new(
+        target_peer_id: PeerId,
+        target_name: String,
+        message: DirectMessageRequest,
+        max_attempts: u8,
+        is_placeholder_peer_id: bool,
+    ) -> Self {
+        Self {
+            target_peer_id,
+            target_name,
+            message,
+            attempts: 0,
+            last_attempt: None,
+            max_attempts,
+            is_placeholder_peer_id,
+        }
+    }
+
+    pub fn should_retry(&self, retry_interval_seconds: u64) -> bool {
+        if self.attempts >= self.max_attempts {
+            return false;
+        }
+
+        match self.last_attempt {
+            None => true, // First attempt
+            Some(last) => {
+                let elapsed = last.elapsed().as_secs();
+                elapsed >= retry_interval_seconds
+            }
+        }
+    }
+
+    pub fn increment_attempt(&mut self) {
+        self.attempts += 1;
+        self.last_attempt = Some(Instant::now());
+    }
+
+    pub fn is_exhausted(&self) -> bool {
+        self.attempts >= self.max_attempts
     }
 }

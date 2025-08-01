@@ -1,5 +1,6 @@
 use crate::types::{
-    BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels, Stories, Story,
+    BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
+    DirectMessageConfig, Stories, Story,
 };
 use log::{debug, error};
 use rusqlite::Connection;
@@ -758,6 +759,69 @@ pub async fn ensure_bootstrap_config_exists() -> Result<(), Box<dyn Error>> {
         let default_config = BootstrapConfig::default();
         save_bootstrap_config(&default_config).await?;
         debug!("Created default bootstrap config file");
+    }
+    Ok(())
+}
+
+/// Save direct message configuration to file
+pub async fn save_direct_message_config(
+    config: &DirectMessageConfig,
+) -> Result<(), Box<dyn Error>> {
+    save_direct_message_config_to_path(config, "direct_message_config.json").await
+}
+
+/// Save direct message configuration to specific path
+pub async fn save_direct_message_config_to_path(
+    config: &DirectMessageConfig,
+    path: &str,
+) -> Result<(), Box<dyn Error>> {
+    let json = serde_json::to_string_pretty(config)?;
+    fs::write(path, json).await?;
+    debug!("Saved direct message config to {}", path);
+    Ok(())
+}
+
+/// Load direct message configuration from file, creating default if missing
+pub async fn load_direct_message_config() -> Result<DirectMessageConfig, Box<dyn Error>> {
+    load_direct_message_config_from_path("direct_message_config.json").await
+}
+
+/// Load direct message configuration from specific path, creating default if missing
+pub async fn load_direct_message_config_from_path(
+    path: &str,
+) -> Result<DirectMessageConfig, Box<dyn Error>> {
+    match fs::read_to_string(path).await {
+        Ok(content) => {
+            let config: DirectMessageConfig = serde_json::from_str(&content)?;
+
+            // Validate the loaded config
+            config.validate()?;
+
+            debug!("Loaded direct message config from {}", path);
+            Ok(config)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            debug!("No direct message config file found, creating default");
+            let default_config = DirectMessageConfig::default();
+
+            // Save the default config for future use
+            save_direct_message_config_to_path(&default_config, path).await?;
+
+            Ok(default_config)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Ensure direct message config file exists with defaults
+pub async fn ensure_direct_message_config_exists() -> Result<(), Box<dyn Error>> {
+    if tokio::fs::metadata("direct_message_config.json")
+        .await
+        .is_err()
+    {
+        let default_config = DirectMessageConfig::default();
+        save_direct_message_config(&default_config).await?;
+        debug!("Created default direct message config file");
     }
     Ok(())
 }

@@ -8,12 +8,15 @@ use crate::storage::{
     read_subscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
     subscribe_to_channel, unsubscribe_from_channel,
 };
-use crate::types::{ActionResult, ListMode, ListRequest, PeerName, Story};
+use crate::types::{
+    ActionResult, DirectMessageConfig, ListMode, ListRequest, PeerName, PendingDirectMessage, Story,
+};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use log::debug;
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 /// Simple UI logger that can be passed around
@@ -404,6 +407,8 @@ pub async fn handle_direct_message(
     local_peer_name: &Option<String>,
     sorted_peer_names_cache: &SortedPeerNamesCache,
     ui_logger: &UILogger,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) {
     if let Some(rest) = cmd.strip_prefix("msg ") {
         let (to_name, message) =
@@ -428,25 +433,36 @@ pub async fn handle_direct_message(
             }
         };
 
-        // Check if the target peer exists and find their PeerId
-        let target_peer_id = peer_names
+
+        if to_name.trim().is_empty() {
+            ui_logger.log("Peer name cannot be empty".to_string());
+            return;
+        }
+
+
+        if to_name.len() > 50 {
+            ui_logger.log("Peer name too long (max 50 characters)".to_string());
+            return;
+        }
+
+        // Try to find current peer ID, but don't require it
+        let (target_peer_id, is_placeholder) = peer_names
             .iter()
             .find(|(_, name)| name == &&to_name)
-            .map(|(peer_id, _)| *peer_id);
-
-        let target_peer_id = match target_peer_id {
-            Some(peer_id) => peer_id,
-            None => {
-                ui_logger.log(format!(
-                    "Peer '{}' not found. Use 'ls p' to see available peers.",
-                    to_name
-                ));
-                return;
-            }
-        };
+            .map(|(peer_id, _)| (*peer_id, false))
+            .unwrap_or_else(|| {
+                // Generate a placeholder PeerId for queueing - this will be resolved when peer connects
+                // For now, we'll use a hash of the peer name as a temporary PeerId
+                use std::collections::hash_map::DefaultHasher;
+                use std::hash::{Hash, Hasher};
+                let mut hasher = DefaultHasher::new();
+                to_name.hash(&mut hasher);
+                let placeholder_id = PeerId::from_bytes(&hasher.finish().to_be_bytes())
+                    .unwrap_or(PeerId::random());
+                (placeholder_id, true)
+            });
 
         // Create a direct message request with validated sender identity
-        // The from_peer_id is guaranteed to be our actual peer ID since we control the creation
         let direct_msg_request = DirectMessageRequest {
             from_peer_id: PEER_ID.to_string(),
             from_name: from_name.clone(),
@@ -458,15 +474,32 @@ pub async fn handle_direct_message(
                 .as_secs(),
         };
 
-        // Send the direct message using request-response protocol
+        // Add message to retry queue instead of sending immediately
+        let pending_msg = PendingDirectMessage::new(
+            target_peer_id,
+            to_name.clone(),
+            direct_msg_request.clone(),
+            dm_config.max_retry_attempts,
+            is_placeholder,
+        );
+
+        // Try to send immediately, but queue for retry if it fails
         let request_id = swarm
             .behaviour_mut()
             .request_response
             .send_request(&target_peer_id, direct_msg_request);
 
-        ui_logger.log(format!("Direct message sent to {}: {}", to_name, message));
+        // Add to pending queue regardless - will be removed on successful delivery
+        if let Ok(mut queue) = pending_messages.lock() {
+            queue.push(pending_msg);
+        }
+
+        ui_logger.log(format!(
+            "Direct message queued for {}: {}",
+            to_name, message
+        ));
         debug!(
-            "Sent direct message to {} from {} (request_id: {:?})",
+            "Queued direct message to {} from {} (request_id: {:?})",
             to_name, from_name, request_id
         );
     } else {

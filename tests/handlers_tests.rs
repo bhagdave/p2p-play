@@ -1,7 +1,8 @@
 use p2p_play::error_logger::ErrorLogger;
 use p2p_play::handlers::*;
 use p2p_play::network::{PEER_ID, create_swarm};
-use p2p_play::types::{ActionResult, Story};
+use p2p_play::types::{ActionResult, DirectMessageConfig, PendingDirectMessage, Story};
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 #[tokio::test]
@@ -357,6 +358,10 @@ async fn test_handle_direct_message_no_local_name() {
     let mut cache = SortedPeerNamesCache::new();
     cache.update(&peer_names);
 
+    // Setup direct message config and pending messages
+    let dm_config = DirectMessageConfig::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+
     // This should print an error message about needing to set name first
     handle_direct_message(
         "msg Alice Hello",
@@ -365,6 +370,8 @@ async fn test_handle_direct_message_no_local_name() {
         &local_peer_name,
         &cache,
         &ui_logger,
+        &dm_config,
+        &pending_messages,
     )
     .await;
     // Test passes if it doesn't panic
@@ -382,6 +389,10 @@ async fn test_handle_direct_message_invalid_format() {
     let mut cache = SortedPeerNamesCache::new();
     cache.update(&peer_names);
 
+    // Setup direct message config and pending messages
+    let dm_config = DirectMessageConfig::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+
     // Test invalid command formats
     handle_direct_message(
         "msg Alice",
@@ -390,6 +401,8 @@ async fn test_handle_direct_message_invalid_format() {
         &local_peer_name,
         &cache,
         &ui_logger,
+        &dm_config,
+        &pending_messages,
     )
     .await;
     handle_direct_message(
@@ -399,6 +412,8 @@ async fn test_handle_direct_message_invalid_format() {
         &local_peer_name,
         &cache,
         &ui_logger,
+        &dm_config,
+        &pending_messages,
     )
     .await;
     handle_direct_message(
@@ -408,6 +423,8 @@ async fn test_handle_direct_message_invalid_format() {
         &local_peer_name,
         &cache,
         &ui_logger,
+        &dm_config,
+        &pending_messages,
     )
     .await;
     // Test passes if it doesn't panic
@@ -428,6 +445,10 @@ async fn test_handle_direct_message_with_spaces_in_names() {
     let mut cache = SortedPeerNamesCache::new();
     cache.update(&peer_names);
 
+    // Setup direct message config and pending messages
+    let dm_config = DirectMessageConfig::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+
     // Test message to peer with spaces in name
     handle_direct_message(
         "msg Alice Smith Hello world",
@@ -436,6 +457,8 @@ async fn test_handle_direct_message_with_spaces_in_names() {
         &local_peer_name,
         &cache,
         &ui_logger,
+        &dm_config,
+        &pending_messages,
     )
     .await;
     // Test passes if it doesn't panic and correctly parses the name

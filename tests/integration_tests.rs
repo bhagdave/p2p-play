@@ -1,5 +1,6 @@
 use p2p_play::storage::*;
 use p2p_play::types::*;
+use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
 
 #[tokio::test]
@@ -341,6 +342,10 @@ async fn test_name_command_shows_current_alias() {
     let ui_logger = UILogger::new(log_sender);
     let error_logger = ErrorLogger::new("test_integration_errors.log");
 
+    // Setup direct message config and pending messages for the function
+    let dm_config = DirectMessageConfig::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+
     // Test case 1: No alias set
     let mut local_peer_name = None;
     handle_input_event(
@@ -352,6 +357,8 @@ async fn test_name_command_shows_current_alias() {
         &sorted_peer_names_cache,
         &ui_logger,
         &error_logger,
+        &dm_config,
+        &pending_messages,
     )
     .await;
 
@@ -370,6 +377,8 @@ async fn test_name_command_shows_current_alias() {
         &sorted_peer_names_cache,
         &ui_logger,
         &error_logger,
+        &dm_config,
+        &pending_messages,
     )
     .await;
 
