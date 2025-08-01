@@ -5,6 +5,13 @@ All changes to this project will be documented in this file.
 ## [0.7.4] 2025-08-02
 
 ### Added
+- **Configurable Ping Settings**: Enhanced network connectivity reliability with configurable ping keep-alive settings
+  - Implemented more lenient default ping settings (30s interval, 20s timeout vs. previous 15s interval, 10s timeout)
+  - Added file-based configuration support via `ping_config.json` for customizing ping behavior
+  - Created `PingConfig` structure with validation and error handling for loading configuration
+  - Configuration falls back to sensible defaults if file is missing or invalid
+  - Improved connection stability for peers with temporary network hiccups
+  - Note: libp2p 0.56.0 doesn't support configurable max_failures, so only interval and timeout are configurable
 - **Direct Message Retry Logic**: Implemented robust retry mechanism for direct messages with automatic delivery attempts
   - Messages automatically retry up to 3 times before reporting failure
   - Connection-based retries: pending messages retry when target peer reconnects  
