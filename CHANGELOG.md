@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.7.4] 2025-08-02
 
 ### Added
 - **Direct Message Retry Logic**: Implemented robust retry mechanism for direct messages with automatic delivery attempts
