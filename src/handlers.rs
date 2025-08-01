@@ -125,8 +125,15 @@ pub async fn handle_list_stories(
                 Ok(v) => {
                     ui_logger.log(format!("Local stories ({})", v.len()));
                     v.iter().for_each(|r| {
-                        let status = if r.public { "📖 Public" } else { "📕 Private" };
-                        ui_logger.log(format!("{} | Channel: {} | {}: {}", status, r.channel, r.id, r.name));
+                        let status = if r.public {
+                            "📖 Public"
+                        } else {
+                            "📕 Private"
+                        };
+                        ui_logger.log(format!(
+                            "{} | Channel: {} | {}: {}",
+                            status, r.channel, r.id, r.name
+                        ));
                     });
                 }
                 Err(e) => error_logger.log_error(&format!("Failed to fetch local stories: {}", e)),
@@ -395,12 +402,10 @@ pub async fn handle_direct_message(
             }
         };
 
-
         if to_name.trim().is_empty() {
             ui_logger.log("Peer name cannot be empty".to_string());
             return;
         }
-
 
         if to_name.len() > 50 {
             ui_logger.log("Peer name too long (max 50 characters)".to_string());
@@ -419,8 +424,8 @@ pub async fn handle_direct_message(
                 use std::hash::{Hash, Hasher};
                 let mut hasher = DefaultHasher::new();
                 to_name.hash(&mut hasher);
-                let placeholder_id = PeerId::from_bytes(&hasher.finish().to_be_bytes())
-                    .unwrap_or(PeerId::random());
+                let placeholder_id =
+                    PeerId::from_bytes(&hasher.finish().to_be_bytes()).unwrap_or(PeerId::random());
                 (placeholder_id, true)
             });
 
