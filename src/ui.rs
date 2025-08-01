@@ -587,7 +587,7 @@ impl App {
                 .chain(self.received_stories.iter())
                 .map(|story| {
                     let status = if story.public { "📖" } else { "📕" };
-                    ListItem::new(format!("{} {}: {}", status, story.id, story.name))
+                    ListItem::new(format!("{} [{}] {}: {}", status, story.channel, story.id, story.name))
                 })
                 .collect();
 

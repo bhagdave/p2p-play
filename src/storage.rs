@@ -33,7 +33,7 @@ fn get_database_path() -> String {
 static DB_STATE: once_cell::sync::Lazy<RwLock<Option<(Arc<Mutex<Connection>>, String)>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
-async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
+pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
     let current_path = get_database_path();
 
     // Check if we have an existing connection with the same path
@@ -99,7 +99,7 @@ pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
     let conn = conn_arc.lock().await;
 
     let mut stmt =
-        conn.prepare("SELECT id, name, header, body, public, channel FROM stories ORDER BY id")?;
+        conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
     let story_iter = stmt.query_map([], |row| {
         Ok(Story {
             id: row.get::<_, i64>(0)? as usize,
@@ -110,6 +110,7 @@ pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
             channel: row
                 .get::<_, Option<String>>(5)?
                 .unwrap_or_else(|| "general".to_string()),
+            created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
         })
     })?;
 
@@ -132,7 +133,7 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
         let conn = Connection::open(path)?;
 
         let mut stmt = conn
-            .prepare("SELECT id, name, header, body, public, channel FROM stories ORDER BY id")?;
+            .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
         let story_iter = stmt.query_map([], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
@@ -143,6 +144,7 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
                 channel: row
                     .get::<_, Option<String>>(5)?
                     .unwrap_or_else(|| "general".to_string()),
+                created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
             })
         })?;
 
@@ -164,7 +166,7 @@ pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>
 
     for story in stories {
         conn.execute(
-            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
                 &story.id.to_string(),
                 &story.name,
@@ -176,6 +178,7 @@ pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>
                     "0".to_string()
                 }),
                 &story.channel,
+                &story.created_at.to_string(),
             ],
         )?;
     }
@@ -204,7 +207,7 @@ pub async fn write_local_stories_to_path(
 
         for story in stories {
             conn.execute(
-                "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 [
                     &story.id.to_string(),
                     &story.name,
@@ -216,6 +219,7 @@ pub async fn write_local_stories_to_path(
                         "0".to_string()
                     }),
                     &story.channel,
+                    &story.created_at.to_string(),
                 ],
             )?;
         }
@@ -241,9 +245,15 @@ pub async fn create_new_story_with_channel(
     let mut stmt = conn.prepare("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM stories")?;
     let next_id: i64 = stmt.query_row([], |row| row.get(0))?;
 
+    // Get the current timestamp
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
     // Insert the new story
     conn.execute(
-        "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             &next_id.to_string(),
             name,
@@ -251,6 +261,7 @@ pub async fn create_new_story_with_channel(
             body,
             "0", // New stories start as private (0 = false)
             channel,
+            &created_at.to_string(),
         ],
     )?;
 
@@ -283,6 +294,10 @@ pub async fn create_new_story_in_path(
         body: body.to_owned(),
         public: false,
         channel: "general".to_string(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
     });
     write_local_stories_to_path(&local_stories, path).await?;
     Ok(new_id)
@@ -304,7 +319,7 @@ pub async fn publish_story(
     if rows_affected > 0 {
         // Fetch the updated story to send it
         let mut stmt = conn
-            .prepare("SELECT id, name, header, body, public, channel FROM stories WHERE id = ?")?;
+            .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?")?;
         let story_result = stmt.query_row([&id.to_string()], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
@@ -315,6 +330,7 @@ pub async fn publish_story(
                 channel: row
                     .get::<_, Option<String>>(5)?
                     .unwrap_or_else(|| "general".to_string()),
+                created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
             })
         });
 
@@ -379,7 +395,7 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
 
         // Insert the story with the new ID and mark as public
         conn.execute(
-            "INSERT INTO stories (id, name, header, body, public, channel) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
                 &new_id.to_string(),
                 &story.name,
@@ -387,6 +403,7 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
                 &story.body,
                 "1", // Mark as public since it was published (1 = true)
                 &story.channel,
+                &story.created_at.to_string(),
             ],
         )?;
 
@@ -419,6 +436,13 @@ pub async fn save_received_story_to_path(
         };
         story.id = new_id;
         story.public = true;
+        // Set created_at if not already set
+        if story.created_at == 0 {
+            story.created_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+        }
 
         local_stories.push(story);
         write_local_stories_to_path(&local_stories, path).await?;
@@ -600,7 +624,7 @@ pub async fn get_stories_by_channel(channel_name: &str) -> Result<Stories, Box<d
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let mut stmt = conn.prepare("SELECT id, name, header, body, public, channel FROM stories WHERE channel = ? AND public = 1 ORDER BY id")?;
+    let mut stmt = conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE channel = ? AND public = 1 ORDER BY created_at DESC")?;
     let story_iter = stmt.query_map([channel_name], |row| {
         Ok(Story {
             id: row.get::<_, i64>(0)? as usize,
@@ -609,6 +633,7 @@ pub async fn get_stories_by_channel(channel_name: &str) -> Result<Stories, Box<d
             body: row.get(3)?,
             public: row.get::<_, i64>(4)? != 0,
             channel: row.get(5)?,
+            created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
         })
     })?;
 
