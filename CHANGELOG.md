@@ -40,6 +40,8 @@ All changes to this project will be documented in this file.
   - Fallback to standard logging if file operations fail
 
 ### Fixed
+- **TUI Auto-scroll Re-enable Functionality**: Fixed issue where new messages were not immediately visible after re-enabling auto-scroll mode. When users pressed 'End' to re-enable auto-scroll after manual scrolling, the scroll offset was not properly reset, causing new messages to not be automatically displayed at the bottom of the output log. Enhanced the auto-scroll re-enable logic to reset the scroll offset when transitioning back to auto-scroll mode, ensuring new messages are immediately visible. Addresses feedback on PR for issue #102.
+- **TUI Auto-scroll to Manual Scroll Transition**: Fixed jarring jump behavior when transitioning from auto-scroll to manual scrolling in the TUI. When auto-scroll was active and users pressed arrow keys to manually scroll, the view would incorrectly jump to the stored scroll offset (often position 0) instead of smoothly continuing from the current display position. Enhanced `scroll_up()` and `scroll_down()` methods to capture the current auto-scroll position before transitioning to manual scroll mode, providing an intuitive and seamless scrolling experience. Fixes issue #102.
 - **TUI Connection Error Display**: Removed "Failed to connect" messages from TUI output while preserving error logging to `errors.log` file for debugging purposes. This eliminates unnecessary noise in the user interface while maintaining full error tracking capabilities. Fixes issue #100.
 - Fixed test coverage reporting configuration with tarpaulin.
 

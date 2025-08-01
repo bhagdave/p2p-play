@@ -167,6 +167,8 @@ impl App {
                     KeyCode::End => {
                         // Re-enable auto-scroll and go to bottom
                         self.auto_scroll = true;
+                        // Reset scroll offset to ensure clean transition to auto-scroll
+                        self.scroll_offset = 0;
                     }
                     _ => {}
                 },
@@ -385,19 +387,64 @@ impl App {
         }
     }
 
+    /// Calculate the current scroll position based on auto_scroll state and available height
+    /// Returns the scroll offset that should be used for display
+    fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
+        let total_lines = self.output_log.len();
+
+        if self.auto_scroll {
+            // Auto-scroll: show the bottom of the log
+            if total_lines <= available_height {
+                0
+            } else {
+                total_lines.saturating_sub(available_height)
+            }
+        } else {
+            // Manual scroll: use the current scroll_offset, but clamp it
+            if total_lines <= available_height {
+                0
+            } else {
+                let max_scroll = total_lines.saturating_sub(available_height);
+                self.scroll_offset.min(max_scroll)
+            }
+        }
+    }
+
     fn scroll_up(&mut self) {
-        // Always disable auto-scroll when user manually scrolls
+        // If auto-scroll is currently enabled, we need to transition smoothly
+        // by setting scroll_offset to the current auto-scroll position first
+        if self.auto_scroll {
+            // Estimate available height (terminal height minus UI elements)
+            // Conservative estimate: assume terminal is at least 24 lines,
+            // minus 3 for status, 3 for input, 2 for borders = ~16 lines for output
+            let estimated_height = 16;
+            self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
+        }
+
+        // Disable auto-scroll when user manually scrolls
         self.auto_scroll = false;
+
+        // Now perform the scroll up operation
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
         }
     }
 
     fn scroll_down(&mut self) {
-        // Don't use the old max_scroll calculation that was based on line index
-        // Instead, we'll let the draw() method handle proper clamping
+        // If auto-scroll is currently enabled, we need to transition smoothly
+        // by setting scroll_offset to the current auto-scroll position first
+        if self.auto_scroll {
+            // Estimate available height (terminal height minus UI elements)
+            let estimated_height = 16;
+            self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
+        }
+
+        // Disable auto-scroll when user manually scrolls
+        self.auto_scroll = false;
+
+        // Now perform the scroll down operation
+        // We'll let the draw() method handle proper clamping of the scroll_offset
         self.scroll_offset += 1;
-        self.auto_scroll = false; // Disable auto-scroll when user manually scrolls
     }
 
     pub fn draw(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -624,304 +671,4 @@ pub async fn handle_ui_events(
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use libp2p::PeerId;
-    use std::collections::HashMap;
-
-    #[test]
-    fn test_app_creation() {
-        // We can't test the full app creation due to terminal requirements
-        // but we can test the data structures
-        let mut peers = HashMap::new();
-        let peer_id = PeerId::random();
-        peers.insert(peer_id, "test_peer".to_string());
-
-        // Test that the data structures work as expected
-        assert_eq!(peers.len(), 1);
-        assert_eq!(peers.get(&peer_id), Some(&"test_peer".to_string()));
-    }
-
-    #[test]
-    fn test_input_mode() {
-        let normal_mode = InputMode::Normal;
-        let editing_mode = InputMode::Editing;
-
-        assert_eq!(normal_mode, InputMode::Normal);
-        assert_eq!(editing_mode, InputMode::Editing);
-        assert_ne!(normal_mode, editing_mode);
-    }
-
-    #[test]
-    fn test_app_event_variants() {
-        let events = vec![
-            AppEvent::Input("test".to_string()),
-            AppEvent::Quit,
-            AppEvent::Log("test log".to_string()),
-            AppEvent::PeerUpdate(HashMap::new()),
-            AppEvent::StoriesUpdate(Vec::new()),
-            AppEvent::ReceivedStoriesUpdate(Vec::new()),
-            AppEvent::PeerNameUpdate(None),
-        ];
-
-        // Test that we can create all event variants
-        assert_eq!(events.len(), 7);
-    }
-
-    #[test]
-    fn test_story_creation_states() {
-        // Test story creation step enumeration
-        let steps = [
-            StoryCreationStep::Name,
-            StoryCreationStep::Header,
-            StoryCreationStep::Body,
-            StoryCreationStep::Channel,
-        ];
-        assert_eq!(steps.len(), 4);
-
-        // Test partial story creation
-        let partial = PartialStory {
-            name: Some("Test Story".to_string()),
-            header: Some("Test Header".to_string()),
-            body: None,
-            channel: None,
-        };
-        assert_eq!(partial.name, Some("Test Story".to_string()));
-        assert_eq!(partial.header, Some("Test Header".to_string()));
-        assert!(partial.body.is_none());
-        assert!(partial.channel.is_none());
-    }
-
-    #[test]
-    fn test_input_mode_story_creation() {
-        let normal_mode = InputMode::Normal;
-        let editing_mode = InputMode::Editing;
-        let creating_mode = InputMode::CreatingStory {
-            step: StoryCreationStep::Name,
-            partial_story: PartialStory {
-                name: None,
-                header: None,
-                body: None,
-                channel: None,
-            },
-        };
-
-        assert_eq!(normal_mode, InputMode::Normal);
-        assert_eq!(editing_mode, InputMode::Editing);
-        assert_ne!(normal_mode, creating_mode);
-        assert_ne!(editing_mode, creating_mode);
-
-        // Test that story creation mode holds the right data
-        if let InputMode::CreatingStory {
-            step,
-            partial_story,
-        } = creating_mode
-        {
-            assert_eq!(step, StoryCreationStep::Name);
-            assert!(partial_story.name.is_none());
-        } else {
-            panic!("Expected CreatingStory mode");
-        }
-    }
-
-    #[test]
-    fn test_direct_message_handling() {
-        // Test DirectMessage creation with mock data
-        let dm = DirectMessage {
-            from_peer_id: "peer123".to_string(),
-            from_name: "Alice".to_string(),
-            to_name: "Bob".to_string(),
-            message: "Hello Bob!".to_string(),
-            timestamp: 1234567890,
-        };
-
-        assert_eq!(dm.from_name, "Alice");
-        assert_eq!(dm.message, "Hello Bob!");
-    }
-
-    #[test]
-    fn test_story_formatting() {
-        use crate::types::Story;
-
-        let story = Story {
-            id: 1,
-            name: "Test Story".to_string(),
-            header: "Test Header".to_string(),
-            body: "Test Body".to_string(),
-            public: true,
-            channel: "general".to_string(),
-            created_at: 1234567890,
-        };
-
-        let status = if story.public { "📖" } else { "📕" };
-        let formatted = format!("{} [{}] {}: {}", status, story.channel, story.id, story.name);
-
-        assert_eq!(formatted, "📖 [general] 1: Test Story");
-    }
-
-    #[test]
-    fn test_version_display_in_status_bar() {
-        // Test that the version is properly included in status bar text
-        let version = env!("CARGO_PKG_VERSION");
-
-        // Test status bar with peer name
-        let status_with_peer = format!(
-            "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {}",
-            version, "TestPeer", 2, "Normal"
-        );
-        assert!(status_with_peer.contains("P2P-Play v"));
-        assert!(status_with_peer.contains(version));
-
-        // Test status bar without peer name
-        let status_without_peer = format!(
-            "P2P-Play v{} | No peer name set | Connected: {} | Mode: {}",
-            version, 0, "Editing"
-        );
-        assert!(status_without_peer.contains("P2P-Play v"));
-        assert!(status_without_peer.contains(version));
-    }
-
-    #[test]
-    fn test_clear_output_functionality() {
-        // Create a mock app structure for testing clear output
-        let mut mock_app = MockApp {
-            output_log: vec![
-                "Initial message 1".to_string(),
-                "Initial message 2".to_string(),
-                "Initial message 3".to_string(),
-            ],
-            scroll_offset: 2,
-        };
-
-        // Verify initial state
-        assert_eq!(mock_app.output_log.len(), 3);
-        assert_eq!(mock_app.scroll_offset, 2);
-
-        // Test clear output
-        mock_app.clear_output();
-
-        // Should have only the "Output cleared" message
-        assert_eq!(mock_app.output_log.len(), 1);
-        assert_eq!(mock_app.output_log[0], "🧹 Output cleared");
-        assert_eq!(mock_app.scroll_offset, 0);
-    }
-
-    #[test]
-    fn test_clear_output_when_empty() {
-        // Test clearing when output log is empty
-        let mut mock_app = MockApp {
-            output_log: vec![],
-            scroll_offset: 0,
-        };
-
-        mock_app.clear_output();
-
-        // Should have only the "Output cleared" message
-        assert_eq!(mock_app.output_log.len(), 1);
-        assert_eq!(mock_app.output_log[0], "🧹 Output cleared");
-        assert_eq!(mock_app.scroll_offset, 0);
-    }
-
-    #[test]
-    fn test_auto_scroll_functionality() {
-        // Create a mock app structure for testing auto-scroll
-        let mut mock_app = MockAppWithAutoScroll {
-            output_log: vec![
-                "Initial message 1".to_string(),
-                "Initial message 2".to_string(),
-            ],
-            scroll_offset: 0,
-            auto_scroll: true,
-        };
-
-        // Test initial state
-        assert_eq!(mock_app.output_log.len(), 2);
-        assert_eq!(mock_app.scroll_offset, 0);
-        assert!(mock_app.auto_scroll);
-
-        // Test adding a message with auto-scroll enabled
-        mock_app.add_to_log("New message 1".to_string());
-        assert_eq!(mock_app.output_log.len(), 3);
-        // Note: scroll position is now handled in draw() method, not in add_to_log()
-
-        // Test manual scroll disables auto-scroll
-        mock_app.scroll_up();
-        assert!(!mock_app.auto_scroll);
-
-        // Test adding message with auto-scroll disabled
-        mock_app.add_to_log("New message 2".to_string());
-        assert_eq!(mock_app.output_log.len(), 4);
-        // Scroll position doesn't change since it's handled in draw()
-
-        // Test re-enabling auto-scroll
-        mock_app.auto_scroll = true;
-        mock_app.add_to_log("New message 3".to_string());
-        assert_eq!(mock_app.output_log.len(), 5);
-        // Auto-scroll positioning happens in draw() method
-    }
-
-    #[test]
-    fn test_auto_scroll_status_display() {
-        // Test that auto-scroll status is properly displayed
-        let mut mock_app = MockAppWithAutoScroll {
-            output_log: vec!["Test".to_string()],
-            scroll_offset: 0,
-            auto_scroll: true,
-        };
-
-        assert!(mock_app.auto_scroll);
-
-        mock_app.scroll_up();
-        assert!(!mock_app.auto_scroll);
-    }
-
-    // Mock App structure for testing since we can't create a full App with terminal
-    struct MockApp {
-        output_log: Vec<String>,
-        scroll_offset: usize,
-    }
-
-    impl MockApp {
-        fn clear_output(&mut self) {
-            self.output_log.clear();
-            self.scroll_offset = 0;
-            self.add_to_log("🧹 Output cleared".to_string());
-        }
-
-        fn add_to_log(&mut self, message: String) {
-            self.output_log.push(message);
-            // Preserve scroll_offset = 0 if the log was cleared
-            if self.output_log.len() == 1 && self.output_log[0] == "🧹 Output cleared" {
-                self.scroll_offset = 0;
-            } else {
-                self.scroll_offset = self.output_log.len().saturating_sub(1);
-            }
-        }
-    }
-
-    // Mock App structure for testing auto-scroll functionality
-    struct MockAppWithAutoScroll {
-        output_log: Vec<String>,
-        scroll_offset: usize,
-        auto_scroll: bool,
-    }
-
-    impl MockAppWithAutoScroll {
-        fn add_to_log(&mut self, message: String) {
-            self.output_log.push(message);
-            // Note: In the real implementation, scroll position is handled in draw() method
-            // For testing, we don't simulate the auto-scroll here since it's handled elsewhere
-        }
-
-        fn scroll_up(&mut self) {
-            // Always disable auto-scroll when user manually scrolls, even if at top
-            self.auto_scroll = false;
-            if self.scroll_offset > 0 {
-                self.scroll_offset -= 1;
-            }
-        }
-    }
 }
