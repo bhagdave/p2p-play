@@ -688,3 +688,175 @@ fn test_channel_subscriptions_type_alias() {
     assert_eq!(subscriptions[1].peer_id, "peer2");
     assert_eq!(subscriptions[1].channel_name, "tech");
 }
+
+#[test]
+fn test_network_config_new() {
+    let config = NetworkConfig::new();
+    assert_eq!(config.request_timeout_seconds, 60);
+    assert_eq!(config.max_concurrent_streams, 100);
+}
+
+#[test]
+fn test_network_config_default() {
+    let config = NetworkConfig::default();
+    let new_config = NetworkConfig::new();
+    assert_eq!(config.request_timeout_seconds, new_config.request_timeout_seconds);
+    assert_eq!(config.max_concurrent_streams, new_config.max_concurrent_streams);
+}
+
+#[test]
+fn test_network_config_serialization() {
+    let config = NetworkConfig::new();
+
+    let json = serde_json::to_string(&config).unwrap();
+    let deserialized: NetworkConfig = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(config.request_timeout_seconds, deserialized.request_timeout_seconds);
+    assert_eq!(config.max_concurrent_streams, deserialized.max_concurrent_streams);
+}
+
+#[test]
+fn test_network_config_validate_valid() {
+    let config = NetworkConfig::new();
+    assert!(config.validate().is_ok());
+
+    let custom_config = NetworkConfig {
+        request_timeout_seconds: 30,
+        max_concurrent_streams: 50,
+    };
+    assert!(custom_config.validate().is_ok());
+}
+
+#[test]
+fn test_network_config_validate_timeout_too_low() {
+    let config = NetworkConfig {
+        request_timeout_seconds: 5, // Too low, minimum is 10
+        max_concurrent_streams: 100,
+    };
+    let result = config.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("at least 10 seconds"));
+}
+
+#[test]
+fn test_network_config_validate_timeout_too_high() {
+    let config = NetworkConfig {
+        request_timeout_seconds: 400, // Too high, maximum is 300
+        max_concurrent_streams: 100,
+    };
+    let result = config.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("not exceed 300 seconds"));
+}
+
+#[test]
+fn test_network_config_validate_streams_zero() {
+    let config = NetworkConfig {
+        request_timeout_seconds: 60,
+        max_concurrent_streams: 0, // Invalid
+    };
+    let result = config.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("must be greater than 0"));
+}
+
+#[test]
+fn test_network_config_validate_streams_too_high() {
+    let config = NetworkConfig {
+        request_timeout_seconds: 60,
+        max_concurrent_streams: 1500, // Too high, maximum is 1000
+    };
+    let result = config.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("not exceed 1000"));
+}
+
+#[test]
+fn test_network_config_boundary_values() {
+    // Test minimum valid values
+    let min_config = NetworkConfig {
+        request_timeout_seconds: 10,
+        max_concurrent_streams: 1,
+    };
+    assert!(min_config.validate().is_ok());
+
+    // Test maximum valid values
+    let max_config = NetworkConfig {
+        request_timeout_seconds: 300,
+        max_concurrent_streams: 1000,
+    };
+    assert!(max_config.validate().is_ok());
+}
+
+#[cfg(test)]
+mod network_config_file_tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+    use std::fs;
+
+    #[test]
+    fn test_network_config_save_and_load() {
+        let config = NetworkConfig {
+            request_timeout_seconds: 45,
+            max_concurrent_streams: 150,
+        };
+
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().to_str().unwrap();
+
+        // Save config
+        config.save_to_file(temp_path).unwrap();
+
+        // Load config
+        let loaded_config = NetworkConfig::load_from_file(temp_path).unwrap();
+
+        assert_eq!(config.request_timeout_seconds, loaded_config.request_timeout_seconds);
+        assert_eq!(config.max_concurrent_streams, loaded_config.max_concurrent_streams);
+    }
+
+    #[test]
+    fn test_network_config_load_creates_default_when_missing() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().to_str().unwrap();
+
+        // Delete the temp file to simulate missing config
+        fs::remove_file(temp_path).unwrap();
+
+        // Load should create default config
+        let loaded_config = NetworkConfig::load_from_file(temp_path).unwrap();
+
+        assert_eq!(loaded_config.request_timeout_seconds, 60);
+        assert_eq!(loaded_config.max_concurrent_streams, 100);
+
+        // Verify file was created
+        assert!(fs::metadata(temp_path).is_ok());
+    }
+
+    #[test]
+    fn test_network_config_load_validates_content() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().to_str().unwrap();
+
+        // Write invalid config
+        let invalid_config = r#"{"request_timeout_seconds": 5, "max_concurrent_streams": 100}"#;
+        fs::write(temp_path, invalid_config).unwrap();
+
+        // Load should fail validation
+        let result = NetworkConfig::load_from_file(temp_path);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("at least 10 seconds"));
+    }
+
+    #[test]
+    fn test_network_config_load_malformed_json() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().to_str().unwrap();
+
+        // Write malformed JSON
+        fs::write(temp_path, "{ invalid json }").unwrap();
+
+        // Load should fail
+        let result = NetworkConfig::load_from_file(temp_path);
+        assert!(result.is_err());
+    }
+}

@@ -1,9 +1,0 @@
-{
-  "bootstrap_peers": [
-    "/ip4/127.0.0.1/tcp/8080",
-    "/ip4/192.168.1.1/tcp/9000/p2p/12D3KooWGqcJhZLALpLwjJHCRE4zepYzxTruktZF4jX8E6tQ5678"
-  ],
-  "retry_interval_ms": 1000,
-  "max_retry_attempts": 5,
-  "bootstrap_timeout_ms": 30000
-}
