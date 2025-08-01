@@ -511,6 +511,7 @@ pub async fn handle_request_response_event(
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) {
     match event {
@@ -571,7 +572,10 @@ pub async fn handle_request_response_event(
                         .request_response
                         .send_response(channel, response)
                     {
-                        error!("Failed to send response to {}: {:?}", peer, e);
+                        error_logger.log_network_error(
+                            "direct_message",
+                            &format!("Failed to send response to {}: {:?}", peer, e)
+                        );
                     }
                 }
                 request_response::Message::Response { response, .. } => {
@@ -602,7 +606,11 @@ pub async fn handle_request_response_event(
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            error!("Failed to send direct message to {}: {:?}", peer, error);
+            // Log to error file instead of TUI to avoid corrupting the interface
+            error_logger.log_network_error(
+                "direct_message",
+                &format!("Failed to send direct message to {}: {:?}", peer, error)
+            );
             // Don't immediately report failure to user - let retry logic handle it
             debug!(
                 "Direct message to {} failed, will be retried automatically",
@@ -610,9 +618,10 @@ pub async fn handle_request_response_event(
             );
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            error!(
-                "Failed to receive direct message from {}: {:?}",
-                peer, error
+            // Log to error file instead of TUI to avoid corrupting the interface
+            error_logger.log_network_error(
+                "direct_message",
+                &format!("Failed to receive direct message from {}: {:?}", peer, error)
             );
         }
         request_response::Event::ResponseSent { peer, .. } => {
@@ -855,6 +864,7 @@ pub async fn handle_event(
                 swarm,
                 local_peer_name,
                 ui_logger,
+                error_logger,
                 pending_messages,
             )
             .await;
