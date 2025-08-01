@@ -76,7 +76,6 @@ async fn test_handle_help() {
     }
 
     assert!(!messages.is_empty());
-    // Remove check for "ls p" since that command was removed
     assert!(messages.iter().any(|m| m.contains("create s")));
     assert!(messages.iter().any(|m| m.contains("show story")));
     assert!(messages.iter().any(|m| m.contains("dht bootstrap")));
