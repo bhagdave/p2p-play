@@ -24,9 +24,7 @@ async fn test_network_config_validation_too_low() {
     };
     let result = config.validate();
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("must be at least 60 seconds"));
+    assert!(result.unwrap_err().contains("must be at least 60 seconds"));
 }
 
 #[tokio::test]
@@ -36,9 +34,7 @@ async fn test_network_config_validation_too_high() {
     };
     let result = config.validate();
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .contains("must be at most 3600 seconds"));
+    assert!(result.unwrap_err().contains("must be at most 3600 seconds"));
 }
 
 #[tokio::test]
@@ -122,10 +118,12 @@ async fn test_load_network_config_invalid_values() {
     // Should fail validation
     let result = load_network_config_from_path(path).await;
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("must be at least 60 seconds"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("must be at least 60 seconds")
+    );
 }
 
 #[tokio::test]
@@ -137,7 +135,7 @@ async fn test_ensure_network_config_exists() {
     fs::remove_file(path).unwrap();
 
     // Ensure config exists should create it
-    // Note: This test would need to be adapted since ensure_network_config_exists() 
+    // Note: This test would need to be adapted since ensure_network_config_exists()
     // uses a hardcoded path. For this test, we're testing the pattern.
     assert!(!fs::metadata(path).is_ok());
 }

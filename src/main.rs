@@ -16,11 +16,13 @@ use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_bootstrap_config_exists, ensure_direct_message_config_exists, ensure_network_config_exists,
-    ensure_stories_file_exists, load_bootstrap_config, load_direct_message_config, load_network_config,
-    load_local_peer_name,
+    ensure_bootstrap_config_exists, ensure_direct_message_config_exists,
+    ensure_network_config_exists, ensure_stories_file_exists, load_bootstrap_config,
+    load_direct_message_config, load_local_peer_name, load_network_config,
 };
-use types::{ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage};
+use types::{
+    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage,
+};
 use ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -146,8 +148,9 @@ async fn main() {
     };
 
     // Create a timer for periodic connection maintenance using configurable interval
-    let mut connection_maintenance_interval =
-        tokio::time::interval(tokio::time::Duration::from_secs(network_config.connection_maintenance_interval_seconds));
+    let mut connection_maintenance_interval = tokio::time::interval(
+        tokio::time::Duration::from_secs(network_config.connection_maintenance_interval_seconds),
+    );
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
 

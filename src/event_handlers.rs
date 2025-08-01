@@ -574,7 +574,7 @@ pub async fn handle_request_response_event(
                     {
                         error_logger.log_network_error(
                             "direct_message",
-                            &format!("Failed to send response to {}: {:?}", peer, e)
+                            &format!("Failed to send response to {}: {:?}", peer, e),
                         );
                     }
                 }
@@ -609,7 +609,7 @@ pub async fn handle_request_response_event(
             // Log to error file instead of TUI to avoid corrupting the interface
             error_logger.log_network_error(
                 "direct_message",
-                &format!("Failed to send direct message to {}: {:?}", peer, error)
+                &format!("Failed to send direct message to {}: {:?}", peer, error),
             );
             // Don't immediately report failure to user - let retry logic handle it
             debug!(
@@ -621,7 +621,10 @@ pub async fn handle_request_response_event(
             // Log to error file instead of TUI to avoid corrupting the interface
             error_logger.log_network_error(
                 "direct_message",
-                &format!("Failed to receive direct message from {}: {:?}", peer, error)
+                &format!(
+                    "Failed to receive direct message from {}: {:?}",
+                    peer, error
+                ),
             );
         }
         request_response::Event::ResponseSent { peer, .. } => {
@@ -1063,9 +1066,10 @@ pub async fn process_pending_messages(
             {
                 // Update the message with the real PeerId
                 if let Ok(mut queue) = pending_messages.lock() {
-                    if let Some(stored_msg) = queue.iter_mut().find(|m| 
-                        m.target_name == msg.target_name && m.is_placeholder_peer_id
-                    ) {
+                    if let Some(stored_msg) = queue
+                        .iter_mut()
+                        .find(|m| m.target_name == msg.target_name && m.is_placeholder_peer_id)
+                    {
                         stored_msg.target_peer_id = *real_peer_id;
                         stored_msg.is_placeholder_peer_id = false;
                     }
@@ -1073,7 +1077,10 @@ pub async fn process_pending_messages(
                 *real_peer_id
             } else {
                 // Peer not connected or name not known yet, skip this retry
-                debug!("Peer {} not found or name not available yet, skipping retry", msg.target_name);
+                debug!(
+                    "Peer {} not found or name not available yet, skipping retry",
+                    msg.target_name
+                );
                 continue;
             }
         } else {

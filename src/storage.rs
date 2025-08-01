@@ -319,8 +319,9 @@ pub async fn publish_story(
 
     if rows_affected > 0 {
         // Fetch the updated story to send it
-        let mut stmt = conn
-            .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?",
+        )?;
         let story_result = stmt.query_row([&id.to_string()], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
@@ -827,9 +828,7 @@ pub async fn ensure_direct_message_config_exists() -> Result<(), Box<dyn Error>>
 }
 
 /// Save network configuration to file
-pub async fn save_network_config(
-    config: &NetworkConfig,
-) -> Result<(), Box<dyn Error>> {
+pub async fn save_network_config(config: &NetworkConfig) -> Result<(), Box<dyn Error>> {
     save_network_config_to_path(config, "network_config.json").await
 }
 
@@ -850,9 +849,7 @@ pub async fn load_network_config() -> Result<NetworkConfig, Box<dyn Error>> {
 }
 
 /// Load network configuration from specific path, creating default if missing
-pub async fn load_network_config_from_path(
-    path: &str,
-) -> Result<NetworkConfig, Box<dyn Error>> {
+pub async fn load_network_config_from_path(path: &str) -> Result<NetworkConfig, Box<dyn Error>> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: NetworkConfig = serde_json::from_str(&content)?;
@@ -878,10 +875,7 @@ pub async fn load_network_config_from_path(
 
 /// Ensure network config file exists with defaults
 pub async fn ensure_network_config_exists() -> Result<(), Box<dyn Error>> {
-    if tokio::fs::metadata("network_config.json")
-        .await
-        .is_err()
-    {
+    if tokio::fs::metadata("network_config.json").await.is_err() {
         let default_config = NetworkConfig::default();
         save_network_config(&default_config).await?;
         debug!("Created default network config file");
