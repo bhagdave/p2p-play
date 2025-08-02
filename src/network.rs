@@ -75,12 +75,12 @@ fn generate_and_save_keypair() -> identity::Keypair {
             Err(e) => {
                 let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
                 error_logger.log_error(&format!("Failed to save keypair: {}", e));
-            }
+            },
         },
         Err(e) => {
             let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
             error_logger.log_error(&format!("Failed to encode keypair: {}", e));
-        }
+        },
     }
     keypair
 }

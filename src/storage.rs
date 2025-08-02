@@ -339,12 +339,7 @@ pub async fn publish_story(
         if let Ok(story) = story_result {
             if let Err(e) = sender.send(story) {
                 let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
-                crate::log_network_error!(
-                    error_logger,
-                    "storage",
-                    "error sending story for broadcast: {}",
-                    e
-                );
+                crate::log_network_error!(error_logger, "storage", "error sending story for broadcast: {}", e);
             }
         }
     }
@@ -669,7 +664,7 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     conn.execute("DELETE FROM stories", [])?;
     conn.execute("DELETE FROM channels", [])?; // Clear all channels, general will be recreated by migrations
     conn.execute("DELETE FROM peer_name", [])?;
-
+    
     // Recreate the general channel to ensure consistent test state
     conn.execute(
         r#"
