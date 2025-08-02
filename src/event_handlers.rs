@@ -269,26 +269,21 @@ pub async fn handle_floodsub_event(
                             published.story.name, msg.source, published.story.channel
                         ));
 
-                        // Save received story to local storage asynchronously (non-blocking)
-                        let story_to_save = published.story.clone();
-                        let ui_logger_clone = ui_logger.clone();
-                        let error_logger_clone = ErrorLogger::new("errors.log");
-                        tokio::spawn(async move {
-                            if let Err(e) = save_received_story(story_to_save).await {
-                                // Log error but don't block the main event loop
-                                crate::log_network_error!(
-                                    error_logger_clone,
-                                    "storage",
-                                    "Failed to save received story: {}",
-                                    e
-                                );
-                                ui_logger_clone
-                                    .log(format!("Warning: Failed to save received story: {}", e));
-                            }
-                        });
-
-                        // Signal that stories need to be refreshed
-                        return Some(());
+                        // Save received story to local storage synchronously to ensure TUI refresh sees it
+                        if let Err(e) = save_received_story(published.story.clone()).await {
+                            // Log error but continue processing
+                            crate::log_network_error!(
+                                error_logger,
+                                "storage",
+                                "Failed to save received story: {}",
+                                e
+                            );
+                            ui_logger
+                                .log(format!("Warning: Failed to save received story: {}", e));
+                        } else {
+                            // Signal that stories need to be refreshed only if save was successful
+                            return Some(());
+                        }
                     } else {
                         debug!(
                             "Ignoring story '{}' from channel '{}' - not subscribed",

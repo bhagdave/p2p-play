@@ -4,6 +4,12 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **TUI Story Display**: Fixed received stories not appearing in TUI interface immediately after being received
+  - Resolved race condition where story saving was asynchronous but UI refresh happened immediately
+  - Stories received from other peers now appear in TUI Stories panel immediately after the automatic refresh
+  - Ensures consistency between command-line `ls s` output and TUI Stories panel
+
 ### Added
 - **Swarm Configuration Improvements**: Implemented comprehensive swarm configuration with connection limits and enhanced event filtering
   - Added granular connection control through new NetworkConfig fields: `max_connections_per_peer` (default: 1), `max_pending_incoming` (default: 10), `max_pending_outgoing` (default: 10), `max_established_total` (default: 100), and `connection_establishment_timeout_seconds` (default: 30)
