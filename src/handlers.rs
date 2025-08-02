@@ -291,7 +291,31 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("dht bootstrap add/remove/list/clear/retry - manage bootstrap peers".to_string());
     ui_logger.log("dht bootstrap <multiaddr> to bootstrap directly with peer".to_string());
     ui_logger.log("dht peers to find closest peers in DHT".to_string());
+    ui_logger.log("reload config to reload network configuration".to_string());
     ui_logger.log("quit to quit".to_string());
+}
+
+pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
+    use crate::storage::load_unified_network_config;
+    
+    match load_unified_network_config().await {
+        Ok(config) => {
+            // For now, just validate and log success
+            if let Err(e) = config.validate() {
+                ui_logger.log(format!("❌ Configuration validation failed: {}", e));
+            } else {
+                ui_logger.log("✅ Network configuration reloaded successfully".to_string());
+                ui_logger.log(format!("📊 Bootstrap peers: {}", config.bootstrap.bootstrap_peers.len()));
+                ui_logger.log(format!("🔧 Connection maintenance interval: {}s", config.network.connection_maintenance_interval_seconds));
+                ui_logger.log(format!("🏓 Ping interval: {}s", config.ping.interval_secs));
+                ui_logger.log(format!("💬 DM max retry attempts: {}", config.direct_message.max_retry_attempts));
+                ui_logger.log("⚠️  Note: Some configuration changes require application restart to take effect".to_string());
+            }
+        }
+        Err(e) => {
+            ui_logger.log(format!("❌ Failed to reload configuration: {}", e));
+        }
+    }
 }
 
 pub async fn handle_set_name(

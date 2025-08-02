@@ -4,7 +4,8 @@ use std::fs;
 
 #[tokio::test]
 async fn test_create_swarm() {
-    let result = create_swarm();
+    let ping_config = p2p_play::types::PingConfig::new();
+    let result = create_swarm(&ping_config);
     assert!(result.is_ok());
 
     let swarm = result.unwrap();
@@ -64,7 +65,8 @@ async fn test_network_config_integration() {
     assert_eq!(config.max_concurrent_streams, 100);
 
     // Ensure create_swarm still works (it should use the config internally)
-    let result = create_swarm();
+    let ping_config = p2p_play::types::PingConfig::new();
+    let result = create_swarm(&ping_config);
     assert!(result.is_ok());
 }
 
@@ -101,7 +103,8 @@ async fn test_network_config_file_integration() {
 #[tokio::test]
 async fn test_enhanced_tcp_configuration() {
     // Test that the enhanced TCP configuration creates a valid swarm
-    let result = create_swarm();
+    let ping_config = p2p_play::types::PingConfig::new();
+    let result = create_swarm(&ping_config);
     assert!(
         result.is_ok(),
         "Enhanced TCP configuration should create valid swarm"
@@ -151,7 +154,8 @@ fn test_tcp_configuration_components() {
 #[tokio::test]
 async fn test_swarm_creation_with_connection_limits() {
     // Test that swarm creation includes connection management features
-    let result = create_swarm();
+    let ping_config = p2p_play::types::PingConfig::new();
+    let result = create_swarm(&ping_config);
     assert!(
         result.is_ok(),
         "Swarm creation should succeed with connection limits"

@@ -150,7 +150,7 @@ impl From<kad::Event> for StoryBehaviourEvent {
     }
 }
 
-pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
+pub fn create_swarm(ping_config: &PingConfig) -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
     use std::num::NonZeroU8;
@@ -222,12 +222,6 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     // Set Kademlia mode to server to accept queries and provide records
     kad.set_mode(Some(kad::Mode::Server));
-
-    // Load ping configuration from file or use defaults
-    let ping_config = PingConfig::load_from_file("ping_config.json").unwrap_or_else(|e| {
-        debug!("Failed to load ping config: {}, using defaults", e);
-        PingConfig::new()
-    });
 
     debug!(
         "Using ping config: interval={}s, timeout={}s",

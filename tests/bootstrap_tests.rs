@@ -60,7 +60,8 @@ async fn test_attempt_bootstrap_no_config() {
     let _ = fs::remove_file("bootstrap_config.json");
 
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -75,7 +76,8 @@ async fn test_attempt_bootstrap_no_config() {
 #[tokio::test]
 async fn test_attempt_bootstrap_empty_peers() {
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -86,7 +88,8 @@ async fn test_attempt_bootstrap_empty_peers() {
         .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -106,7 +109,8 @@ async fn test_attempt_bootstrap_empty_peers() {
 #[tokio::test]
 async fn test_attempt_bootstrap_invalid_multiaddr() {
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -120,7 +124,8 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -140,7 +145,8 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
 #[tokio::test]
 async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -156,7 +162,8 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -185,7 +192,8 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
 #[tokio::test]
 async fn test_attempt_bootstrap_valid_peer() {
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -202,7 +210,8 @@ async fn test_attempt_bootstrap_valid_peer() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -228,7 +237,8 @@ async fn test_attempt_bootstrap_valid_peer() {
 #[tokio::test]
 async fn test_attempt_bootstrap_mixed_peers() {
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -246,7 +256,8 @@ async fn test_attempt_bootstrap_mixed_peers() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -272,7 +283,8 @@ async fn test_attempt_bootstrap_mixed_peers() {
 #[tokio::test]
 async fn test_attempt_bootstrap_increments_retry_count() {
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -289,7 +301,8 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     // First attempt
     let result1 = bootstrap
@@ -333,7 +346,8 @@ async fn test_attempt_bootstrap_increments_retry_count() {
 #[tokio::test]
 async fn test_attempt_bootstrap_updates_status_timing() {
     let mut bootstrap = AutoBootstrap::new();
-    let mut swarm = create_swarm().expect("Failed to create test swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -350,7 +364,8 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let before_attempt = std::time::Instant::now();
     let result = bootstrap

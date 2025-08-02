@@ -351,7 +351,8 @@ async fn test_handle_direct_message_no_local_name() {
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
-    let mut swarm = create_swarm().expect("Failed to create swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
     let peer_names = HashMap::new();
     let local_peer_name = None;
     let mut cache = SortedPeerNamesCache::new();
@@ -382,7 +383,8 @@ async fn test_handle_direct_message_invalid_format() {
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
-    let mut swarm = create_swarm().expect("Failed to create swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
     let peer_names = HashMap::new();
     let local_peer_name = Some("Bob".to_string());
     let mut cache = SortedPeerNamesCache::new();
@@ -435,7 +437,8 @@ async fn test_handle_direct_message_with_spaces_in_names() {
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
-    let mut swarm = create_swarm().expect("Failed to create swarm");
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
     let mut peer_names = HashMap::new();
     let peer_id = libp2p::PeerId::random();
     peer_names.insert(peer_id, "Alice Smith".to_string());

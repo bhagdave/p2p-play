@@ -128,6 +128,15 @@ pub struct DirectMessageConfig {
     pub enable_timed_retries: bool,
 }
 
+/// Unified network configuration that consolidates all network-related settings
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UnifiedNetworkConfig {
+    pub bootstrap: BootstrapConfig,
+    pub network: NetworkConfig,
+    pub ping: PingConfig,
+    pub direct_message: DirectMessageConfig,
+}
+
 /// Pending direct message for retry logic
 #[derive(Debug, Clone)]
 pub struct PendingDirectMessage {
@@ -535,6 +544,56 @@ impl PingConfig {
 }
 
 impl Default for PingConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl UnifiedNetworkConfig {
+    /// Create a new UnifiedNetworkConfig with all default values
+    pub fn new() -> Self {
+        Self {
+            bootstrap: BootstrapConfig::new(),
+            network: NetworkConfig::new(),
+            ping: PingConfig::new(),
+            direct_message: DirectMessageConfig::new(),
+        }
+    }
+
+    /// Validate all configuration sections
+    pub fn validate(&self) -> Result<(), String> {
+        self.bootstrap.validate()?;
+        self.network.validate()?;
+        self.ping.validate()?;
+        self.direct_message.validate()?;
+        Ok(())
+    }
+
+    /// Load unified configuration from a file, falling back to defaults if file doesn't exist
+    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
+                config.validate().map_err(|e| format!("Configuration validation failed: {}", e))?;
+                Ok(config)
+            }
+            Err(_) => {
+                // File doesn't exist, use defaults
+                Ok(Self::new())
+            }
+        }
+    }
+
+    /// Save unified configuration to a file
+    pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        self.validate().map_err(|e| format!("Configuration validation failed: {}", e))?;
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+}
+
+impl Default for UnifiedNetworkConfig {
     fn default() -> Self {
         Self::new()
     }

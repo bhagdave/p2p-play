@@ -120,6 +120,7 @@ pub async fn handle_input_event(
             return handle_delete_story(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
+        cmd if cmd.starts_with("reload config") => handle_reload_config(cmd, ui_logger).await,
         cmd if cmd.starts_with("dht bootstrap") => {
             handle_dht_bootstrap(cmd, swarm, ui_logger).await
         }
@@ -1491,7 +1492,8 @@ mod tests {
     #[tokio::test]
     async fn test_maintain_connections() {
         // Create a mock swarm for testing
-        let mut swarm = crate::network::create_swarm().expect("Failed to create test swarm");
+        let ping_config = crate::types::PingConfig::new();
+        let mut swarm = crate::network::create_swarm(&ping_config).expect("Failed to create test swarm");
 
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
@@ -1526,7 +1528,8 @@ mod tests {
         use crate::types::Story;
         use std::time::Instant;
 
-        let mut swarm = create_swarm().expect("Failed to create swarm");
+        let ping_config = crate::types::PingConfig::new();
+        let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
         let story = Story {
             id: 1,
             name: "Test Story".to_string(),
