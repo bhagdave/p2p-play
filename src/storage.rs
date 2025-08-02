@@ -661,8 +661,17 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     // Clear all tables
     conn.execute("DELETE FROM channel_subscriptions", [])?;
     conn.execute("DELETE FROM stories", [])?;
-    conn.execute("DELETE FROM channels WHERE name != 'general'", [])?; // Keep general channel
+    conn.execute("DELETE FROM channels", [])?; // Clear all channels, general will be recreated by migrations
     conn.execute("DELETE FROM peer_name", [])?;
+    
+    // Recreate the general channel to ensure consistent test state
+    conn.execute(
+        r#"
+        INSERT INTO channels (name, description, created_by, created_at)
+        VALUES ('general', 'Default general discussion channel', 'system', 0)
+        "#,
+        [],
+    )?;
 
     debug!("Test database cleared and reset");
     Ok(())

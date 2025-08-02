@@ -4,7 +4,20 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Enhanced
+- **Network TCP Configuration**: Significantly improved TCP transport configuration for better connectivity and resource management
+  - Added connection limits to prevent resource exhaustion with optimal pending connection thresholds
+  - Enhanced TCP socket configuration with explicit TTL settings and optimized listen backlog (1024)
+  - Improved connection pooling with increased yamux stream limits (512 concurrent streams)
+  - Configured swarm with dial concurrency factor (8) for better connection attempts
+  - Added idle connection timeout (60 seconds) for automatic resource cleanup
+  - Platform-specific optimizations for Windows and non-Windows systems
+  - Added memory-connection-limits feature to libp2p dependencies
+
 ### Added
+- Enhanced network tests to verify TCP configuration improvements
+- Test coverage for connection limit functionality and swarm configuration
+- Comprehensive test suite for enhanced TCP features
 - **Configurable Ping Settings**: Enhanced network connectivity reliability with configurable ping keep-alive settings
   - Implemented more lenient default ping settings (30s interval, 20s timeout vs. previous 15s interval, 10s timeout)
   - Added file-based configuration support via `ping_config.json` for customizing ping behavior
@@ -12,6 +25,11 @@ All changes to this project will be documented in this file.
   - Configuration falls back to sensible defaults if file is missing or invalid
   - Improved connection stability for peers with temporary network hiccups
   - Note: libp2p 0.56.0 doesn't support configurable max_failures, so only interval and timeout are configurable
+
+### Technical Details
+- Updated `src/network.rs` with enhanced TCP transport configuration (lines 149-180)
+- Improved yamux multiplexing configuration for better connection reuse
+- Enhanced swarm configuration with connection management features
 
 ### Removed
 - **Obsolete Peer Listing Commands**: Removed `ls p` (list discovered peers) and `ls c` (list connected peers) commands
