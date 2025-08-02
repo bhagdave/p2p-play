@@ -232,7 +232,7 @@ async fn main() {
 
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
-    auto_bootstrap.initialize(&bootstrap_logger).await;
+    auto_bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     // Create a timer for automatic bootstrap retry
     let mut bootstrap_retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
@@ -295,12 +295,12 @@ async fn main() {
     loop {
         // Handle UI events first to ensure responsiveness
         if let Err(e) = handle_ui_events(&mut app, ui_sender.clone()).await {
-            error!("UI event handling error: {}", e);
+            error_logger.log_error(&format!("UI event handling error: {}", e));
         }
 
         // Draw the UI
         if let Err(e) = app.draw() {
-            error!("UI drawing error: {}", e);
+            error_logger.log_error(&format!("UI drawing error: {}", e));
         }
 
         // Check if we should quit
@@ -372,13 +372,13 @@ async fn main() {
                 story = story_rcv.recv() => Some(EventType::PublishStory(story.expect("story exists"))),
                 _ = connection_maintenance_interval.tick() => {
                     // Periodic connection maintenance - spawn to background to avoid blocking
-                    event_handlers::maintain_connections(&mut swarm).await;
+                    event_handlers::maintain_connections(&mut swarm, &error_logger).await;
                     None
                 },
                 _ = bootstrap_retry_interval.tick() => {
                     // Automatic bootstrap retry - only if should retry and time is right
                     if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
-                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &bootstrap_logger).await;
+                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &bootstrap_logger, &error_logger).await;
                     }
                     None
                 },
@@ -518,7 +518,7 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error!("Failed to refresh stories: {}", e);
+                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
                                     }
                                 }
                             }
@@ -557,7 +557,7 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error!("Failed to refresh stories: {}", e);
+                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
                                     }
                                 }
                             }
@@ -594,7 +594,7 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error!("Failed to refresh stories: {}", e);
+                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
                                     }
                                 }
                             }

@@ -2,7 +2,7 @@ use crate::types::{
     BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
     DirectMessageConfig, NetworkConfig, Stories, Story,
 };
-use log::{debug, error};
+use log::debug;
 use rusqlite::Connection;
 use std::error::Error;
 use std::sync::Arc;
@@ -338,7 +338,8 @@ pub async fn publish_story(
 
         if let Ok(story) = story_result {
             if let Err(e) = sender.send(story) {
-                error!("error sending story for broadcast: {}", e);
+                let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+                crate::log_network_error!(error_logger, "storage", "error sending story for broadcast: {}", e);
             }
         }
     }

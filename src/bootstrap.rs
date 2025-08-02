@@ -4,7 +4,7 @@ use crate::network::StoryBehaviour;
 use crate::storage::load_bootstrap_config;
 use crate::types::BootstrapConfig;
 use libp2p::swarm::Swarm;
-use log::{debug, error, warn};
+use log::{debug, warn};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -44,7 +44,7 @@ impl AutoBootstrap {
     }
 
     /// Initialize the auto bootstrap with config
-    pub async fn initialize(&mut self, bootstrap_logger: &BootstrapLogger) {
+    pub async fn initialize(&mut self, bootstrap_logger: &BootstrapLogger, error_logger: &crate::error_logger::ErrorLogger) {
         match load_bootstrap_config().await {
             Ok(config) => {
                 self.config = Some(config.clone());
@@ -58,7 +58,7 @@ impl AutoBootstrap {
                 ));
             }
             Err(e) => {
-                error!("Failed to load bootstrap config for AutoBootstrap: {}", e);
+                error_logger.log_error(&format!("Failed to load bootstrap config for AutoBootstrap: {}", e));
                 bootstrap_logger.log_error(&format!("Bootstrap initialization failed: {}", e));
             }
         }
@@ -69,6 +69,7 @@ impl AutoBootstrap {
         &mut self,
         swarm: &mut Swarm<StoryBehaviour>,
         bootstrap_logger: &BootstrapLogger,
+        error_logger: &crate::error_logger::ErrorLogger,
     ) -> bool {
         let config = match &self.config {
             Some(config) => config,
@@ -137,7 +138,7 @@ impl AutoBootstrap {
                 }
                 Err(e) => {
                     let error_msg = format!("Failed to start DHT bootstrap: {:?}", e);
-                    error!("{}", error_msg);
+                    error_logger.log_error(&error_msg);
                     bootstrap_logger.log_error(&error_msg);
                     {
                         let retry_count = *self.retry_count.lock().unwrap();
@@ -308,6 +309,7 @@ pub async fn run_auto_bootstrap_with_retry(
     auto_bootstrap: &mut AutoBootstrap,
     swarm: &mut Swarm<StoryBehaviour>,
     bootstrap_logger: &BootstrapLogger,
+    error_logger: &crate::error_logger::ErrorLogger,
 ) {
     if !auto_bootstrap.should_retry() {
         return;
@@ -319,7 +321,7 @@ pub async fn run_auto_bootstrap_with_retry(
 
     // Attempt bootstrap
     if auto_bootstrap
-        .attempt_bootstrap(swarm, bootstrap_logger)
+        .attempt_bootstrap(swarm, bootstrap_logger, error_logger)
         .await
     {
         // Bootstrap started successfully, but we need to wait for results
@@ -542,7 +544,8 @@ mod tests {
         let bootstrap_logger = create_test_bootstrap_logger();
 
         // This will try to load config and may succeed if bootstrap_config.json exists
-        bootstrap.initialize(&bootstrap_logger).await;
+        let error_logger = crate::error_logger::ErrorLogger::new("test_errors.log");
+        bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
         // The test just ensures initialization doesn't panic
     }
