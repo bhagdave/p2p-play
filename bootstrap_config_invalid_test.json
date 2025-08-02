@@ -1,1 +1,0 @@
-{"bootstrap_peers":["invalid-multiaddr","also-invalid"],"bootstrap_timeout_ms":30000,"max_retry_attempts":5,"retry_interval_ms":1000}
