@@ -52,8 +52,7 @@ pub struct App {
     pub input: String,
     pub output_log: Vec<String>,
     pub peers: HashMap<PeerId, String>,
-    pub local_stories: Stories,
-    pub received_stories: Stories,
+    pub stories: Stories,
     pub local_peer_name: Option<String>,
     pub list_state: ListState,
     pub input_mode: InputMode,
@@ -90,12 +89,6 @@ pub struct PartialStory {
 pub enum AppEvent {
     Input(String),
     Quit,
-    Log(String),
-    PeerUpdate(HashMap<PeerId, String>),
-    StoriesUpdate(Stories),
-    ReceivedStoriesUpdate(Stories),
-    PeerNameUpdate(Option<String>),
-    DirectMessage(DirectMessage),
 }
 
 impl App {
@@ -120,8 +113,7 @@ impl App {
                 "".to_string(),
             ],
             peers: HashMap::new(),
-            local_stories: Vec::new(),
-            received_stories: Vec::new(),
+            stories: Vec::new(),
             local_peer_name: None,
             list_state: ListState::default(),
             input_mode: InputMode::Normal,
@@ -328,12 +320,8 @@ impl App {
         self.peers = peers;
     }
 
-    pub fn update_local_stories(&mut self, stories: Stories) {
-        self.local_stories = stories;
-    }
-
-    pub fn update_received_stories(&mut self, stories: Stories) {
-        self.received_stories = stories;
+    pub fn update_stories(&mut self, stories: Stories) {
+        self.stories = stories;
     }
 
     pub fn update_local_peer_name(&mut self, name: Option<String>) {
@@ -582,9 +570,8 @@ impl App {
 
             // Stories list
             let story_items: Vec<ListItem> = self
-                .local_stories
+                .stories
                 .iter()
-                .chain(self.received_stories.iter())
                 .map(|story| {
                     let status = if story.public { "📖" } else { "📕" };
                     ListItem::new(format!("{} [{}] {}: {}", status, story.channel, story.id, story.name))

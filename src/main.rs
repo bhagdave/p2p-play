@@ -273,7 +273,7 @@ async fn main() {
     match storage::read_local_stories().await {
         Ok(stories) => {
             debug!("Loaded {} local stories", stories.len());
-            app.update_local_stories(stories);
+            app.update_stories(stories);
         }
         Err(e) => {
             error!("Failed to load local stories: {}", e);
@@ -340,30 +340,6 @@ async fn main() {
                                 debug!("Quit event received in main loop");
                                 app.should_quit = true;
                                 break;
-                            }
-                            AppEvent::Log(msg) => {
-                                app.add_to_log(msg);
-                                None
-                            }
-                            AppEvent::PeerUpdate(peers) => {
-                                app.update_peers(peers);
-                                None
-                            }
-                            AppEvent::StoriesUpdate(stories) => {
-                                app.update_local_stories(stories);
-                                None
-                            }
-                            AppEvent::ReceivedStoriesUpdate(stories) => {
-                                app.update_received_stories(stories);
-                                None
-                            }
-                            AppEvent::PeerNameUpdate(name) => {
-                                app.update_local_peer_name(name);
-                                None
-                            }
-                            AppEvent::DirectMessage(dm) => {
-                                app.handle_direct_message(dm);
-                                None
                             }
                         }
                     } else {
@@ -547,7 +523,7 @@ async fn main() {
                                 match storage::read_local_stories().await {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
-                                        app.update_local_stories(stories);
+                                        app.update_stories(stories);
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -590,7 +566,7 @@ async fn main() {
                                 match storage::read_local_stories().await {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
-                                        app.update_local_stories(stories);
+                                        app.update_stories(stories);
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -631,7 +607,7 @@ async fn main() {
                                 match storage::read_local_stories().await {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
-                                        app.update_local_stories(stories);
+                                        app.update_stories(stories);
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
