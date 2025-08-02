@@ -1,6 +1,6 @@
 use crate::types::{
     BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
-    DirectMessageConfig, NetworkConfig, Stories, Story,
+    DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
 };
 use log::debug;
 use rusqlite::Connection;
@@ -894,6 +894,57 @@ pub async fn ensure_network_config_exists() -> Result<(), Box<dyn Error>> {
         let default_config = NetworkConfig::default();
         save_network_config(&default_config).await?;
         debug!("Created default network config file");
+    }
+    Ok(())
+}
+
+/// Save unified network configuration to file
+pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> Result<(), Box<dyn Error>> {
+    save_unified_network_config_to_path(config, "unified_network_config.json").await
+}
+
+/// Save unified network configuration to a specific path
+pub async fn save_unified_network_config_to_path(
+    config: &UnifiedNetworkConfig,
+    path: &str,
+) -> Result<(), Box<dyn Error>> {
+    config.validate().map_err(|e| format!("Configuration validation failed: {}", e))?;
+    let json = serde_json::to_string_pretty(config)?;
+    fs::write(path, &json).await?;
+    Ok(())
+}
+
+/// Load unified network configuration from file
+pub async fn load_unified_network_config() -> Result<UnifiedNetworkConfig, Box<dyn Error>> {
+    load_unified_network_config_from_path("unified_network_config.json").await
+}
+
+/// Load unified network configuration from a specific path
+pub async fn load_unified_network_config_from_path(
+    path: &str,
+) -> Result<UnifiedNetworkConfig, Box<dyn Error>> {
+    match fs::read_to_string(path).await {
+        Ok(content) => {
+            let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
+            config.validate().map_err(|e| format!("Configuration validation failed: {}", e))?;
+            Ok(config)
+        }
+        Err(_) => {
+            // File doesn't exist, create with defaults
+            let default_config = UnifiedNetworkConfig::new();
+            save_unified_network_config_to_path(&default_config, path).await?;
+            debug!("Created default unified network config file at: {}", path);
+            Ok(default_config)
+        }
+    }
+}
+
+/// Ensure unified network config file exists with defaults
+pub async fn ensure_unified_network_config_exists() -> Result<(), Box<dyn Error>> {
+    if tokio::fs::metadata("unified_network_config.json").await.is_err() {
+        let default_config = UnifiedNetworkConfig::default();
+        save_unified_network_config(&default_config).await?;
+        debug!("Created default unified network config file");
     }
     Ok(())
 }
