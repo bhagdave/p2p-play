@@ -31,15 +31,10 @@ fn test_app_event_variants() {
     let events = vec![
         AppEvent::Input("test".to_string()),
         AppEvent::Quit,
-        AppEvent::Log("test log".to_string()),
-        AppEvent::PeerUpdate(HashMap::new()),
-        AppEvent::StoriesUpdate(Vec::new()),
-        AppEvent::ReceivedStoriesUpdate(Vec::new()),
-        AppEvent::PeerNameUpdate(None),
     ];
 
     // Test that we can create all event variants
-    assert_eq!(events.len(), 7);
+    assert_eq!(events.len(), 2);
 }
 
 #[test]

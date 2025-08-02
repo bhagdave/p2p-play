@@ -4,6 +4,12 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **TUI Story Display**: Fixed received stories not appearing in TUI interface immediately after being received
+  - Resolved race condition where story saving was asynchronous but UI refresh happened immediately
+  - Stories received from other peers now appear in TUI Stories panel immediately after the automatic refresh
+  - Ensures consistency between command-line `ls s` output and TUI Stories panel
+
 ### Added
 - **Unified Network Configuration**: Consolidated 4 separate network configuration files into a single `unified_network_config.json` with hot reload capability
   - Merged `bootstrap_config.json`, `network_config.json`, `ping_config.json`, and `direct_message_config.json` into unified structure
