@@ -82,28 +82,88 @@ I should also add that I am using this project to test different code assistants
 
 ## Configuration
 
-The application supports several configuration files to customize network behavior:
+The application uses a unified network configuration file (`unified_network_config.json`) that consolidates all network-related settings. This file is automatically created with default values when you first run the application.
 
-### Ping Configuration (`ping_config.json`)
+### Unified Network Configuration (`unified_network_config.json`)
 
-Configure ping keep-alive settings to improve connection stability:
+The configuration file contains four main sections:
 
 ```json
 {
-  "interval_secs": 30,
-  "timeout_secs": 20
+  "bootstrap": {
+    "bootstrap_peers": [
+      "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+      "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
+    ],
+    "retry_interval_ms": 5000,
+    "max_retry_attempts": 5,
+    "bootstrap_timeout_ms": 30000
+  },
+  "network": {
+    "connection_maintenance_interval_seconds": 300,
+    "request_timeout_seconds": 60,
+    "max_concurrent_streams": 100,
+    "max_connections_per_peer": 1,
+    "max_pending_incoming": 10,
+    "max_pending_outgoing": 10,
+    "max_established_total": 100,
+    "connection_establishment_timeout_seconds": 30
+  },
+  "ping": {
+    "interval_secs": 30,
+    "timeout_secs": 20
+  },
+  "direct_message": {
+    "max_retry_attempts": 3,
+    "retry_interval_seconds": 30,
+    "enable_connection_retries": true,
+    "enable_timed_retries": true
+  }
 }
 ```
 
+### Configuration Sections
+
+#### Bootstrap Configuration
+- `bootstrap_peers`: List of DHT bootstrap peers for network discovery
+- `retry_interval_ms`: Time between bootstrap retry attempts (milliseconds)
+- `max_retry_attempts`: Maximum number of bootstrap retry attempts
+- `bootstrap_timeout_ms`: Timeout for bootstrap operations (milliseconds)
+
+#### Network Configuration
+- `connection_maintenance_interval_seconds`: Interval for connection maintenance tasks
+- `request_timeout_seconds`: Timeout for network requests
+- `max_concurrent_streams`: Maximum concurrent streams per connection
+- `max_connections_per_peer`: Maximum connections per peer (default: 1)
+- `max_pending_incoming`: Maximum pending incoming connections
+- `max_pending_outgoing`: Maximum pending outgoing connections
+- `max_established_total`: Maximum total established connections
+- `connection_establishment_timeout_seconds`: Timeout for connection establishment
+
+#### Ping Configuration
 - `interval_secs`: How often to send ping messages (default: 30 seconds)
 - `timeout_secs`: How long to wait for ping responses (default: 20 seconds)
 
-If the file doesn't exist, the application uses the default lenient settings shown above. These are more conservative than libp2p's defaults (15s interval, 10s timeout) to reduce connection drops on temporary network hiccups.
+These ping settings are more conservative than libp2p's defaults (15s interval, 10s timeout) to reduce connection drops on temporary network hiccups.
 
-### Bootstrap Configuration (`bootstrap_config.json`)
+#### Direct Message Configuration
+- `max_retry_attempts`: Maximum retry attempts for failed direct messages
+- `retry_interval_seconds`: Time between retry attempts
+- `enable_connection_retries`: Enable retries when connections fail
+- `enable_timed_retries`: Enable automatic timed retries
 
-Configure DHT bootstrap peers and retry behavior (existing functionality).
+### Hot Reloading Configuration
 
-### Direct Message Configuration (`direct_message_config.json`)
+You can reload the network configuration at runtime using the `reload config` command in the application. This allows you to update settings without restarting the application.
 
-Configure direct message retry logic and delivery behavior (existing functionality).
+**Note:** Some configuration changes (such as bootstrap peers and ping settings) may require restarting the application to take full effect.
+
+### Legacy Configuration Files
+
+For backward compatibility, the application still recognizes individual configuration files:
+- `bootstrap_config.json`
+- `network_config.json` 
+- `ping_config.json`
+- `direct_message_config.json`
+
+However, the unified configuration file (`unified_network_config.json`) takes precedence and is the recommended approach.

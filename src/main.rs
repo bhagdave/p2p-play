@@ -16,12 +16,11 @@ use event_handlers::handle_event;
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_bootstrap_config_exists, ensure_direct_message_config_exists,
-    ensure_network_config_exists, ensure_stories_file_exists, load_bootstrap_config,
-    load_direct_message_config, load_local_peer_name, load_network_config,
+    ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name, 
+    load_unified_network_config,
 };
 use types::{
-    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage,
+    ActionResult, EventType, PeerName, PendingDirectMessage, UnifiedNetworkConfig,
 };
 use ui::{App, AppEvent, handle_ui_events};
 
@@ -122,37 +121,41 @@ async fn main() {
     // Create bootstrap logger that writes to file
     let bootstrap_logger = BootstrapLogger::new("bootstrap.log");
 
-    // Load network configuration
-    if let Err(e) = ensure_network_config_exists().await {
-        error!("Failed to initialize network config: {}", e);
-        app.add_to_log(format!("Failed to initialize network config: {}", e));
+    // Load unified network configuration
+    if let Err(e) = ensure_unified_network_config_exists().await {
+        error!("Failed to initialize unified network config: {}", e);
+        app.add_to_log(format!("Failed to initialize unified network config: {}", e));
     }
 
-    let network_config = match load_network_config().await {
+    let unified_config = match load_unified_network_config().await {
         Ok(config) => {
             debug!(
-                "Loaded network config: connection_maintenance_interval_seconds={}",
-                config.connection_maintenance_interval_seconds
+                "Loaded unified network config: connection_maintenance_interval_seconds={}",
+                config.network.connection_maintenance_interval_seconds
             );
-            app.add_to_log(format!("Loaded network config from file"));
+            app.add_to_log(format!("Loaded unified network config from file"));
             config
         }
         Err(e) => {
-            error!("Failed to load network config: {}", e);
+            error!("Failed to load unified network config: {}", e);
             app.add_to_log(format!(
-                "Failed to load network config: {}, using defaults",
+                "Failed to load unified network config: {}, using defaults",
                 e
             ));
-            NetworkConfig::new()
+            UnifiedNetworkConfig::new()
         }
     };
+
+    // Extract individual configs for convenience
+    let network_config = &unified_config.network;
+    let dm_config = &unified_config.direct_message;
 
     // Create a timer for periodic connection maintenance using configurable interval
     let mut connection_maintenance_interval = tokio::time::interval(
         tokio::time::Duration::from_secs(network_config.connection_maintenance_interval_seconds),
     );
 
-    let mut swarm = create_swarm().expect("Failed to create swarm");
+    let mut swarm = create_swarm(&unified_config.ping).expect("Failed to create swarm");
 
     // Storage for peer names (peer_id -> alias)
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
@@ -160,31 +163,7 @@ async fn main() {
     // Cache for sorted peer names to avoid repeated sorting on every direct message
     let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
-    // Initialize direct message retry configuration and queue
-    // Ensure direct message config file exists and load it
-    if let Err(e) = ensure_direct_message_config_exists().await {
-        error!("Failed to initialize direct message config: {}", e);
-        app.add_to_log(format!("Failed to initialize direct message config: {}", e));
-    }
-
-    let dm_config = match load_direct_message_config().await {
-        Ok(config) => {
-            debug!(
-                "Loaded direct message config: max_retry_attempts={}, retry_interval_seconds={}",
-                config.max_retry_attempts, config.retry_interval_seconds
-            );
-            app.add_to_log(format!("Loaded direct message config from file"));
-            config
-        }
-        Err(e) => {
-            error!("Failed to load direct message config: {}", e);
-            app.add_to_log(format!(
-                "Failed to load direct message config: {}, using defaults",
-                e
-            ));
-            DirectMessageConfig::new()
-        }
-    };
+    // Initialize direct message retry queue using config from unified_config
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Load saved peer name if it exists
@@ -204,36 +183,10 @@ async fn main() {
         }
     };
 
-    // Ensure bootstrap config file exists and load it
-    if let Err(e) = ensure_bootstrap_config_exists().await {
-        error!("Failed to initialize bootstrap config: {}", e);
-        bootstrap_logger.log_error(&format!("Failed to initialize bootstrap config: {}", e));
-    }
-
-    // Load bootstrap configuration
-    let _bootstrap_config = match load_bootstrap_config().await {
-        Ok(config) => {
-            debug!(
-                "Loaded bootstrap config with {} peers",
-                config.bootstrap_peers.len()
-            );
-            bootstrap_logger.log_init(&format!(
-                "Loaded bootstrap config with {} peers",
-                config.bootstrap_peers.len()
-            ));
-            Some(config)
-        }
-        Err(e) => {
-            error!("Failed to load bootstrap config: {}", e);
-            bootstrap_logger.log_error(&format!("Failed to load bootstrap config: {}", e));
-            None
-        }
-    };
-
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
     auto_bootstrap
-        .initialize(&bootstrap_logger, &error_logger)
+        .initialize(&unified_config.bootstrap, &bootstrap_logger, &error_logger)
         .await;
 
     // Create a timer for automatic bootstrap retry
