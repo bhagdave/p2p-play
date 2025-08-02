@@ -1,5 +1,6 @@
 use p2p_play::bootstrap::{AutoBootstrap, BootstrapStatus};
 use p2p_play::bootstrap_logger::BootstrapLogger;
+use p2p_play::error_logger::ErrorLogger;
 use p2p_play::network::create_swarm;
 use p2p_play::types::BootstrapConfig;
 use std::fs;
@@ -9,6 +10,12 @@ fn create_test_bootstrap_logger() -> BootstrapLogger {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
     BootstrapLogger::new(path)
+}
+
+fn create_test_error_logger() -> ErrorLogger {
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path().to_str().unwrap();
+    ErrorLogger::new(path)
 }
 
 async fn create_test_bootstrap_config_with_name(
@@ -55,10 +62,11 @@ async fn test_attempt_bootstrap_no_config() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Test attempt_bootstrap with no config
     let result = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
 
     assert!(!result); // Should return false when no config
@@ -69,6 +77,7 @@ async fn test_attempt_bootstrap_empty_peers() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Create config file with empty peers using raw creation
     let config_file = "bootstrap_config_empty_test.json";
@@ -77,10 +86,10 @@ async fn test_attempt_bootstrap_empty_peers() {
         .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger).await;
+    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
 
     assert!(!result); // Should return false when no peers configured
@@ -99,6 +108,7 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Create config file with invalid multiaddrs using raw creation
     let config_file = "bootstrap_config_invalid_test.json";
@@ -110,10 +120,10 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger).await;
+    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
 
     assert!(!result); // Should return false when no valid peers
@@ -132,6 +142,7 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Create config file with valid multiaddr but no peer ID
     let config_file = "bootstrap_config_no_peer_id_test.json";
@@ -145,10 +156,10 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger).await;
+    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
 
     assert!(!result); // Should return false when no peer IDs can be extracted
@@ -176,6 +187,7 @@ async fn test_attempt_bootstrap_valid_peer() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Create config file with valid multiaddr including peer ID
     let config_file = "bootstrap_config_valid_test.json";
@@ -190,10 +202,10 @@ async fn test_attempt_bootstrap_valid_peer() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger).await;
+    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
 
     // This should succeed in adding the peer and starting bootstrap
@@ -218,6 +230,7 @@ async fn test_attempt_bootstrap_mixed_peers() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Create config file with mix of valid multiaddrs - some with peer IDs, some without
     let config_file = "bootstrap_config_mixed_test.json";
@@ -233,10 +246,10 @@ async fn test_attempt_bootstrap_mixed_peers() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger).await;
+    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
 
     // Should succeed because at least one peer is valid
@@ -261,6 +274,7 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Create config file with valid peer
     let config_file = "bootstrap_config_retry_test.json";
@@ -275,11 +289,11 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger).await;
+    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     // First attempt
     let result1 = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
     assert!(result1);
 
@@ -298,7 +312,7 @@ async fn test_attempt_bootstrap_increments_retry_count() {
 
     // Second attempt
     let result2 = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
     assert!(result2);
 
@@ -321,6 +335,7 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     let mut bootstrap = AutoBootstrap::new();
     let mut swarm = create_swarm().expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
 
     // Create config file with valid peer
     let config_file = "bootstrap_config_timing_test.json";
@@ -335,11 +350,11 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     .expect("Failed to create config");
 
     // Initialize bootstrap with the config
-    bootstrap.initialize(&bootstrap_logger).await;
+    bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     let before_attempt = std::time::Instant::now();
     let result = bootstrap
-        .attempt_bootstrap(&mut swarm, &bootstrap_logger)
+        .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
         .await;
     let after_attempt = std::time::Instant::now();
 
