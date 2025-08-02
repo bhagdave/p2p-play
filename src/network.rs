@@ -1,7 +1,7 @@
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, StreamProtocol, identity, kad, mdns, ping, request_response};
-use log::{debug, error, warn};
+use log::{debug, warn};
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
@@ -70,9 +70,15 @@ fn generate_and_save_keypair() -> identity::Keypair {
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
             Ok(_) => debug!("Successfully saved keypair to file"),
-            Err(e) => error!("Failed to save keypair: {}", e),
+            Err(e) => {
+                let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+                error_logger.log_error(&format!("Failed to save keypair: {}", e));
+            },
         },
-        Err(e) => error!("Failed to encode keypair: {}", e),
+        Err(e) => {
+            let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+            error_logger.log_error(&format!("Failed to encode keypair: {}", e));
+        },
     }
     keypair
 }
