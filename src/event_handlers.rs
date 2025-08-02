@@ -12,7 +12,7 @@ use crate::types::{
 
 use bytes::Bytes;
 use libp2p::{PeerId, Swarm, request_response};
-use log::{debug, error};
+use log::debug;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::process;
@@ -40,7 +40,7 @@ pub async fn handle_publish_story_event(
     debug!("Broadcasting published story: {}", story.name);
 
     // Pre-publish connection check and reconnection
-    maintain_connections(swarm).await;
+    maintain_connections(swarm, error_logger).await;
 
     // Debug: Show connected peers and floodsub state
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
@@ -352,7 +352,11 @@ pub async fn handle_floodsub_event(
                             debug!("Channel '{}' already exists", channel_to_save.name);
                         }
                         Err(e) => {
-                            log::error!(
+                            // Create error logger for spawned task
+                            let error_logger_for_task = ErrorLogger::new("errors.log");
+                            crate::log_network_error!(
+                                error_logger_for_task,
+                                "storage",
                                 "Failed to save received channel '{}': {}",
                                 channel_to_save.name,
                                 e
@@ -672,6 +676,7 @@ pub async fn handle_node_description_event(
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) {
     match event {
         request_response::Event::Message { peer, message, .. } => {
@@ -709,7 +714,9 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                error!(
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "node_description",
                                     "Failed to send node description response to {}: {:?}",
                                     peer, e
                                 );
@@ -722,7 +729,7 @@ pub async fn handle_node_description_event(
                             }
                         }
                         Err(e) => {
-                            error!("Failed to load description: {}", e);
+                            crate::log_network_error!(error_logger, "node_description", "Failed to load description: {}", e);
 
                             // Send empty response to indicate no description
                             let response = NodeDescriptionResponse {
@@ -743,7 +750,9 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                error!(
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "node_description",
                                     "Failed to send empty description response to {}: {:?}",
                                     peer, e
                                 );
@@ -776,7 +785,9 @@ pub async fn handle_node_description_event(
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            error!(
+            crate::log_network_error!(
+                error_logger,
+                "node_description",
                 "Failed to send description request to {}: {:?}",
                 peer, error
             );
@@ -799,7 +810,9 @@ pub async fn handle_node_description_event(
             ui_logger.log(user_message);
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            error!(
+            crate::log_network_error!(
+                error_logger,
+                "node_description",
                 "Failed to receive description request from {}: {:?}",
                 peer, error
             );
@@ -881,7 +894,7 @@ pub async fn handle_event(
             .await;
         }
         EventType::NodeDescriptionEvent(node_desc_event) => {
-            handle_node_description_event(node_desc_event, swarm, local_peer_name, ui_logger).await;
+            handle_node_description_event(node_desc_event, swarm, local_peer_name, ui_logger, error_logger).await;
         }
         EventType::KadEvent(kad_event) => {
             handle_kad_event(kad_event, swarm, ui_logger, error_logger).await;
@@ -909,7 +922,7 @@ const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
 const CLEANUP_THRESHOLD: Duration = Duration::from_secs(3600); // 1 hour
 
 // Helper function that needs to be accessible - copied from main.rs
-pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
+pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logger: &ErrorLogger) {
     let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
 
@@ -960,7 +973,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
             if should_attempt {
                 debug!("Reconnecting to discovered peer: {}", peer);
                 if let Err(e) = swarm.dial(peer) {
-                    error!("Failed to dial peer {}: {}", peer, e);
+                    crate::log_network_error!(error_logger, "mdns", "Failed to dial peer {}: {}", peer, e);
                 }
             }
         }
@@ -970,11 +983,12 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
 // Helper function that needs to be accessible - copied from main.rs
 pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, receiver: String) {
     tokio::spawn(async move {
+        let error_logger = ErrorLogger::new("errors.log");
         // Read stories and subscriptions separately to avoid Send issues
         let stories = match crate::storage::read_local_stories().await {
             Ok(stories) => stories,
             Err(e) => {
-                error!("error fetching local stories to answer ALL request, {}", e);
+                crate::log_network_error!(error_logger, "storage", "error fetching local stories to answer ALL request, {}", e);
                 return;
             }
         };
@@ -982,7 +996,7 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
         let subscribed_channels = match crate::storage::read_subscribed_channels(&receiver).await {
             Ok(channels) => channels,
             Err(e) => {
-                error!("error fetching subscribed channels for {}: {}", receiver, e);
+                crate::log_network_error!(error_logger, "storage", "error fetching subscribed channels for {}: {}", receiver, e);
                 // If we can't get subscriptions, default to "general" channel
                 vec!["general".to_string()]
             }
@@ -1010,7 +1024,7 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             data: filtered_stories,
         };
         if let Err(e) = sender.send(resp) {
-            error!("error sending response via channel, {}", e);
+            crate::log_network_error!(error_logger, "channel", "error sending response via channel, {}", e);
         }
     });
 }
@@ -1403,7 +1417,8 @@ mod tests {
 
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
-        maintain_connections(&mut swarm).await;
+        let error_logger = ErrorLogger::new("test_errors.log");
+        maintain_connections(&mut swarm, &error_logger).await;
     }
 
     #[test]

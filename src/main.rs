@@ -344,7 +344,7 @@ async fn main() {
                 story = story_rcv.recv() => Some(EventType::PublishStory(story.expect("story exists"))),
                 _ = connection_maintenance_interval.tick() => {
                     // Periodic connection maintenance - spawn to background to avoid blocking
-                    event_handlers::maintain_connections(&mut swarm).await;
+                    event_handlers::maintain_connections(&mut swarm, &error_logger).await;
                     None
                 },
                 _ = bootstrap_retry_interval.tick() => {
