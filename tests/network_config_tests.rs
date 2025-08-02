@@ -1,5 +1,5 @@
 use p2p_play::storage::{
-    ensure_network_config_exists, load_network_config_from_path, save_network_config_to_path,
+    load_network_config_from_path, save_network_config_to_path,
 };
 use p2p_play::types::NetworkConfig;
 use std::fs;
@@ -9,6 +9,8 @@ use tempfile::NamedTempFile;
 async fn test_network_config_creation() {
     let config = NetworkConfig::new();
     assert_eq!(config.connection_maintenance_interval_seconds, 300);
+    assert_eq!(config.request_timeout_seconds, 60);
+    assert_eq!(config.max_concurrent_streams, 100);
 }
 
 #[tokio::test]
@@ -21,6 +23,8 @@ async fn test_network_config_validation_success() {
 async fn test_network_config_validation_too_low() {
     let config = NetworkConfig {
         connection_maintenance_interval_seconds: 30, // Below minimum of 60
+        request_timeout_seconds: 60,
+        max_concurrent_streams: 100,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -31,6 +35,8 @@ async fn test_network_config_validation_too_low() {
 async fn test_network_config_validation_too_high() {
     let config = NetworkConfig {
         connection_maintenance_interval_seconds: 4000, // Above maximum of 3600
+        request_timeout_seconds: 60,
+        max_concurrent_streams: 100,
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -42,12 +48,16 @@ async fn test_network_config_validation_edge_cases() {
     // Test minimum valid value
     let config_min = NetworkConfig {
         connection_maintenance_interval_seconds: 60,
+        request_timeout_seconds: 10, // minimum
+        max_concurrent_streams: 1, // minimum
     };
     assert!(config_min.validate().is_ok());
 
     // Test maximum valid value
     let config_max = NetworkConfig {
         connection_maintenance_interval_seconds: 3600,
+        request_timeout_seconds: 300, // maximum
+        max_concurrent_streams: 1000, // maximum
     };
     assert!(config_max.validate().is_ok());
 }
@@ -59,6 +69,8 @@ async fn test_save_and_load_network_config() {
 
     let original_config = NetworkConfig {
         connection_maintenance_interval_seconds: 600,
+        request_timeout_seconds: 120,
+        max_concurrent_streams: 50,
     };
 
     // Save config
@@ -72,6 +84,14 @@ async fn test_save_and_load_network_config() {
     assert_eq!(
         loaded_config.connection_maintenance_interval_seconds,
         original_config.connection_maintenance_interval_seconds
+    );
+    assert_eq!(
+        loaded_config.request_timeout_seconds,
+        original_config.request_timeout_seconds
+    );
+    assert_eq!(
+        loaded_config.max_concurrent_streams,
+        original_config.max_concurrent_streams
     );
 }
 
@@ -88,6 +108,8 @@ async fn test_load_network_config_creates_default_if_missing() {
 
     // Should be default config
     assert_eq!(loaded_config.connection_maintenance_interval_seconds, 300);
+    assert_eq!(loaded_config.request_timeout_seconds, 60);
+    assert_eq!(loaded_config.max_concurrent_streams, 100);
 
     // File should now exist
     assert!(fs::metadata(path).is_ok());
@@ -112,7 +134,7 @@ async fn test_load_network_config_invalid_values() {
     let path = temp_file.path().to_str().unwrap();
 
     // Write config with invalid value (too low)
-    let invalid_config = r#"{"connection_maintenance_interval_seconds": 30}"#;
+    let invalid_config = r#"{"connection_maintenance_interval_seconds": 30, "request_timeout_seconds": 60, "max_concurrent_streams": 100}"#;
     fs::write(path, invalid_config).unwrap();
 
     // Should fail validation
@@ -124,6 +146,52 @@ async fn test_load_network_config_invalid_values() {
             .to_string()
             .contains("must be at least 60 seconds")
     );
+}
+
+#[tokio::test]
+async fn test_network_config_request_timeout_validation() {
+    // Test request timeout too low
+    let config_low = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
+        request_timeout_seconds: 5, // Below minimum of 10
+        max_concurrent_streams: 100,
+    };
+    let result = config_low.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("request_timeout_seconds must be at least 10 seconds"));
+
+    // Test request timeout too high
+    let config_high = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
+        request_timeout_seconds: 400, // Above maximum of 300
+        max_concurrent_streams: 100,
+    };
+    let result = config_high.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("request_timeout_seconds must not exceed 300 seconds"));
+}
+
+#[tokio::test]
+async fn test_network_config_max_streams_validation() {
+    // Test max streams zero
+    let config_zero = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
+        request_timeout_seconds: 60,
+        max_concurrent_streams: 0,
+    };
+    let result = config_zero.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("max_concurrent_streams must be greater than 0"));
+
+    // Test max streams too high
+    let config_high = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
+        request_timeout_seconds: 60,
+        max_concurrent_streams: 1500, // Above maximum of 1000
+    };
+    let result = config_high.validate();
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("max_concurrent_streams must not exceed 1000"));
 }
 
 #[tokio::test]
