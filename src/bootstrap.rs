@@ -47,7 +47,7 @@ impl AutoBootstrap {
         &mut self,
         bootstrap_config: &BootstrapConfig,
         bootstrap_logger: &BootstrapLogger,
-        error_logger: &crate::error_logger::ErrorLogger,
+        _error_logger: &crate::error_logger::ErrorLogger,
     ) {
         self.config = Some(bootstrap_config.clone());
         debug!(

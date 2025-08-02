@@ -87,8 +87,9 @@ async fn test_attempt_bootstrap_empty_peers() {
         .await
         .expect("Failed to create config");
 
-    // Initialize bootstrap with the config
-    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    // Initialize bootstrap with the config that has empty peers
+    let mut bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap_config.clear_peers(); // Clear the default peers to test empty case
     bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
@@ -97,9 +98,9 @@ async fn test_attempt_bootstrap_empty_peers() {
 
     assert!(!result); // Should return false when no peers configured
 
-    // Verify status is still NotStarted because initialization failed
+    // Verify status is Failed because there were no peers to attempt
     let status = bootstrap.status.lock().unwrap();
-    assert!(matches!(*status, BootstrapStatus::NotStarted));
+    assert!(matches!(*status, BootstrapStatus::Failed { .. }));
 
     // Cleanup
     let _ = fs::remove_file(config_file);
@@ -123,8 +124,11 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     .await
     .expect("Failed to create config");
 
-    // Initialize bootstrap with the config
-    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    // Initialize bootstrap with the config that has invalid peers
+    let mut bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap_config.clear_peers(); // Clear the default peers
+    bootstrap_config.add_peer("invalid-multiaddr".to_string());
+    bootstrap_config.add_peer("also-invalid".to_string());
     bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap
@@ -133,9 +137,9 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
 
     assert!(!result); // Should return false when no valid peers
 
-    // Verify status is still NotStarted because initialization failed
+    // Verify status is Failed because no valid peers could be added
     let status = bootstrap.status.lock().unwrap();
-    assert!(matches!(*status, BootstrapStatus::NotStarted));
+    assert!(matches!(*status, BootstrapStatus::Failed { .. }));
 
     // Cleanup
     let _ = fs::remove_file(config_file);
@@ -161,8 +165,10 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     .await
     .expect("Failed to create config");
 
-    // Initialize bootstrap with the config
-    let bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    // Initialize bootstrap with the config that has valid multiaddr but no peer ID
+    let mut bootstrap_config = p2p_play::types::BootstrapConfig::new();
+    bootstrap_config.clear_peers(); // Clear the default peers
+    bootstrap_config.add_peer("/ip4/127.0.0.1/tcp/8080".to_string()); // Valid multiaddr but no peer ID
     bootstrap.initialize(&bootstrap_config, &bootstrap_logger, &error_logger).await;
 
     let result = bootstrap

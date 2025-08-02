@@ -11,6 +11,7 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::migrations;
 
+#[allow(dead_code)]
 const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
 pub const NODE_DESCRIPTION_FILE_PATH: &str = "node_description.txt";
 
