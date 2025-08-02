@@ -15,6 +15,15 @@ All changes to this project will be documented in this file.
   - Added memory-connection-limits feature to libp2p dependencies
 
 ### Added
+- **Configurable Network Connection Maintenance Interval**: Implemented configurable network connection maintenance to reduce connection churn and improve stability
+  - Replaced hardcoded 30-second connection maintenance interval with configurable value via `network_config.json`
+  - Changed default maintenance interval from 30 seconds to 300 seconds (5 minutes) to significantly reduce connection churn
+  - Added `NetworkConfig` structure with validation to prevent extreme values (minimum 60s, maximum 3600s)
+  - Configuration automatically created with sensible defaults if file is missing or invalid
+  - Provides clear error messages for invalid configurations with graceful fallback to defaults
+  - Users can customize maintenance frequency based on their specific network requirements
+  - Validation ensures users cannot configure values that would cause excessive churn or make network unresponsive
+  - Example configuration: `{"connection_maintenance_interval_seconds": 300}`
 - Enhanced network tests to verify TCP configuration improvements
 - Test coverage for connection limit functionality and swarm configuration
 - Comprehensive test suite for enhanced TCP features
