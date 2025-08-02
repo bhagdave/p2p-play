@@ -11,6 +11,14 @@ All changes to this project will be documented in this file.
   - Ensures consistency between command-line `ls s` output and TUI Stories panel
 
 ### Added
+- **Unified Network Configuration**: Consolidated 4 separate network configuration files into a single `unified_network_config.json` with hot reload capability
+  - Merged `bootstrap_config.json`, `network_config.json`, `ping_config.json`, and `direct_message_config.json` into unified structure
+  - Added new `reload config` command for runtime configuration updates without application restart
+  - Provides detailed feedback showing loaded configuration values and restart requirements
+  - Maintained backward compatibility with existing individual config files for smooth migration
+  - Enhanced configuration validation with meaningful error messages for all network settings
+  - Improved configuration organization with logical grouping of related network parameters
+  - Updated comprehensive documentation in README.md with complete configuration examples and usage instructions
 - **Swarm Configuration Improvements**: Implemented comprehensive swarm configuration with connection limits and enhanced event filtering
   - Added granular connection control through new NetworkConfig fields: `max_connections_per_peer` (default: 1), `max_pending_incoming` (default: 10), `max_pending_outgoing` (default: 10), `max_established_total` (default: 100), and `connection_establishment_timeout_seconds` (default: 30)
   - Enhanced Connection Manager with configurable dial concurrency based on `max_pending_outgoing` setting

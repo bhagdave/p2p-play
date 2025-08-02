@@ -1,7 +1,6 @@
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::handlers::extract_peer_id_from_multiaddr;
 use crate::network::StoryBehaviour;
-use crate::storage::load_bootstrap_config;
 use crate::types::BootstrapConfig;
 use libp2p::swarm::Swarm;
 use log::{debug, warn};
@@ -46,29 +45,19 @@ impl AutoBootstrap {
     /// Initialize the auto bootstrap with config
     pub async fn initialize(
         &mut self,
+        bootstrap_config: &BootstrapConfig,
         bootstrap_logger: &BootstrapLogger,
-        error_logger: &crate::error_logger::ErrorLogger,
+        _error_logger: &crate::error_logger::ErrorLogger,
     ) {
-        match load_bootstrap_config().await {
-            Ok(config) => {
-                self.config = Some(config.clone());
-                debug!(
-                    "AutoBootstrap initialized with {} peers",
-                    config.bootstrap_peers.len()
-                );
-                bootstrap_logger.log_init(&format!(
-                    "Bootstrap initialized with {} configured peers",
-                    config.bootstrap_peers.len()
-                ));
-            }
-            Err(e) => {
-                error_logger.log_error(&format!(
-                    "Failed to load bootstrap config for AutoBootstrap: {}",
-                    e
-                ));
-                bootstrap_logger.log_error(&format!("Bootstrap initialization failed: {}", e));
-            }
-        }
+        self.config = Some(bootstrap_config.clone());
+        debug!(
+            "AutoBootstrap initialized with {} peers",
+            bootstrap_config.bootstrap_peers.len()
+        );
+        bootstrap_logger.log_init(&format!(
+            "Bootstrap initialized with {} configured peers",
+            bootstrap_config.bootstrap_peers.len()
+        ));
     }
 
     /// Attempt automatic bootstrap with all configured peers
@@ -549,10 +538,10 @@ mod tests {
     async fn test_initialize_without_config_file() {
         let mut bootstrap = AutoBootstrap::new();
         let bootstrap_logger = create_test_bootstrap_logger();
-
-        // This will try to load config and may succeed if bootstrap_config.json exists
         let error_logger = crate::error_logger::ErrorLogger::new("test_errors.log");
-        bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+        let test_config = BootstrapConfig::new();
+        
+        bootstrap.initialize(&test_config, &bootstrap_logger, &error_logger).await;
 
         // The test just ensures initialization doesn't panic
     }
