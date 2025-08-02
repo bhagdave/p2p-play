@@ -1,7 +1,8 @@
+use crate::types::PingConfig;
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, StreamProtocol, identity, kad, mdns, ping, request_response};
-use log::{debug, error, warn};
+use log::{debug, warn};
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
@@ -71,9 +72,15 @@ fn generate_and_save_keypair() -> identity::Keypair {
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
             Ok(_) => debug!("Successfully saved keypair to file"),
-            Err(e) => error!("Failed to save keypair: {}", e),
+            Err(e) => {
+                let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+                error_logger.log_error(&format!("Failed to save keypair: {}", e));
+            },
         },
-        Err(e) => error!("Failed to encode keypair: {}", e),
+        Err(e) => {
+            let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+            error_logger.log_error(&format!("Failed to encode keypair: {}", e));
+        },
     }
     keypair
 }
@@ -146,22 +153,31 @@ impl From<kad::Event> for StoryBehaviourEvent {
 pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
+    use std::num::NonZeroU8;
+    use std::time::Duration;
 
-    // Configure TCP transport with Windows-specific socket settings
+    // Enhanced TCP configuration with connection limits and pooling optimization
     // Windows doesn't allow immediate port reuse for sockets in TIME_WAIT state
     #[cfg(windows)]
     let tcp_config = Config::default()
         .nodelay(true)
-        .port_reuse(false) // Disable port reuse on Windows to avoid WSAEADDRINUSE errors
-        .listen_backlog(1024); // Increase backlog to handle more connections
+        .listen_backlog(1024) // Increase backlog to handle more connections
+        .ttl(64); // Set explicit TTL for better routing
 
     #[cfg(not(windows))]
-    let tcp_config = Config::default().nodelay(true);
+    let tcp_config = Config::default()
+        .nodelay(true)
+        .listen_backlog(1024) // Increase backlog to handle more connections
+        .ttl(64); // Set explicit TTL for better routing
+
+    // Enhanced yamux configuration for better connection pooling
+    let mut yamux_config = yamux::Config::default();
+    yamux_config.set_max_num_streams(512); // Allow more concurrent streams for better connection reuse
 
     let transp = tcp::tokio::Transport::new(tcp_config)
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::Config::new(&KEYS).unwrap())
-        .multiplex(yamux::Config::default())
+        .multiplex(yamux_config)
         .boxed();
 
     // Load network configuration
@@ -202,10 +218,25 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     // Set Kademlia mode to server to accept queries and provide records
     kad.set_mode(Some(kad::Mode::Server));
 
+    // Load ping configuration from file or use defaults
+    let ping_config = PingConfig::load_from_file("ping_config.json").unwrap_or_else(|e| {
+        debug!("Failed to load ping config: {}, using defaults", e);
+        PingConfig::new()
+    });
+
+    debug!(
+        "Using ping config: interval={}s, timeout={}s",
+        ping_config.interval_secs, ping_config.timeout_secs
+    );
+
     let mut behaviour = StoryBehaviour {
         floodsub: Behaviour::new(*PEER_ID),
         mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
-        ping: ping::Behaviour::new(ping::Config::new()),
+        ping: ping::Behaviour::new(
+            ping::Config::new()
+                .with_interval(ping_config.interval_duration())
+                .with_timeout(ping_config.timeout_duration()),
+        ),
         request_response,
         node_description,
         kad,
@@ -215,11 +246,11 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     debug!("Subscribing to topic: {:?}", TOPIC.clone());
     behaviour.floodsub.subscribe(TOPIC.clone());
 
-    let swarm = Swarm::<StoryBehaviour>::new(
-        transp,
-        behaviour,
-        *PEER_ID,
-        SwarmConfig::with_tokio_executor(),
-    );
+    // Enhanced swarm configuration with improved connection management
+    let swarm_config = SwarmConfig::with_tokio_executor()
+        .with_dial_concurrency_factor(NonZeroU8::new(8).unwrap()) // Allow multiple concurrent dial attempts for better connectivity
+        .with_idle_connection_timeout(Duration::from_secs(60)); // Idle connection timeout for resource management
+
+    let swarm = Swarm::<StoryBehaviour>::new(transp, behaviour, *PEER_ID, swarm_config);
     Ok(swarm)
 }

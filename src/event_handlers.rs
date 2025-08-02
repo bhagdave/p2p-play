@@ -12,7 +12,7 @@ use crate::types::{
 
 use bytes::Bytes;
 use libp2p::{PeerId, Swarm, request_response};
-use log::{debug, error};
+use log::debug;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::process;
@@ -35,11 +35,12 @@ pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBe
 pub async fn handle_publish_story_event(
     story: crate::types::Story,
     swarm: &mut Swarm<StoryBehaviour>,
+    error_logger: &ErrorLogger,
 ) {
     debug!("Broadcasting published story: {}", story.name);
 
     // Pre-publish connection check and reconnection
-    maintain_connections(swarm).await;
+    maintain_connections(swarm, error_logger).await;
 
     // Debug: Show connected peers and floodsub state
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
@@ -49,7 +50,7 @@ pub async fn handle_publish_story_event(
     }
 
     if connected_peers.is_empty() {
-        error!("No connected peers available for story broadcast!");
+        crate::log_network_error!(error_logger, "floodsub", "No connected peers available for story broadcast!");
     }
 
     let published_story = PublishedStory {
@@ -167,7 +168,11 @@ pub async fn handle_input_event(
 }
 
 /// Handle mDNS discovery events
-pub async fn handle_mdns_event(mdns_event: libp2p::mdns::Event, swarm: &mut Swarm<StoryBehaviour>) {
+pub async fn handle_mdns_event(
+    mdns_event: libp2p::mdns::Event,
+    swarm: &mut Swarm<StoryBehaviour>,
+    error_logger: &ErrorLogger,
+) {
     match mdns_event {
         libp2p::mdns::Event::Discovered(discovered_list) => {
             debug!("Discovered Peers event");
@@ -176,7 +181,7 @@ pub async fn handle_mdns_event(mdns_event: libp2p::mdns::Event, swarm: &mut Swar
                 if !swarm.is_connected(&peer) {
                     debug!("Attempting to dial peer: {}", peer);
                     if let Err(e) = swarm.dial(peer) {
-                        error!("Failed to initiate dial to {}: {}", peer, e);
+                        crate::log_network_error!(error_logger, "mdns", "Failed to initiate dial to {}: {}", peer, e);
                     }
                 } else {
                     debug!("Already connected to peer: {}", peer);
@@ -208,6 +213,7 @@ pub async fn handle_floodsub_event(
     _local_peer_name: &Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) -> Option<()> {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
@@ -231,7 +237,7 @@ pub async fn handle_floodsub_event(
                                 || published.story.channel == "general"
                         }
                         Err(e) => {
-                            error!("Failed to check subscriptions for incoming story: {}", e);
+                            crate::log_network_error!(error_logger, "floodsub", "Failed to check subscriptions for incoming story: {}", e);
                             // Default to accepting general channel stories only
                             published.story.channel == "general"
                         }
@@ -251,10 +257,11 @@ pub async fn handle_floodsub_event(
                         // Save received story to local storage asynchronously (non-blocking)
                         let story_to_save = published.story.clone();
                         let ui_logger_clone = ui_logger.clone();
+                        let error_logger_clone = ErrorLogger::new("errors.log");
                         tokio::spawn(async move {
                             if let Err(e) = save_received_story(story_to_save).await {
                                 // Log error but don't block the main event loop
-                                error!("Failed to save received story: {}", e);
+                                crate::log_network_error!(error_logger_clone, "storage", "Failed to save received story: {}", e);
                                 ui_logger_clone
                                     .log(format!("Warning: Failed to save received story: {}", e));
                             }
@@ -343,7 +350,11 @@ pub async fn handle_floodsub_event(
                             debug!("Channel '{}' already exists", channel_to_save.name);
                         }
                         Err(e) => {
-                            log::error!(
+                            // Create error logger for spawned task
+                            let error_logger_for_task = ErrorLogger::new("errors.log");
+                            crate::log_network_error!(
+                                error_logger_for_task,
+                                "storage",
                                 "Failed to save received channel '{}': {}",
                                 channel_to_save.name,
                                 e
@@ -402,6 +413,7 @@ pub async fn handle_kad_event(
     kad_event: libp2p::kad::Event,
     swarm: &mut Swarm<StoryBehaviour>,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) {
     match kad_event {
         libp2p::kad::Event::OutboundQueryProgressed { result, .. } => match result {
@@ -416,7 +428,7 @@ pub async fn handle_kad_event(
                 ));
             }
             libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
-                error!("Kademlia bootstrap failed: {:?}", e);
+                crate::log_network_error!(error_logger, "kad", "Kademlia bootstrap failed: {:?}", e);
                 ui_logger.log(format!("DHT bootstrap failed: {:?}", e));
             }
             libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
@@ -429,7 +441,7 @@ pub async fn handle_kad_event(
                 }
             }
             libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
-                error!("Failed to get closest peers: {:?}", e);
+                crate::log_network_error!(error_logger, "kad", "Failed to get closest peers: {:?}", e);
             }
             _ => {
                 debug!("Other Kademlia query result: {:?}", result);
@@ -474,7 +486,7 @@ pub async fn handle_kad_event(
 }
 
 /// Handle ping events for connection monitoring
-pub async fn handle_ping_event(ping_event: libp2p::ping::Event) {
+pub async fn handle_ping_event(ping_event: libp2p::ping::Event, error_logger: &ErrorLogger) {
     match ping_event {
         libp2p::ping::Event {
             peer,
@@ -488,7 +500,7 @@ pub async fn handle_ping_event(ping_event: libp2p::ping::Event) {
             result: Err(failure),
             ..
         } => {
-            error!("Ping to {} failed: {}", peer, failure);
+            crate::log_network_error!(error_logger, "ping", "Ping to {} failed: {}", peer, failure);
         }
     }
 }
@@ -520,7 +532,9 @@ pub async fn handle_request_response_event(
                 } => {
                     // Validate sender identity to prevent spoofing
                     if request.from_peer_id != peer.to_string() {
-                        error!(
+                        crate::log_network_error!(
+                            error_logger,
+                            "direct_message",
                             "Direct message sender identity mismatch: claimed {} but actual connection from {}",
                             request.from_peer_id, peer
                         );
@@ -539,7 +553,7 @@ pub async fn handle_request_response_event(
                             .request_response
                             .send_response(channel, response)
                         {
-                            error!("Failed to send rejection response to {}: {:?}", peer, e);
+                            crate::log_network_error!(error_logger, "direct_message", "Failed to send rejection response to {}: {:?}", peer, e);
                         }
                         return;
                     }
@@ -588,7 +602,7 @@ pub async fn handle_request_response_event(
 
                         ui_logger.log(format!("✅ Message delivered to {}", peer));
                     } else {
-                        error!("Direct message was rejected by peer {}", peer);
+                        crate::log_network_error!(error_logger, "direct_message", "Direct message was rejected by peer {}", peer);
 
                         // Message was rejected, but don't retry validation failures
                         if let Ok(mut queue) = pending_messages.lock() {
@@ -663,6 +677,7 @@ pub async fn handle_node_description_event(
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
 ) {
     match event {
         request_response::Event::Message { peer, message, .. } => {
@@ -700,7 +715,9 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                error!(
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "node_description",
                                     "Failed to send node description response to {}: {:?}",
                                     peer, e
                                 );
@@ -713,7 +730,7 @@ pub async fn handle_node_description_event(
                             }
                         }
                         Err(e) => {
-                            error!("Failed to load description: {}", e);
+                            crate::log_network_error!(error_logger, "node_description", "Failed to load description: {}", e);
 
                             // Send empty response to indicate no description
                             let response = NodeDescriptionResponse {
@@ -734,7 +751,9 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                error!(
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "node_description",
                                     "Failed to send empty description response to {}: {:?}",
                                     peer, e
                                 );
@@ -767,7 +786,9 @@ pub async fn handle_node_description_event(
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            error!(
+            crate::log_network_error!(
+                error_logger,
+                "node_description",
                 "Failed to send description request to {}: {:?}",
                 peer, error
             );
@@ -790,7 +811,9 @@ pub async fn handle_node_description_event(
             ui_logger.log(user_message);
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            error!(
+            crate::log_network_error!(
+                error_logger,
+                "node_description",
                 "Failed to receive description request from {}: {:?}",
                 peer, error
             );
@@ -821,7 +844,7 @@ pub async fn handle_event(
             handle_response_event(resp, swarm).await;
         }
         EventType::PublishStory(story) => {
-            handle_publish_story_event(story, swarm).await;
+            handle_publish_story_event(story, swarm, error_logger).await;
         }
         EventType::Input(line) => {
             return handle_input_event(
@@ -839,7 +862,7 @@ pub async fn handle_event(
             .await;
         }
         EventType::MdnsEvent(mdns_event) => {
-            handle_mdns_event(mdns_event, swarm).await;
+            handle_mdns_event(mdns_event, swarm, error_logger).await;
         }
         EventType::FloodsubEvent(floodsub_event) => {
             if let Some(()) = handle_floodsub_event(
@@ -849,6 +872,7 @@ pub async fn handle_event(
                 local_peer_name,
                 sorted_peer_names_cache,
                 ui_logger,
+                error_logger,
             )
             .await
             {
@@ -857,7 +881,7 @@ pub async fn handle_event(
             }
         }
         EventType::PingEvent(ping_event) => {
-            handle_ping_event(ping_event).await;
+            handle_ping_event(ping_event, error_logger).await;
         }
         EventType::RequestResponseEvent(request_response_event) => {
             handle_request_response_event(
@@ -871,10 +895,10 @@ pub async fn handle_event(
             .await;
         }
         EventType::NodeDescriptionEvent(node_desc_event) => {
-            handle_node_description_event(node_desc_event, swarm, local_peer_name, ui_logger).await;
+            handle_node_description_event(node_desc_event, swarm, local_peer_name, ui_logger, error_logger).await;
         }
         EventType::KadEvent(kad_event) => {
-            handle_kad_event(kad_event, swarm, ui_logger).await;
+            handle_kad_event(kad_event, swarm, ui_logger, error_logger).await;
         }
         EventType::PeerName(peer_name) => {
             handle_peer_name_event(peer_name).await;
@@ -899,7 +923,7 @@ const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
 const CLEANUP_THRESHOLD: Duration = Duration::from_secs(3600); // 1 hour
 
 // Helper function that needs to be accessible - copied from main.rs
-pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
+pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logger: &ErrorLogger) {
     let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
 
@@ -950,7 +974,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
             if should_attempt {
                 debug!("Reconnecting to discovered peer: {}", peer);
                 if let Err(e) = swarm.dial(peer) {
-                    error!("Failed to dial peer {}: {}", peer, e);
+                    crate::log_network_error!(error_logger, "mdns", "Failed to dial peer {}: {}", peer, e);
                 }
             }
         }
@@ -960,11 +984,12 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>) {
 // Helper function that needs to be accessible - copied from main.rs
 pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, receiver: String) {
     tokio::spawn(async move {
+        let error_logger = ErrorLogger::new("errors.log");
         // Read stories and subscriptions separately to avoid Send issues
         let stories = match crate::storage::read_local_stories().await {
             Ok(stories) => stories,
             Err(e) => {
-                error!("error fetching local stories to answer ALL request, {}", e);
+                crate::log_network_error!(error_logger, "storage", "error fetching local stories to answer ALL request, {}", e);
                 return;
             }
         };
@@ -972,7 +997,7 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
         let subscribed_channels = match crate::storage::read_subscribed_channels(&receiver).await {
             Ok(channels) => channels,
             Err(e) => {
-                error!("error fetching subscribed channels for {}: {}", receiver, e);
+                crate::log_network_error!(error_logger, "storage", "error fetching subscribed channels for {}: {}", receiver, e);
                 // If we can't get subscriptions, default to "general" channel
                 vec!["general".to_string()]
             }
@@ -1000,7 +1025,7 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             data: filtered_stories,
         };
         if let Err(e) = sender.send(resp) {
-            error!("error sending response via channel, {}", e);
+            crate::log_network_error!(error_logger, "channel", "error sending response via channel, {}", e);
         }
     });
 }
@@ -1332,7 +1357,8 @@ mod tests {
         };
 
         // This function doesn't return a value, so we just test it doesn't panic
-        handle_ping_event(ping_event).await;
+        let error_logger = ErrorLogger::new("test_errors.log");
+        handle_ping_event(ping_event, &error_logger).await;
     }
 
     #[tokio::test]
@@ -1348,7 +1374,8 @@ mod tests {
         };
 
         // This function doesn't return a value, so we just test it doesn't panic
-        handle_ping_event(ping_event).await;
+        let error_logger = ErrorLogger::new("test_errors.log");
+        handle_ping_event(ping_event, &error_logger).await;
     }
 
     #[tokio::test]
@@ -1386,7 +1413,8 @@ mod tests {
 
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
-        maintain_connections(&mut swarm).await;
+        let error_logger = ErrorLogger::new("test_errors.log");
+        maintain_connections(&mut swarm, &error_logger).await;
     }
 
     #[test]
@@ -1429,7 +1457,8 @@ mod tests {
 
         // Measure time taken for story publishing (should be very fast now)
         let start = Instant::now();
-        handle_publish_story_event(story, &mut swarm).await;
+        let error_logger = ErrorLogger::new("test_errors.log");
+        handle_publish_story_event(story, &mut swarm, &error_logger).await;
         let duration = start.elapsed();
 
         // Story publishing should complete in well under 500ms (previously took 1+ seconds)

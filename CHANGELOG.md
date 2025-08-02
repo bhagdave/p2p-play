@@ -6,14 +6,60 @@ All changes to this project will be documented in this file.
 
 ### Added
 - **Configurable Network Timeouts**: Implemented configurable request-response timeouts with comprehensive validation to improve network reliability
+  - **Extended existing NetworkConfig** from main branch with `request_timeout_seconds` and `max_concurrent_streams` fields
   - **Increased default timeout** from 30 to 60 seconds for better reliability on slower networks
-  - **User-configurable settings** via `network_config.json` for custom timeout and concurrency values
-  - **NetworkConfig structure** with `request_timeout_seconds` (10-300s range) and `max_concurrent_streams` (1-1000 range)
+  - **User-configurable settings** via `network_config.json` for custom timeout, concurrency, and connection maintenance values
   - **Comprehensive validation** prevents extreme configurations that could break the system
   - **Graceful fallback** to safe defaults when configuration file is missing or invalid
-  - **Automatic file creation** generates default `network_config.json` on first run
   - **Enhanced debugging** with configuration value logging for troubleshooting
   - Addresses network connectivity issues and premature timeouts on slower connections
+
+### Fixed
+- **TUI Corruption Prevention**: Replaced inappropriate `error!` macro usage throughout the codebase with proper `ErrorLogger` infrastructure
+  - Replaced 24 network-related `error!` calls in event_handlers.rs with `log_network_error!` macro calls
+  - Fixed peer discovery dial failures, story broadcast errors, subscription check errors, Kademlia bootstrap and DHT errors
+  - Addressed connection monitoring failures, direct message validation errors, and node description request/response errors
+  - Replaced 5 runtime `error!` calls in main.rs with `ErrorLogger.log_error()` calls for UI event handling and drawing errors
+  - Updated bootstrap.rs, network.rs, and storage.rs to use proper error logging instead of console output
+  - Preserved 12 critical initialization and cleanup `error!` calls that should remain visible to users
+  - Network and runtime errors now properly log to files instead of corrupting the TUI display
+  - Maintains same error logging behavior while preventing inappropriate console output during normal operation
+
+### Enhanced
+- **Network TCP Configuration**: Significantly improved TCP transport configuration for better connectivity and resource management
+  - Added connection limits to prevent resource exhaustion with optimal pending connection thresholds
+  - Enhanced TCP socket configuration with explicit TTL settings and optimized listen backlog (1024)
+  - Improved connection pooling with increased yamux stream limits (512 concurrent streams)
+  - Configured swarm with dial concurrency factor (8) for better connection attempts
+  - Added idle connection timeout (60 seconds) for automatic resource cleanup
+  - Platform-specific optimizations for Windows and non-Windows systems
+  - Added memory-connection-limits feature to libp2p dependencies
+
+### Added
+- **Configurable Network Connection Maintenance Interval**: Implemented configurable network connection maintenance to reduce connection churn and improve stability
+  - Replaced hardcoded 30-second connection maintenance interval with configurable value via `network_config.json`
+  - Changed default maintenance interval from 30 seconds to 300 seconds (5 minutes) to significantly reduce connection churn
+  - Added `NetworkConfig` structure with validation to prevent extreme values (minimum 60s, maximum 3600s)
+  - Configuration automatically created with sensible defaults if file is missing or invalid
+  - Provides clear error messages for invalid configurations with graceful fallback to defaults
+  - Users can customize maintenance frequency based on their specific network requirements
+  - Validation ensures users cannot configure values that would cause excessive churn or make network unresponsive
+  - Example configuration: `{"connection_maintenance_interval_seconds": 300, "request_timeout_seconds": 60, "max_concurrent_streams": 100}`
+- Enhanced network tests to verify TCP configuration improvements
+- Test coverage for connection limit functionality and swarm configuration
+- Comprehensive test suite for enhanced TCP features
+- **Configurable Ping Settings**: Enhanced network connectivity reliability with configurable ping keep-alive settings
+  - Implemented more lenient default ping settings (30s interval, 20s timeout vs. previous 15s interval, 10s timeout)
+  - Added file-based configuration support via `ping_config.json` for customizing ping behavior
+  - Created `PingConfig` structure with validation and error handling for loading configuration
+  - Configuration falls back to sensible defaults if file is missing or invalid
+  - Improved connection stability for peers with temporary network hiccups
+  - Note: libp2p 0.56.0 doesn't support configurable max_failures, so only interval and timeout are configurable
+
+### Technical Details
+- Updated `src/network.rs` with enhanced TCP transport configuration (lines 149-180)
+- Improved yamux multiplexing configuration for better connection reuse
+- Enhanced swarm configuration with connection management features
 
 ### Removed
 - **Obsolete Peer Listing Commands**: Removed `ls p` (list discovered peers) and `ls c` (list connected peers) commands

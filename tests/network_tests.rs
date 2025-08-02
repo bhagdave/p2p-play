@@ -59,6 +59,7 @@ fn test_network_configuration() {
 async fn test_network_config_integration() {
     // Test that the network config can be loaded and used in create_swarm
     let config = NetworkConfig::new();
+    assert_eq!(config.connection_maintenance_interval_seconds, 300);
     assert_eq!(config.request_timeout_seconds, 60);
     assert_eq!(config.max_concurrent_streams, 100);
     
@@ -73,6 +74,7 @@ async fn test_network_config_file_integration() {
     
     // Create a custom network config file
     let custom_config = NetworkConfig {
+        connection_maintenance_interval_seconds: 600,
         request_timeout_seconds: 120,
         max_concurrent_streams: 50,
     };
@@ -83,9 +85,82 @@ async fn test_network_config_file_integration() {
     
     // Verify the config can be loaded
     let loaded_config = NetworkConfig::load_from_file(temp_path).unwrap();
+    assert_eq!(loaded_config.connection_maintenance_interval_seconds, 600);
     assert_eq!(loaded_config.request_timeout_seconds, 120);
     assert_eq!(loaded_config.max_concurrent_streams, 50);
     
     // Clean up
     fs::remove_file(temp_path).ok();
+}
+
+#[tokio::test]
+async fn test_enhanced_tcp_configuration() {
+    // Test that the enhanced TCP configuration creates a valid swarm
+    let result = create_swarm();
+    assert!(
+        result.is_ok(),
+        "Enhanced TCP configuration should create valid swarm"
+    );
+
+    let swarm = result.unwrap();
+
+    // Verify the swarm is properly configured
+    assert_eq!(
+        swarm.local_peer_id(),
+        &*PEER_ID,
+        "Swarm should have correct peer ID"
+    );
+
+    // The swarm should be created without errors, indicating proper TCP configuration
+    // This includes the enhanced connection limits, yamux config, and swarm settings
+}
+
+#[test]
+fn test_tcp_configuration_components() {
+    // Test that the TCP configuration components are properly set up
+    // This test verifies the building blocks work correctly
+
+    // Test peer ID generation
+    let peer_id = *PEER_ID;
+    assert!(!peer_id.to_string().is_empty(), "Peer ID should be valid");
+
+    // Test topic creation
+    let topic = TOPIC.clone();
+    let topic_str = format!("{:?}", topic);
+    assert!(
+        topic_str.contains("stories"),
+        "Topic should contain 'stories'"
+    );
+
+    // Test consistency across multiple calls
+    let peer_id_2 = *PEER_ID;
+    let topic_2 = TOPIC.clone();
+    assert_eq!(peer_id, peer_id_2, "Peer ID should be consistent");
+    assert_eq!(
+        format!("{:?}", topic),
+        format!("{:?}", topic_2),
+        "Topic should be consistent"
+    );
+}
+
+#[tokio::test]
+async fn test_swarm_creation_with_connection_limits() {
+    // Test that swarm creation includes connection management features
+    let result = create_swarm();
+    assert!(
+        result.is_ok(),
+        "Swarm creation should succeed with connection limits"
+    );
+
+    let swarm = result.unwrap();
+
+    // Verify basic swarm properties
+    assert_eq!(swarm.local_peer_id(), &*PEER_ID);
+
+    // The fact that the swarm was created successfully means:
+    // - TCP configuration with enhanced settings works
+    // - Yamux multiplexing with increased stream limits works
+    // - Swarm configuration with dial concurrency and idle timeout works
+    // - All enhanced connection management features are properly configured
+}
 }

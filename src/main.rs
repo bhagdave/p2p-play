@@ -17,10 +17,12 @@ use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
     ensure_bootstrap_config_exists, ensure_direct_message_config_exists,
-    ensure_stories_file_exists, load_bootstrap_config, load_direct_message_config,
-    load_local_peer_name,
+    ensure_network_config_exists, ensure_stories_file_exists, load_bootstrap_config,
+    load_direct_message_config, load_local_peer_name, load_network_config,
 };
-use types::{ActionResult, DirectMessageConfig, EventType, PeerName, PendingDirectMessage};
+use types::{
+    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage,
+};
 use ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -120,9 +122,35 @@ async fn main() {
     // Create bootstrap logger that writes to file
     let bootstrap_logger = BootstrapLogger::new("bootstrap.log");
 
-    // Create a timer for periodic connection maintenance
-    let mut connection_maintenance_interval =
-        tokio::time::interval(tokio::time::Duration::from_secs(30));
+    // Load network configuration
+    if let Err(e) = ensure_network_config_exists().await {
+        error!("Failed to initialize network config: {}", e);
+        app.add_to_log(format!("Failed to initialize network config: {}", e));
+    }
+
+    let network_config = match load_network_config().await {
+        Ok(config) => {
+            debug!(
+                "Loaded network config: connection_maintenance_interval_seconds={}",
+                config.connection_maintenance_interval_seconds
+            );
+            app.add_to_log(format!("Loaded network config from file"));
+            config
+        }
+        Err(e) => {
+            error!("Failed to load network config: {}", e);
+            app.add_to_log(format!(
+                "Failed to load network config: {}, using defaults",
+                e
+            ));
+            NetworkConfig::new()
+        }
+    };
+
+    // Create a timer for periodic connection maintenance using configurable interval
+    let mut connection_maintenance_interval = tokio::time::interval(
+        tokio::time::Duration::from_secs(network_config.connection_maintenance_interval_seconds),
+    );
 
     let mut swarm = create_swarm().expect("Failed to create swarm");
 
@@ -204,7 +232,7 @@ async fn main() {
 
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
-    auto_bootstrap.initialize(&bootstrap_logger).await;
+    auto_bootstrap.initialize(&bootstrap_logger, &error_logger).await;
 
     // Create a timer for automatic bootstrap retry
     let mut bootstrap_retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
@@ -267,12 +295,12 @@ async fn main() {
     loop {
         // Handle UI events first to ensure responsiveness
         if let Err(e) = handle_ui_events(&mut app, ui_sender.clone()).await {
-            error!("UI event handling error: {}", e);
+            error_logger.log_error(&format!("UI event handling error: {}", e));
         }
 
         // Draw the UI
         if let Err(e) = app.draw() {
-            error!("UI drawing error: {}", e);
+            error_logger.log_error(&format!("UI drawing error: {}", e));
         }
 
         // Check if we should quit
@@ -344,13 +372,13 @@ async fn main() {
                 story = story_rcv.recv() => Some(EventType::PublishStory(story.expect("story exists"))),
                 _ = connection_maintenance_interval.tick() => {
                     // Periodic connection maintenance - spawn to background to avoid blocking
-                    event_handlers::maintain_connections(&mut swarm).await;
+                    event_handlers::maintain_connections(&mut swarm, &error_logger).await;
                     None
                 },
                 _ = bootstrap_retry_interval.tick() => {
                     // Automatic bootstrap retry - only if should retry and time is right
                     if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
-                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &bootstrap_logger).await;
+                        run_auto_bootstrap_with_retry(&mut auto_bootstrap, &mut swarm, &bootstrap_logger, &error_logger).await;
                     }
                     None
                 },
@@ -490,7 +518,7 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error!("Failed to refresh stories: {}", e);
+                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
                                     }
                                 }
                             }
@@ -529,7 +557,7 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error!("Failed to refresh stories: {}", e);
+                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
                                     }
                                 }
                             }
@@ -566,7 +594,7 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error!("Failed to refresh stories: {}", e);
+                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
                                     }
                                 }
                             }

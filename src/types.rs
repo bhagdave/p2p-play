@@ -4,7 +4,7 @@ use crate::network::{
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub type Stories = Vec<Story>;
 
@@ -81,6 +81,23 @@ pub struct BootstrapConfig {
     pub bootstrap_timeout_ms: u64,
 }
 
+/// Configuration for network connectivity settings
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NetworkConfig {
+    pub connection_maintenance_interval_seconds: u64,
+    pub request_timeout_seconds: u64,
+    pub max_concurrent_streams: usize,
+}
+
+/// Configuration for ping keep-alive settings
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct PingConfig {
+    /// Interval between ping messages in seconds (default: 30)
+    pub interval_secs: u64,
+    /// Timeout for ping responses in seconds (default: 20)  
+    pub timeout_secs: u64,
+}
+
 /// Configuration for direct message retry logic
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DirectMessageConfig {
@@ -88,13 +105,6 @@ pub struct DirectMessageConfig {
     pub retry_interval_seconds: u64,
     pub enable_connection_retries: bool,
     pub enable_timed_retries: bool,
-}
-
-/// Configuration for network timeouts and connection settings
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct NetworkConfig {
-    pub request_timeout_seconds: u64,
-    pub max_concurrent_streams: usize,
 }
 
 /// Pending direct message for retry logic
@@ -324,6 +334,72 @@ impl Default for BootstrapConfig {
     }
 }
 
+impl NetworkConfig {
+    pub fn new() -> Self {
+        Self {
+            connection_maintenance_interval_seconds: 300, // 5 minutes default
+            request_timeout_seconds: 60,
+            max_concurrent_streams: 100,
+        }
+    }
+
+    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let config: NetworkConfig = serde_json::from_str(&content)?;
+                config.validate()?;
+                Ok(config)
+            }
+            Err(_) => {
+                // File doesn't exist, create with defaults
+                let config = Self::new();
+                config.save_to_file(path)?;
+                Ok(config)
+            }
+        }
+    }
+
+    pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.connection_maintenance_interval_seconds < 60 {
+            return Err("connection_maintenance_interval_seconds must be at least 60 seconds to avoid excessive connection churn".to_string());
+        }
+
+        if self.connection_maintenance_interval_seconds > 3600 {
+            return Err("connection_maintenance_interval_seconds must be at most 3600 seconds (1 hour) to maintain network responsiveness".to_string());
+        }
+
+        if self.request_timeout_seconds < 10 {
+            return Err("request_timeout_seconds must be at least 10 seconds".to_string());
+        }
+
+        if self.request_timeout_seconds > 300 {
+            return Err("request_timeout_seconds must not exceed 300 seconds (5 minutes)".to_string());
+        }
+
+        if self.max_concurrent_streams == 0 {
+            return Err("max_concurrent_streams must be greater than 0".to_string());
+        }
+
+        if self.max_concurrent_streams > 1000 {
+            return Err("max_concurrent_streams must not exceed 1000".to_string());
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DirectMessageConfig {
     pub fn new() -> Self {
         Self {
@@ -353,58 +429,56 @@ impl Default for DirectMessageConfig {
     }
 }
 
-impl NetworkConfig {
+impl PingConfig {
+    /// Create a new PingConfig with lenient default values
     pub fn new() -> Self {
         Self {
-            request_timeout_seconds: 60,
-            max_concurrent_streams: 100,
+            interval_secs: 30, // Ping every 30s instead of default 15s
+            timeout_secs: 20,  // 20s timeout instead of default 10s
         }
     }
 
+    /// Load ping configuration from a file, falling back to defaults if file doesn't exist
     pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
-                let config: NetworkConfig = serde_json::from_str(&content)?;
+                let config: PingConfig = serde_json::from_str(&content)?;
                 config.validate()?;
                 Ok(config)
             }
             Err(_) => {
-                // File doesn't exist, create with defaults
-                let config = Self::new();
-                config.save_to_file(path)?;
-                Ok(config)
+                // File doesn't exist, use defaults
+                Ok(Self::new())
             }
         }
     }
 
-    pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
+    /// Validate the configuration values
+    pub fn validate(&self) -> Result<(), String> {
+        if self.interval_secs == 0 {
+            return Err("interval_secs must be greater than 0".to_string());
+        }
+        if self.timeout_secs == 0 {
+            return Err("timeout_secs must be greater than 0".to_string());
+        }
+        if self.timeout_secs >= self.interval_secs {
+            return Err("timeout_secs should be less than interval_secs".to_string());
+        }
         Ok(())
     }
 
-    pub fn validate(&self) -> Result<(), String> {
-        if self.request_timeout_seconds < 10 {
-            return Err("request_timeout_seconds must be at least 10 seconds".to_string());
-        }
+    /// Convert to libp2p Duration for interval
+    pub fn interval_duration(&self) -> Duration {
+        Duration::from_secs(self.interval_secs)
+    }
 
-        if self.request_timeout_seconds > 300 {
-            return Err("request_timeout_seconds must not exceed 300 seconds (5 minutes)".to_string());
-        }
-
-        if self.max_concurrent_streams == 0 {
-            return Err("max_concurrent_streams must be greater than 0".to_string());
-        }
-
-        if self.max_concurrent_streams > 1000 {
-            return Err("max_concurrent_streams must not exceed 1000".to_string());
-        }
-
-        Ok(())
+    /// Convert to libp2p Duration for timeout
+    pub fn timeout_duration(&self) -> Duration {
+        Duration::from_secs(self.timeout_secs)
     }
 }
 
-impl Default for NetworkConfig {
+impl Default for PingConfig {
     fn default() -> Self {
         Self::new()
     }
