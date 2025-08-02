@@ -232,7 +232,9 @@ async fn main() {
 
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
-    auto_bootstrap.initialize(&bootstrap_logger, &error_logger).await;
+    auto_bootstrap
+        .initialize(&bootstrap_logger, &error_logger)
+        .await;
 
     // Create a timer for automatic bootstrap retry
     let mut bootstrap_retry_interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
@@ -518,7 +520,10 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
+                                        error_logger.log_error(&format!(
+                                            "Failed to refresh stories: {}",
+                                            e
+                                        ));
                                     }
                                 }
                             }
@@ -557,7 +562,10 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
+                                        error_logger.log_error(&format!(
+                                            "Failed to refresh stories: {}",
+                                            e
+                                        ));
                                     }
                                 }
                             }
@@ -594,7 +602,10 @@ async fn main() {
                                         app.update_local_stories(stories);
                                     }
                                     Err(e) => {
-                                        error_logger.log_error(&format!("Failed to refresh stories: {}", e));
+                                        error_logger.log_error(&format!(
+                                            "Failed to refresh stories: {}",
+                                            e
+                                        ));
                                     }
                                 }
                             }

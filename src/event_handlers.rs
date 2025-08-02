@@ -50,7 +50,11 @@ pub async fn handle_publish_story_event(
     }
 
     if connected_peers.is_empty() {
-        crate::log_network_error!(error_logger, "floodsub", "No connected peers available for story broadcast!");
+        crate::log_network_error!(
+            error_logger,
+            "floodsub",
+            "No connected peers available for story broadcast!"
+        );
     }
 
     let published_story = PublishedStory {
@@ -181,7 +185,13 @@ pub async fn handle_mdns_event(
                 if !swarm.is_connected(&peer) {
                     debug!("Attempting to dial peer: {}", peer);
                     if let Err(e) = swarm.dial(peer) {
-                        crate::log_network_error!(error_logger, "mdns", "Failed to initiate dial to {}: {}", peer, e);
+                        crate::log_network_error!(
+                            error_logger,
+                            "mdns",
+                            "Failed to initiate dial to {}: {}",
+                            peer,
+                            e
+                        );
                     }
                 } else {
                     debug!("Already connected to peer: {}", peer);
@@ -237,7 +247,12 @@ pub async fn handle_floodsub_event(
                                 || published.story.channel == "general"
                         }
                         Err(e) => {
-                            crate::log_network_error!(error_logger, "floodsub", "Failed to check subscriptions for incoming story: {}", e);
+                            crate::log_network_error!(
+                                error_logger,
+                                "floodsub",
+                                "Failed to check subscriptions for incoming story: {}",
+                                e
+                            );
                             // Default to accepting general channel stories only
                             published.story.channel == "general"
                         }
@@ -261,7 +276,12 @@ pub async fn handle_floodsub_event(
                         tokio::spawn(async move {
                             if let Err(e) = save_received_story(story_to_save).await {
                                 // Log error but don't block the main event loop
-                                crate::log_network_error!(error_logger_clone, "storage", "Failed to save received story: {}", e);
+                                crate::log_network_error!(
+                                    error_logger_clone,
+                                    "storage",
+                                    "Failed to save received story: {}",
+                                    e
+                                );
                                 ui_logger_clone
                                     .log(format!("Warning: Failed to save received story: {}", e));
                             }
@@ -428,7 +448,12 @@ pub async fn handle_kad_event(
                 ));
             }
             libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
-                crate::log_network_error!(error_logger, "kad", "Kademlia bootstrap failed: {:?}", e);
+                crate::log_network_error!(
+                    error_logger,
+                    "kad",
+                    "Kademlia bootstrap failed: {:?}",
+                    e
+                );
                 ui_logger.log(format!("DHT bootstrap failed: {:?}", e));
             }
             libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
@@ -441,7 +466,12 @@ pub async fn handle_kad_event(
                 }
             }
             libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
-                crate::log_network_error!(error_logger, "kad", "Failed to get closest peers: {:?}", e);
+                crate::log_network_error!(
+                    error_logger,
+                    "kad",
+                    "Failed to get closest peers: {:?}",
+                    e
+                );
             }
             _ => {
                 debug!("Other Kademlia query result: {:?}", result);
@@ -536,7 +566,8 @@ pub async fn handle_request_response_event(
                             error_logger,
                             "direct_message",
                             "Direct message sender identity mismatch: claimed {} but actual connection from {}",
-                            request.from_peer_id, peer
+                            request.from_peer_id,
+                            peer
                         );
 
                         // Send response indicating rejection due to identity mismatch
@@ -553,7 +584,13 @@ pub async fn handle_request_response_event(
                             .request_response
                             .send_response(channel, response)
                         {
-                            crate::log_network_error!(error_logger, "direct_message", "Failed to send rejection response to {}: {:?}", peer, e);
+                            crate::log_network_error!(
+                                error_logger,
+                                "direct_message",
+                                "Failed to send rejection response to {}: {:?}",
+                                peer,
+                                e
+                            );
                         }
                         return;
                     }
@@ -602,7 +639,12 @@ pub async fn handle_request_response_event(
 
                         ui_logger.log(format!("✅ Message delivered to {}", peer));
                     } else {
-                        crate::log_network_error!(error_logger, "direct_message", "Direct message was rejected by peer {}", peer);
+                        crate::log_network_error!(
+                            error_logger,
+                            "direct_message",
+                            "Direct message was rejected by peer {}",
+                            peer
+                        );
 
                         // Message was rejected, but don't retry validation failures
                         if let Ok(mut queue) = pending_messages.lock() {
@@ -719,7 +761,8 @@ pub async fn handle_node_description_event(
                                     error_logger,
                                     "node_description",
                                     "Failed to send node description response to {}: {:?}",
-                                    peer, e
+                                    peer,
+                                    e
                                 );
                                 ui_logger.log(format!(
                                     "❌ Failed to send description response to {}: {:?}",
@@ -730,7 +773,12 @@ pub async fn handle_node_description_event(
                             }
                         }
                         Err(e) => {
-                            crate::log_network_error!(error_logger, "node_description", "Failed to load description: {}", e);
+                            crate::log_network_error!(
+                                error_logger,
+                                "node_description",
+                                "Failed to load description: {}",
+                                e
+                            );
 
                             // Send empty response to indicate no description
                             let response = NodeDescriptionResponse {
@@ -755,7 +803,8 @@ pub async fn handle_node_description_event(
                                     error_logger,
                                     "node_description",
                                     "Failed to send empty description response to {}: {:?}",
-                                    peer, e
+                                    peer,
+                                    e
                                 );
                             }
                         }
@@ -790,7 +839,8 @@ pub async fn handle_node_description_event(
                 error_logger,
                 "node_description",
                 "Failed to send description request to {}: {:?}",
-                peer, error
+                peer,
+                error
             );
 
             let user_message = match error {
@@ -815,7 +865,8 @@ pub async fn handle_node_description_event(
                 error_logger,
                 "node_description",
                 "Failed to receive description request from {}: {:?}",
-                peer, error
+                peer,
+                error
             );
         }
         request_response::Event::ResponseSent { peer, .. } => {
@@ -895,7 +946,14 @@ pub async fn handle_event(
             .await;
         }
         EventType::NodeDescriptionEvent(node_desc_event) => {
-            handle_node_description_event(node_desc_event, swarm, local_peer_name, ui_logger, error_logger).await;
+            handle_node_description_event(
+                node_desc_event,
+                swarm,
+                local_peer_name,
+                ui_logger,
+                error_logger,
+            )
+            .await;
         }
         EventType::KadEvent(kad_event) => {
             handle_kad_event(kad_event, swarm, ui_logger, error_logger).await;
@@ -974,7 +1032,13 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
             if should_attempt {
                 debug!("Reconnecting to discovered peer: {}", peer);
                 if let Err(e) = swarm.dial(peer) {
-                    crate::log_network_error!(error_logger, "mdns", "Failed to dial peer {}: {}", peer, e);
+                    crate::log_network_error!(
+                        error_logger,
+                        "mdns",
+                        "Failed to dial peer {}: {}",
+                        peer,
+                        e
+                    );
                 }
             }
         }
@@ -989,7 +1053,12 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
         let stories = match crate::storage::read_local_stories().await {
             Ok(stories) => stories,
             Err(e) => {
-                crate::log_network_error!(error_logger, "storage", "error fetching local stories to answer ALL request, {}", e);
+                crate::log_network_error!(
+                    error_logger,
+                    "storage",
+                    "error fetching local stories to answer ALL request, {}",
+                    e
+                );
                 return;
             }
         };
@@ -997,7 +1066,13 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
         let subscribed_channels = match crate::storage::read_subscribed_channels(&receiver).await {
             Ok(channels) => channels,
             Err(e) => {
-                crate::log_network_error!(error_logger, "storage", "error fetching subscribed channels for {}: {}", receiver, e);
+                crate::log_network_error!(
+                    error_logger,
+                    "storage",
+                    "error fetching subscribed channels for {}: {}",
+                    receiver,
+                    e
+                );
                 // If we can't get subscriptions, default to "general" channel
                 vec!["general".to_string()]
             }
@@ -1025,7 +1100,12 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             data: filtered_stories,
         };
         if let Err(e) = sender.send(resp) {
-            crate::log_network_error!(error_logger, "channel", "error sending response via channel, {}", e);
+            crate::log_network_error!(
+                error_logger,
+                "channel",
+                "error sending response via channel, {}",
+                e
+            );
         }
     });
 }
