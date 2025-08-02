@@ -1,6 +1,4 @@
-use p2p_play::storage::{
-    load_network_config_from_path, save_network_config_to_path,
-};
+use p2p_play::storage::{load_network_config_from_path, save_network_config_to_path};
 use p2p_play::types::NetworkConfig;
 use std::fs;
 use tempfile::NamedTempFile;
@@ -49,7 +47,7 @@ async fn test_network_config_validation_edge_cases() {
     let config_min = NetworkConfig {
         connection_maintenance_interval_seconds: 60,
         request_timeout_seconds: 10, // minimum
-        max_concurrent_streams: 1, // minimum
+        max_concurrent_streams: 1,   // minimum
     };
     assert!(config_min.validate().is_ok());
 
@@ -158,7 +156,11 @@ async fn test_network_config_request_timeout_validation() {
     };
     let result = config_low.validate();
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("request_timeout_seconds must be at least 10 seconds"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("request_timeout_seconds must be at least 10 seconds")
+    );
 
     // Test request timeout too high
     let config_high = NetworkConfig {
@@ -168,7 +170,11 @@ async fn test_network_config_request_timeout_validation() {
     };
     let result = config_high.validate();
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("request_timeout_seconds must not exceed 300 seconds"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("request_timeout_seconds must not exceed 300 seconds")
+    );
 }
 
 #[tokio::test]
@@ -181,7 +187,11 @@ async fn test_network_config_max_streams_validation() {
     };
     let result = config_zero.validate();
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("max_concurrent_streams must be greater than 0"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("max_concurrent_streams must be greater than 0")
+    );
 
     // Test max streams too high
     let config_high = NetworkConfig {
@@ -191,7 +201,11 @@ async fn test_network_config_max_streams_validation() {
     };
     let result = config_high.validate();
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("max_concurrent_streams must not exceed 1000"));
+    assert!(
+        result
+            .unwrap_err()
+            .contains("max_concurrent_streams must not exceed 1000")
+    );
 }
 
 #[tokio::test]

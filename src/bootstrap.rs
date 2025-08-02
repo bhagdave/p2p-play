@@ -44,7 +44,11 @@ impl AutoBootstrap {
     }
 
     /// Initialize the auto bootstrap with config
-    pub async fn initialize(&mut self, bootstrap_logger: &BootstrapLogger, error_logger: &crate::error_logger::ErrorLogger) {
+    pub async fn initialize(
+        &mut self,
+        bootstrap_logger: &BootstrapLogger,
+        error_logger: &crate::error_logger::ErrorLogger,
+    ) {
         match load_bootstrap_config().await {
             Ok(config) => {
                 self.config = Some(config.clone());
@@ -58,7 +62,10 @@ impl AutoBootstrap {
                 ));
             }
             Err(e) => {
-                error_logger.log_error(&format!("Failed to load bootstrap config for AutoBootstrap: {}", e));
+                error_logger.log_error(&format!(
+                    "Failed to load bootstrap config for AutoBootstrap: {}",
+                    e
+                ));
                 bootstrap_logger.log_error(&format!("Bootstrap initialization failed: {}", e));
             }
         }

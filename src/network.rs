@@ -1,3 +1,4 @@
+use crate::types::NetworkConfig;
 use crate::types::PingConfig;
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
@@ -6,7 +7,6 @@ use log::{debug, warn};
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
-use crate::types::NetworkConfig;
 
 /// Direct message request/response types
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -75,12 +75,12 @@ fn generate_and_save_keypair() -> identity::Keypair {
             Err(e) => {
                 let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
                 error_logger.log_error(&format!("Failed to save keypair: {}", e));
-            },
+            }
         },
         Err(e) => {
             let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
             error_logger.log_error(&format!("Failed to encode keypair: {}", e));
-        },
+        }
     }
     keypair
 }
@@ -181,15 +181,15 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
         .boxed();
 
     // Load network configuration
-    let network_config = NetworkConfig::load_from_file("network_config.json")
-        .unwrap_or_else(|e| {
-            warn!("Failed to load network config: {}, using defaults", e);
-            NetworkConfig::new()
-        });
+    let network_config = NetworkConfig::load_from_file("network_config.json").unwrap_or_else(|e| {
+        warn!("Failed to load network config: {}, using defaults", e);
+        NetworkConfig::new()
+    });
 
-    debug!("Using network config - timeout: {}s, streams: {}", 
-           network_config.request_timeout_seconds, 
-           network_config.max_concurrent_streams);
+    debug!(
+        "Using network config - timeout: {}s, streams: {}",
+        network_config.request_timeout_seconds, network_config.max_concurrent_streams
+    );
 
     // Create request-response protocol for direct messaging
     let protocol = request_response::ProtocolSupport::Full;
@@ -198,7 +198,9 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     // Configure request-response protocol with timeouts and retry policies
     let cfg = request_response::Config::default()
-        .with_request_timeout(std::time::Duration::from_secs(network_config.request_timeout_seconds))
+        .with_request_timeout(std::time::Duration::from_secs(
+            network_config.request_timeout_seconds,
+        ))
         .with_max_concurrent_streams(network_config.max_concurrent_streams);
 
     let request_response = request_response::cbor::Behaviour::new(dm_protocols, cfg.clone());
