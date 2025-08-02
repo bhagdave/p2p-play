@@ -4,7 +4,7 @@ use crate::network::{
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub type Stories = Vec<Story>;
 
@@ -79,6 +79,15 @@ pub struct BootstrapConfig {
     pub retry_interval_ms: u64,
     pub max_retry_attempts: u32,
     pub bootstrap_timeout_ms: u64,
+}
+
+/// Configuration for ping keep-alive settings
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct PingConfig {
+    /// Interval between ping messages in seconds (default: 30)
+    pub interval_secs: u64,
+    /// Timeout for ping responses in seconds (default: 20)  
+    pub timeout_secs: u64,
 }
 
 /// Configuration for direct message retry logic
@@ -341,6 +350,61 @@ impl DirectMessageConfig {
 }
 
 impl Default for DirectMessageConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PingConfig {
+    /// Create a new PingConfig with lenient default values
+    pub fn new() -> Self {
+        Self {
+            interval_secs: 30, // Ping every 30s instead of default 15s
+            timeout_secs: 20,  // 20s timeout instead of default 10s
+        }
+    }
+
+    /// Load ping configuration from a file, falling back to defaults if file doesn't exist
+    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let config: PingConfig = serde_json::from_str(&content)?;
+                config.validate()?;
+                Ok(config)
+            }
+            Err(_) => {
+                // File doesn't exist, use defaults
+                Ok(Self::new())
+            }
+        }
+    }
+
+    /// Validate the configuration values
+    pub fn validate(&self) -> Result<(), String> {
+        if self.interval_secs == 0 {
+            return Err("interval_secs must be greater than 0".to_string());
+        }
+        if self.timeout_secs == 0 {
+            return Err("timeout_secs must be greater than 0".to_string());
+        }
+        if self.timeout_secs >= self.interval_secs {
+            return Err("timeout_secs should be less than interval_secs".to_string());
+        }
+        Ok(())
+    }
+
+    /// Convert to libp2p Duration for interval
+    pub fn interval_duration(&self) -> Duration {
+        Duration::from_secs(self.interval_secs)
+    }
+
+    /// Convert to libp2p Duration for timeout
+    pub fn timeout_duration(&self) -> Duration {
+        Duration::from_secs(self.timeout_secs)
+    }
+}
+
+impl Default for PingConfig {
     fn default() -> Self {
         Self::new()
     }
