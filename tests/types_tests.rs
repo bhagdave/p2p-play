@@ -721,6 +721,7 @@ fn test_network_config_validate_valid() {
     assert!(config.validate().is_ok());
 
     let custom_config = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 30,
         max_concurrent_streams: 50,
     };
@@ -730,6 +731,7 @@ fn test_network_config_validate_valid() {
 #[test]
 fn test_network_config_validate_timeout_too_low() {
     let config = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 5, // Too low, minimum is 10
         max_concurrent_streams: 100,
     };
@@ -741,6 +743,7 @@ fn test_network_config_validate_timeout_too_low() {
 #[test]
 fn test_network_config_validate_timeout_too_high() {
     let config = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 400, // Too high, maximum is 300
         max_concurrent_streams: 100,
     };
@@ -752,6 +755,7 @@ fn test_network_config_validate_timeout_too_high() {
 #[test]
 fn test_network_config_validate_streams_zero() {
     let config = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 60,
         max_concurrent_streams: 0, // Invalid
     };
@@ -763,6 +767,7 @@ fn test_network_config_validate_streams_zero() {
 #[test]
 fn test_network_config_validate_streams_too_high() {
     let config = NetworkConfig {
+        connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 60,
         max_concurrent_streams: 1500, // Too high, maximum is 1000
     };
@@ -775,6 +780,7 @@ fn test_network_config_validate_streams_too_high() {
 fn test_network_config_boundary_values() {
     // Test minimum valid values
     let min_config = NetworkConfig {
+        connection_maintenance_interval_seconds: 60,
         request_timeout_seconds: 10,
         max_concurrent_streams: 1,
     };
@@ -782,6 +788,7 @@ fn test_network_config_boundary_values() {
 
     // Test maximum valid values
     let max_config = NetworkConfig {
+        connection_maintenance_interval_seconds: 3600,
         request_timeout_seconds: 300,
         max_concurrent_streams: 1000,
     };
@@ -797,6 +804,7 @@ mod network_config_file_tests {
     #[test]
     fn test_network_config_save_and_load() {
         let config = NetworkConfig {
+            connection_maintenance_interval_seconds: 600,
             request_timeout_seconds: 45,
             max_concurrent_streams: 150,
         };
@@ -838,7 +846,7 @@ mod network_config_file_tests {
         let temp_path = temp_file.path().to_str().unwrap();
 
         // Write invalid config
-        let invalid_config = r#"{"request_timeout_seconds": 5, "max_concurrent_streams": 100}"#;
+        let invalid_config = r#"{"connection_maintenance_interval_seconds": 300, "request_timeout_seconds": 5, "max_concurrent_streams": 100}"#;
         fs::write(temp_path, invalid_config).unwrap();
 
         // Load should fail validation

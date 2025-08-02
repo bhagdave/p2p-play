@@ -163,4 +163,3 @@ async fn test_swarm_creation_with_connection_limits() {
     // - Swarm configuration with dial concurrency and idle timeout works
     // - All enhanced connection management features are properly configured
 }
-}
