@@ -319,8 +319,9 @@ pub async fn publish_story(
 
     if rows_affected > 0 {
         // Fetch the updated story to send it
-        let mut stmt = conn
-            .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?")?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?",
+        )?;
         let story_result = stmt.query_row([&id.to_string()], |row| {
             Ok(Story {
                 id: row.get::<_, i64>(0)? as usize,
