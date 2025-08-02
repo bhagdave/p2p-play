@@ -4,6 +4,17 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Configurable Network Timeouts**: Implemented configurable request-response timeouts with comprehensive validation to improve network reliability
+  - **Increased default timeout** from 30 to 60 seconds for better reliability on slower networks
+  - **User-configurable settings** via `network_config.json` for custom timeout and concurrency values
+  - **NetworkConfig structure** with `request_timeout_seconds` (10-300s range) and `max_concurrent_streams` (1-1000 range)
+  - **Comprehensive validation** prevents extreme configurations that could break the system
+  - **Graceful fallback** to safe defaults when configuration file is missing or invalid
+  - **Automatic file creation** generates default `network_config.json` on first run
+  - **Enhanced debugging** with configuration value logging for troubleshooting
+  - Addresses network connectivity issues and premature timeouts on slower connections
+
 ### Removed
 - **Obsolete Peer Listing Commands**: Removed `ls p` (list discovered peers) and `ls c` (list connected peers) commands
   - Commands were redundant due to TUI's dedicated "Connected Peers" section showing real-time peer information
