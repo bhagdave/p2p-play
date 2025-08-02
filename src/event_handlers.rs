@@ -975,7 +975,11 @@ pub async fn handle_event(
 // Connection throttling to prevent rapid reconnection attempts
 static LAST_CONNECTION_ATTEMPTS: Lazy<std::sync::Mutex<HashMap<PeerId, Instant>>> =
     Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
+static LAST_SUCCESSFUL_CONNECTIONS: Lazy<std::sync::Mutex<HashMap<PeerId, Instant>>> =
+    Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
 const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
+const MIN_RECONNECT_INTERVAL_RECENT: Duration = Duration::from_secs(15); // Faster reconnects for recently connected peers
+const RECENT_CONNECTION_THRESHOLD: Duration = Duration::from_secs(300); // 5 minutes
 const CLEANUP_THRESHOLD: Duration = Duration::from_secs(3600); // 1 hour
 
 // Helper function that needs to be accessible - copied from main.rs
@@ -1000,17 +1004,40 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
 
                     let last_attempt = attempts.get(&peer);
 
+                    // Determine the appropriate reconnect interval based on recent connection history
+                    let reconnect_interval = match LAST_SUCCESSFUL_CONNECTIONS.try_lock() {
+                        Ok(successful_connections) => {
+                            if let Some(last_successful) = successful_connections.get(&peer) {
+                                if last_successful.elapsed() < RECENT_CONNECTION_THRESHOLD {
+                                    // Peer was recently connected, use shorter interval
+                                    MIN_RECONNECT_INTERVAL_RECENT
+                                } else {
+                                    // Peer was not recently connected, use normal interval
+                                    MIN_RECONNECT_INTERVAL
+                                }
+                            } else {
+                                // Peer has never been successfully connected, use normal interval
+                                MIN_RECONNECT_INTERVAL
+                            }
+                        }
+                        Err(_) => {
+                            debug!("Successful connections map temporarily unavailable");
+                            MIN_RECONNECT_INTERVAL
+                        }
+                    };
+
                     match last_attempt {
                         Some(last_time) => {
                             let elapsed = last_time.elapsed();
-                            if elapsed >= MIN_RECONNECT_INTERVAL {
+                            if elapsed >= reconnect_interval {
                                 attempts.insert(peer, Instant::now());
                                 true
                             } else {
                                 debug!(
-                                    "Throttling reconnection to peer {} (last attempt {} seconds ago)",
+                                    "Throttling reconnection to peer {} (last attempt {} seconds ago, interval: {}s)",
                                     peer,
-                                    elapsed.as_secs()
+                                    elapsed.as_secs(),
+                                    reconnect_interval.as_secs()
                                 );
                                 false
                             }
@@ -1041,6 +1068,20 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
             }
         }
     }
+}
+
+/// Track successful connection for improved reconnect timing
+pub fn track_successful_connection(peer_id: PeerId) {
+    if let Ok(mut connections) = LAST_SUCCESSFUL_CONNECTIONS.try_lock() {
+        connections.insert(peer_id, Instant::now());
+        debug!("Tracked successful connection to peer: {}", peer_id);
+    }
+}
+
+/// Trigger immediate connection maintenance (useful after connection drops)
+pub async fn trigger_immediate_connection_maintenance(swarm: &mut Swarm<StoryBehaviour>, error_logger: &ErrorLogger) {
+    debug!("Triggering immediate connection maintenance");
+    maintain_connections(swarm, error_logger).await;
 }
 
 // Helper function that needs to be accessible - copied from main.rs

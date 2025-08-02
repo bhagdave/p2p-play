@@ -9,7 +9,7 @@
     "bootstrap_timeout_ms": 30000
   },
   "network": {
-    "connection_maintenance_interval_seconds": 300,
+    "connection_maintenance_interval_seconds": 30,
     "request_timeout_seconds": 60,
     "max_concurrent_streams": 100,
     "max_connections_per_peer": 1,
