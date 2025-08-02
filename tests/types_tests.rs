@@ -700,8 +700,14 @@ fn test_network_config_new() {
 fn test_network_config_default() {
     let config = NetworkConfig::default();
     let new_config = NetworkConfig::new();
-    assert_eq!(config.request_timeout_seconds, new_config.request_timeout_seconds);
-    assert_eq!(config.max_concurrent_streams, new_config.max_concurrent_streams);
+    assert_eq!(
+        config.request_timeout_seconds,
+        new_config.request_timeout_seconds
+    );
+    assert_eq!(
+        config.max_concurrent_streams,
+        new_config.max_concurrent_streams
+    );
 }
 
 #[test]
@@ -711,8 +717,14 @@ fn test_network_config_serialization() {
     let json = serde_json::to_string(&config).unwrap();
     let deserialized: NetworkConfig = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(config.request_timeout_seconds, deserialized.request_timeout_seconds);
-    assert_eq!(config.max_concurrent_streams, deserialized.max_concurrent_streams);
+    assert_eq!(
+        config.request_timeout_seconds,
+        deserialized.request_timeout_seconds
+    );
+    assert_eq!(
+        config.max_concurrent_streams,
+        deserialized.max_concurrent_streams
+    );
 }
 
 #[test]
@@ -798,8 +810,8 @@ fn test_network_config_boundary_values() {
 #[cfg(test)]
 mod network_config_file_tests {
     use super::*;
-    use tempfile::NamedTempFile;
     use std::fs;
+    use tempfile::NamedTempFile;
 
     #[test]
     fn test_network_config_save_and_load() {
@@ -818,8 +830,14 @@ mod network_config_file_tests {
         // Load config
         let loaded_config = NetworkConfig::load_from_file(temp_path).unwrap();
 
-        assert_eq!(config.request_timeout_seconds, loaded_config.request_timeout_seconds);
-        assert_eq!(config.max_concurrent_streams, loaded_config.max_concurrent_streams);
+        assert_eq!(
+            config.request_timeout_seconds,
+            loaded_config.request_timeout_seconds
+        );
+        assert_eq!(
+            config.max_concurrent_streams,
+            loaded_config.max_concurrent_streams
+        );
     }
 
     #[test]
@@ -852,7 +870,12 @@ mod network_config_file_tests {
         // Load should fail validation
         let result = NetworkConfig::load_from_file(temp_path);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("at least 10 seconds"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("at least 10 seconds")
+        );
     }
 
     #[test]
