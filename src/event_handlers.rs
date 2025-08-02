@@ -84,8 +84,6 @@ pub async fn handle_input_event(
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) -> Option<ActionResult> {
     match line.as_str() {
-        "ls p" => handle_list_peers(swarm, peer_names, ui_logger).await,
-        "ls c" => handle_list_connections(swarm, peer_names, ui_logger).await,
         "ls ch" => handle_list_channels(ui_logger, error_logger).await,
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
@@ -1247,8 +1245,6 @@ mod tests {
             ("ls ch", "channels"),
             ("ls s local", "stories"),
             ("ls s all", "stories"),
-            ("ls p", "peers"),
-            ("ls c", "connections"),
         ];
 
         for (input, _expected_type) in test_cases {
@@ -1263,11 +1259,6 @@ mod tests {
                     result, "stories",
                     "ls s commands should match stories handler"
                 ),
-                "ls p" => assert_eq!(result, "peers", "ls p should match peers handler"),
-                "ls c" => assert_eq!(
-                    result, "connections",
-                    "ls c should match connections handler"
-                ),
                 _ => {}
             }
         }
@@ -1277,8 +1268,6 @@ mod tests {
     fn match_command_type(line: &str) -> &'static str {
         // This follows the exact same pattern matching order as in handle_input_event
         match line {
-            "ls p" => "peers",
-            "ls c" => "connections",
             "ls ch" => "channels",
             "ls sub" => "subscription",
             cmd if cmd.starts_with("ls s") => "stories",
