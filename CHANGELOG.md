@@ -4,6 +4,16 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Configurable Network Timeouts**: Implemented configurable request-response timeouts with comprehensive validation to improve network reliability
+  - **Extended existing NetworkConfig** from main branch with `request_timeout_seconds` and `max_concurrent_streams` fields
+  - **Increased default timeout** from 30 to 60 seconds for better reliability on slower networks
+  - **User-configurable settings** via `network_config.json` for custom timeout, concurrency, and connection maintenance values
+  - **Comprehensive validation** prevents extreme configurations that could break the system
+  - **Graceful fallback** to safe defaults when configuration file is missing or invalid
+  - **Enhanced debugging** with configuration value logging for troubleshooting
+  - Addresses network connectivity issues and premature timeouts on slower connections
+
 ### Fixed
 - **TUI Corruption Prevention**: Replaced inappropriate `error!` macro usage throughout the codebase with proper `ErrorLogger` infrastructure
   - Replaced 24 network-related `error!` calls in event_handlers.rs with `log_network_error!` macro calls
@@ -14,6 +24,7 @@ All changes to this project will be documented in this file.
   - Preserved 12 critical initialization and cleanup `error!` calls that should remain visible to users
   - Network and runtime errors now properly log to files instead of corrupting the TUI display
   - Maintains same error logging behavior while preventing inappropriate console output during normal operation
+
 ### Enhanced
 - **Network TCP Configuration**: Significantly improved TCP transport configuration for better connectivity and resource management
   - Added connection limits to prevent resource exhaustion with optimal pending connection thresholds
@@ -33,7 +44,7 @@ All changes to this project will be documented in this file.
   - Provides clear error messages for invalid configurations with graceful fallback to defaults
   - Users can customize maintenance frequency based on their specific network requirements
   - Validation ensures users cannot configure values that would cause excessive churn or make network unresponsive
-  - Example configuration: `{"connection_maintenance_interval_seconds": 300}`
+  - Example configuration: `{"connection_maintenance_interval_seconds": 300, "request_timeout_seconds": 60, "max_concurrent_streams": 100}`
 - Enhanced network tests to verify TCP configuration improvements
 - Test coverage for connection limit functionality and swarm configuration
 - Comprehensive test suite for enhanced TCP features

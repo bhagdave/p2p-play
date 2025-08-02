@@ -6,6 +6,7 @@ use log::{debug, warn};
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
+use crate::types::NetworkConfig;
 
 /// Direct message request/response types
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -179,6 +180,17 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
         .multiplex(yamux_config)
         .boxed();
 
+    // Load network configuration
+    let network_config = NetworkConfig::load_from_file("network_config.json")
+        .unwrap_or_else(|e| {
+            warn!("Failed to load network config: {}, using defaults", e);
+            NetworkConfig::new()
+        });
+
+    debug!("Using network config - timeout: {}s, streams: {}", 
+           network_config.request_timeout_seconds, 
+           network_config.max_concurrent_streams);
+
     // Create request-response protocol for direct messaging
     let protocol = request_response::ProtocolSupport::Full;
     let dm_protocol = StreamProtocol::new("/dm/1.0.0");
@@ -186,8 +198,8 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     // Configure request-response protocol with timeouts and retry policies
     let cfg = request_response::Config::default()
-        .with_request_timeout(std::time::Duration::from_secs(30))
-        .with_max_concurrent_streams(100);
+        .with_request_timeout(std::time::Duration::from_secs(network_config.request_timeout_seconds))
+        .with_max_concurrent_streams(network_config.max_concurrent_streams);
 
     let request_response = request_response::cbor::Behaviour::new(dm_protocols, cfg.clone());
 

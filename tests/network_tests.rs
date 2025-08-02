@@ -1,4 +1,6 @@
 use p2p_play::network::*;
+use p2p_play::types::NetworkConfig;
+use std::fs;
 
 #[tokio::test]
 async fn test_create_swarm() {
@@ -51,6 +53,44 @@ fn test_network_configuration() {
     let topic_str = format!("{:?}", topic);
     assert!(!topic_str.is_empty());
     assert!(topic_str.contains("stories"));
+}
+
+#[tokio::test]
+async fn test_network_config_integration() {
+    // Test that the network config can be loaded and used in create_swarm
+    let config = NetworkConfig::new();
+    assert_eq!(config.connection_maintenance_interval_seconds, 300);
+    assert_eq!(config.request_timeout_seconds, 60);
+    assert_eq!(config.max_concurrent_streams, 100);
+    
+    // Ensure create_swarm still works (it should use the config internally)
+    let result = create_swarm();
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_network_config_file_integration() {
+    use tempfile::NamedTempFile;
+    
+    // Create a custom network config file
+    let custom_config = NetworkConfig {
+        connection_maintenance_interval_seconds: 600,
+        request_timeout_seconds: 120,
+        max_concurrent_streams: 50,
+    };
+    
+    let temp_file = NamedTempFile::new().unwrap();
+    let temp_path = temp_file.path().to_str().unwrap();
+    custom_config.save_to_file(temp_path).unwrap();
+    
+    // Verify the config can be loaded
+    let loaded_config = NetworkConfig::load_from_file(temp_path).unwrap();
+    assert_eq!(loaded_config.connection_maintenance_interval_seconds, 600);
+    assert_eq!(loaded_config.request_timeout_seconds, 120);
+    assert_eq!(loaded_config.max_concurrent_streams, 50);
+    
+    // Clean up
+    fs::remove_file(temp_path).ok();
 }
 
 #[tokio::test]

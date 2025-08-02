@@ -85,6 +85,8 @@ pub struct BootstrapConfig {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NetworkConfig {
     pub connection_maintenance_interval_seconds: u64,
+    pub request_timeout_seconds: u64,
+    pub max_concurrent_streams: usize,
 }
 
 /// Configuration for ping keep-alive settings
@@ -336,7 +338,31 @@ impl NetworkConfig {
     pub fn new() -> Self {
         Self {
             connection_maintenance_interval_seconds: 300, // 5 minutes default
+            request_timeout_seconds: 60,
+            max_concurrent_streams: 100,
         }
+    }
+
+    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        match std::fs::read_to_string(path) {
+            Ok(content) => {
+                let config: NetworkConfig = serde_json::from_str(&content)?;
+                config.validate()?;
+                Ok(config)
+            }
+            Err(_) => {
+                // File doesn't exist, create with defaults
+                let config = Self::new();
+                config.save_to_file(path)?;
+                Ok(config)
+            }
+        }
+    }
+
+    pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, content)?;
+        Ok(())
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -346,6 +372,22 @@ impl NetworkConfig {
 
         if self.connection_maintenance_interval_seconds > 3600 {
             return Err("connection_maintenance_interval_seconds must be at most 3600 seconds (1 hour) to maintain network responsiveness".to_string());
+        }
+
+        if self.request_timeout_seconds < 10 {
+            return Err("request_timeout_seconds must be at least 10 seconds".to_string());
+        }
+
+        if self.request_timeout_seconds > 300 {
+            return Err("request_timeout_seconds must not exceed 300 seconds (5 minutes)".to_string());
+        }
+
+        if self.max_concurrent_streams == 0 {
+            return Err("max_concurrent_streams must be greater than 0".to_string());
+        }
+
+        if self.max_concurrent_streams > 1000 {
+            return Err("max_concurrent_streams must not exceed 1000".to_string());
         }
 
         Ok(())
