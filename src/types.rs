@@ -379,7 +379,9 @@ impl NetworkConfig {
         }
 
         if self.request_timeout_seconds > 300 {
-            return Err("request_timeout_seconds must not exceed 300 seconds (5 minutes)".to_string());
+            return Err(
+                "request_timeout_seconds must not exceed 300 seconds (5 minutes)".to_string(),
+            );
         }
 
         if self.max_concurrent_streams == 0 {
