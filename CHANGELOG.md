@@ -4,6 +4,17 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **TUI Corruption Prevention**: Replaced inappropriate `error!` macro usage throughout the codebase with proper `ErrorLogger` infrastructure
+  - Replaced 24 network-related `error!` calls in event_handlers.rs with `log_network_error!` macro calls
+  - Fixed peer discovery dial failures, story broadcast errors, subscription check errors, Kademlia bootstrap and DHT errors
+  - Addressed connection monitoring failures, direct message validation errors, and node description request/response errors
+  - Replaced 5 runtime `error!` calls in main.rs with `ErrorLogger.log_error()` calls for UI event handling and drawing errors
+  - Updated bootstrap.rs, network.rs, and storage.rs to use proper error logging instead of console output
+  - Preserved 12 critical initialization and cleanup `error!` calls that should remain visible to users
+  - Network and runtime errors now properly log to files instead of corrupting the TUI display
+  - Maintains same error logging behavior while preventing inappropriate console output during normal operation
+
 ### Removed
 - **Obsolete Peer Listing Commands**: Removed `ls p` (list discovered peers) and `ls c` (list connected peers) commands
   - Commands were redundant due to TUI's dedicated "Connected Peers" section showing real-time peer information
