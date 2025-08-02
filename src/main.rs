@@ -468,13 +468,42 @@ async fn main() {
                         },
                         SwarmEvent::OutgoingConnectionError { peer_id, error, connection_id, .. } => {
                             // Log to file instead of console to avoid UI spam
+                            // Filter out common connection timeout/refused errors to reduce noise
+                            let should_log_to_ui = match &error {
+                                libp2p::swarm::DialError::Transport(transport_errors) => {
+                                    // Only log to UI for unexpected transport errors, not timeouts/refused
+                                    !transport_errors.iter().any(|(_, e)| {
+                                        e.to_string().contains("Connection refused") ||
+                                        e.to_string().contains("timed out") ||
+                                        e.to_string().contains("No route to host")
+                                    })
+                                },
+                                _ => false, // Don't spam UI with most dial errors
+                            };
+                            
                             log_network_error!(error_logger, "outgoing_connection", "Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
+                            
+                            if should_log_to_ui {
+                                app.add_to_log(format!("Connection failed to peer: {}", error));
+                            }
                             None
                         },
                         SwarmEvent::IncomingConnectionError { local_addr, send_back_addr, error, connection_id, .. } => {
                             // Log to file instead of console to avoid UI spam
+                            // Filter out common connection errors to reduce noise
+                            let should_log_to_ui = {
+                                // Don't log routine connection errors to UI
+                                let error_str = error.to_string();
+                                !(error_str.contains("Connection reset") ||
+                                  error_str.contains("Broken pipe") ||
+                                  error_str.contains("timed out"))
+                            };
+                            
                             log_network_error!(error_logger, "incoming_connection", "Failed incoming connection from {} to {} (connection id: {:?}): {}", send_back_addr, local_addr, connection_id, error);
-                            // Don't log incoming connection errors to reduce noise
+                            
+                            if should_log_to_ui {
+                                app.add_to_log(format!("Incoming connection error: {}", error));
+                            }
                             None
                         },
                         SwarmEvent::Dialing { peer_id, connection_id, .. } => {

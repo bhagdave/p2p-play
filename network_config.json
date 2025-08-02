@@ -1,1 +1,10 @@
-{"connection_maintenance_interval_seconds": 300}
+{
+  "connection_maintenance_interval_seconds": 300,
+  "request_timeout_seconds": 60,
+  "max_concurrent_streams": 100,
+  "max_connections_per_peer": 1,
+  "max_pending_incoming": 10,
+  "max_pending_outgoing": 10,
+  "max_established_total": 100,
+  "connection_establishment_timeout_seconds": 30
+}

@@ -23,6 +23,7 @@ async fn test_network_config_validation_too_low() {
         connection_maintenance_interval_seconds: 30, // Below minimum of 60
         request_timeout_seconds: 60,
         max_concurrent_streams: 100,
+        ..Default::default()
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -35,6 +36,7 @@ async fn test_network_config_validation_too_high() {
         connection_maintenance_interval_seconds: 4000, // Above maximum of 3600
         request_timeout_seconds: 60,
         max_concurrent_streams: 100,
+        ..Default::default()
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -48,6 +50,7 @@ async fn test_network_config_validation_edge_cases() {
         connection_maintenance_interval_seconds: 60,
         request_timeout_seconds: 10, // minimum
         max_concurrent_streams: 1,   // minimum
+        ..Default::default()
     };
     assert!(config_min.validate().is_ok());
 
@@ -56,6 +59,7 @@ async fn test_network_config_validation_edge_cases() {
         connection_maintenance_interval_seconds: 3600,
         request_timeout_seconds: 300, // maximum
         max_concurrent_streams: 1000, // maximum
+        ..Default::default()
     };
     assert!(config_max.validate().is_ok());
 }
@@ -69,6 +73,7 @@ async fn test_save_and_load_network_config() {
         connection_maintenance_interval_seconds: 600,
         request_timeout_seconds: 120,
         max_concurrent_streams: 50,
+        ..Default::default()
     };
 
     // Save config
@@ -153,6 +158,7 @@ async fn test_network_config_request_timeout_validation() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 5, // Below minimum of 10
         max_concurrent_streams: 100,
+        ..Default::default()
     };
     let result = config_low.validate();
     assert!(result.is_err());
@@ -167,6 +173,7 @@ async fn test_network_config_request_timeout_validation() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 400, // Above maximum of 300
         max_concurrent_streams: 100,
+        ..Default::default()
     };
     let result = config_high.validate();
     assert!(result.is_err());
@@ -184,6 +191,7 @@ async fn test_network_config_max_streams_validation() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 60,
         max_concurrent_streams: 0,
+        ..Default::default()
     };
     let result = config_zero.validate();
     assert!(result.is_err());
@@ -198,6 +206,7 @@ async fn test_network_config_max_streams_validation() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 60,
         max_concurrent_streams: 1500, // Above maximum of 1000
+        ..Default::default()
     };
     let result = config_high.validate();
     assert!(result.is_err());
