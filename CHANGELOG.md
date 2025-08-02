@@ -26,6 +26,13 @@ All changes to this project will be documented in this file.
   - Maintains same error logging behavior while preventing inappropriate console output during normal operation
 
 ### Enhanced
+- **DHT Bootstrap Message Management**: Improved TUI user experience by moving repetitive DHT bootstrap success messages to dedicated log files
+  - DHT bootstrap success messages now write to `bootstrap.log` file instead of cluttering the TUI interface
+  - Bootstrap error messages still appear in the TUI for user visibility as they should be
+  - Enhanced `handle_kad_event()` function to accept `BootstrapLogger` parameter for proper message routing
+  - Updated function signatures throughout event handling system to support bootstrap logging
+  - Eliminates repetitive "DHT bootstrap successful with peer:" messages from TUI output log
+  - Provides cleaner user interface while maintaining full bootstrap activity tracking in log files
 - **Network TCP Configuration**: Significantly improved TCP transport configuration for better connectivity and resource management
   - Added connection limits to prevent resource exhaustion with optimal pending connection thresholds
   - Enhanced TCP socket configuration with explicit TTL settings and optimized listen backlog (1024)
