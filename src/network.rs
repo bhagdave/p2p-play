@@ -187,8 +187,11 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     });
 
     debug!(
-        "Using network config - timeout: {}s, streams: {}",
-        network_config.request_timeout_seconds, network_config.max_concurrent_streams
+        "Using network config - timeout: {}s, streams: {}, connections_per_peer: {}, max_total: {}",
+        network_config.request_timeout_seconds, 
+        network_config.max_concurrent_streams,
+        network_config.max_connections_per_peer,
+        network_config.max_established_total
     );
 
     // Create request-response protocol for direct messaging
@@ -250,7 +253,7 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
 
     // Enhanced swarm configuration with improved connection management
     let swarm_config = SwarmConfig::with_tokio_executor()
-        .with_dial_concurrency_factor(NonZeroU8::new(8).unwrap()) // Allow multiple concurrent dial attempts for better connectivity
+        .with_dial_concurrency_factor(NonZeroU8::new(network_config.max_pending_outgoing as u8).unwrap_or(NonZeroU8::new(8).unwrap())) // Configurable concurrent dial attempts
         .with_idle_connection_timeout(Duration::from_secs(60)); // Idle connection timeout for resource management
 
     let swarm = Swarm::<StoryBehaviour>::new(transp, behaviour, *PEER_ID, swarm_config);

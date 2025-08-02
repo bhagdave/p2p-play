@@ -736,6 +736,7 @@ fn test_network_config_validate_valid() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 30,
         max_concurrent_streams: 50,
+        ..Default::default()
     };
     assert!(custom_config.validate().is_ok());
 }
@@ -746,6 +747,7 @@ fn test_network_config_validate_timeout_too_low() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 5, // Too low, minimum is 10
         max_concurrent_streams: 100,
+        ..Default::default()
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -758,6 +760,7 @@ fn test_network_config_validate_timeout_too_high() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 400, // Too high, maximum is 300
         max_concurrent_streams: 100,
+        ..Default::default()
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -770,6 +773,7 @@ fn test_network_config_validate_streams_zero() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 60,
         max_concurrent_streams: 0, // Invalid
+        ..Default::default()
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -782,6 +786,7 @@ fn test_network_config_validate_streams_too_high() {
         connection_maintenance_interval_seconds: 300,
         request_timeout_seconds: 60,
         max_concurrent_streams: 1500, // Too high, maximum is 1000
+        ..Default::default()
     };
     let result = config.validate();
     assert!(result.is_err());
@@ -795,6 +800,7 @@ fn test_network_config_boundary_values() {
         connection_maintenance_interval_seconds: 60,
         request_timeout_seconds: 10,
         max_concurrent_streams: 1,
+        ..Default::default()
     };
     assert!(min_config.validate().is_ok());
 
@@ -803,6 +809,7 @@ fn test_network_config_boundary_values() {
         connection_maintenance_interval_seconds: 3600,
         request_timeout_seconds: 300,
         max_concurrent_streams: 1000,
+        ..Default::default()
     };
     assert!(max_config.validate().is_ok());
 }
@@ -819,6 +826,7 @@ mod network_config_file_tests {
             connection_maintenance_interval_seconds: 600,
             request_timeout_seconds: 45,
             max_concurrent_streams: 150,
+            ..Default::default()
         };
 
         let temp_file = NamedTempFile::new().unwrap();

@@ -5,6 +5,16 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Swarm Configuration Improvements**: Implemented comprehensive swarm configuration with connection limits and enhanced event filtering
+  - Added granular connection control through new NetworkConfig fields: `max_connections_per_peer` (default: 1), `max_pending_incoming` (default: 10), `max_pending_outgoing` (default: 10), `max_established_total` (default: 100), and `connection_establishment_timeout_seconds` (default: 30)
+  - Enhanced Connection Manager with configurable dial concurrency based on `max_pending_outgoing` setting
+  - Improved swarm configuration with better timeout management and connection establishment parameters
+  - Added connection event filtering to reduce UI/console noise while maintaining comprehensive file logging
+  - Filters common connection errors (timeouts, refused connections, broken pipes) and categorizes errors to only show unexpected issues in UI
+  - Uses serde defaults to ensure existing config files continue working with backward compatibility
+  - Comprehensive validation with meaningful error messages and graceful handling of legacy configuration files
+
+### Added
 - **Configurable Network Timeouts**: Implemented configurable request-response timeouts with comprehensive validation to improve network reliability
   - **Extended existing NetworkConfig** from main branch with `request_timeout_seconds` and `max_concurrent_streams` fields
   - **Increased default timeout** from 30 to 60 seconds for better reliability on slower networks

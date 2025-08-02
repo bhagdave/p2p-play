@@ -87,7 +87,28 @@ pub struct NetworkConfig {
     pub connection_maintenance_interval_seconds: u64,
     pub request_timeout_seconds: u64,
     pub max_concurrent_streams: usize,
+    /// Maximum number of established connections per peer (default: 1)
+    #[serde(default = "default_max_connections_per_peer")]
+    pub max_connections_per_peer: u32,
+    /// Maximum number of pending incoming connections (default: 10)
+    #[serde(default = "default_max_pending_incoming")]
+    pub max_pending_incoming: u32,
+    /// Maximum number of pending outgoing connections (default: 10)  
+    #[serde(default = "default_max_pending_outgoing")]
+    pub max_pending_outgoing: u32,
+    /// Maximum total number of established connections (default: 100)
+    #[serde(default = "default_max_established_total")]
+    pub max_established_total: u32,
+    /// Connection establishment timeout in seconds (default: 30)
+    #[serde(default = "default_connection_establishment_timeout_seconds")]
+    pub connection_establishment_timeout_seconds: u64,
 }
+
+fn default_max_connections_per_peer() -> u32 { 1 }
+fn default_max_pending_incoming() -> u32 { 10 }
+fn default_max_pending_outgoing() -> u32 { 10 }
+fn default_max_established_total() -> u32 { 100 }
+fn default_connection_establishment_timeout_seconds() -> u64 { 30 }
 
 /// Configuration for ping keep-alive settings
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -340,6 +361,11 @@ impl NetworkConfig {
             connection_maintenance_interval_seconds: 300, // 5 minutes default
             request_timeout_seconds: 60,
             max_concurrent_streams: 100,
+            max_connections_per_peer: 1,     // Single connection per peer to avoid resource waste
+            max_pending_incoming: 10,        // Allow reasonable number of pending connections
+            max_pending_outgoing: 10,        // Balance connectivity with resource usage
+            max_established_total: 100,      // Total connection pool size
+            connection_establishment_timeout_seconds: 30, // 30 second connection timeout
         }
     }
 
@@ -390,6 +416,34 @@ impl NetworkConfig {
 
         if self.max_concurrent_streams > 1000 {
             return Err("max_concurrent_streams must not exceed 1000".to_string());
+        }
+
+        if self.max_connections_per_peer == 0 {
+            return Err("max_connections_per_peer must be greater than 0".to_string());
+        }
+
+        if self.max_connections_per_peer > 10 {
+            return Err("max_connections_per_peer should not exceed 10 to avoid resource waste".to_string());
+        }
+
+        if self.max_pending_incoming == 0 {
+            return Err("max_pending_incoming must be greater than 0".to_string());
+        }
+
+        if self.max_pending_outgoing == 0 {
+            return Err("max_pending_outgoing must be greater than 0".to_string());
+        }
+
+        if self.max_established_total == 0 {
+            return Err("max_established_total must be greater than 0".to_string());
+        }
+
+        if self.connection_establishment_timeout_seconds < 5 {
+            return Err("connection_establishment_timeout_seconds must be at least 5 seconds".to_string());
+        }
+
+        if self.connection_establishment_timeout_seconds > 300 {
+            return Err("connection_establishment_timeout_seconds must not exceed 300 seconds".to_string());
         }
 
         Ok(())

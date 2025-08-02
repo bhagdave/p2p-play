@@ -1,9 +1,0 @@
-{
-  "bootstrap_peers": [
-    "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
-    "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
-  ],
-  "retry_interval_ms": 5000,
-  "max_retry_attempts": 5,
-  "bootstrap_timeout_ms": 30000
-}

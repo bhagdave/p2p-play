@@ -77,6 +77,11 @@ async fn test_network_config_file_integration() {
         connection_maintenance_interval_seconds: 600,
         request_timeout_seconds: 120,
         max_concurrent_streams: 50,
+        max_connections_per_peer: 2,
+        max_pending_incoming: 15,
+        max_pending_outgoing: 15,
+        max_established_total: 80,
+        connection_establishment_timeout_seconds: 45,
     };
 
     let temp_file = NamedTempFile::new().unwrap();
