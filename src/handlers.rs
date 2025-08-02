@@ -15,7 +15,7 @@ use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use log::debug;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -76,42 +76,6 @@ impl SortedPeerNamesCache {
     }
 }
 
-pub async fn handle_list_peers(
-    swarm: &mut Swarm<StoryBehaviour>,
-    peer_names: &HashMap<PeerId, String>,
-    ui_logger: &UILogger,
-) {
-    ui_logger.log("Discovered Peers:".to_string());
-    let nodes = swarm.behaviour().mdns.discovered_nodes();
-    let mut unique_peers = HashSet::new();
-    for peer in nodes {
-        unique_peers.insert(peer);
-    }
-    unique_peers.iter().for_each(|p| {
-        let name = peer_names
-            .get(p)
-            .map(|n| format!(" ({})", n))
-            .unwrap_or_default();
-        ui_logger.log(format!("{}{}", p, name));
-    });
-}
-
-pub async fn handle_list_connections(
-    swarm: &mut Swarm<StoryBehaviour>,
-    peer_names: &HashMap<PeerId, String>,
-    ui_logger: &UILogger,
-) {
-    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-    ui_logger.log(format!("Connected Peers: {}", connected_peers.len()));
-    for peer in connected_peers {
-        let name = peer_names
-            .get(&peer)
-            .map(|n| format!(" ({})", n))
-            .unwrap_or_default();
-        ui_logger.log(format!("Connected to: {}{}", peer, name));
-    }
-}
-
 pub async fn handle_list_stories(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -161,8 +125,15 @@ pub async fn handle_list_stories(
                 Ok(v) => {
                     ui_logger.log(format!("Local stories ({})", v.len()));
                     v.iter().for_each(|r| {
-                        let status = if r.public { "📖 Public" } else { "📕 Private" };
-                        ui_logger.log(format!("{} | Channel: {} | {}: {}", status, r.channel, r.id, r.name));
+                        let status = if r.public {
+                            "📖 Public"
+                        } else {
+                            "📕 Private"
+                        };
+                        ui_logger.log(format!(
+                            "{} | Channel: {} | {}: {}",
+                            status, r.channel, r.id, r.name
+                        ));
                     });
                 }
                 Err(e) => error_logger.log_error(&format!("Failed to fetch local stories: {}", e)),
@@ -302,8 +273,6 @@ pub async fn handle_delete_story(
 }
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
-    ui_logger.log("ls p to list discovered peers".to_string());
-    ui_logger.log("ls c to list connected peers".to_string());
     ui_logger.log("ls s to list stories".to_string());
     ui_logger.log("ls ch to list channels".to_string());
     ui_logger.log("ls sub to list your subscriptions".to_string());
@@ -433,12 +402,10 @@ pub async fn handle_direct_message(
             }
         };
 
-
         if to_name.trim().is_empty() {
             ui_logger.log("Peer name cannot be empty".to_string());
             return;
         }
-
 
         if to_name.len() > 50 {
             ui_logger.log("Peer name too long (max 50 characters)".to_string());
@@ -457,8 +424,8 @@ pub async fn handle_direct_message(
                 use std::hash::{Hash, Hasher};
                 let mut hasher = DefaultHasher::new();
                 to_name.hash(&mut hasher);
-                let placeholder_id = PeerId::from_bytes(&hasher.finish().to_be_bytes())
-                    .unwrap_or(PeerId::random());
+                let placeholder_id =
+                    PeerId::from_bytes(&hasher.finish().to_be_bytes()).unwrap_or(PeerId::random());
                 (placeholder_id, true)
             });
 
@@ -729,7 +696,7 @@ pub async fn handle_get_description(
         Some(peer) => peer,
         None => {
             ui_logger.log(format!(
-                "Peer '{}' not found. Use 'ls p' to see discovered peers.",
+                "Peer '{}' not found in connected peers.",
                 peer_alias
             ));
             return;
