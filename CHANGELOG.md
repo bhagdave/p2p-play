@@ -14,6 +14,14 @@ All changes to this project will be documented in this file.
   - Preserved 12 critical initialization and cleanup `error!` calls that should remain visible to users
   - Network and runtime errors now properly log to files instead of corrupting the TUI display
   - Maintains same error logging behavior while preventing inappropriate console output during normal operation
+### Added
+- **Configurable Ping Settings**: Enhanced network connectivity reliability with configurable ping keep-alive settings
+  - Implemented more lenient default ping settings (30s interval, 20s timeout vs. previous 15s interval, 10s timeout)
+  - Added file-based configuration support via `ping_config.json` for customizing ping behavior
+  - Created `PingConfig` structure with validation and error handling for loading configuration
+  - Configuration falls back to sensible defaults if file is missing or invalid
+  - Improved connection stability for peers with temporary network hiccups
+  - Note: libp2p 0.56.0 doesn't support configurable max_failures, so only interval and timeout are configurable
 
 ### Removed
 - **Obsolete Peer Listing Commands**: Removed `ls p` (list discovered peers) and `ls c` (list connected peers) commands

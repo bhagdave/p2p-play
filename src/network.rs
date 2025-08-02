@@ -1,3 +1,4 @@
+use crate::types::PingConfig;
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, StreamProtocol, identity, kad, mdns, ping, request_response};
@@ -196,10 +197,25 @@ pub fn create_swarm() -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error
     // Set Kademlia mode to server to accept queries and provide records
     kad.set_mode(Some(kad::Mode::Server));
 
+    // Load ping configuration from file or use defaults
+    let ping_config = PingConfig::load_from_file("ping_config.json").unwrap_or_else(|e| {
+        debug!("Failed to load ping config: {}, using defaults", e);
+        PingConfig::new()
+    });
+
+    debug!(
+        "Using ping config: interval={}s, timeout={}s",
+        ping_config.interval_secs, ping_config.timeout_secs
+    );
+
     let mut behaviour = StoryBehaviour {
         floodsub: Behaviour::new(*PEER_ID),
         mdns: mdns::tokio::Behaviour::new(Default::default(), *PEER_ID).expect("can create mdns"),
-        ping: ping::Behaviour::new(ping::Config::new()),
+        ping: ping::Behaviour::new(
+            ping::Config::new()
+                .with_interval(ping_config.interval_duration())
+                .with_timeout(ping_config.timeout_duration()),
+        ),
         request_response,
         node_description,
         kad,
