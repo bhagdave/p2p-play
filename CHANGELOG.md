@@ -23,6 +23,12 @@ All changes to this project will be documented in this file.
 - Updated `src/network.rs` with enhanced TCP transport configuration (lines 149-180)
 - Improved yamux multiplexing configuration for better connection reuse
 - Enhanced swarm configuration with connection management features
+### Removed
+- **Obsolete Peer Listing Commands**: Removed `ls p` (list discovered peers) and `ls c` (list connected peers) commands
+  - Commands were redundant due to TUI's dedicated "Connected Peers" section showing real-time peer information
+  - Removed command handlers and associated functions from event handling system
+  - Updated help text and error messages to reflect command removal
+  - Simplified codebase by removing unused imports and functionality
 
 ## [0.7.4] 2025-08-02
 
