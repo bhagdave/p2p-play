@@ -50,6 +50,16 @@ All changes to this project will be documented in this file.
   - Maintains same error logging behavior while preventing inappropriate console output during normal operation
 
 ### Enhanced
+- **Network Reconnection Speed**: Implemented faster network reconnections with intelligent throttling for improved connection recovery
+  - Reduced connection maintenance interval from **300 seconds to 30 seconds** (10x faster)
+  - Added intelligent dual throttling intervals for reconnection attempts:
+    - Recently connected peers (within 5 minutes): **15-second interval** for faster reconnection
+    - Other peers: **60-second interval** (unchanged) for stable reconnection patterns
+  - Implemented tracking of successful connections to optimize future reconnection attempts
+  - Added immediate connection maintenance triggers when connections are lost
+  - Reduced minimum configuration validation threshold from 60s to 30s to support faster maintenance intervals
+  - Provides **10x faster connection recovery** while maintaining network stability through intelligent reconnection timing
+  - Addresses issue where network reconnections were taking too long after peer connections dropped
 - **DHT Bootstrap Message Management**: Improved TUI user experience by moving repetitive DHT bootstrap success messages to dedicated log files
   - DHT bootstrap success messages now write to `bootstrap.log` file instead of cluttering the TUI interface
   - Bootstrap error messages still appear in the TUI for user visibility as they should be
