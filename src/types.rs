@@ -104,11 +104,21 @@ pub struct NetworkConfig {
     pub connection_establishment_timeout_seconds: u64,
 }
 
-fn default_max_connections_per_peer() -> u32 { 1 }
-fn default_max_pending_incoming() -> u32 { 10 }
-fn default_max_pending_outgoing() -> u32 { 10 }
-fn default_max_established_total() -> u32 { 100 }
-fn default_connection_establishment_timeout_seconds() -> u64 { 30 }
+fn default_max_connections_per_peer() -> u32 {
+    1
+}
+fn default_max_pending_incoming() -> u32 {
+    10
+}
+fn default_max_pending_outgoing() -> u32 {
+    10
+}
+fn default_max_established_total() -> u32 {
+    100
+}
+fn default_connection_establishment_timeout_seconds() -> u64 {
+    30
+}
 
 /// Configuration for ping keep-alive settings
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -370,10 +380,10 @@ impl NetworkConfig {
             connection_maintenance_interval_seconds: 300, // 5 minutes default
             request_timeout_seconds: 60,
             max_concurrent_streams: 100,
-            max_connections_per_peer: 1,     // Single connection per peer to avoid resource waste
-            max_pending_incoming: 10,        // Allow reasonable number of pending connections
-            max_pending_outgoing: 10,        // Balance connectivity with resource usage
-            max_established_total: 100,      // Total connection pool size
+            max_connections_per_peer: 1, // Single connection per peer to avoid resource waste
+            max_pending_incoming: 10,    // Allow reasonable number of pending connections
+            max_pending_outgoing: 10,    // Balance connectivity with resource usage
+            max_established_total: 100,  // Total connection pool size
             connection_establishment_timeout_seconds: 30, // 30 second connection timeout
         }
     }
@@ -432,7 +442,9 @@ impl NetworkConfig {
         }
 
         if self.max_connections_per_peer > 10 {
-            return Err("max_connections_per_peer should not exceed 10 to avoid resource waste".to_string());
+            return Err(
+                "max_connections_per_peer should not exceed 10 to avoid resource waste".to_string(),
+            );
         }
 
         if self.max_pending_incoming == 0 {
@@ -448,11 +460,15 @@ impl NetworkConfig {
         }
 
         if self.connection_establishment_timeout_seconds < 5 {
-            return Err("connection_establishment_timeout_seconds must be at least 5 seconds".to_string());
+            return Err(
+                "connection_establishment_timeout_seconds must be at least 5 seconds".to_string(),
+            );
         }
 
         if self.connection_establishment_timeout_seconds > 300 {
-            return Err("connection_establishment_timeout_seconds must not exceed 300 seconds".to_string());
+            return Err(
+                "connection_establishment_timeout_seconds must not exceed 300 seconds".to_string(),
+            );
         }
 
         Ok(())
@@ -574,7 +590,9 @@ impl UnifiedNetworkConfig {
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
-                config.validate().map_err(|e| format!("Configuration validation failed: {}", e))?;
+                config
+                    .validate()
+                    .map_err(|e| format!("Configuration validation failed: {}", e))?;
                 Ok(config)
             }
             Err(_) => {
@@ -586,7 +604,8 @@ impl UnifiedNetworkConfig {
 
     /// Save unified configuration to a file
     pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
-        self.validate().map_err(|e| format!("Configuration validation failed: {}", e))?;
+        self.validate()
+            .map_err(|e| format!("Configuration validation failed: {}", e))?;
         let content = serde_json::to_string_pretty(self)?;
         std::fs::write(path, content)?;
         Ok(())

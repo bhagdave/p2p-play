@@ -12,16 +12,16 @@ mod ui;
 use bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use bootstrap_logger::BootstrapLogger;
 use error_logger::ErrorLogger;
-use event_handlers::{handle_event, track_successful_connection, trigger_immediate_connection_maintenance};
+use event_handlers::{
+    handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
+};
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name, 
+    ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
     load_unified_network_config,
 };
-use types::{
-    ActionResult, EventType, PeerName, PendingDirectMessage, UnifiedNetworkConfig,
-};
+use types::{ActionResult, EventType, PeerName, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -124,7 +124,10 @@ async fn main() {
     // Load unified network configuration
     if let Err(e) = ensure_unified_network_config_exists().await {
         error!("Failed to initialize unified network config: {}", e);
-        app.add_to_log(format!("Failed to initialize unified network config: {}", e));
+        app.add_to_log(format!(
+            "Failed to initialize unified network config: {}",
+            e
+        ));
     }
 
     let unified_config = match load_unified_network_config().await {
@@ -415,9 +418,9 @@ async fn main() {
                                 },
                                 _ => false, // Don't spam UI with most dial errors
                             };
-                            
+
                             log_network_error!(error_logger, "outgoing_connection", "Failed to connect to {:?} (connection id: {:?}): {}", peer_id, connection_id, error);
-                            
+
                             if should_log_to_ui {
                                 app.add_to_log(format!("Connection failed to peer: {}", error));
                             }
@@ -433,9 +436,9 @@ async fn main() {
                                   error_str.contains("Broken pipe") ||
                                   error_str.contains("timed out"))
                             };
-                            
+
                             log_network_error!(error_logger, "incoming_connection", "Failed incoming connection from {} to {} (connection id: {:?}): {}", send_back_addr, local_addr, connection_id, error);
-                            
+
                             if should_log_to_ui {
                                 app.add_to_log(format!("Incoming connection error: {}", error));
                             }
