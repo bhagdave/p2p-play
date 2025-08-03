@@ -5,6 +5,15 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Duplicate Peer Names in UI**: Fixed critical issue where multiple peers appeared with identical names in the UI Connected Peers section
+  - Enhanced UI display logic to use 20 characters instead of 8 for peer ID truncation, ensuring uniqueness between peers with similar ID prefixes
+  - Improved default name detection to properly distinguish between system-generated default names and custom user names
+  - Updated peer connection tests to validate the new display formatting logic
+- **Peer Connection Visibility**: Fixed issue where connected peers were not visible in the UI's "Connected Peers" section
+  - Peers are now automatically added to peer_names when connections are established, ensuring immediate visibility
+  - Default peer names use full peer IDs to prevent naming collisions between peers with similar ID prefixes
+  - Enhanced UI display formatting to safely handle peer ID truncation without panic risks
+  - Direct messaging now works immediately after peer connection without waiting for name broadcasts
 - **TUI Story Display**: Fixed received stories not appearing in TUI interface immediately after being received
   - Resolved race condition where story saving was asynchronous but UI refresh happened immediately
   - Stories received from other peers now appear in TUI Stories panel immediately after the automatic refresh

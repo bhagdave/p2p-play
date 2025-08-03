@@ -550,10 +550,18 @@ impl App {
                 .peers
                 .iter()
                 .map(|(peer_id, name)| {
+                    let peer_id_str = peer_id.to_string();
+                    // Use 20 characters instead of 8 to ensure uniqueness between peers with similar prefixes
+                    let peer_id_display = if peer_id_str.len() >= 20 { &peer_id_str[..20] } else { &peer_id_str };
+                    
                     let content = if name.is_empty() {
                         format!("{}", peer_id)
+                    } else if name.starts_with("Peer_") && name.contains(&peer_id.to_string()) {
+                        // This is a default name we assigned (contains full peer ID), show truncated version
+                        format!("Peer_{} [{}]", peer_id_display, peer_id_display)
                     } else {
-                        format!("{} ({})", name, peer_id)
+                        // This is a real name the peer set (or a custom name that starts with "Peer_")
+                        format!("{} ({})", name, peer_id_display)
                     };
                     ListItem::new(content)
                 })
