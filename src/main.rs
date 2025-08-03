@@ -365,6 +365,16 @@ async fn main() {
                             // Track successful connection for improved reconnect timing
                             track_successful_connection(peer_id);
 
+                            // Add connected peer to peer_names if not already present
+                            // This ensures all connected peers are visible in the UI
+                            if !peer_names.contains_key(&peer_id) {
+                                // Use full peer ID to avoid collisions between peers with similar prefixes
+                                peer_names.insert(peer_id, format!("Peer_{}", peer_id));
+                                debug!("Added connected peer {} to peer_names with default name", peer_id);
+                                // Update the cache since peer names changed
+                                sorted_peer_names_cache.update(&peer_names);
+                            }
+
                             // If we have a local peer name set, broadcast it to the newly connected peer
                             if let Some(ref name) = local_peer_name {
                                 let peer_name = PeerName::new(PEER_ID.to_string(), name.clone());
