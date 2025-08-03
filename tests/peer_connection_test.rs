@@ -14,7 +14,8 @@ fn test_peer_tracking_logic() {
     
     // Simulate our connection established logic
     if !peer_names.contains_key(&peer_id) {
-        peer_names.insert(peer_id, format!("Peer_{}", &peer_id.to_string()[..8]));
+        // Use full peer ID to avoid collisions between peers with similar prefixes
+        peer_names.insert(peer_id, format!("Peer_{}", peer_id));
     }
     
     // Verify the peer is now tracked
@@ -37,13 +38,14 @@ fn test_ui_display_logic() {
     // Test the UI display logic for different types of peer names
     let peer_id = PeerId::random();
     let peer_id_str = peer_id.to_string();
+    let peer_id_short = if peer_id_str.len() >= 8 { &peer_id_str[..8] } else { &peer_id_str };
     
     // Test default name display
-    let default_name = format!("Peer_{}", &peer_id_str[..8]);
+    let default_name = format!("Peer_{}", peer_id);
     let display_content = if default_name.starts_with("Peer_") {
-        format!("{} [{}]", default_name, &peer_id_str[..8])
+        format!("Peer_{} [{}]", peer_id_short, peer_id_short)
     } else {
-        format!("{} ({})", default_name, &peer_id_str[..8])
+        format!("{} ({})", default_name, peer_id_short)
     };
     
     assert!(display_content.contains("["));
@@ -52,9 +54,9 @@ fn test_ui_display_logic() {
     // Test real name display
     let real_name = "Alice".to_string();
     let display_content = if real_name.starts_with("Peer_") {
-        format!("{} [{}]", real_name, &peer_id_str[..8])
+        format!("Peer_{} [{}]", peer_id_short, peer_id_short)
     } else {
-        format!("{} ({})", real_name, &peer_id_str[..8])
+        format!("{} ({})", real_name, peer_id_short)
     };
     
     assert!(display_content.contains("("));
@@ -68,7 +70,7 @@ fn test_peer_name_lookup() {
     let peer_id = PeerId::random();
     
     // Add peer with default name
-    let default_name = format!("Peer_{}", &peer_id.to_string()[..8]);
+    let default_name = format!("Peer_{}", peer_id);
     peer_names.insert(peer_id, default_name.clone());
     
     // Test lookup by default name

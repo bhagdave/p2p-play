@@ -368,7 +368,8 @@ async fn main() {
                             // Add connected peer to peer_names if not already present
                             // This ensures all connected peers are visible in the UI
                             if !peer_names.contains_key(&peer_id) {
-                                peer_names.insert(peer_id, format!("Peer_{}", &peer_id.to_string()[..8]));
+                                // Use full peer ID to avoid collisions between peers with similar prefixes
+                                peer_names.insert(peer_id, format!("Peer_{}", peer_id));
                                 debug!("Added connected peer {} to peer_names with default name", peer_id);
                                 // Update the cache since peer names changed
                                 sorted_peer_names_cache.update(&peer_names);

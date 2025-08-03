@@ -5,6 +5,11 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Peer Connection Visibility**: Fixed issue where connected peers were not visible in the UI's "Connected Peers" section
+  - Peers are now automatically added to peer_names when connections are established, ensuring immediate visibility
+  - Default peer names use full peer IDs to prevent naming collisions between peers with similar ID prefixes
+  - Enhanced UI display formatting to safely handle peer ID truncation without panic risks
+  - Direct messaging now works immediately after peer connection without waiting for name broadcasts
 - **TUI Story Display**: Fixed received stories not appearing in TUI interface immediately after being received
   - Resolved race condition where story saving was asynchronous but UI refresh happened immediately
   - Stories received from other peers now appear in TUI Stories panel immediately after the automatic refresh
