@@ -48,8 +48,8 @@ async fn test_network_config_validation_edge_cases() {
     // Test minimum valid value
     let config_min = NetworkConfig {
         connection_maintenance_interval_seconds: 10, // new minimum
-        request_timeout_seconds: 10, // minimum
-        max_concurrent_streams: 1,   // minimum
+        request_timeout_seconds: 10,                 // minimum
+        max_concurrent_streams: 1,                   // minimum
         ..Default::default()
     };
     assert!(config_min.validate().is_ok());

@@ -297,7 +297,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
 
 pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
     use crate::storage::load_unified_network_config;
-    
+
     match load_unified_network_config().await {
         Ok(config) => {
             // For now, just validate and log success
@@ -305,10 +305,19 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
                 ui_logger.log(format!("❌ Configuration validation failed: {}", e));
             } else {
                 ui_logger.log("✅ Network configuration reloaded successfully".to_string());
-                ui_logger.log(format!("📊 Bootstrap peers: {}", config.bootstrap.bootstrap_peers.len()));
-                ui_logger.log(format!("🔧 Connection maintenance interval: {}s", config.network.connection_maintenance_interval_seconds));
+                ui_logger.log(format!(
+                    "📊 Bootstrap peers: {}",
+                    config.bootstrap.bootstrap_peers.len()
+                ));
+                ui_logger.log(format!(
+                    "🔧 Connection maintenance interval: {}s",
+                    config.network.connection_maintenance_interval_seconds
+                ));
                 ui_logger.log(format!("🏓 Ping interval: {}s", config.ping.interval_secs));
-                ui_logger.log(format!("💬 DM max retry attempts: {}", config.direct_message.max_retry_attempts));
+                ui_logger.log(format!(
+                    "💬 DM max retry attempts: {}",
+                    config.direct_message.max_retry_attempts
+                ));
                 ui_logger.log("⚠️  Note: Some configuration changes require application restart to take effect".to_string());
             }
         }

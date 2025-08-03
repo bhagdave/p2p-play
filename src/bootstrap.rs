@@ -540,8 +540,10 @@ mod tests {
         let bootstrap_logger = create_test_bootstrap_logger();
         let error_logger = crate::error_logger::ErrorLogger::new("test_errors.log");
         let test_config = BootstrapConfig::new();
-        
-        bootstrap.initialize(&test_config, &bootstrap_logger, &error_logger).await;
+
+        bootstrap
+            .initialize(&test_config, &bootstrap_logger, &error_logger)
+            .await;
 
         // The test just ensures initialization doesn't panic
     }

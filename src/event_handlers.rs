@@ -88,7 +88,8 @@ pub async fn handle_input_event(
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) -> Option<ActionResult> {
-    match line.as_str() {
+    let line = line.trim();
+    match line {
         "ls ch" => handle_list_channels(ui_logger, error_logger).await,
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
@@ -279,8 +280,7 @@ pub async fn handle_floodsub_event(
                                 "Failed to save received story: {}",
                                 e
                             );
-                            ui_logger
-                                .log(format!("Warning: Failed to save received story: {}", e));
+                            ui_logger.log(format!("Warning: Failed to save received story: {}", e));
                         } else {
                             // Signal that stories need to be refreshed only if save was successful
                             return Some(());
@@ -1079,7 +1079,10 @@ pub fn track_successful_connection(peer_id: PeerId) {
 }
 
 /// Trigger immediate connection maintenance (useful after connection drops)
-pub async fn trigger_immediate_connection_maintenance(swarm: &mut Swarm<StoryBehaviour>, error_logger: &ErrorLogger) {
+pub async fn trigger_immediate_connection_maintenance(
+    swarm: &mut Swarm<StoryBehaviour>,
+    error_logger: &ErrorLogger,
+) {
     debug!("Triggering immediate connection maintenance");
     maintain_connections(swarm, error_logger).await;
 }
@@ -1408,6 +1411,30 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_command_input_trimming() {
+        // Test that commands with leading and trailing spaces are handled correctly
+        let test_cases = vec![
+            ("help", "help"),
+            (" help", "help"),    // Leading space
+            ("help ", "help"),    // Trailing space
+            ("  help  ", "help"), // Both leading and trailing spaces
+            ("\thelp\t", "help"), // Tab characters
+            (" ls sub ", "subscription"),
+            ("  ls ch  ", "channels"),
+            (" ls s local ", "stories"),
+        ];
+
+        for (input, expected_type) in test_cases {
+            let result = match_command_type_with_trim(input);
+            assert_eq!(
+                result, expected_type,
+                "Command '{}' should match {} handler",
+                input, expected_type
+            );
+        }
+    }
+
     // Mock function that simulates the pattern matching logic from event_handlers.rs
     fn match_command_type(line: &str) -> &'static str {
         // This follows the exact same pattern matching order as in handle_input_event
@@ -1415,6 +1442,19 @@ mod tests {
             "ls ch" => "channels",
             "ls sub" => "subscription",
             cmd if cmd.starts_with("ls s") => "stories",
+            "help" => "help",
+            _ => "unknown",
+        }
+    }
+
+    // Mock function that simulates the new trimming behavior
+    fn match_command_type_with_trim(line: &str) -> &'static str {
+        let line = line.trim();
+        match line {
+            "ls ch" => "channels",
+            "ls sub" => "subscription",
+            cmd if cmd.starts_with("ls s") => "stories",
+            "help" => "help",
             _ => "unknown",
         }
     }
@@ -1529,7 +1569,8 @@ mod tests {
     async fn test_maintain_connections() {
         // Create a mock swarm for testing
         let ping_config = crate::types::PingConfig::new();
-        let mut swarm = crate::network::create_swarm(&ping_config).expect("Failed to create test swarm");
+        let mut swarm =
+            crate::network::create_swarm(&ping_config).expect("Failed to create test swarm");
 
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
