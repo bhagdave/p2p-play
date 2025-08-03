@@ -150,7 +150,9 @@ impl From<kad::Event> for StoryBehaviourEvent {
     }
 }
 
-pub fn create_swarm(ping_config: &PingConfig) -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
+pub fn create_swarm(
+    ping_config: &PingConfig,
+) -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
     use std::num::NonZeroU8;
@@ -188,7 +190,7 @@ pub fn create_swarm(ping_config: &PingConfig) -> Result<Swarm<StoryBehaviour>, B
 
     debug!(
         "Using network config - timeout: {}s, streams: {}, connections_per_peer: {}, max_total: {}",
-        network_config.request_timeout_seconds, 
+        network_config.request_timeout_seconds,
         network_config.max_concurrent_streams,
         network_config.max_connections_per_peer,
         network_config.max_established_total
@@ -247,7 +249,10 @@ pub fn create_swarm(ping_config: &PingConfig) -> Result<Swarm<StoryBehaviour>, B
 
     // Enhanced swarm configuration with improved connection management
     let swarm_config = SwarmConfig::with_tokio_executor()
-        .with_dial_concurrency_factor(NonZeroU8::new(network_config.max_pending_outgoing as u8).unwrap_or(NonZeroU8::new(8).unwrap())) // Configurable concurrent dial attempts
+        .with_dial_concurrency_factor(
+            NonZeroU8::new(network_config.max_pending_outgoing as u8)
+                .unwrap_or(NonZeroU8::new(8).unwrap()),
+        ) // Configurable concurrent dial attempts
         .with_idle_connection_timeout(Duration::from_secs(60)); // Idle connection timeout for resource management
 
     let swarm = Swarm::<StoryBehaviour>::new(transp, behaviour, *PEER_ID, swarm_config);
