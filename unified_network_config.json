@@ -9,18 +9,18 @@
     "bootstrap_timeout_ms": 30000
   },
   "network": {
-    "connection_maintenance_interval_seconds": 30,
+    "connection_maintenance_interval_seconds": 10,
     "request_timeout_seconds": 60,
     "max_concurrent_streams": 100,
     "max_connections_per_peer": 1,
     "max_pending_incoming": 10,
     "max_pending_outgoing": 10,
     "max_established_total": 100,
-    "connection_establishment_timeout_seconds": 30
+    "connection_establishment_timeout_seconds": 45
   },
   "ping": {
-    "interval_secs": 30,
-    "timeout_secs": 20
+    "interval_secs": 15,
+    "timeout_secs": 45
   },
   "direct_message": {
     "max_retry_attempts": 3,

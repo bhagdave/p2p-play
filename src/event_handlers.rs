@@ -977,8 +977,8 @@ static LAST_CONNECTION_ATTEMPTS: Lazy<std::sync::Mutex<HashMap<PeerId, Instant>>
     Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
 static LAST_SUCCESSFUL_CONNECTIONS: Lazy<std::sync::Mutex<HashMap<PeerId, Instant>>> =
     Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
-const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(60);
-const MIN_RECONNECT_INTERVAL_RECENT: Duration = Duration::from_secs(15); // Faster reconnects for recently connected peers
+const MIN_RECONNECT_INTERVAL: Duration = Duration::from_secs(30);
+const MIN_RECONNECT_INTERVAL_RECENT: Duration = Duration::from_secs(5); // Faster reconnects for recently connected peers
 const RECENT_CONNECTION_THRESHOLD: Duration = Duration::from_secs(300); // 5 minutes
 const CLEANUP_THRESHOLD: Duration = Duration::from_secs(3600); // 1 hour
 
@@ -1543,7 +1543,7 @@ mod tests {
         use std::time::{Duration, Instant};
 
         // Test the throttling constants and logic
-        assert_eq!(MIN_RECONNECT_INTERVAL, Duration::from_secs(60));
+        assert_eq!(MIN_RECONNECT_INTERVAL, Duration::from_secs(30));
 
         // Create a test peer ID
         let _test_peer = PeerId::random();
@@ -1555,7 +1555,7 @@ mod tests {
 
         // Test that elapsed time calculation works
         assert!(one_minute_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
-        assert!(thirty_seconds_ago.elapsed() < MIN_RECONNECT_INTERVAL);
+        assert!(thirty_seconds_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
     }
 
     #[tokio::test]
