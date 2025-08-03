@@ -63,7 +63,9 @@ async fn test_throttling_behaviour_verification() {
 
     // Test older peer gets slower throttling
     let old_peer_id = "old_peer_456".to_string();
-    successful_connections.insert(old_peer_id.clone(), now - Duration::from_secs(400)); // 6+ minutes ago
+    let old_connection_time = now.checked_sub(Duration::from_secs(400))
+        .unwrap_or_else(|| Instant::now() - Duration::from_secs(10)); // Fallback to 10 seconds ago
+    successful_connections.insert(old_peer_id.clone(), old_connection_time);
 
     let can_reconnect_old = can_attempt_reconnection(
         &old_peer_id,
@@ -96,7 +98,10 @@ async fn test_memory_cleanup_validation() {
     let mut successful_connections: HashMap<String, Instant> = HashMap::new();
 
     let now = Instant::now();
-    let old_time = now - Duration::from_secs(3700); // Over 1 hour ago
+    // Create an old time by getting an instant and adding the duration forward
+    // This avoids potential underflow on Windows systems
+    let old_time = now.checked_sub(Duration::from_secs(3700))
+        .unwrap_or_else(|| Instant::now() - Duration::from_secs(10)); // Fallback to 10 seconds ago
 
     // Add some old entries that should be cleaned up
     for i in 0..10 {
