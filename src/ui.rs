@@ -552,8 +552,12 @@ impl App {
                 .map(|(peer_id, name)| {
                     let content = if name.is_empty() {
                         format!("{}", peer_id)
+                    } else if name.starts_with("Peer_") {
+                        // This is a default name we assigned, show it differently
+                        format!("{} [{}]", name, &peer_id.to_string()[..8])
                     } else {
-                        format!("{} ({})", name, peer_id)
+                        // This is a real name the peer set
+                        format!("{} ({})", name, &peer_id.to_string()[..8])
                     };
                     ListItem::new(content)
                 })
