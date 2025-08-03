@@ -218,7 +218,7 @@ async fn test_published_story_message() {
 
 #[tokio::test]
 async fn test_sequential_story_operations() {
-    let temp_file = NamedTempFile::new().unwrap();
+    let temp_file = NamedTempFile::with_suffix(".json").unwrap();
     let path = temp_file.path().to_str().unwrap();
 
     // Create multiple stories sequentially
