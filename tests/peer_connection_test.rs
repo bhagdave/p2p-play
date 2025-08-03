@@ -42,7 +42,7 @@ fn test_ui_display_logic() {
     
     // Test default name display
     let default_name = format!("Peer_{}", peer_id);
-    let display_content = if default_name.starts_with("Peer_") {
+    let display_content = if default_name.starts_with("Peer_") && default_name.contains(&peer_id.to_string()) {
         format!("Peer_{} [{}]", peer_id_short, peer_id_short)
     } else {
         format!("{} ({})", default_name, peer_id_short)
@@ -53,7 +53,7 @@ fn test_ui_display_logic() {
     
     // Test real name display
     let real_name = "Alice".to_string();
-    let display_content = if real_name.starts_with("Peer_") {
+    let display_content = if real_name.starts_with("Peer_") && real_name.contains(&peer_id.to_string()) {
         format!("Peer_{} [{}]", peer_id_short, peer_id_short)
     } else {
         format!("{} ({})", real_name, peer_id_short)
@@ -61,6 +61,19 @@ fn test_ui_display_logic() {
     
     assert!(display_content.contains("("));
     assert!(display_content.contains(")"));
+    
+    // Test custom name that starts with "Peer_" but is not a default name
+    let custom_peer_name = "Peer_Alice".to_string();
+    let display_content = if custom_peer_name.starts_with("Peer_") && custom_peer_name.contains(&peer_id.to_string()) {
+        format!("Peer_{} [{}]", peer_id_short, peer_id_short)
+    } else {
+        format!("{} ({})", custom_peer_name, peer_id_short)
+    };
+    
+    // Should use parentheses for custom names, even if they start with "Peer_"
+    assert!(display_content.contains("("));
+    assert!(display_content.contains(")"));
+    assert_eq!(display_content, format!("Peer_Alice ({})", peer_id_short));
 }
 
 #[test]

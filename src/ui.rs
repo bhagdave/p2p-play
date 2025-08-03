@@ -555,11 +555,11 @@ impl App {
                     
                     let content = if name.is_empty() {
                         format!("{}", peer_id)
-                    } else if name.starts_with("Peer_") {
-                        // This is a default name we assigned, show it with truncated ID
+                    } else if name.starts_with("Peer_") && name.contains(&peer_id.to_string()) {
+                        // This is a default name we assigned (contains full peer ID), show truncated version
                         format!("Peer_{} [{}]", peer_id_short, peer_id_short)
                     } else {
-                        // This is a real name the peer set
+                        // This is a real name the peer set (or a custom name that starts with "Peer_")
                         format!("{} ({})", name, peer_id_short)
                     };
                     ListItem::new(content)
