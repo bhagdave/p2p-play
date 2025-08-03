@@ -9,6 +9,7 @@ All changes to this project will be documented in this file.
   - Resolved race condition where story saving was asynchronous but UI refresh happened immediately
   - Stories received from other peers now appear in TUI Stories panel immediately after the automatic refresh
   - Ensures consistency between command-line `ls s` output and TUI Stories panel
+  - Modified handle_input_event in src/event_handlers.rs to trim input before processing
 
 ### Added
 - **Unified Network Configuration**: Consolidated 4 separate network configuration files into a single `unified_network_config.json` with hot reload capability
