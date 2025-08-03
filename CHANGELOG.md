@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.7.5] 2025-08-03
 
 ### Fixed
 - **TUI Story Display**: Fixed received stories not appearing in TUI interface immediately after being received
@@ -27,8 +27,6 @@ All changes to this project will be documented in this file.
   - Filters common connection errors (timeouts, refused connections, broken pipes) and categorizes errors to only show unexpected issues in UI
   - Uses serde defaults to ensure existing config files continue working with backward compatibility
   - Comprehensive validation with meaningful error messages and graceful handling of legacy configuration files
-
-### Added
 - **Configurable Network Timeouts**: Implemented configurable request-response timeouts with comprehensive validation to improve network reliability
   - **Extended existing NetworkConfig** from main branch with `request_timeout_seconds` and `max_concurrent_streams` fields
   - **Increased default timeout** from 30 to 60 seconds for better reliability on slower networks
@@ -37,6 +35,25 @@ All changes to this project will be documented in this file.
   - **Graceful fallback** to safe defaults when configuration file is missing or invalid
   - **Enhanced debugging** with configuration value logging for troubleshooting
   - Addresses network connectivity issues and premature timeouts on slower connections
+- **Configurable Network Connection Maintenance Interval**: Implemented configurable network connection maintenance to reduce connection churn and improve stability
+  - Replaced hardcoded 30-second connection maintenance interval with configurable value via `network_config.json`
+  - Changed default maintenance interval from 30 seconds to 300 seconds (5 minutes) to significantly reduce connection churn
+  - Added `NetworkConfig` structure with validation to prevent extreme values (minimum 60s, maximum 3600s)
+  - Configuration automatically created with sensible defaults if file is missing or invalid
+  - Provides clear error messages for invalid configurations with graceful fallback to defaults
+  - Users can customize maintenance frequency based on their specific network requirements
+  - Validation ensures users cannot configure values that would cause excessive churn or make network unresponsive
+  - Example configuration: `{"connection_maintenance_interval_seconds": 300, "request_timeout_seconds": 60, "max_concurrent_streams": 100}`
+- Enhanced network tests to verify TCP configuration improvements
+- Test coverage for connection limit functionality and swarm configuration
+- Comprehensive test suite for enhanced TCP features
+- **Configurable Ping Settings**: Enhanced network connectivity reliability with configurable ping keep-alive settings
+  - Implemented more lenient default ping settings (30s interval, 20s timeout vs. previous 15s interval, 10s timeout)
+  - Added file-based configuration support via `ping_config.json` for customizing ping behavior
+  - Created `PingConfig` structure with validation and error handling for loading configuration
+  - Configuration falls back to sensible defaults if file is missing or invalid
+  - Improved connection stability for peers with temporary network hiccups
+  - Note: libp2p 0.56.0 doesn't support configurable max_failures, so only interval and timeout are configurable
 
 ### Fixed
 - **TUI Corruption Prevention**: Replaced inappropriate `error!` macro usage throughout the codebase with proper `ErrorLogger` infrastructure
@@ -75,27 +92,6 @@ All changes to this project will be documented in this file.
   - Added idle connection timeout (60 seconds) for automatic resource cleanup
   - Platform-specific optimizations for Windows and non-Windows systems
   - Added memory-connection-limits feature to libp2p dependencies
-
-### Added
-- **Configurable Network Connection Maintenance Interval**: Implemented configurable network connection maintenance to reduce connection churn and improve stability
-  - Replaced hardcoded 30-second connection maintenance interval with configurable value via `network_config.json`
-  - Changed default maintenance interval from 30 seconds to 300 seconds (5 minutes) to significantly reduce connection churn
-  - Added `NetworkConfig` structure with validation to prevent extreme values (minimum 60s, maximum 3600s)
-  - Configuration automatically created with sensible defaults if file is missing or invalid
-  - Provides clear error messages for invalid configurations with graceful fallback to defaults
-  - Users can customize maintenance frequency based on their specific network requirements
-  - Validation ensures users cannot configure values that would cause excessive churn or make network unresponsive
-  - Example configuration: `{"connection_maintenance_interval_seconds": 300, "request_timeout_seconds": 60, "max_concurrent_streams": 100}`
-- Enhanced network tests to verify TCP configuration improvements
-- Test coverage for connection limit functionality and swarm configuration
-- Comprehensive test suite for enhanced TCP features
-- **Configurable Ping Settings**: Enhanced network connectivity reliability with configurable ping keep-alive settings
-  - Implemented more lenient default ping settings (30s interval, 20s timeout vs. previous 15s interval, 10s timeout)
-  - Added file-based configuration support via `ping_config.json` for customizing ping behavior
-  - Created `PingConfig` structure with validation and error handling for loading configuration
-  - Configuration falls back to sensible defaults if file is missing or invalid
-  - Improved connection stability for peers with temporary network hiccups
-  - Note: libp2p 0.56.0 doesn't support configurable max_failures, so only interval and timeout are configurable
 
 ### Technical Details
 - Updated `src/network.rs` with enhanced TCP transport configuration (lines 149-180)
