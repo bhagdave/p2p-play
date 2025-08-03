@@ -551,11 +551,12 @@ pub async fn handle_create_channel(
 
             // Broadcast the channel to other peers
             let channel =
-                crate::types::Channel::new(name.to_string(), description.to_string(), creator);
-            let json = match serde_json::to_string(&channel) {
+                crate::types::Channel::new(name.to_string(), description.to_string(), creator.clone());
+            let published_channel = crate::types::PublishedChannel::new(channel, creator);
+            let json = match serde_json::to_string(&published_channel) {
                 Ok(json) => json,
                 Err(e) => {
-                    error_logger.log_error(&format!("Failed to serialize channel: {}", e));
+                    error_logger.log_error(&format!("Failed to serialize published channel: {}", e));
                     return Some(ActionResult::RefreshStories);
                 }
             };
@@ -564,7 +565,7 @@ pub async fn handle_create_channel(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
-            debug!("Broadcasted channel '{}' to connected peers", name);
+            debug!("Broadcasted published channel '{}' to connected peers", name);
             ui_logger.log(format!("Channel '{}' shared with network", name));
 
             return Some(ActionResult::RefreshStories);

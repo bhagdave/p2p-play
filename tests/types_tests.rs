@@ -478,6 +478,84 @@ fn test_published_story_new() {
 }
 
 #[test]
+fn test_published_channel_creation() {
+    let channel = Channel::new(
+        "test_channel".to_string(),
+        "Test channel description".to_string(),
+        "creator123".to_string(),
+    );
+    let publisher = "publisher456".to_string();
+
+    let published = PublishedChannel::new(channel.clone(), publisher.clone());
+
+    assert_eq!(published.channel, channel);
+    assert_eq!(published.publisher, publisher);
+}
+
+#[test]
+fn test_published_channel_serialization() {
+    let channel = Channel::new(
+        "serialization_test".to_string(),
+        "Channel for serialization test".to_string(),
+        "creator789".to_string(),
+    );
+    let published = PublishedChannel::new(channel, "publisher789".to_string());
+
+    let json = serde_json::to_string(&published).unwrap();
+    let deserialized: PublishedChannel = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(published, deserialized);
+}
+
+#[test]
+fn test_published_channel_equality() {
+    let channel1 = Channel::new(
+        "test".to_string(),
+        "Test channel".to_string(),
+        "creator".to_string(),
+    );
+    let channel2 = Channel::new(
+        "test".to_string(),
+        "Test channel".to_string(),
+        "creator".to_string(),
+    );
+    let channel3 = Channel::new(
+        "different".to_string(),
+        "Different channel".to_string(),
+        "creator".to_string(),
+    );
+
+    let published1 = PublishedChannel::new(channel1, "publisher".to_string());
+    let published2 = PublishedChannel::new(channel2, "publisher".to_string());
+    let published3 = PublishedChannel::new(channel3, "publisher".to_string());
+    let published4 = PublishedChannel::new(
+        Channel::new(
+            "test".to_string(),
+            "Test channel".to_string(),
+            "creator".to_string(),
+        ),
+        "different_publisher".to_string(),
+    );
+
+    assert_eq!(published1, published2);
+    assert_ne!(published1, published3);
+    assert_ne!(published1, published4);
+}
+
+#[test]
+fn test_published_channel_fields() {
+    let channel = Channel::new(
+        "field_test".to_string(),
+        "Channel for field test".to_string(),
+        "creator999".to_string(),
+    );
+    let published = PublishedChannel::new(channel.clone(), "publisher999".to_string());
+
+    assert_eq!(published.channel, channel);
+    assert_eq!(published.publisher, "publisher999");
+}
+
+#[test]
 fn test_peer_name_new() {
     let peer_id = "peer456".to_string();
     let name = "Alice".to_string();

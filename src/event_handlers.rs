@@ -7,7 +7,7 @@ use crate::network::{
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, ListMode, ListRequest,
-    ListResponse, PeerName, PendingDirectMessage, PublishedStory,
+    ListResponse, PeerName, PendingDirectMessage, PublishedStory, PublishedChannel,
 };
 
 use bytes::Bytes;
@@ -327,6 +327,58 @@ pub async fn handle_floodsub_event(
                             sorted_peer_names_cache.update(peer_names);
                         }
                     }
+                }
+            } else if let Ok(published_channel) = serde_json::from_slice::<PublishedChannel>(&msg.data) {
+                if published_channel.publisher != PEER_ID.to_string() {
+                    debug!(
+                        "Received published channel '{}' - {} from {}",
+                        published_channel.channel.name, published_channel.channel.description, msg.source
+                    );
+                    ui_logger.log(format!(
+                        "📺 Received channel '{}' - {} from {}",
+                        published_channel.channel.name, published_channel.channel.description, published_channel.publisher
+                    ));
+
+                    // Save the received channel to local storage asynchronously
+                    let channel_to_save = published_channel.channel.clone();
+                    let ui_logger_clone = ui_logger.clone();
+                    tokio::spawn(async move {
+                        // Add validation before saving
+                        if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
+                            debug!("Ignoring invalid published channel with empty name or description");
+                            return;
+                        }
+
+                        // Distinguish error types
+                        match crate::storage::create_channel(
+                            &channel_to_save.name,
+                            &channel_to_save.description,
+                            &channel_to_save.created_by,
+                        )
+                        .await
+                        {
+                            Ok(_) => {
+                                ui_logger_clone.log(format!(
+                                    "📺 Channel '{}' added to your channels list",
+                                    channel_to_save.name
+                                ));
+                            }
+                            Err(e) if e.to_string().contains("UNIQUE constraint") => {
+                                debug!("Published channel '{}' already exists", channel_to_save.name);
+                            }
+                            Err(e) => {
+                                // Create error logger for spawned task
+                                let error_logger_for_task = ErrorLogger::new("errors.log");
+                                crate::log_network_error!(
+                                    error_logger_for_task,
+                                    "storage",
+                                    "Failed to save received published channel '{}': {}",
+                                    channel_to_save.name,
+                                    e
+                                );
+                            }
+                        }
+                    });
                 }
             } else if let Ok(channel) = serde_json::from_slice::<crate::types::Channel>(&msg.data) {
                 debug!(
