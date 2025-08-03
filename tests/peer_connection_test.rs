@@ -38,14 +38,15 @@ fn test_ui_display_logic() {
     // Test the UI display logic for different types of peer names
     let peer_id = PeerId::random();
     let peer_id_str = peer_id.to_string();
-    let peer_id_short = if peer_id_str.len() >= 8 { &peer_id_str[..8] } else { &peer_id_str };
+    // Use 20 characters instead of 8 to ensure uniqueness between peers with similar prefixes
+    let peer_id_display = if peer_id_str.len() >= 20 { &peer_id_str[..20] } else { &peer_id_str };
     
     // Test default name display
     let default_name = format!("Peer_{}", peer_id);
     let display_content = if default_name.starts_with("Peer_") && default_name.contains(&peer_id.to_string()) {
-        format!("Peer_{} [{}]", peer_id_short, peer_id_short)
+        format!("Peer_{} [{}]", peer_id_display, peer_id_display)
     } else {
-        format!("{} ({})", default_name, peer_id_short)
+        format!("{} ({})", default_name, peer_id_display)
     };
     
     assert!(display_content.contains("["));
@@ -54,9 +55,9 @@ fn test_ui_display_logic() {
     // Test real name display
     let real_name = "Alice".to_string();
     let display_content = if real_name.starts_with("Peer_") && real_name.contains(&peer_id.to_string()) {
-        format!("Peer_{} [{}]", peer_id_short, peer_id_short)
+        format!("Peer_{} [{}]", peer_id_display, peer_id_display)
     } else {
-        format!("{} ({})", real_name, peer_id_short)
+        format!("{} ({})", real_name, peer_id_display)
     };
     
     assert!(display_content.contains("("));
@@ -65,15 +66,15 @@ fn test_ui_display_logic() {
     // Test custom name that starts with "Peer_" but is not a default name
     let custom_peer_name = "Peer_Alice".to_string();
     let display_content = if custom_peer_name.starts_with("Peer_") && custom_peer_name.contains(&peer_id.to_string()) {
-        format!("Peer_{} [{}]", peer_id_short, peer_id_short)
+        format!("Peer_{} [{}]", peer_id_display, peer_id_display)
     } else {
-        format!("{} ({})", custom_peer_name, peer_id_short)
+        format!("{} ({})", custom_peer_name, peer_id_display)
     };
     
     // Should use parentheses for custom names, even if they start with "Peer_"
     assert!(display_content.contains("("));
     assert!(display_content.contains(")"));
-    assert_eq!(display_content, format!("Peer_Alice ({})", peer_id_short));
+    assert_eq!(display_content, format!("Peer_Alice ({})", peer_id_display));
 }
 
 #[test]
