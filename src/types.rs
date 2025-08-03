@@ -401,8 +401,8 @@ impl NetworkConfig {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.connection_maintenance_interval_seconds < 60 {
-            return Err("connection_maintenance_interval_seconds must be at least 60 seconds to avoid excessive connection churn".to_string());
+        if self.connection_maintenance_interval_seconds < 10 {
+            return Err("connection_maintenance_interval_seconds must be at least 10 seconds to avoid excessive connection churn".to_string());
         }
 
         if self.connection_maintenance_interval_seconds > 3600 {

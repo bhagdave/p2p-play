@@ -12,7 +12,7 @@ mod ui;
 use bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use bootstrap_logger::BootstrapLogger;
 use error_logger::ErrorLogger;
-use event_handlers::handle_event;
+use event_handlers::{handle_event, track_successful_connection, trigger_immediate_connection_maintenance};
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
@@ -359,6 +359,9 @@ async fn main() {
                             debug!("Adding peer {} to floodsub partial view", peer_id);
                             swarm.behaviour_mut().floodsub.add_node_to_partial_view(peer_id);
 
+                            // Track successful connection for improved reconnect timing
+                            track_successful_connection(peer_id);
+
                             // If we have a local peer name set, broadcast it to the newly connected peer
                             if let Some(ref name) = local_peer_name {
                                 let peer_name = PeerName::new(PEER_ID.to_string(), name.clone());
@@ -392,6 +395,9 @@ async fn main() {
                                 sorted_peer_names_cache.update(&peer_names);
                                 app.update_peers(peer_names.clone());
                             }
+
+                            // Trigger immediate connection maintenance to try reconnecting quickly
+                            trigger_immediate_connection_maintenance(&mut swarm, &error_logger).await;
 
                             None
                         },
