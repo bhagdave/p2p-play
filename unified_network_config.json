@@ -19,7 +19,7 @@
     "connection_establishment_timeout_seconds": 45
   },
   "ping": {
-    "interval_secs": 15,
+    "interval_secs": 50,
     "timeout_secs": 45
   },
   "direct_message": {

@@ -20,14 +20,14 @@ async fn test_network_config_validation_success() {
 #[tokio::test]
 async fn test_network_config_validation_too_low() {
     let config = NetworkConfig {
-        connection_maintenance_interval_seconds: 30, // Below minimum of 60
+        connection_maintenance_interval_seconds: 5, // Below minimum of 10
         request_timeout_seconds: 60,
         max_concurrent_streams: 100,
         ..Default::default()
     };
     let result = config.validate();
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("must be at least 60 seconds"));
+    assert!(result.unwrap_err().contains("must be at least 10 seconds"));
 }
 
 #[tokio::test]
@@ -47,7 +47,7 @@ async fn test_network_config_validation_too_high() {
 async fn test_network_config_validation_edge_cases() {
     // Test minimum valid value
     let config_min = NetworkConfig {
-        connection_maintenance_interval_seconds: 60,
+        connection_maintenance_interval_seconds: 10, // new minimum
         request_timeout_seconds: 10, // minimum
         max_concurrent_streams: 1,   // minimum
         ..Default::default()
@@ -137,7 +137,7 @@ async fn test_load_network_config_invalid_values() {
     let path = temp_file.path().to_str().unwrap();
 
     // Write config with invalid value (too low)
-    let invalid_config = r#"{"connection_maintenance_interval_seconds": 30, "request_timeout_seconds": 60, "max_concurrent_streams": 100}"#;
+    let invalid_config = r#"{"connection_maintenance_interval_seconds": 5, "request_timeout_seconds": 60, "max_concurrent_streams": 100}"#;
     fs::write(path, invalid_config).unwrap();
 
     // Should fail validation
@@ -147,7 +147,7 @@ async fn test_load_network_config_invalid_values() {
         result
             .unwrap_err()
             .to_string()
-            .contains("must be at least 60 seconds")
+            .contains("must be at least 10 seconds")
     );
 }
 
