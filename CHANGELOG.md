@@ -5,6 +5,14 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Channel-Based TUI Navigation**: Implemented hierarchical channel → stories navigation system in the Terminal User Interface
+  - Added `ViewMode` enum with `Channels` and `Stories(String)` variants to track navigation state between channel list and story views
+  - Enhanced keyboard navigation with Enter key to drill down from channels to stories and Escape key to return to channels view
+  - Updated main display area to conditionally show either channel list with story counts or filtered stories within selected channel
+  - Added dynamic title bars and context-aware help text that update based on current navigation level
+  - Channel view displays: `📂 channel_name (X stories) - description` with story counts for each channel
+  - Stories view displays: `📖/📕 id: Story Name` filtered by selected channel with visual indicators for public/private stories
+  - Comprehensive test coverage for ViewMode variants, navigation state management, and UI display formatting
 - **Distributed Channel Broadcasting**: Implemented consistent channel broadcasting following the same pattern as story publishing
   - Added `PublishedChannel` struct to wrap channels with publisher information, similar to `PublishedStory`
   - Updated channel creation to broadcast `PublishedChannel` messages instead of raw `Channel` messages

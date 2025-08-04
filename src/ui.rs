@@ -161,9 +161,29 @@ impl App {
                         self.clear_output();
                     }
                     KeyCode::Up => {
+                        // Navigate list items when in channels/stories view, otherwise scroll output
+                        match self.view_mode {
+                            ViewMode::Channels => {
+                                self.navigate_list_up();
+                            }
+                            ViewMode::Stories(_) => {
+                                self.navigate_list_up();
+                            }
+                        }
+                        // Always allow output scrolling as well
                         self.scroll_up();
                     }
                     KeyCode::Down => {
+                        // Navigate list items when in channels/stories view, otherwise scroll output
+                        match self.view_mode {
+                            ViewMode::Channels => {
+                                self.navigate_list_down();
+                            }
+                            ViewMode::Stories(_) => {
+                                self.navigate_list_down();
+                            }
+                        }
+                        // Always allow output scrolling as well
                         self.scroll_down();
                     }
                     KeyCode::End => {
@@ -354,22 +374,75 @@ impl App {
 
     pub fn update_channels(&mut self, channels: Channels) {
         self.channels = channels;
+        // Initialize selection to first channel if in channels view and we have channels
+        if matches!(self.view_mode, ViewMode::Channels) && !self.channels.is_empty() && self.list_state.selected().is_none() {
+            self.list_state.select(Some(0));
+        }
     }
 
     pub fn enter_channel(&mut self, channel_name: String) {
         self.view_mode = ViewMode::Stories(channel_name);
+        // Reset list selection when entering stories view
+        self.list_state.select(Some(0));
     }
 
     pub fn return_to_channels(&mut self) {
         self.view_mode = ViewMode::Channels;
+        // Reset list selection when returning to channels view
+        if !self.channels.is_empty() {
+            self.list_state.select(Some(0));
+        }
+    }
+
+    pub fn navigate_list_up(&mut self) {
+        let list_len = match self.view_mode {
+            ViewMode::Channels => self.channels.len(),
+            ViewMode::Stories(ref channel_name) => {
+                self.stories.iter()
+                    .filter(|story| story.channel == *channel_name)
+                    .count()
+            }
+        };
+        
+        if list_len > 0 {
+            let current = self.list_state.selected().unwrap_or(0);
+            let new_index = if current == 0 { list_len - 1 } else { current - 1 };
+            self.list_state.select(Some(new_index));
+        }
+    }
+
+    pub fn navigate_list_down(&mut self) {
+        let list_len = match self.view_mode {
+            ViewMode::Channels => self.channels.len(),
+            ViewMode::Stories(ref channel_name) => {
+                self.stories.iter()
+                    .filter(|story| story.channel == *channel_name)
+                    .count()
+            }
+        };
+        
+        if list_len > 0 {
+            let current = self.list_state.selected().unwrap_or(0);
+            let new_index = if current >= list_len - 1 { 0 } else { current + 1 };
+            self.list_state.select(Some(new_index));
+        }
     }
 
     pub fn get_selected_channel(&self) -> Option<&str> {
         // Check if we're in channels view and have channels available
         if matches!(self.view_mode, ViewMode::Channels) && !self.channels.is_empty() {
-            // For now, use the first channel as selected
-            // In a full implementation, this would use list_state.selected()
-            Some(&self.channels[0].name)
+            // Use list_state.selected() to get the current selection
+            if let Some(selected_index) = self.list_state.selected() {
+                if selected_index < self.channels.len() {
+                    Some(&self.channels[selected_index].name)
+                } else {
+                    // Fallback to first channel if index is out of bounds
+                    Some(&self.channels[0].name)
+                }
+            } else {
+                // No selection, default to first channel
+                Some(&self.channels[0].name)
+            }
         } else {
             None
         }
@@ -657,7 +730,7 @@ impl App {
             let list = List::new(list_items)
                 .block(Block::default().borders(Borders::ALL).title(list_title))
                 .highlight_style(Style::default().fg(Color::Yellow));
-            f.render_widget(list, side_chunks[1]);
+            f.render_stateful_widget(list, side_chunks[1], &mut self.list_state);
 
             // Input area
             let input_style = match self.input_mode {
