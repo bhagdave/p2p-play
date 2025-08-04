@@ -552,20 +552,39 @@ pub async fn handle_create_channel(
             // Broadcast the channel to other peers
             let channel =
                 crate::types::Channel::new(name.to_string(), description.to_string(), creator.clone());
-            let published_channel = crate::types::PublishedChannel::new(channel, creator);
-            let json = match serde_json::to_string(&published_channel) {
+            let published_channel = crate::types::PublishedChannel::new(channel.clone(), creator);
+            
+            // Broadcast both formats for backward compatibility
+            // 1. Broadcast PublishedChannel for new nodes (preferred format)
+            let published_json = match serde_json::to_string(&published_channel) {
                 Ok(json) => json,
                 Err(e) => {
                     error_logger.log_error(&format!("Failed to serialize published channel: {}", e));
                     return Some(ActionResult::RefreshStories);
                 }
             };
-            let json_bytes = Bytes::from(json.into_bytes());
+            let published_json_bytes = Bytes::from(published_json.into_bytes());
             swarm
                 .behaviour_mut()
                 .floodsub
-                .publish(TOPIC.clone(), json_bytes);
+                .publish(TOPIC.clone(), published_json_bytes);
             debug!("Broadcasted published channel '{}' to connected peers", name);
+            
+            // 2. Broadcast legacy Channel format for backward compatibility with older nodes
+            let legacy_json = match serde_json::to_string(&channel) {
+                Ok(json) => json,
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to serialize legacy channel: {}", e));
+                    return Some(ActionResult::RefreshStories);
+                }
+            };
+            let legacy_json_bytes = Bytes::from(legacy_json.into_bytes());
+            swarm
+                .behaviour_mut()
+                .floodsub
+                .publish(TOPIC.clone(), legacy_json_bytes);
+            debug!("Broadcasted legacy channel '{}' for backward compatibility", name);
+            
             ui_logger.log(format!("Channel '{}' shared with network", name));
 
             return Some(ActionResult::RefreshStories);
