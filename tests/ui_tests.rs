@@ -1,6 +1,6 @@
 use libp2p::PeerId;
-use p2p_play::types::DirectMessage;
-use p2p_play::ui::{AppEvent, InputMode, PartialStory, StoryCreationStep};
+use p2p_play::types::{Channel, DirectMessage};
+use p2p_play::ui::{AppEvent, InputMode, PartialStory, StoryCreationStep, ViewMode};
 use std::collections::HashMap;
 
 #[test]
@@ -592,4 +592,125 @@ fn test_auto_scroll_re_enable_functionality() {
     // The visible content should include the new message
     let visible_lines: Vec<&String> = app.output_log[start..end].iter().collect();
     assert!(visible_lines.contains(&&"New message".to_string()));
+}
+
+#[test]
+fn test_view_mode_variants() {
+    // Test ViewMode enum variants
+    let channels_view = ViewMode::Channels;
+    let stories_view = ViewMode::Stories("general".to_string());
+
+    assert_eq!(channels_view, ViewMode::Channels);
+    assert_eq!(stories_view, ViewMode::Stories("general".to_string()));
+    assert_ne!(channels_view, stories_view);
+}
+
+#[test]
+fn test_view_mode_navigation() {
+    // Test the view mode navigation logic
+    let mut view_mode = ViewMode::Channels;
+
+    // Test entering a channel
+    view_mode = ViewMode::Stories("general".to_string());
+    match view_mode {
+        ViewMode::Stories(channel_name) => {
+            assert_eq!(channel_name, "general");
+        }
+        _ => panic!("Expected Stories view mode"),
+    }
+
+    // Test returning to channels view
+    view_mode = ViewMode::Channels;
+    match view_mode {
+        ViewMode::Channels => {
+            // This is expected
+        }
+        _ => panic!("Expected Channels view mode"),
+    }
+}
+
+#[test]
+fn test_channel_display_formatting() {
+    // Test channel display formatting similar to existing story formatting test
+    let channel = Channel {
+        name: "general".to_string(),
+        description: "Default general discussion channel".to_string(),
+        created_by: "system".to_string(),
+        created_at: 1640995200, // Fixed timestamp for testing
+    };
+
+    // Simulate the formatting used in the UI
+    let story_count = 5; // Mock story count
+    let formatted = format!("📂 {} ({} stories) - {}", 
+        channel.name, story_count, channel.description);
+
+    assert_eq!(formatted, "📂 general (5 stories) - Default general discussion channel");
+}
+
+#[test]
+fn test_channel_navigation_state() {
+    // Test a mock app structure that includes the new view mode functionality
+    struct MockAppWithChannelNav {
+        view_mode: ViewMode,
+        channels: Vec<Channel>,
+    }
+
+    impl MockAppWithChannelNav {
+        fn new() -> Self {
+            Self {
+                view_mode: ViewMode::Channels,
+                channels: vec![
+                    Channel {
+                        name: "general".to_string(),
+                        description: "Default channel".to_string(),
+                        created_by: "system".to_string(),
+                        created_at: 1640995200,
+                    },
+                    Channel {
+                        name: "tech".to_string(),
+                        description: "Technology discussions".to_string(),
+                        created_by: "admin".to_string(),
+                        created_at: 1640995300,
+                    },
+                ],
+            }
+        }
+
+        fn enter_channel(&mut self, channel_name: String) {
+            self.view_mode = ViewMode::Stories(channel_name);
+        }
+
+        fn return_to_channels(&mut self) {
+            self.view_mode = ViewMode::Channels;
+        }
+
+        fn get_selected_channel(&self) -> Option<&str> {
+            if matches!(self.view_mode, ViewMode::Channels) && !self.channels.is_empty() {
+                Some(&self.channels[0].name)
+            } else {
+                None
+            }
+        }
+    }
+
+    let mut app = MockAppWithChannelNav::new();
+
+    // Initially should be in channels view
+    assert_eq!(app.view_mode, ViewMode::Channels);
+    assert_eq!(app.get_selected_channel(), Some("general"));
+
+    // Test entering a channel
+    app.enter_channel("tech".to_string());
+    match app.view_mode {
+        ViewMode::Stories(ref channel_name) => {
+            assert_eq!(channel_name, "tech");
+        }
+        _ => panic!("Expected Stories view mode"),
+    }
+    assert_eq!(app.get_selected_channel(), None); // Should return None when in stories view
+
+    // Test returning to channels
+    app.return_to_channels();
+    assert_eq!(app.view_mode, ViewMode::Channels);
+    assert_eq!(app.get_selected_channel(), Some("general"));
 }
