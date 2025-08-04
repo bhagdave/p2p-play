@@ -1,4 +1,4 @@
-use crate::types::{Channels, DirectMessage, Stories};
+use crate::types::{Channels, DirectMessage, Stories, Story};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -161,20 +161,26 @@ impl App {
                         self.clear_output();
                     }
                     KeyCode::Up => {
-                        // Navigate list items when in channels/stories view, otherwise scroll output
-                        match self.view_mode {
-                            ViewMode::Channels => {
-                                self.navigate_list_up();
-                            }
-                            ViewMode::Stories(_) => {
-                                self.navigate_list_up();
-                            }
-                        }
-                        // Always allow output scrolling as well
+                        // Only handle output scrolling with Up/Down keys
                         self.scroll_up();
                     }
                     KeyCode::Down => {
-                        // Navigate list items when in channels/stories view, otherwise scroll output
+                        // Only handle output scrolling with Up/Down keys
+                        self.scroll_down();
+                    }
+                    KeyCode::Left => {
+                        // Navigate list items with Left/Right keys
+                        match self.view_mode {
+                            ViewMode::Channels => {
+                                self.navigate_list_up();
+                            }
+                            ViewMode::Stories(_) => {
+                                self.navigate_list_up();
+                            }
+                        }
+                    }
+                    KeyCode::Right => {
+                        // Navigate list items with Left/Right keys
                         match self.view_mode {
                             ViewMode::Channels => {
                                 self.navigate_list_down();
@@ -183,8 +189,6 @@ impl App {
                                 self.navigate_list_down();
                             }
                         }
-                        // Always allow output scrolling as well
-                        self.scroll_down();
                     }
                     KeyCode::End => {
                         // Re-enable auto-scroll and go to bottom
@@ -193,10 +197,17 @@ impl App {
                         self.scroll_offset = 0;
                     }
                     KeyCode::Enter => {
-                        // Handle navigation between channels and stories
-                        if let ViewMode::Channels = self.view_mode {
-                            if let Some(channel_name) = self.get_selected_channel() {
-                                self.enter_channel(channel_name.to_string());
+                        // Handle navigation between channels and stories, or view story content
+                        match &self.view_mode {
+                            ViewMode::Channels => {
+                                if let Some(channel_name) = self.get_selected_channel() {
+                                    self.enter_channel(channel_name.to_string());
+                                }
+                            }
+                            ViewMode::Stories(_) => {
+                                if let Some(story) = self.get_selected_story() {
+                                    self.display_story_content(&story);
+                                }
                             }
                         }
                     }
@@ -446,6 +457,54 @@ impl App {
         } else {
             None
         }
+    }
+
+    pub fn get_selected_story(&self) -> Option<Story> {
+        // Check if we're in stories view and have stories available
+        if let ViewMode::Stories(ref channel_name) = self.view_mode {
+            let channel_stories: Vec<&Story> = self.stories.iter()
+                .filter(|story| story.channel == *channel_name)
+                .collect();
+            
+            if !channel_stories.is_empty() {
+                if let Some(selected_index) = self.list_state.selected() {
+                    if selected_index < channel_stories.len() {
+                        Some(channel_stories[selected_index].clone())
+                    } else {
+                        // Fallback to first story if index is out of bounds
+                        Some(channel_stories[0].clone())
+                    }
+                } else {
+                    // No selection, default to first story
+                    Some(channel_stories[0].clone())
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn display_story_content(&mut self, story: &Story) {
+        self.add_to_log("".to_string());
+        self.add_to_log("📖 ═══════════════ STORY CONTENT ═══════════════".to_string());
+        self.add_to_log(format!("📝 Title: {}", story.name));
+        self.add_to_log(format!("🏷️  ID: {}", story.id));
+        self.add_to_log(format!("📂 Channel: {}", story.channel));
+        self.add_to_log(format!("👁️  Visibility: {}", if story.public { "Public" } else { "Private" }));
+        self.add_to_log(format!("📅 Created: {}", format_timestamp(story.created_at)));
+        self.add_to_log("".to_string());
+        self.add_to_log("📄 Header:".to_string());
+        self.add_to_log(format!("   {}", story.header));
+        self.add_to_log("".to_string());
+        self.add_to_log("📖 Body:".to_string());
+        // Split the body into lines for better readability
+        for line in story.body.lines() {
+            self.add_to_log(format!("   {}", line));
+        }
+        self.add_to_log("📖 ═══════════════════════════════════════════".to_string());
+        self.add_to_log("".to_string());
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
@@ -742,8 +801,8 @@ impl App {
             let input_text = match &self.input_mode {
                 InputMode::Normal => {
                     match &self.view_mode {
-                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
-                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Esc to return to channels, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ←/→ to navigate, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Enter to view story, Esc to return to channels, ←/→ to navigate, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
                     }
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
@@ -809,4 +868,26 @@ pub async fn handle_ui_events(
         }
     }
     Ok(())
+}
+
+/// Helper function to format Unix timestamp to human-readable format
+fn format_timestamp(timestamp: u64) -> String {
+    use std::time::UNIX_EPOCH;
+    
+    if let Ok(duration) = UNIX_EPOCH.elapsed() {
+        let current_timestamp = duration.as_secs();
+        let diff = current_timestamp.saturating_sub(timestamp);
+        
+        if diff < 60 {
+            "just now".to_string()
+        } else if diff < 3600 {
+            format!("{} minutes ago", diff / 60)
+        } else if diff < 86400 {
+            format!("{} hours ago", diff / 3600)
+        } else {
+            format!("{} days ago", diff / 86400)
+        }
+    } else {
+        "unknown".to_string()
+    }
 }
