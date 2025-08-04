@@ -2,6 +2,17 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Distributed Channel Broadcasting**: Implemented consistent channel broadcasting following the same pattern as story publishing
+  - Added `PublishedChannel` struct to wrap channels with publisher information, similar to `PublishedStory`
+  - Updated channel creation to broadcast `PublishedChannel` messages instead of raw `Channel` messages
+  - Enhanced floodsub message handling to process `PublishedChannel` messages with publisher information displayed to users
+  - Maintained backward compatibility by supporting both `PublishedChannel` and legacy `Channel` message formats
+  - Added comprehensive unit tests for `PublishedChannel` functionality including serialization and equality tests
+  - Channel broadcasting now follows the exact same pattern as story broadcasting for consistency across the application
+
 ## [0.7.5] 2025-08-03
 
 ### Fixed

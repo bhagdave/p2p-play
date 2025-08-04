@@ -44,6 +44,12 @@ pub struct PublishedStory {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+pub struct PublishedChannel {
+    pub channel: Channel,
+    pub publisher: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct PeerName {
     pub peer_id: String,
     pub name: String,
@@ -262,6 +268,12 @@ impl ListResponse {
 impl PublishedStory {
     pub fn new(story: Story, publisher: String) -> Self {
         Self { story, publisher }
+    }
+}
+
+impl PublishedChannel {
+    pub fn new(channel: Channel, publisher: String) -> Self {
+        Self { channel, publisher }
     }
 }
 

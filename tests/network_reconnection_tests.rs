@@ -63,7 +63,8 @@ async fn test_throttling_behaviour_verification() {
 
     // Test older peer gets slower throttling
     let old_peer_id = "old_peer_456".to_string();
-    let old_connection_time = now.checked_sub(Duration::from_secs(400))
+    let old_connection_time = now
+        .checked_sub(Duration::from_secs(400))
         .unwrap_or_else(|| Instant::now() - Duration::from_secs(10)); // Fallback to 10 seconds ago
     successful_connections.insert(old_peer_id.clone(), old_connection_time);
 
@@ -100,7 +101,8 @@ async fn test_memory_cleanup_validation() {
     let now = Instant::now();
     // Create an old time by getting an instant and adding the duration forward
     // This avoids potential underflow on Windows systems
-    let old_time = now.checked_sub(Duration::from_secs(3700))
+    let old_time = now
+        .checked_sub(Duration::from_secs(3700))
         .unwrap_or_else(|| Instant::now() - Duration::from_secs(10)); // Fallback to 10 seconds ago
 
     // Add some old entries that should be cleaned up
