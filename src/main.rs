@@ -236,6 +236,18 @@ async fn main() {
             app.add_to_log(format!("Failed to load local stories: {}", e));
         }
     }
+
+    // Load initial channels and update UI
+    match storage::read_channels().await {
+        Ok(channels) => {
+            debug!("Loaded {} channels", channels.len());
+            app.update_channels(channels);
+        }
+        Err(e) => {
+            error!("Failed to load channels: {}", e);
+            app.add_to_log(format!("Failed to load channels: {}", e));
+        }
+    }
     // Windows fix for port in use
     #[cfg(windows)]
     let listen_addr = "/ip4/127.0.0.1/tcp/0"; // Bind to localhost only on Windows to reduce conflicts

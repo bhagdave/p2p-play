@@ -1,4 +1,4 @@
-use crate::types::{DirectMessage, Stories};
+use crate::types::{Channels, DirectMessage, Stories};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -53,11 +53,19 @@ pub struct App {
     pub output_log: Vec<String>,
     pub peers: HashMap<PeerId, String>,
     pub stories: Stories,
+    pub channels: Channels,
+    pub view_mode: ViewMode,
     pub local_peer_name: Option<String>,
     pub list_state: ListState,
     pub input_mode: InputMode,
     pub scroll_offset: usize,
     pub auto_scroll: bool, // Track if we should auto-scroll to bottom
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum ViewMode {
+    Channels,
+    Stories(String), // Selected channel name
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -114,6 +122,8 @@ impl App {
             ],
             peers: HashMap::new(),
             stories: Vec::new(),
+            channels: Vec::new(),
+            view_mode: ViewMode::Channels,
             local_peer_name: None,
             list_state: ListState::default(),
             input_mode: InputMode::Normal,
@@ -161,6 +171,20 @@ impl App {
                         self.auto_scroll = true;
                         // Reset scroll offset to ensure clean transition to auto-scroll
                         self.scroll_offset = 0;
+                    }
+                    KeyCode::Enter => {
+                        // Handle navigation between channels and stories
+                        if let ViewMode::Channels = self.view_mode {
+                            if let Some(channel_name) = self.get_selected_channel() {
+                                self.enter_channel(channel_name.to_string());
+                            }
+                        }
+                    }
+                    KeyCode::Esc => {
+                        // Return to channels view if in stories view
+                        if matches!(self.view_mode, ViewMode::Stories(_)) {
+                            self.return_to_channels();
+                        }
                     }
                     _ => {}
                 },
@@ -326,6 +350,29 @@ impl App {
 
     pub fn update_local_peer_name(&mut self, name: Option<String>) {
         self.local_peer_name = name;
+    }
+
+    pub fn update_channels(&mut self, channels: Channels) {
+        self.channels = channels;
+    }
+
+    pub fn enter_channel(&mut self, channel_name: String) {
+        self.view_mode = ViewMode::Stories(channel_name);
+    }
+
+    pub fn return_to_channels(&mut self) {
+        self.view_mode = ViewMode::Channels;
+    }
+
+    pub fn get_selected_channel(&self) -> Option<&str> {
+        // Check if we're in channels view and have channels available
+        if matches!(self.view_mode, ViewMode::Channels) && !self.channels.is_empty() {
+            // For now, use the first channel as selected
+            // In a full implementation, this would use list_state.selected()
+            Some(&self.channels[0].name)
+        } else {
+            None
+        }
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
@@ -576,20 +623,41 @@ impl App {
                 .highlight_style(Style::default().fg(Color::Yellow));
             f.render_widget(peers_list, side_chunks[0]);
 
-            // Stories list
-            let story_items: Vec<ListItem> = self
-                .stories
-                .iter()
-                .map(|story| {
-                    let status = if story.public { "📖" } else { "📕" };
-                    ListItem::new(format!("{} [{}] {}: {}", status, story.channel, story.id, story.name))
-                })
-                .collect();
+            // Channels/Stories list - display based on view mode
+            let (list_items, list_title) = match &self.view_mode {
+                ViewMode::Channels => {
+                    let channel_items: Vec<ListItem> = self
+                        .channels
+                        .iter()
+                        .map(|channel| {
+                            // Count stories in this channel
+                            let story_count = self.stories.iter()
+                                .filter(|story| story.channel == channel.name)
+                                .count();
+                            ListItem::new(format!("📂 {} ({} stories) - {}", 
+                                channel.name, story_count, channel.description))
+                        })
+                        .collect();
+                    (channel_items, "Channels (Press Enter to view stories)".to_string())
+                }
+                ViewMode::Stories(selected_channel) => {
+                    let story_items: Vec<ListItem> = self
+                        .stories
+                        .iter()
+                        .filter(|story| story.channel == *selected_channel)
+                        .map(|story| {
+                            let status = if story.public { "📖" } else { "📕" };
+                            ListItem::new(format!("{} {}: {}", status, story.id, story.name))
+                        })
+                        .collect();
+                    (story_items, format!("Stories in '{}' (Press Esc to return to channels)", selected_channel))
+                }
+            };
 
-            let stories_list = List::new(story_items)
-                .block(Block::default().borders(Borders::ALL).title("Stories"))
+            let list = List::new(list_items)
+                .block(Block::default().borders(Borders::ALL).title(list_title))
                 .highlight_style(Style::default().fg(Color::Yellow));
-            f.render_widget(stories_list, side_chunks[1]);
+            f.render_widget(list, side_chunks[1]);
 
             // Input area
             let input_style = match self.input_mode {
@@ -600,8 +668,10 @@ impl App {
 
             let input_text = match &self.input_mode {
                 InputMode::Normal => {
-                    "Press 'i' to enter input mode, ↑/↓ to scroll, 'End' to enable auto-scroll, 'c' to clear output, 'q' to quit"
-                        .to_string()
+                    match &self.view_mode {
+                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Esc to return to channels, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
+                    }
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
                 InputMode::CreatingStory { step, .. } => {
