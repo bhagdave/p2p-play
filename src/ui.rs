@@ -553,7 +553,7 @@ impl App {
                     let peer_id_str = peer_id.to_string();
                     // Use 20 characters instead of 8 to ensure uniqueness between peers with similar prefixes
                     let peer_id_display = if peer_id_str.len() >= 20 { &peer_id_str[..20] } else { &peer_id_str };
-                    
+
                     let content = if name.is_empty() {
                         format!("{}", peer_id)
                     } else if name.starts_with("Peer_") && name.contains(&peer_id.to_string()) {

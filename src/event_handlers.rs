@@ -7,7 +7,7 @@ use crate::network::{
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, ListMode, ListRequest,
-    ListResponse, PeerName, PendingDirectMessage, PublishedStory, PublishedChannel,
+    ListResponse, PeerName, PendingDirectMessage, PublishedChannel, PublishedStory,
 };
 
 use bytes::Bytes;
@@ -328,15 +328,21 @@ pub async fn handle_floodsub_event(
                         }
                     }
                 }
-            } else if let Ok(published_channel) = serde_json::from_slice::<PublishedChannel>(&msg.data) {
+            } else if let Ok(published_channel) =
+                serde_json::from_slice::<PublishedChannel>(&msg.data)
+            {
                 if published_channel.publisher != PEER_ID.to_string() {
                     debug!(
                         "Received published channel '{}' - {} from {}",
-                        published_channel.channel.name, published_channel.channel.description, msg.source
+                        published_channel.channel.name,
+                        published_channel.channel.description,
+                        msg.source
                     );
                     ui_logger.log(format!(
                         "📺 Received channel '{}' - {} from {}",
-                        published_channel.channel.name, published_channel.channel.description, published_channel.publisher
+                        published_channel.channel.name,
+                        published_channel.channel.description,
+                        published_channel.publisher
                     ));
 
                     // Save the received channel to local storage asynchronously
@@ -344,8 +350,11 @@ pub async fn handle_floodsub_event(
                     let ui_logger_clone = ui_logger.clone();
                     tokio::spawn(async move {
                         // Add validation before saving
-                        if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
-                            debug!("Ignoring invalid published channel with empty name or description");
+                        if channel_to_save.name.is_empty() || channel_to_save.description.is_empty()
+                        {
+                            debug!(
+                                "Ignoring invalid published channel with empty name or description"
+                            );
                             return;
                         }
 
@@ -364,7 +373,10 @@ pub async fn handle_floodsub_event(
                                 ));
                             }
                             Err(e) if e.to_string().contains("UNIQUE constraint") => {
-                                debug!("Published channel '{}' already exists", channel_to_save.name);
+                                debug!(
+                                    "Published channel '{}' already exists",
+                                    channel_to_save.name
+                                );
                             }
                             Err(e) => {
                                 // Create error logger for spawned task
