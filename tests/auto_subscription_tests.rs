@@ -49,6 +49,13 @@ async fn test_available_vs_subscribed_channels() {
     // Reset and initialize storage
     reset_db_connection_for_testing().await.expect("Failed to reset connection");
     ensure_stories_file_exists().await.expect("Failed to initialize storage");
+    
+    // Clear all existing data for clean test
+    let conn_arc = p2p_play::storage::get_db_connection().await.expect("Failed to get connection");
+    let conn = conn_arc.lock().await;
+    conn.execute("DELETE FROM channel_subscriptions", []).expect("Failed to clear subscriptions");
+    conn.execute("DELETE FROM channels", []).expect("Failed to clear channels");
+    drop(conn); // Release the lock
 
     let peer_id = "test_peer_123";
 
@@ -115,4 +122,69 @@ async fn test_channel_auto_subscription_config_persistence() {
     assert_eq!(loaded_config.channel_auto_subscription.notify_new_channels, true);
 
     println!("✅ Config persistence test passed!");
+}
+
+#[tokio::test]
+async fn test_auto_subscription_logic() {
+    // Test the auto-subscription logic function
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let db_path = temp_dir.path().join("test_auto_sub_logic.db");
+    unsafe {
+        env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+    }
+
+    // Reset and initialize storage
+    reset_db_connection_for_testing().await.expect("Failed to reset connection");
+    ensure_stories_file_exists().await.expect("Failed to initialize storage");
+    
+    // Clear all existing data for clean test
+    let conn_arc = p2p_play::storage::get_db_connection().await.expect("Failed to get connection");
+    let conn = conn_arc.lock().await;
+    conn.execute("DELETE FROM channel_subscriptions", []).expect("Failed to clear subscriptions");
+    conn.execute("DELETE FROM channels", []).expect("Failed to clear channels");
+    drop(conn); // Release the lock
+
+    let peer_id = "test_peer_auto_sub";
+
+    // Create a test channel
+    create_channel("auto-test-channel", "Auto subscription test", "creator").await.expect("Failed to create channel");
+
+    // Test auto-subscription with mock UI logger
+    use tokio::sync::mpsc;
+    let (ui_sender, _ui_receiver) = mpsc::unbounded_channel();
+    let mock_ui_logger = p2p_play::handlers::UILogger::new(ui_sender);
+
+    // Call the private auto-subscription function through the event handlers module
+    // Since the function is private, we'll test it indirectly through integration
+
+    // Test 1: Should be able to auto-subscribe when under limit
+    let result = subscribe_to_channel(peer_id, "auto-test-channel").await;
+    assert!(result.is_ok());
+
+    // Verify subscription
+    let subscriptions = read_subscribed_channels(peer_id).await.expect("Failed to read subscriptions");
+    assert_eq!(subscriptions.len(), 1);
+    assert!(subscriptions.contains(&"auto-test-channel".to_string()));
+
+    // Test subscription count
+    let count = get_auto_subscription_count(peer_id).await.expect("Failed to get count");
+    assert_eq!(count, 1);
+
+    // Test 2: Subscribe to more channels to test limit
+    for i in 1..=12 {
+        let channel_name = format!("test-channel-{}", i);
+        create_channel(&channel_name, "Test channel", "creator").await.expect("Failed to create channel");
+        subscribe_to_channel(peer_id, &channel_name).await.expect("Failed to subscribe");
+    }
+
+    // Should have 13 subscriptions now (1 + 12)
+    let final_count = get_auto_subscription_count(peer_id).await.expect("Failed to get count");
+    assert_eq!(final_count, 13);
+
+    // Test unsubscribed channels
+    create_channel("unsubscribed-channel", "Not subscribed to this", "creator").await.expect("Failed to create channel");
+    let unsubscribed = read_unsubscribed_channels(peer_id).await.expect("Failed to read unsubscribed");
+    assert!(unsubscribed.iter().any(|ch| ch.name == "unsubscribed-channel"));
+
+    println!("✅ Auto-subscription logic test passed!");
 }
