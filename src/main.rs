@@ -15,10 +15,10 @@ use error_logger::ErrorLogger;
 use event_handlers::{
     handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
-use handlers::SortedPeerNamesCache;
+use handlers::{refresh_unread_counts_for_ui, SortedPeerNamesCache};
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_stories_file_exists, ensure_unified_network_config_exists, get_unread_counts_by_channel,
+    ensure_stories_file_exists, ensure_unified_network_config_exists,
     load_local_peer_name, load_unified_network_config,
 };
 use types::{ActionResult, EventType, PeerName, PendingDirectMessage, UnifiedNetworkConfig};
@@ -231,18 +231,7 @@ async fn main() {
             debug!("Loaded {} local stories", stories.len());
             app.update_stories(stories);
             // Refresh unread counts
-            match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
-                Ok(unread_counts) => {
-                    debug!(
-                        "Refreshed unread counts for {} channels",
-                        unread_counts.len()
-                    );
-                    app.update_unread_counts(unread_counts);
-                }
-                Err(e) => {
-                    debug!("Failed to refresh unread counts: {}", e);
-                }
-            }
+            refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
             // Note: Unread counts are loaded separately after this in the init phase
         }
         Err(e) => {
@@ -264,16 +253,7 @@ async fn main() {
     }
 
     // Load initial unread counts and update UI
-    match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
-        Ok(unread_counts) => {
-            debug!("Loaded unread counts for {} channels", unread_counts.len());
-            app.update_unread_counts(unread_counts);
-        }
-        Err(e) => {
-            error!("Failed to load unread counts: {}", e);
-            // Don't show error to user as this is not critical for app functionality
-        }
-    }
+    refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
     // Windows fix for port in use
     #[cfg(windows)]
     let listen_addr = "/ip4/127.0.0.1/tcp/0"; // Bind to localhost only on Windows to reduce conflicts
@@ -535,20 +515,7 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        match get_unread_counts_by_channel(&PEER_ID.to_string())
-                                            .await
-                                        {
-                                            Ok(unread_counts) => {
-                                                debug!(
-                                                    "Refreshed unread counts for {} channels",
-                                                    unread_counts.len()
-                                                );
-                                                app.update_unread_counts(unread_counts);
-                                            }
-                                            Err(e) => {
-                                                debug!("Failed to refresh unread counts: {}", e);
-                                            }
-                                        }
+                                        refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -593,20 +560,7 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        match get_unread_counts_by_channel(&PEER_ID.to_string())
-                                            .await
-                                        {
-                                            Ok(unread_counts) => {
-                                                debug!(
-                                                    "Refreshed unread counts for {} channels",
-                                                    unread_counts.len()
-                                                );
-                                                app.update_unread_counts(unread_counts);
-                                            }
-                                            Err(e) => {
-                                                debug!("Failed to refresh unread counts: {}", e);
-                                            }
-                                        }
+                                        refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -649,20 +603,7 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        match get_unread_counts_by_channel(&PEER_ID.to_string())
-                                            .await
-                                        {
-                                            Ok(unread_counts) => {
-                                                debug!(
-                                                    "Refreshed unread counts for {} channels",
-                                                    unread_counts.len()
-                                                );
-                                                app.update_unread_counts(unread_counts);
-                                            }
-                                            Err(e) => {
-                                                debug!("Failed to refresh unread counts: {}", e);
-                                            }
-                                        }
+                                        refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(

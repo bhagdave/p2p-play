@@ -532,17 +532,7 @@ impl App {
         self.add_to_log("".to_string());
     }
 
-    /// Mark a story as read (should be called after displaying it)
-    pub async fn mark_story_as_read_for_peer(
-        &self,
-        story_id: usize,
-        peer_id: &str,
-        channel_name: &str,
-    ) {
-        if let Err(e) = crate::storage::mark_story_as_read(story_id, peer_id, channel_name).await {
-            debug!("Failed to mark story {} as read: {}", story_id, e);
-        }
-    }
+
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
         let timestamp = std::time::SystemTime::now()
