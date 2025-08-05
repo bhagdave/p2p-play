@@ -18,8 +18,8 @@ use event_handlers::{
 use handlers::SortedPeerNamesCache;
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
-    load_unified_network_config,
+    ensure_stories_file_exists, ensure_unified_network_config_exists, get_unread_counts_by_channel,
+    load_local_peer_name, load_unified_network_config,
 };
 use types::{ActionResult, EventType, PeerName, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::{App, AppEvent, handle_ui_events};
@@ -230,6 +230,17 @@ async fn main() {
         Ok(stories) => {
             debug!("Loaded {} local stories", stories.len());
             app.update_stories(stories);
+                                        // Refresh unread counts
+                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                                            Ok(unread_counts) => {
+                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
+                                                app.update_unread_counts(unread_counts);
+                                            }
+                                            Err(e) => {
+                                                debug!("Failed to refresh unread counts: {}", e);
+                                            }
+                                        }
+            // Note: Unread counts are loaded separately after this in the init phase
         }
         Err(e) => {
             error!("Failed to load local stories: {}", e);
@@ -246,6 +257,18 @@ async fn main() {
         Err(e) => {
             error!("Failed to load channels: {}", e);
             app.add_to_log(format!("Failed to load channels: {}", e));
+        }
+    }
+
+    // Load initial unread counts and update UI
+    match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+        Ok(unread_counts) => {
+            debug!("Loaded unread counts for {} channels", unread_counts.len());
+            app.update_unread_counts(unread_counts);
+        }
+        Err(e) => {
+            error!("Failed to load unread counts: {}", e);
+            // Don't show error to user as this is not critical for app functionality
         }
     }
     // Windows fix for port in use
@@ -508,6 +531,16 @@ async fn main() {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
+                                        // Refresh unread counts
+                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                                            Ok(unread_counts) => {
+                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
+                                                app.update_unread_counts(unread_counts);
+                                            }
+                                            Err(e) => {
+                                                debug!("Failed to refresh unread counts: {}", e);
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -551,6 +584,16 @@ async fn main() {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
+                                        // Refresh unread counts
+                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                                            Ok(unread_counts) => {
+                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
+                                                app.update_unread_counts(unread_counts);
+                                            }
+                                            Err(e) => {
+                                                debug!("Failed to refresh unread counts: {}", e);
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -592,6 +635,16 @@ async fn main() {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
+                                        // Refresh unread counts
+                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                                            Ok(unread_counts) => {
+                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
+                                                app.update_unread_counts(unread_counts);
+                                            }
+                                            Err(e) => {
+                                                debug!("Failed to refresh unread counts: {}", e);
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(

@@ -54,6 +54,7 @@ pub struct App {
     pub peers: HashMap<PeerId, String>,
     pub stories: Stories,
     pub channels: Channels,
+    pub unread_counts: HashMap<String, usize>, // Channel name -> unread count
     pub view_mode: ViewMode,
     pub local_peer_name: Option<String>,
     pub list_state: ListState,
@@ -123,6 +124,7 @@ impl App {
             peers: HashMap::new(),
             stories: Vec::new(),
             channels: Vec::new(),
+            unread_counts: HashMap::new(),
             view_mode: ViewMode::Channels,
             local_peer_name: None,
             list_state: ListState::default(),
@@ -391,6 +393,10 @@ impl App {
         }
     }
 
+    pub fn update_unread_counts(&mut self, unread_counts: HashMap<String, usize>) {
+        self.unread_counts = unread_counts;
+    }
+
     pub fn enter_channel(&mut self, channel_name: String) {
         self.view_mode = ViewMode::Stories(channel_name);
         // Reset list selection when entering stories view
@@ -505,6 +511,13 @@ impl App {
         }
         self.add_to_log("📖 ═══════════════════════════════════════════".to_string());
         self.add_to_log("".to_string());
+    }
+
+    /// Mark a story as read (should be called after displaying it)
+    pub async fn mark_story_as_read_for_peer(&self, story_id: usize, peer_id: &str, channel_name: &str) {
+        if let Err(e) = crate::storage::mark_story_as_read(story_id, peer_id, channel_name).await {
+            debug!("Failed to mark story {} as read: {}", story_id, e);
+        }
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
@@ -766,8 +779,27 @@ impl App {
                             let story_count = self.stories.iter()
                                 .filter(|story| story.channel == channel.name)
                                 .count();
-                            ListItem::new(format!("📂 {} ({} stories) - {}", 
-                                channel.name, story_count, channel.description))
+                            
+                            // Get unread count for this channel
+                            let unread_count = self.unread_counts.get(&channel.name).unwrap_or(&0);
+                            
+                            // Create the display text with unread indicator
+                            let display_text = if *unread_count > 0 {
+                                format!("📂 {} [{}] ({} stories) - {}", 
+                                    channel.name, unread_count, story_count, channel.description)
+                            } else {
+                                format!("📂 {} ({} stories) - {}", 
+                                    channel.name, story_count, channel.description)
+                            };
+                            
+                            // Apply styling based on unread status
+                            let item = ListItem::new(display_text);
+                            if *unread_count > 0 {
+                                // Highlight channels with unread stories
+                                item.style(Style::default().fg(Color::Yellow))
+                            } else {
+                                item
+                            }
                         })
                         .collect();
                     (channel_items, "Channels (Press Enter to view stories)".to_string())

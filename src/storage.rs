@@ -4,6 +4,7 @@ use crate::types::{
 };
 use log::debug;
 use rusqlite::Connection;
+use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 use tokio::fs;
@@ -957,4 +958,107 @@ pub async fn ensure_unified_network_config_exists() -> Result<(), Box<dyn Error>
         debug!("Created default unified network config file");
     }
     Ok(())
+}
+
+/// Mark a story as read for a specific peer
+pub async fn mark_story_as_read(
+    story_id: usize,
+    peer_id: &str,
+    channel_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let read_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    conn.execute(
+        "INSERT OR REPLACE INTO story_read_status (story_id, peer_id, read_at, channel_name) VALUES (?, ?, ?, ?)",
+        [&story_id.to_string(), peer_id, &read_at.to_string(), channel_name],
+    )?;
+
+    debug!("Marked story {} as read for peer {} in channel {}", story_id, peer_id, channel_name);
+    Ok(())
+}
+
+/// Get unread story count for each channel for a specific peer
+pub async fn get_unread_counts_by_channel(
+    peer_id: &str,
+) -> Result<HashMap<String, usize>, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT s.channel, COUNT(*) as unread_count
+        FROM stories s
+        LEFT JOIN story_read_status srs ON s.id = srs.story_id AND srs.peer_id = ?
+        WHERE s.public = 1 AND srs.story_id IS NULL
+        GROUP BY s.channel
+        "#,
+    )?;
+
+    let unread_iter = stmt.query_map([peer_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)? as usize,
+        ))
+    })?;
+
+    let mut unread_counts = HashMap::new();
+    for result in unread_iter {
+        let (channel, count) = result?;
+        unread_counts.insert(channel, count);
+    }
+
+    Ok(unread_counts)
+}
+
+/// Check if a specific story is read by a peer
+pub async fn is_story_read(
+    story_id: usize,
+    peer_id: &str,
+) -> Result<bool, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?",
+    )?;
+
+    let count: i64 = stmt.query_row([&story_id.to_string(), peer_id], |row| row.get(0))?;
+
+    Ok(count > 0)
+}
+
+/// Get all unread story IDs for a specific channel and peer
+pub async fn get_unread_story_ids_for_channel(
+    peer_id: &str,
+    channel_name: &str,
+) -> Result<Vec<usize>, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT s.id
+        FROM stories s
+        LEFT JOIN story_read_status srs ON s.id = srs.story_id AND srs.peer_id = ?
+        WHERE s.channel = ? AND s.public = 1 AND srs.story_id IS NULL
+        ORDER BY s.created_at DESC
+        "#,
+    )?;
+
+    let story_iter = stmt.query_map([peer_id, channel_name], |row| {
+        Ok(row.get::<_, i64>(0)? as usize)
+    })?;
+
+    let mut story_ids = Vec::new();
+    for story_id in story_iter {
+        story_ids.push(story_id?);
+    }
+
+    Ok(story_ids)
 }

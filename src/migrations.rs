@@ -73,6 +73,31 @@ pub fn create_tables(conn: &Connection) -> Result<(), Box<dyn Error>> {
     // Ignore error if column already exists
     let _ = add_created_at_result;
 
+    // Create story_read_status table for tracking read stories
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS story_read_status (
+            story_id INTEGER NOT NULL,
+            peer_id TEXT NOT NULL,
+            read_at INTEGER NOT NULL,
+            channel_name TEXT NOT NULL,
+            PRIMARY KEY (story_id, peer_id),
+            FOREIGN KEY (story_id) REFERENCES stories(id),
+            FOREIGN KEY (channel_name) REFERENCES channels(name)
+        )
+        "#,
+        [],
+    )?;
+
+    // Create index for efficient channel-based queries
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_story_read_status_peer_channel 
+        ON story_read_status(peer_id, channel_name)
+        "#,
+        [],
+    )?;
+
     // Insert default 'general' channel if it doesn't exist
     conn.execute(
         r#"
@@ -222,14 +247,14 @@ mod tests {
         create_tables(&conn).expect("Third call should succeed");
 
         // Verify tables still exist and have correct structure
-        let mut stmt = conn.prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('stories', 'channels', 'channel_subscriptions', 'peer_name')")
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('stories', 'channels', 'channel_subscriptions', 'peer_name', 'story_read_status')")
             .expect("Failed to prepare query");
 
         let table_count: i64 = stmt
             .query_row([], |row| row.get(0))
             .expect("Failed to get table count");
 
-        assert_eq!(table_count, 4, "All four tables should exist");
+        assert_eq!(table_count, 5, "All five tables should exist");
 
         // Verify general channel is still there and not duplicated
         let mut stmt = conn
@@ -241,6 +266,44 @@ mod tests {
             .expect("Failed to get general channel count");
 
         assert_eq!(general_count, 1, "Should have exactly one general channel");
+    }
+
+    #[test]
+    fn test_story_read_status_table_creation() {
+        let conn = Connection::open(":memory:").expect("Failed to create in-memory database");
+
+        create_tables(&conn).expect("Failed to create tables");
+
+        // Check that story_read_status table exists
+        let mut stmt = conn
+            .prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND name='story_read_status'")
+            .expect("Failed to prepare query");
+
+        let table_info: Vec<(String, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("Failed to execute query")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Failed to collect results");
+
+        assert_eq!(table_info.len(), 1);
+        assert_eq!(table_info[0].0, "story_read_status");
+
+        let sql = &table_info[0].1;
+        assert!(sql.contains("story_id INTEGER NOT NULL"));
+        assert!(sql.contains("peer_id TEXT NOT NULL"));
+        assert!(sql.contains("read_at INTEGER NOT NULL"));
+        assert!(sql.contains("channel_name TEXT NOT NULL"));
+        assert!(sql.contains("PRIMARY KEY (story_id, peer_id)"));
+        assert!(sql.contains("FOREIGN KEY (story_id) REFERENCES stories(id)"));
+        assert!(sql.contains("FOREIGN KEY (channel_name) REFERENCES channels(name)"));
+
+        // Verify the index was created
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_story_read_status_peer_channel'")
+            .expect("Failed to prepare query");
+
+        let index_exists: bool = stmt.exists([]).expect("Failed to check index existence");
+        assert!(index_exists, "story_read_status index should exist");
     }
 
     #[test]
