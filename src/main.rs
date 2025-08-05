@@ -15,11 +15,11 @@ use error_logger::ErrorLogger;
 use event_handlers::{
     handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
-use handlers::{refresh_unread_counts_for_ui, SortedPeerNamesCache};
+use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
-    ensure_stories_file_exists, ensure_unified_network_config_exists,
-    load_local_peer_name, load_unified_network_config,
+    ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
+    load_unified_network_config,
 };
 use types::{ActionResult, EventType, PeerName, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::{App, AppEvent, handle_ui_events};
@@ -515,7 +515,11 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
+                                        refresh_unread_counts_for_ui(
+                                            &mut app,
+                                            &PEER_ID.to_string(),
+                                        )
+                                        .await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -560,7 +564,11 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
+                                        refresh_unread_counts_for_ui(
+                                            &mut app,
+                                            &PEER_ID.to_string(),
+                                        )
+                                        .await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -603,7 +611,11 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
+                                        refresh_unread_counts_for_ui(
+                                            &mut app,
+                                            &PEER_ID.to_string(),
+                                        )
+                                        .await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(

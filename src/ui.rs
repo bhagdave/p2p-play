@@ -532,8 +532,6 @@ impl App {
         self.add_to_log("".to_string());
     }
 
-
-
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -809,8 +807,8 @@ impl App {
                             // Apply styling based on unread status
                             let item = ListItem::new(display_text);
                             if *unread_count > 0 {
-                                // Highlight channels with unread stories
-                                item.style(Style::default().fg(Color::Yellow))
+                                // Highlight channels with unread stories in cyan to distinguish from selected items (yellow)
+                                item.style(Style::default().fg(Color::Cyan))
                             } else {
                                 item
                             }
