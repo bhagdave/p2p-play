@@ -15,7 +15,7 @@ use error_logger::ErrorLogger;
 use event_handlers::{
     handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
-use handlers::SortedPeerNamesCache;
+use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
 use network::{PEER_ID, StoryBehaviourEvent, TOPIC, create_swarm};
 use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
@@ -230,6 +230,9 @@ async fn main() {
         Ok(stories) => {
             debug!("Loaded {} local stories", stories.len());
             app.update_stories(stories);
+            // Refresh unread counts
+            refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
+            // Note: Unread counts are loaded separately after this in the init phase
         }
         Err(e) => {
             error!("Failed to load local stories: {}", e);
@@ -248,6 +251,9 @@ async fn main() {
             app.add_to_log(format!("Failed to load channels: {}", e));
         }
     }
+
+    // Load initial unread counts and update UI
+    refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
     // Windows fix for port in use
     #[cfg(windows)]
     let listen_addr = "/ip4/127.0.0.1/tcp/0"; // Bind to localhost only on Windows to reduce conflicts
@@ -508,6 +514,12 @@ async fn main() {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
+                                        // Refresh unread counts
+                                        refresh_unread_counts_for_ui(
+                                            &mut app,
+                                            &PEER_ID.to_string(),
+                                        )
+                                        .await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -551,6 +563,12 @@ async fn main() {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
+                                        // Refresh unread counts
+                                        refresh_unread_counts_for_ui(
+                                            &mut app,
+                                            &PEER_ID.to_string(),
+                                        )
+                                        .await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(
@@ -592,6 +610,12 @@ async fn main() {
                                     Ok(stories) => {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
+                                        // Refresh unread counts
+                                        refresh_unread_counts_for_ui(
+                                            &mut app,
+                                            &PEER_ID.to_string(),
+                                        )
+                                        .await;
                                     }
                                     Err(e) => {
                                         error_logger.log_error(&format!(

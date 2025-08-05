@@ -4,7 +4,7 @@ use crate::network::{
 };
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config,
-    load_node_description, publish_story, read_channels, read_local_stories,
+    load_node_description, mark_story_as_read, publish_story, read_channels, read_local_stories,
     read_subscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
     subscribe_to_channel, unsubscribe_from_channel,
 };
@@ -207,7 +207,7 @@ pub async fn handle_publish_story(
     }
 }
 
-pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger) {
+pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
     if let Some(rest) = cmd.strip_prefix("show story ") {
         match rest.trim().parse::<usize>() {
             Ok(id) => {
@@ -223,6 +223,9 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger) {
                                 "Public: {}",
                                 if story.public { "Yes" } else { "No" }
                             ));
+
+                            // Mark the story as read
+                            mark_story_as_read_for_peer(story.id, peer_id, &story.channel).await;
                         } else {
                             ui_logger.log(format!("Story with id {} not found", id));
                         }
@@ -670,6 +673,29 @@ pub async fn handle_list_subscriptions(ui_logger: &UILogger, error_logger: &Erro
             }
         }
         Err(e) => error_logger.log_error(&format!("Failed to read subscriptions: {}", e)),
+    }
+}
+
+/// Mark a story as read (should be called after displaying it)
+pub async fn mark_story_as_read_for_peer(story_id: usize, peer_id: &str, channel_name: &str) {
+    if let Err(e) = mark_story_as_read(story_id, peer_id, channel_name).await {
+        debug!("Failed to mark story {} as read: {}", story_id, e);
+    }
+}
+
+/// Helper function to refresh unread counts and update UI
+pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &str) {
+    match crate::storage::get_unread_counts_by_channel(peer_id).await {
+        Ok(unread_counts) => {
+            debug!(
+                "Refreshed unread counts for {} channels",
+                unread_counts.len()
+            );
+            app.update_unread_counts(unread_counts);
+        }
+        Err(e) => {
+            debug!("Failed to refresh unread counts: {}", e);
+        }
     }
 }
 

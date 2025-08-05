@@ -54,6 +54,7 @@ pub struct App {
     pub peers: HashMap<PeerId, String>,
     pub stories: Stories,
     pub channels: Channels,
+    pub unread_counts: HashMap<String, usize>, // Channel name -> unread count
     pub view_mode: ViewMode,
     pub local_peer_name: Option<String>,
     pub list_state: ListState,
@@ -123,6 +124,7 @@ impl App {
             peers: HashMap::new(),
             stories: Vec::new(),
             channels: Vec::new(),
+            unread_counts: HashMap::new(),
             view_mode: ViewMode::Channels,
             local_peer_name: None,
             list_state: ListState::default(),
@@ -386,9 +388,16 @@ impl App {
     pub fn update_channels(&mut self, channels: Channels) {
         self.channels = channels;
         // Initialize selection to first channel if in channels view and we have channels
-        if matches!(self.view_mode, ViewMode::Channels) && !self.channels.is_empty() && self.list_state.selected().is_none() {
+        if matches!(self.view_mode, ViewMode::Channels)
+            && !self.channels.is_empty()
+            && self.list_state.selected().is_none()
+        {
             self.list_state.select(Some(0));
         }
+    }
+
+    pub fn update_unread_counts(&mut self, unread_counts: HashMap<String, usize>) {
+        self.unread_counts = unread_counts;
     }
 
     pub fn enter_channel(&mut self, channel_name: String) {
@@ -408,16 +417,20 @@ impl App {
     pub fn navigate_list_up(&mut self) {
         let list_len = match self.view_mode {
             ViewMode::Channels => self.channels.len(),
-            ViewMode::Stories(ref channel_name) => {
-                self.stories.iter()
-                    .filter(|story| story.channel == *channel_name)
-                    .count()
-            }
+            ViewMode::Stories(ref channel_name) => self
+                .stories
+                .iter()
+                .filter(|story| story.channel == *channel_name)
+                .count(),
         };
-        
+
         if list_len > 0 {
             let current = self.list_state.selected().unwrap_or(0);
-            let new_index = if current == 0 { list_len - 1 } else { current - 1 };
+            let new_index = if current == 0 {
+                list_len - 1
+            } else {
+                current - 1
+            };
             self.list_state.select(Some(new_index));
         }
     }
@@ -425,16 +438,20 @@ impl App {
     pub fn navigate_list_down(&mut self) {
         let list_len = match self.view_mode {
             ViewMode::Channels => self.channels.len(),
-            ViewMode::Stories(ref channel_name) => {
-                self.stories.iter()
-                    .filter(|story| story.channel == *channel_name)
-                    .count()
-            }
+            ViewMode::Stories(ref channel_name) => self
+                .stories
+                .iter()
+                .filter(|story| story.channel == *channel_name)
+                .count(),
         };
-        
+
         if list_len > 0 {
             let current = self.list_state.selected().unwrap_or(0);
-            let new_index = if current >= list_len - 1 { 0 } else { current + 1 };
+            let new_index = if current >= list_len - 1 {
+                0
+            } else {
+                current + 1
+            };
             self.list_state.select(Some(new_index));
         }
     }
@@ -462,10 +479,12 @@ impl App {
     pub fn get_selected_story(&self) -> Option<Story> {
         // Check if we're in stories view and have stories available
         if let ViewMode::Stories(ref channel_name) = self.view_mode {
-            let channel_stories: Vec<&Story> = self.stories.iter()
+            let channel_stories: Vec<&Story> = self
+                .stories
+                .iter()
                 .filter(|story| story.channel == *channel_name)
                 .collect();
-            
+
             if !channel_stories.is_empty() {
                 if let Some(selected_index) = self.list_state.selected() {
                     if selected_index < channel_stories.len() {
@@ -492,8 +511,14 @@ impl App {
         self.add_to_log(format!("📝 Title: {}", story.name));
         self.add_to_log(format!("🏷️  ID: {}", story.id));
         self.add_to_log(format!("📂 Channel: {}", story.channel));
-        self.add_to_log(format!("👁️  Visibility: {}", if story.public { "Public" } else { "Private" }));
-        self.add_to_log(format!("📅 Created: {}", format_timestamp(story.created_at)));
+        self.add_to_log(format!(
+            "👁️  Visibility: {}",
+            if story.public { "Public" } else { "Private" }
+        ));
+        self.add_to_log(format!(
+            "📅 Created: {}",
+            format_timestamp(story.created_at)
+        ));
         self.add_to_log("".to_string());
         self.add_to_log("📄 Header:".to_string());
         self.add_to_log(format!("   {}", story.header));
@@ -766,8 +791,27 @@ impl App {
                             let story_count = self.stories.iter()
                                 .filter(|story| story.channel == channel.name)
                                 .count();
-                            ListItem::new(format!("📂 {} ({} stories) - {}", 
-                                channel.name, story_count, channel.description))
+
+                            // Get unread count for this channel
+                            let unread_count = self.unread_counts.get(&channel.name).unwrap_or(&0);
+
+                            // Create the display text with unread indicator
+                            let display_text = if *unread_count > 0 {
+                                format!("📂 {} [{}] ({} stories) - {}",
+                                    channel.name, unread_count, story_count, channel.description)
+                            } else {
+                                format!("📂 {} ({} stories) - {}",
+                                    channel.name, story_count, channel.description)
+                            };
+
+                            // Apply styling based on unread status
+                            let item = ListItem::new(display_text);
+                            if *unread_count > 0 {
+                                // Highlight channels with unread stories in cyan to distinguish from selected items (yellow)
+                                item.style(Style::default().fg(Color::Cyan))
+                            } else {
+                                item
+                            }
                         })
                         .collect();
                     (channel_items, "Channels (Press Enter to view stories)".to_string())
@@ -809,7 +853,7 @@ impl App {
                 InputMode::CreatingStory { step, .. } => {
                     let prompt = match step {
                         StoryCreationStep::Name => "📝 Story Name",
-                        StoryCreationStep::Header => "📄 Story Header", 
+                        StoryCreationStep::Header => "📄 Story Header",
                         StoryCreationStep::Body => "📖 Story Body",
                         StoryCreationStep::Channel => "📂 Channel (Enter for 'general')",
                     };
@@ -860,7 +904,7 @@ pub async fn handle_ui_events(
     let poll_timeout = std::time::Duration::from_millis(80); // Slower polling on Windows
 
     #[cfg(not(windows))]
-    let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix    
+    let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix
 
     if event::poll(poll_timeout)? {
         if let Some(app_event) = app.handle_event(event::read()?) {
@@ -873,11 +917,11 @@ pub async fn handle_ui_events(
 /// Helper function to format Unix timestamp to human-readable format
 fn format_timestamp(timestamp: u64) -> String {
     use std::time::UNIX_EPOCH;
-    
+
     if let Ok(duration) = UNIX_EPOCH.elapsed() {
         let current_timestamp = duration.as_secs();
         let diff = current_timestamp.saturating_sub(timestamp);
-        
+
         if diff < 60 {
             "just now".to_string()
         } else if diff < 3600 {

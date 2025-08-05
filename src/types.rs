@@ -80,6 +80,20 @@ pub struct ChannelSubscription {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct StoryReadStatus {
+    pub story_id: usize,
+    pub peer_id: String,
+    pub read_at: u64,
+    pub channel_name: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChannelWithUnreadCount {
+    pub channel: Channel,
+    pub unread_count: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct BootstrapConfig {
     pub bootstrap_peers: Vec<String>,
     pub retry_interval_ms: u64,
@@ -327,6 +341,31 @@ impl ChannelSubscription {
             peer_id,
             channel_name,
             subscribed_at,
+        }
+    }
+}
+
+impl StoryReadStatus {
+    pub fn new(story_id: usize, peer_id: String, channel_name: String) -> Self {
+        let read_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            story_id,
+            peer_id,
+            read_at,
+            channel_name,
+        }
+    }
+}
+
+impl ChannelWithUnreadCount {
+    pub fn new(channel: Channel, unread_count: usize) -> Self {
+        Self {
+            channel,
+            unread_count,
         }
     }
 }

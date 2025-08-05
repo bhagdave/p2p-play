@@ -112,7 +112,7 @@ async fn test_handle_show_story() {
     let ui_logger = UILogger::new(sender);
 
     // Test invalid command format
-    handle_show_story("show story", &ui_logger).await;
+    handle_show_story("show story", &ui_logger, "test_peer").await;
     let mut messages = Vec::new();
     while let Ok(msg) = receiver.try_recv() {
         messages.push(msg);
@@ -124,7 +124,7 @@ async fn test_handle_show_story() {
     );
 
     // Test invalid story ID
-    handle_show_story("show story abc", &ui_logger).await;
+    handle_show_story("show story abc", &ui_logger, "test_peer").await;
     let mut messages = Vec::new();
     while let Ok(msg) = receiver.try_recv() {
         messages.push(msg);
@@ -132,7 +132,7 @@ async fn test_handle_show_story() {
     assert!(messages.iter().any(|m| m.contains("Invalid story id")));
 
     // Test non-existent story ID
-    handle_show_story("show story 999", &ui_logger).await;
+    handle_show_story("show story 999", &ui_logger, "test_peer").await;
     let mut messages = Vec::new();
     while let Ok(msg) = receiver.try_recv() {
         messages.push(msg);
