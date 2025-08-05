@@ -609,6 +609,52 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
     Ok(channels)
 }
 
+/// Get all available channels (discovered from the network)
+pub async fn read_available_channels() -> Result<Channels, Box<dyn Error>> {
+    // This is the same as read_channels since all discovered channels are stored
+    read_channels().await
+}
+
+/// Get channels that are available but not subscribed to by the given peer
+pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT c.name, c.description, c.created_by, c.created_at 
+        FROM channels c
+        LEFT JOIN channel_subscriptions cs ON c.name = cs.channel_name AND cs.peer_id = ?
+        WHERE cs.channel_name IS NULL
+        ORDER BY c.name
+        "#,
+    )?;
+    
+    let channel_iter = stmt.query_map([peer_id], |row| {
+        Ok(Channel {
+            name: row.get(0)?,
+            description: row.get(1)?,
+            created_by: row.get(2)?,
+            created_at: row.get::<_, i64>(3)? as u64,
+        })
+    })?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
+/// Get the count of current auto-subscriptions for a peer (to check against limits)
+pub async fn get_auto_subscription_count(peer_id: &str) -> Result<usize, Box<dyn Error>> {
+    let subscribed = read_subscribed_channels(peer_id).await?;
+    // For now, we'll count all subscriptions as auto-subscriptions
+    // In the future, we could add a flag to track which were auto vs manual
+    Ok(subscribed.len())
+}
+
 pub async fn read_channel_subscriptions() -> Result<ChannelSubscriptions, Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;

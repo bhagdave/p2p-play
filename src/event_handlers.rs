@@ -1,5 +1,12 @@
 use crate::error_logger::ErrorLogger;
-use crate::handlers::*;
+use crate::handlers::{
+    establish_direct_connection, handle_create_channel, handle_create_description,
+    handle_create_stories, handle_delete_story, handle_direct_message,
+    handle_get_description, handle_help, handle_list_channels,
+    handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
+    handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
+    handle_subscribe_channel, handle_unsubscribe_channel, SortedPeerNamesCache, UILogger,
+};
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
     PEER_ID, StoryBehaviour, TOPIC,
@@ -90,7 +97,9 @@ pub async fn handle_input_event(
 ) -> Option<ActionResult> {
     let line = line.trim();
     match line {
-        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
+        cmd if cmd.starts_with("ls ch") => {
+            handle_list_channels(cmd, ui_logger, error_logger).await
+        }
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
@@ -108,6 +117,9 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("unsub ") => {
             handle_unsubscribe_channel(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("set auto-sub") => {
+            handle_set_auto_subscription(cmd, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("publish s") => {
             handle_publish_story(cmd, story_sender.clone(), ui_logger, error_logger).await
@@ -341,12 +353,25 @@ pub async fn handle_floodsub_event(
                         published_channel.channel.description,
                         msg.source
                     );
-                    ui_logger.log(format!(
-                        "📺 Received channel '{}' - {} from {}",
-                        published_channel.channel.name,
-                        published_channel.channel.description,
-                        published_channel.publisher
-                    ));
+
+                    // Load auto-subscription config to determine behavior
+                    let auto_sub_config = match crate::storage::load_unified_network_config().await {
+                        Ok(config) => config.channel_auto_subscription,
+                        Err(e) => {
+                            debug!("Failed to load auto-subscription config: {}", e);
+                            crate::types::ChannelAutoSubscriptionConfig::new() // Use defaults
+                        }
+                    };
+
+                    // Show notification if enabled
+                    if auto_sub_config.notify_new_channels {
+                        ui_logger.log(format!(
+                            "📺 New channel discovered: '{}' - {} from {}",
+                            published_channel.channel.name,
+                            published_channel.channel.description,
+                            published_channel.publisher
+                        ));
+                    }
 
                     // Save the received channel to local storage asynchronously
                     let channel_to_save = published_channel.channel.clone();
