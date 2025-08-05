@@ -641,10 +641,15 @@ fn test_channel_display_formatting() {
 
     // Simulate the formatting used in the UI
     let story_count = 5; // Mock story count
-    let formatted = format!("📂 {} ({} stories) - {}", 
-        channel.name, story_count, channel.description);
+    let formatted = format!(
+        "📂 {} ({} stories) - {}",
+        channel.name, story_count, channel.description
+    );
 
-    assert_eq!(formatted, "📂 general (5 stories) - Default general discussion channel");
+    assert_eq!(
+        formatted,
+        "📂 general (5 stories) - Default general discussion channel"
+    );
 }
 
 #[test]

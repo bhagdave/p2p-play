@@ -223,9 +223,11 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                                 "Public: {}",
                                 if story.public { "Yes" } else { "No" }
                             ));
-                            
+
                             // Mark the story as read
-                            if let Err(e) = mark_story_as_read(story.id, peer_id, &story.channel).await {
+                            if let Err(e) =
+                                mark_story_as_read(story.id, peer_id, &story.channel).await
+                            {
                                 debug!("Failed to mark story {} as read: {}", story.id, e);
                                 // Don't show error to user - this is not critical for story display
                             }

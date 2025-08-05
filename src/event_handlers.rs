@@ -115,7 +115,7 @@ pub async fn handle_input_event(
         cmd if cmd.starts_with("show story") => {
             let local_peer_id = swarm.local_peer_id().to_string();
             handle_show_story(cmd, ui_logger, &local_peer_id).await
-        },
+        }
         "show desc" => handle_show_description(ui_logger).await,
         cmd if cmd.starts_with("get desc") => {
             handle_get_description(cmd, ui_logger, swarm, local_peer_name, peer_names).await

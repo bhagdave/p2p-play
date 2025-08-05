@@ -979,7 +979,10 @@ pub async fn mark_story_as_read(
         [&story_id.to_string(), peer_id, &read_at.to_string(), channel_name],
     )?;
 
-    debug!("Marked story {} as read for peer {} in channel {}", story_id, peer_id, channel_name);
+    debug!(
+        "Marked story {} as read for peer {} in channel {}",
+        story_id, peer_id, channel_name
+    );
     Ok(())
 }
 
@@ -1001,10 +1004,7 @@ pub async fn get_unread_counts_by_channel(
     )?;
 
     let unread_iter = stmt.query_map([peer_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, i64>(1)? as usize,
-        ))
+        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
     })?;
 
     let mut unread_counts = HashMap::new();
@@ -1017,16 +1017,12 @@ pub async fn get_unread_counts_by_channel(
 }
 
 /// Check if a specific story is read by a peer
-pub async fn is_story_read(
-    story_id: usize,
-    peer_id: &str,
-) -> Result<bool, Box<dyn Error>> {
+pub async fn is_story_read(story_id: usize, peer_id: &str) -> Result<bool, Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let mut stmt = conn.prepare(
-        "SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?")?;
 
     let count: i64 = stmt.query_row([&story_id.to_string(), peer_id], |row| row.get(0))?;
 
@@ -1066,9 +1062,9 @@ pub async fn get_unread_story_ids_for_channel(
 #[cfg(test)]
 mod read_status_tests {
     use super::*;
-    use tempfile::TempDir;
     use std::env;
-    
+    use tempfile::TempDir;
+
     #[tokio::test]
     async fn test_story_read_status_functionality() {
         // Setup test database
@@ -1077,53 +1073,63 @@ mod read_status_tests {
         unsafe {
             env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
         }
-        
+
         // Reset connection and initialize storage
-        reset_db_connection_for_testing().await.expect("Failed to reset connection");
-        ensure_stories_file_exists().await.expect("Failed to initialize storage");
-        
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
         // Create test data
         let peer_id = "test_peer_123";
         let channel_name = "tech-news";
-        
+
         // Create a test story
         create_new_story_with_channel("Test Story", "Header", "Body", channel_name)
-            .await.expect("Failed to create story");
-            
+            .await
+            .expect("Failed to create story");
+
         // Create the channel if it doesn't exist
         create_channel(channel_name, "Test channel for read status", "test_system")
-            .await.expect("Failed to create channel");
-            
+            .await
+            .expect("Failed to create channel");
+
         // Make the story public so it shows up in unread counts
         let conn_arc = get_db_connection().await.expect("Failed to get connection");
         let conn = conn_arc.lock().await;
         conn.execute("UPDATE stories SET public = 1 WHERE id = 0", [])
             .expect("Failed to make story public");
         drop(conn); // Release the lock
-            
+
         // Check initial unread count
         let unread_counts = get_unread_counts_by_channel(peer_id)
-            .await.expect("Failed to get unread counts");
-        
+            .await
+            .expect("Failed to get unread counts");
+
         // Should have 1 unread story in tech-news channel
         assert_eq!(unread_counts.get(channel_name), Some(&1));
-        
+
         // Mark the story as read
         mark_story_as_read(0, peer_id, channel_name)
-            .await.expect("Failed to mark story as read");
-            
+            .await
+            .expect("Failed to mark story as read");
+
         // Check unread count again - should be 0 now
         let unread_counts = get_unread_counts_by_channel(peer_id)
-            .await.expect("Failed to get unread counts");
-            
+            .await
+            .expect("Failed to get unread counts");
+
         // Should have 0 unread stories now
         assert_eq!(unread_counts.get(channel_name), None); // No entry means 0 unread
-        
+
         // Verify story is marked as read
         let is_read = is_story_read(0, peer_id)
-            .await.expect("Failed to check read status");
+            .await
+            .expect("Failed to check read status");
         assert!(is_read);
-        
+
         println!("✅ Read status functionality test passed!");
     }
 }

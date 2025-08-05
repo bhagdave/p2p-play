@@ -230,16 +230,19 @@ async fn main() {
         Ok(stories) => {
             debug!("Loaded {} local stories", stories.len());
             app.update_stories(stories);
-                                        // Refresh unread counts
-                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
-                                            Ok(unread_counts) => {
-                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
-                                                app.update_unread_counts(unread_counts);
-                                            }
-                                            Err(e) => {
-                                                debug!("Failed to refresh unread counts: {}", e);
-                                            }
-                                        }
+            // Refresh unread counts
+            match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                Ok(unread_counts) => {
+                    debug!(
+                        "Refreshed unread counts for {} channels",
+                        unread_counts.len()
+                    );
+                    app.update_unread_counts(unread_counts);
+                }
+                Err(e) => {
+                    debug!("Failed to refresh unread counts: {}", e);
+                }
+            }
             // Note: Unread counts are loaded separately after this in the init phase
         }
         Err(e) => {
@@ -532,9 +535,14 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                                        match get_unread_counts_by_channel(&PEER_ID.to_string())
+                                            .await
+                                        {
                                             Ok(unread_counts) => {
-                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
+                                                debug!(
+                                                    "Refreshed unread counts for {} channels",
+                                                    unread_counts.len()
+                                                );
                                                 app.update_unread_counts(unread_counts);
                                             }
                                             Err(e) => {
@@ -585,9 +593,14 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                                        match get_unread_counts_by_channel(&PEER_ID.to_string())
+                                            .await
+                                        {
                                             Ok(unread_counts) => {
-                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
+                                                debug!(
+                                                    "Refreshed unread counts for {} channels",
+                                                    unread_counts.len()
+                                                );
                                                 app.update_unread_counts(unread_counts);
                                             }
                                             Err(e) => {
@@ -636,9 +649,14 @@ async fn main() {
                                         debug!("Refreshed {} stories", stories.len());
                                         app.update_stories(stories);
                                         // Refresh unread counts
-                                        match get_unread_counts_by_channel(&PEER_ID.to_string()).await {
+                                        match get_unread_counts_by_channel(&PEER_ID.to_string())
+                                            .await
+                                        {
                                             Ok(unread_counts) => {
-                                                debug!("Refreshed unread counts for {} channels", unread_counts.len());
+                                                debug!(
+                                                    "Refreshed unread counts for {} channels",
+                                                    unread_counts.len()
+                                                );
                                                 app.update_unread_counts(unread_counts);
                                             }
                                             Err(e) => {
