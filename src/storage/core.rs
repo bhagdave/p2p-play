@@ -2,6 +2,7 @@ use crate::types::{
     BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
     DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
 };
+use crate::storage::{utils, mappers};
 use log::debug;
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -103,19 +104,7 @@ pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
 
     let mut stmt =
         conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
-    let story_iter = stmt.query_map([], |row| {
-        Ok(Story {
-            id: row.get::<_, i64>(0)? as usize,
-            name: row.get(1)?,
-            header: row.get(2)?,
-            body: row.get(3)?,
-            public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
-            channel: row
-                .get::<_, Option<String>>(5)?
-                .unwrap_or_else(|| "general".to_string()),
-            created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
-        })
-    })?;
+    let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
 
     let mut stories = Vec::new();
     for story in story_iter {
@@ -137,19 +126,7 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
 
         let mut stmt = conn
             .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
-        let story_iter = stmt.query_map([], |row| {
-            Ok(Story {
-                id: row.get::<_, i64>(0)? as usize,
-                name: row.get(1)?,
-                header: row.get(2)?,
-                body: row.get(3)?,
-                public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
-                channel: row
-                    .get::<_, Option<String>>(5)?
-                    .unwrap_or_else(|| "general".to_string()),
-                created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
-            })
-        })?;
+        let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
 
         let mut stories = Vec::new();
         for story in story_iter {
@@ -242,18 +219,14 @@ pub async fn create_new_story_with_channel(
     channel: &str,
 ) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
+    
+    // Get the next ID using utility function
+    let next_id = utils::get_next_id(&conn_arc, "stories").await?;
+    
+    // Get the current timestamp using utility function
+    let created_at = utils::get_current_timestamp();
+    
     let conn = conn_arc.lock().await;
-
-    // Get the next ID
-    let mut stmt = conn.prepare("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM stories")?;
-    let next_id: i64 = stmt.query_row([], |row| row.get(0))?;
-
-    // Get the current timestamp
-    let created_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
     // Insert the new story
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -262,7 +235,7 @@ pub async fn create_new_story_with_channel(
             name,
             header,
             body,
-            "0", // New stories start as private (0 = false)
+            &utils::rust_bool_to_db(false), // New stories start as private
             channel,
             &created_at.to_string(),
         ],
@@ -316,7 +289,7 @@ pub async fn publish_story(
     // Update the story to be public
     let rows_affected = conn.execute(
         "UPDATE stories SET public = ? WHERE id = ?",
-        [&"1".to_string(), &id.to_string()], // 1 = true
+        [&utils::rust_bool_to_db(true), &id.to_string()],
     )?;
 
     if rows_affected > 0 {
@@ -324,19 +297,7 @@ pub async fn publish_story(
         let mut stmt = conn.prepare(
             "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?",
         )?;
-        let story_result = stmt.query_row([&id.to_string()], |row| {
-            Ok(Story {
-                id: row.get::<_, i64>(0)? as usize,
-                name: row.get(1)?,
-                header: row.get(2)?,
-                body: row.get(3)?,
-                public: row.get::<_, i64>(4)? != 0, // Convert integer to boolean
-                channel: row
-                    .get::<_, Option<String>>(5)?
-                    .unwrap_or_else(|| "general".to_string()),
-                created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
-            })
-        });
+        let story_result = stmt.query_row([&id.to_string()], mappers::map_row_to_story);
 
         if let Ok(story) = story_result {
             if let Err(e) = sender.send(story) {
@@ -388,40 +349,39 @@ pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story
 
 pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
+    
     // Check if story already exists (by name and content to avoid duplicates)
-    let mut stmt =
-        conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
-    let existing = stmt.query_row([&story.name, &story.header, &story.body], |row| {
-        row.get::<_, i64>(0)
-    });
-
-    if existing.is_err() {
-        // Story doesn't exist
-        // Get the next ID
-        let mut stmt = conn.prepare("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM stories")?;
-        let new_id: i64 = stmt.query_row([], |row| row.get(0))?;
-
-        // Insert the story with the new ID and mark as public
-        conn.execute(
-            "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                &new_id.to_string(),
-                &story.name,
-                &story.header,
-                &story.body,
-                "1", // Mark as public since it was published (1 = true)
-                &story.channel,
-                &story.created_at.to_string(),
-            ],
-        )?;
-
-        debug!("Saved received story to local storage with ID: {}", new_id);
-    } else {
-        debug!("Story already exists locally, skipping save");
+    {
+        let conn = conn_arc.lock().await;
+        let mut stmt =
+            conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
+        let existing = stmt.query_row([&story.name, &story.header, &story.body], mappers::map_row_to_i64);
+        
+        if existing.is_ok() {
+            debug!("Story already exists locally, skipping save");
+            return Ok(());
+        }
     }
 
+    // Story doesn't exist, get the next ID
+    let new_id = utils::get_next_id(&conn_arc, "stories").await?;
+
+    // Insert the story with the new ID and mark as public
+    let conn = conn_arc.lock().await;
+    conn.execute(
+        "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            &new_id.to_string(),
+            &story.name,
+            &story.header,
+            &story.body,
+            &utils::rust_bool_to_db(true), // Mark as public since it was published
+            &story.channel,
+            &story.created_at.to_string(),
+        ],
+    )?;
+
+    debug!("Saved received story to local storage with ID: {}", new_id);
     Ok(())
 }
 
@@ -521,10 +481,7 @@ pub async fn create_channel(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = utils::get_current_timestamp();
 
     conn.execute(
         "INSERT OR IGNORE INTO channels (name, description, created_by, created_at) VALUES (?, ?, ?, ?)",
@@ -541,14 +498,7 @@ pub async fn read_channels() -> Result<Channels, Box<dyn Error>> {
 
     let mut stmt = conn
         .prepare("SELECT name, description, created_by, created_at FROM channels ORDER BY name")?;
-    let channel_iter = stmt.query_map([], |row| {
-        Ok(Channel {
-            name: row.get(0)?,
-            description: row.get(1)?,
-            created_by: row.get(2)?,
-            created_at: row.get::<_, i64>(3)? as u64,
-        })
-    })?;
+    let channel_iter = stmt.query_map([], mappers::map_row_to_channel)?;
 
     let mut channels = Vec::new();
     for channel in channel_iter {
@@ -562,10 +512,7 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> Result<(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let timestamp = utils::get_current_timestamp();
 
     conn.execute(
         "INSERT OR REPLACE INTO channel_subscriptions (peer_id, channel_name, subscribed_at) VALUES (?, ?, ?)",
@@ -635,17 +582,7 @@ pub async fn get_stories_by_channel(channel_name: &str) -> Result<Stories, Box<d
     let conn = conn_arc.lock().await;
 
     let mut stmt = conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE channel = ? AND public = 1 ORDER BY created_at DESC")?;
-    let story_iter = stmt.query_map([channel_name], |row| {
-        Ok(Story {
-            id: row.get::<_, i64>(0)? as usize,
-            name: row.get(1)?,
-            header: row.get(2)?,
-            body: row.get(3)?,
-            public: row.get::<_, i64>(4)? != 0,
-            channel: row.get(5)?,
-            created_at: row.get::<_, i64>(6).unwrap_or(0) as u64,
-        })
-    })?;
+    let story_iter = stmt.query_map([channel_name], mappers::map_row_to_story)?;
 
     let mut stories = Vec::new();
     for story in story_iter {
@@ -969,10 +906,7 @@ pub async fn mark_story_as_read(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let read_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let read_at = utils::get_current_timestamp();
 
     conn.execute(
         "INSERT OR REPLACE INTO story_read_status (story_id, peer_id, read_at, channel_name) VALUES (?, ?, ?, ?)",
@@ -1003,9 +937,7 @@ pub async fn get_unread_counts_by_channel(
         "#,
     )?;
 
-    let unread_iter = stmt.query_map([peer_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
-    })?;
+    let unread_iter = stmt.query_map([peer_id], mappers::map_row_to_channel_unread_count)?;
 
     let mut unread_counts = HashMap::new();
     for result in unread_iter {
@@ -1024,7 +956,7 @@ pub async fn is_story_read(story_id: usize, peer_id: &str) -> Result<bool, Box<d
     let mut stmt =
         conn.prepare("SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?")?;
 
-    let count: i64 = stmt.query_row([&story_id.to_string(), peer_id], |row| row.get(0))?;
+    let count: i64 = stmt.query_row([&story_id.to_string(), peer_id], mappers::map_row_to_i64)?;
 
     Ok(count > 0)
 }
@@ -1047,9 +979,7 @@ pub async fn get_unread_story_ids_for_channel(
         "#,
     )?;
 
-    let story_iter = stmt.query_map([peer_id, channel_name], |row| {
-        Ok(row.get::<_, i64>(0)? as usize)
-    })?;
+    let story_iter = stmt.query_map([peer_id, channel_name], mappers::map_row_to_usize)?;
 
     let mut story_ids = Vec::new();
     for story_id in story_iter {
