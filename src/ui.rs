@@ -1,4 +1,4 @@
-use crate::types::{Channels, DirectMessage, Stories, Story};
+use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
     execute,
@@ -114,11 +114,14 @@ impl App {
             should_quit: false,
             input: String::new(),
             output_log: vec![
-                "🎯 P2P-Play Terminal UI - Ready!".to_string(),
-                "📝 Press 'i' to enter input mode, 'Esc' to exit input mode".to_string(),
-                "🔧 Type 'help' for available commands".to_string(),
-                "🧹 Press 'c' to clear output".to_string(),
-                "❌ Press 'q' to quit".to_string(),
+                format!("{} P2P-Play Terminal UI - Ready!", Icons::target()),
+                format!(
+                    "{} Press 'i' to enter input mode, 'Esc' to exit input mode",
+                    Icons::memo()
+                ),
+                format!("{} Type 'help' for available commands", Icons::wrench()),
+                format!("{} Press 'c' to clear output", Icons::broom()),
+                format!("{} Press 'q' to quit", Icons::cross()),
                 "".to_string(),
             ],
             peers: HashMap::new(),
@@ -268,45 +271,51 @@ impl App {
                             match step {
                                 StoryCreationStep::Name => {
                                     if input.is_empty() {
-                                        self.add_to_log(
-                                            "❌ Story name cannot be empty. Please try again:"
-                                                .to_string(),
-                                        );
+                                        self.add_to_log(format!(
+                                            "{} Story name cannot be empty. Please try again:",
+                                            Icons::cross()
+                                        ));
                                         return None;
                                     }
                                     new_partial.name = Some(input);
                                     next_step = Some(StoryCreationStep::Header);
-                                    self.add_to_log("✅ Story name saved".to_string());
-                                    self.add_to_log("📄 Enter story header:".to_string());
+                                    self.add_to_log(format!("{} Story name saved", Icons::check()));
+                                    self.add_to_log(format!(
+                                        "{} Enter story header:",
+                                        Icons::document()
+                                    ));
                                 }
                                 StoryCreationStep::Header => {
                                     if input.is_empty() {
-                                        self.add_to_log(
-                                            "❌ Story header cannot be empty. Please try again:"
-                                                .to_string(),
-                                        );
+                                        self.add_to_log(format!(
+                                            "{} Story header cannot be empty. Please try again:",
+                                            Icons::cross()
+                                        ));
                                         return None;
                                     }
                                     new_partial.header = Some(input);
                                     next_step = Some(StoryCreationStep::Body);
-                                    self.add_to_log("✅ Story header saved".to_string());
-                                    self.add_to_log("📖 Enter story body:".to_string());
+                                    self.add_to_log(format!(
+                                        "{} Story header saved",
+                                        Icons::check()
+                                    ));
+                                    self.add_to_log(format!("{} Enter story body:", Icons::book()));
                                 }
                                 StoryCreationStep::Body => {
                                     if input.is_empty() {
-                                        self.add_to_log(
-                                            "❌ Story body cannot be empty. Please try again:"
-                                                .to_string(),
-                                        );
+                                        self.add_to_log(format!(
+                                            "{} Story body cannot be empty. Please try again:",
+                                            Icons::cross()
+                                        ));
                                         return None;
                                     }
                                     new_partial.body = Some(input);
                                     next_step = Some(StoryCreationStep::Channel);
-                                    self.add_to_log("✅ Story body saved".to_string());
-                                    self.add_to_log(
-                                        "📂 Enter channel (or press Enter for 'general'):"
-                                            .to_string(),
-                                    );
+                                    self.add_to_log(format!("{} Story body saved", Icons::check()));
+                                    self.add_to_log(format!(
+                                        "{} Enter channel (or press Enter for 'general'):",
+                                        Icons::folder()
+                                    ));
                                 }
                                 StoryCreationStep::Channel => {
                                     let channel = if input.is_empty() {
@@ -326,7 +335,10 @@ impl App {
                                         let create_command =
                                             format!("create s {}|{}|{}|{}", name, header, body, ch);
                                         self.input_mode = InputMode::Normal;
-                                        self.add_to_log("✅ Story creation complete!".to_string());
+                                        self.add_to_log(format!(
+                                            "{} Story creation complete!",
+                                            Icons::check()
+                                        ));
                                         return Some(AppEvent::Input(create_command));
                                     }
                                 }
@@ -370,7 +382,7 @@ impl App {
         self.output_log.clear();
         self.scroll_offset = 0;
         self.auto_scroll = true; // Re-enable auto-scroll after clear
-        self.add_to_log("🧹 Output cleared".to_string());
+        self.add_to_log(format!("{} Output cleared", Icons::broom()));
     }
 
     pub fn update_peers(&mut self, peers: HashMap<PeerId, String>) {
@@ -507,28 +519,36 @@ impl App {
 
     pub fn display_story_content(&mut self, story: &Story) {
         self.add_to_log("".to_string());
-        self.add_to_log("📖 ═══════════════ STORY CONTENT ═══════════════".to_string());
-        self.add_to_log(format!("📝 Title: {}", story.name));
-        self.add_to_log(format!("🏷️  ID: {}", story.id));
-        self.add_to_log(format!("📂 Channel: {}", story.channel));
         self.add_to_log(format!(
-            "👁️  Visibility: {}",
+            "{} ═══════════════ STORY CONTENT ═══════════════",
+            Icons::book()
+        ));
+        self.add_to_log(format!("{} Title: {}", Icons::memo(), story.name));
+        self.add_to_log(format!("{}ID: {}", Icons::label(), story.id));
+        self.add_to_log(format!("{} Channel: {}", Icons::folder(), story.channel));
+        self.add_to_log(format!(
+            "{}Visibility: {}",
+            Icons::eye(),
             if story.public { "Public" } else { "Private" }
         ));
         self.add_to_log(format!(
-            "📅 Created: {}",
+            "{} Created: {}",
+            Icons::calendar(),
             format_timestamp(story.created_at)
         ));
         self.add_to_log("".to_string());
-        self.add_to_log("📄 Header:".to_string());
+        self.add_to_log(format!("{} Header:", Icons::document()));
         self.add_to_log(format!("   {}", story.header));
         self.add_to_log("".to_string());
-        self.add_to_log("📖 Body:".to_string());
+        self.add_to_log(format!("{} Body:", Icons::book()));
         // Split the body into lines for better readability
         for line in story.body.lines() {
             self.add_to_log(format!("   {}", line));
         }
-        self.add_to_log("📖 ═══════════════════════════════════════════".to_string());
+        self.add_to_log(format!(
+            "{} ═══════════════════════════════════════════",
+            Icons::book()
+        ));
         self.add_to_log("".to_string());
     }
 
@@ -539,8 +559,11 @@ impl App {
             .as_secs();
 
         self.add_to_log(format!(
-            "📨 Direct message from {} ({}): {}",
-            dm.from_name, timestamp, dm.message
+            "{} Direct message from {} ({}): {}",
+            Icons::envelope(),
+            dm.from_name,
+            timestamp,
+            dm.message
         ));
     }
 
@@ -555,24 +578,33 @@ impl App {
             },
         };
         self.input.clear();
-        self.add_to_log("📖 Starting interactive story creation...".to_string());
-        self.add_to_log("📝 Enter story name (or Esc to cancel):".to_string());
+        self.add_to_log(format!(
+            "{} Starting interactive story creation...",
+            Icons::book()
+        ));
+        self.add_to_log(format!(
+            "{} Enter story name (or Esc to cancel):",
+            Icons::memo()
+        ));
     }
 
     pub fn cancel_story_creation(&mut self) {
         self.input_mode = InputMode::Normal;
         self.input.clear();
-        self.add_to_log("❌ Story creation cancelled".to_string());
+        self.add_to_log(format!("{} Story creation cancelled", Icons::cross()));
     }
 
     pub fn get_current_step_prompt(&self) -> String {
         match &self.input_mode {
             InputMode::CreatingStory { step, .. } => match step {
-                StoryCreationStep::Name => "📝 Enter story name:".to_string(),
-                StoryCreationStep::Header => "📄 Enter story header:".to_string(),
-                StoryCreationStep::Body => "📖 Enter story body:".to_string(),
+                StoryCreationStep::Name => format!("{} Enter story name:", Icons::memo()),
+                StoryCreationStep::Header => format!("{} Enter story header:", Icons::document()),
+                StoryCreationStep::Body => format!("{} Enter story body:", Icons::book()),
                 StoryCreationStep::Channel => {
-                    "📂 Enter channel (or press Enter for 'general'):".to_string()
+                    format!(
+                        "{} Enter channel (or press Enter for 'general'):",
+                        Icons::folder()
+                    )
                 }
             },
             _ => "".to_string(),
@@ -797,11 +829,11 @@ impl App {
 
                             // Create the display text with unread indicator
                             let display_text = if *unread_count > 0 {
-                                format!("📂 {} [{}] ({} stories) - {}",
-                                    channel.name, unread_count, story_count, channel.description)
+                                format!("{} {} [{}] ({} stories) - {}",
+                                    Icons::folder(), channel.name, unread_count, story_count, channel.description)
                             } else {
-                                format!("📂 {} ({} stories) - {}",
-                                    channel.name, story_count, channel.description)
+                                format!("{} {} ({} stories) - {}",
+                                    Icons::folder(), channel.name, story_count, channel.description)
                             };
 
                             // Apply styling based on unread status
@@ -822,7 +854,7 @@ impl App {
                         .iter()
                         .filter(|story| story.channel == *selected_channel)
                         .map(|story| {
-                            let status = if story.public { "📖" } else { "📕" };
+                            let status = if story.public { Icons::book() } else { Icons::closed_book() };
                             ListItem::new(format!("{} {}: {}", status, story.id, story.name))
                         })
                         .collect();
@@ -852,10 +884,10 @@ impl App {
                 InputMode::Editing => format!("Command: {}", self.input),
                 InputMode::CreatingStory { step, .. } => {
                     let prompt = match step {
-                        StoryCreationStep::Name => "📝 Story Name",
-                        StoryCreationStep::Header => "📄 Story Header",
-                        StoryCreationStep::Body => "📖 Story Body",
-                        StoryCreationStep::Channel => "📂 Channel (Enter for 'general')",
+                        StoryCreationStep::Name => format!("{} Story Name", Icons::memo()),
+                        StoryCreationStep::Header => format!("{} Story Header", Icons::document()),
+                        StoryCreationStep::Body => format!("{} Story Body", Icons::book()),
+                        StoryCreationStep::Channel => format!("{} Channel (Enter for 'general')", Icons::folder()),
                     };
                     format!("{}: {}", prompt, self.input)
                 }
@@ -875,15 +907,30 @@ impl App {
                     );
                 }
                 InputMode::CreatingStory { step, .. } => {
-                    // Use display width constants instead of .len() to handle emoji widths correctly
+                    // Calculate prefix length based on current platform icons
                     let prefix_len = match step {
-                        StoryCreationStep::Name => 15,        // "📝 Story Name: " display width
-                        StoryCreationStep::Header => 17,      // "📄 Story Header: " display width
-                        StoryCreationStep::Body => 14,        // "📖 Story Body: " display width
-                        StoryCreationStep::Channel => 34,     // "📂 Channel (Enter for 'general'): " display width
+                        #[cfg(windows)]
+                        StoryCreationStep::Name => "> Story Name: ".len(),        // ASCII version
+                        #[cfg(not(windows))]
+                        StoryCreationStep::Name => "📝 Story Name: ".len(),       // Unicode version
+
+                        #[cfg(windows)]
+                        StoryCreationStep::Header => "[DOC] Story Header: ".len(),      // ASCII version
+                        #[cfg(not(windows))]
+                        StoryCreationStep::Header => "📄 Story Header: ".len(),         // Unicode version
+
+                        #[cfg(windows)]
+                        StoryCreationStep::Body => "[BOOK] Story Body: ".len(),        // ASCII version
+                        #[cfg(not(windows))]
+                        StoryCreationStep::Body => "📖 Story Body: ".len(),            // Unicode version
+
+                        #[cfg(windows)]
+                        StoryCreationStep::Channel => "[DIR] Channel (Enter for 'general'): ".len(),     // ASCII version
+                        #[cfg(not(windows))]
+                        StoryCreationStep::Channel => "📂 Channel (Enter for 'general'): ".len(),        // Unicode version
                     };
                     f.set_cursor(
-                        chunks[2].x + self.input.len() as u16 + prefix_len as u16 + 1,
+                        chunks[2].x + self.input.len() as u16 + prefix_len as u16,
                         chunks[2].y + 1,
                     );
                 }
