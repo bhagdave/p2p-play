@@ -760,7 +760,7 @@ impl Icons {
     /// Success indicator
     pub fn check() -> &'static str {
         #[cfg(windows)]
-        return "[✓]";
+        return "[OK]";
         #[cfg(not(windows))]
         return "✅";
     }
@@ -917,6 +917,23 @@ mod tests {
             assert!(Icons::memo().chars().all(|c| c.is_ascii()));
             assert!(Icons::folder().chars().all(|c| c.is_ascii()));
             assert!(Icons::book().chars().all(|c| c.is_ascii()));
+            assert!(Icons::check().chars().all(|c| c.is_ascii())); // This should now be [OK] instead of [✓]
+        }
+    }
+
+    #[test]
+    fn test_check_icon_no_unicode() {
+        // Verify the check icon doesn't contain Unicode characters on Windows
+        let check_icon = Icons::check();
+        #[cfg(windows)]
+        {
+            assert_eq!(check_icon, "[OK]");
+            // Ensure no Unicode check mark character (U+2713)
+            assert!(!check_icon.contains('\u{2713}'));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(check_icon, "✅");
         }
     }
 
