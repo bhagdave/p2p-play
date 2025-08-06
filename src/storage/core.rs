@@ -235,7 +235,7 @@ pub async fn create_new_story_with_channel(
             name,
             header,
             body,
-            &utils::rust_bool_to_db(false), // New stories start as private
+            &utils::rust_bool_to_db(true), // New stories are automatically published
             channel,
             &created_at.to_string(),
         ],

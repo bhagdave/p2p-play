@@ -96,7 +96,7 @@ pub async fn handle_input_event(
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("create s") => {
-            return handle_create_stories(cmd, ui_logger, error_logger).await;
+            return handle_create_stories_with_sender(cmd, ui_logger, error_logger, Some(story_sender.clone())).await;
         }
         cmd if cmd.starts_with("create ch") => {
             return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger)
