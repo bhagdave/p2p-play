@@ -13,6 +13,16 @@ All changes to this project will be documented in this file.
   - Added comprehensive tests for icon utility functionality
 
 ### Added
+- **Batch Story Deletion**: Enhanced story deletion functionality to support deleting multiple stories at once using comma-separated IDs
+  - Modified `handle_delete_story` function to parse comma-separated story IDs while maintaining full backward compatibility
+  - Added robust error handling that reports invalid IDs but continues processing remaining valid ones  
+  - Gracefully handles spaces and empty entries from trailing commas (e.g., `delete s 1, 2, 3,` works correctly)
+  - Updated help text from `delete s <id>` to `delete s <id1>[,<id2>,<id3>...]` to reflect new functionality
+  - Support for mixed valid/invalid scenarios: `delete s 1,999,2` reports errors for invalid IDs but continues processing valid ones
+  - Returns `RefreshStories` if any stories were successfully deleted, ensuring UI updates appropriately
+  - Comprehensive test suite with 7 new test cases covering single/multiple deletion, error handling, and edge cases
+  - Usage examples: `delete s 1` (single), `delete s 1,2,3` (multiple), `delete s 1, 2, 3` (with spaces)
+  - Fixes issue #150
 - **Channel-Based TUI Navigation**: Implemented hierarchical channel → stories navigation system in the Terminal User Interface
   - Added `ViewMode` enum with `Channels` and `Stories(String)` variants to track navigation state between channel list and story views
   - Enhanced keyboard navigation with Enter key to drill down from channels to stories and Escape key to return to channels view
