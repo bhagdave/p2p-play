@@ -10,6 +10,6 @@ pub mod storage;
 pub mod types;
 pub mod ui;
 
+pub use crypto::*;
 pub use storage::*;
 pub use types::*;
-pub use crypto::*;
