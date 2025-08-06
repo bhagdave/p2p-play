@@ -25,6 +25,7 @@ hkdf = "0.12"
 rand = "0.8"
 sha2 = "0.10"
 zeroize = "1.8"
+async-trait = "0.1"
 
 [dev-dependencies]
 tempfile = "3.8"

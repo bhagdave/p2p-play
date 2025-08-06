@@ -4,6 +4,21 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Refactored Storage Operations**: Significantly reduced code duplication in storage.rs by creating reusable database operation patterns
+  - Created new `src/storage/` module structure with specialized submodules:
+    - `utils.rs` - Common utilities (timestamp generation, ID generation, boolean conversion)
+    - `mappers.rs` - Result mapping functions for converting database rows to structs
+    - `query_builder.rs` - Fluent query builder for complex database operations  
+    - `traits.rs` - Generic CRUD operation traits and configuration management patterns
+  - Eliminated duplicate Story row-to-struct mapping logic across 6+ functions using `map_row_to_story`
+  - Replaced duplicate timestamp generation patterns with centralized `get_current_timestamp()` utility
+  - Replaced duplicate ID generation patterns with reusable `get_next_id()` function
+  - Standardized boolean handling with `rust_bool_to_db()` and `db_bool_to_rust()` converters
+  - Added 8 new unit tests covering the refactored storage components
+  - Maintained 100% backward compatibility - all existing functionality preserved
+  - All 57 tests continue to pass after refactoring
+
 ### Fixed
 - **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
   - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
