@@ -4,6 +4,14 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
+  - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
+  - Replaced all hardcoded Unicode emojis throughout UI with conditional compilation using `#[cfg(windows)]`
+  - Updated cursor positioning logic to account for different display widths between ASCII and Unicode icons
+  - Non-Windows platforms continue to display colorful Unicode emojis for better user experience
+  - Added comprehensive tests for icon utility functionality
+
 ### Added
 - **Crypto Module for End-to-End Encryption**: Comprehensive cryptographic security module providing message encryption, decryption, and digital signatures for secure P2P communications
   - **ChaCha20-Poly1305 AEAD**: Industry-standard authenticated encryption with associated data for message confidentiality and integrity
