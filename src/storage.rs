@@ -72,6 +72,57 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
 pub async fn reset_db_connection_for_testing() -> Result<(), Box<dyn Error>> {
     let mut state = DB_STATE.write().await;
     *state = None;
+    // Add a small delay to ensure any pending database operations complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    Ok(())
+}
+
+/// Initialize a clean test database with proper isolation
+pub async fn init_test_database() -> Result<(), Box<dyn Error>> {
+    reset_db_connection_for_testing().await?;
+    ensure_stories_file_exists().await?;
+    
+    // Clear all existing data for clean test (only if tables exist)
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+    
+    // Disable foreign key checks temporarily to allow clean deletion
+    conn.execute("PRAGMA foreign_keys = OFF", [])?;
+    
+    // Check if tables exist and clear them
+    let table_exists = |table_name: &str| -> Result<bool, Box<dyn Error>> {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='{}'", 
+            table_name
+        ))?;
+        let exists = stmt.exists([])?;
+        Ok(exists)
+    };
+    
+    if table_exists("channel_subscriptions")? {
+        conn.execute("DELETE FROM channel_subscriptions", [])?;
+    }
+    if table_exists("channels")? {
+        conn.execute("DELETE FROM channels", [])?;
+    }
+    if table_exists("stories")? {
+        conn.execute("DELETE FROM stories", [])?;
+    }
+    if table_exists("peer_names")? {
+        conn.execute("DELETE FROM peer_names", [])?;
+    }
+    if table_exists("story_read_status")? {
+        conn.execute("DELETE FROM story_read_status", [])?;
+    }
+    
+    // Re-enable foreign key checks
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+    
+    drop(conn); // Release the lock
+    
+    // Add a small delay to ensure all operations complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+    
     Ok(())
 }
 
