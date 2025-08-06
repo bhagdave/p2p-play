@@ -418,24 +418,18 @@ pub async fn handle_floodsub_event(
                     let should_auto_subscribe = auto_sub_config.auto_subscribe_to_new_channels;
                     let max_auto_subs = auto_sub_config.max_auto_subscriptions;
 
-                    // Save the received channel to local storage asynchronously
-                    let channel_to_save = published_channel.channel.clone();
-                    let ui_logger_clone = ui_logger.clone();
-                    let ui_logger_auto_sub = ui_logger.clone();
+                    // Save the received channel to local storage synchronously to avoid race condition
+                    let channel_to_save = &published_channel.channel;
                     let peer_id_str = PEER_ID.to_string();
                     
-                    tokio::spawn(async move {
-                        // Add validation before saving
-                        if channel_to_save.name.is_empty() || channel_to_save.description.is_empty()
-                        {
-                            debug!(
-                                "Ignoring invalid published channel with empty name or description"
-                            );
-                            return;
-                        }
-
-                        // Save the channel first
-                        match crate::storage::create_channel(
+                    // Add validation before saving
+                    if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
+                        debug!(
+                            "Ignoring invalid published channel with empty name or description"
+                        );
+                    } else {
+                        // Save the channel first - synchronously to ensure it exists before subscription
+                        let channel_saved = match crate::storage::create_channel(
                             &channel_to_save.name,
                             &channel_to_save.description,
                             &channel_to_save.created_by,
@@ -443,11 +437,12 @@ pub async fn handle_floodsub_event(
                         .await
                         {
                             Ok(_) => {
-                                ui_logger_clone.log(format!(
+                                ui_logger.log(format!(
                                     "📺 Channel '{}' added to your channels list",
                                     channel_to_save.name
                                 ));
                                 debug!("Successfully created channel '{}' in database", channel_to_save.name);
+                                true
                             }
                             Err(e) if e.to_string().contains("UNIQUE constraint") => {
                                 debug!(
@@ -455,50 +450,44 @@ pub async fn handle_floodsub_event(
                                     channel_to_save.name
                                 );
                                 // Still notify user that channel is available
-                                ui_logger_clone.log(format!(
+                                ui_logger.log(format!(
                                     "📺 Channel '{}' is available (already in your channels list)",
                                     channel_to_save.name
                                 ));
+                                true // Channel exists, can proceed with subscription
                             }
                             Err(e) => {
-                                // Create error logger for spawned task
-                                let error_logger_for_task = ErrorLogger::new("errors.log");
                                 crate::log_network_error!(
-                                    error_logger_for_task,
+                                    error_logger,
                                     "storage",
                                     "Failed to save received published channel '{}': {}",
                                     channel_to_save.name,
                                     e
                                 );
+                                false
                             }
-                        }
-                    });
+                        };
 
-                    // Handle auto-subscription in a separate task to avoid Send issues
-                    if should_auto_subscribe {
-                        let channel_name_for_sub = published_channel.channel.name.clone();
-                        tokio::spawn(async move {
-                            // Small delay to allow channel creation to complete
-                            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                            
-                            match handle_auto_subscription(&peer_id_str, &channel_name_for_sub, max_auto_subs, &ui_logger_auto_sub).await {
+                        // Only attempt auto-subscription AFTER successful channel creation to avoid race condition
+                        if channel_saved && should_auto_subscribe {
+                            match handle_auto_subscription(&peer_id_str, &channel_to_save.name, max_auto_subs, &ui_logger).await {
                                 Ok(true) => {
-                                    ui_logger_auto_sub.log(format!(
+                                    ui_logger.log(format!(
                                         "✅ Auto-subscribed to channel '{}'",
-                                        channel_name_for_sub
+                                        channel_to_save.name
                                     ));
                                 }
                                 Ok(false) => {
                                     // Auto-subscription was skipped (already subscribed or limit reached)
                                 }
                                 Err(e) => {
-                                    ui_logger_auto_sub.log(format!(
+                                    ui_logger.log(format!(
                                         "❌ Failed to auto-subscribe to '{}': {}",
-                                        channel_name_for_sub, e
+                                        channel_to_save.name, e
                                     ));
                                 }
                             }
-                        });
+                        }
                     }
                 }
             } else if let Ok(channel) = serde_json::from_slice::<crate::types::Channel>(&msg.data) {
