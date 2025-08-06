@@ -72,7 +72,7 @@ pub fn map_row_to_channel_unread_count(row: &Row) -> Result<(String, usize), rus
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::{Connection, params};
+    use rusqlite::Connection;
     
     #[test]
     fn test_bool_conversion_in_mapping() {

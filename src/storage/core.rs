@@ -1,5 +1,5 @@
 use crate::types::{
-    BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
+    BootstrapConfig, ChannelSubscription, ChannelSubscriptions, Channels,
     DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
 };
 use crate::storage::{utils, mappers};
