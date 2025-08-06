@@ -38,7 +38,7 @@ async fn handle_auto_subscription(
     match crate::storage::read_subscribed_channels(peer_id).await {
         Ok(subscribed) => {
             if subscribed.contains(&channel_name.to_string()) {
-                debug!("Already subscribed to channel '{}'", channel_name);
+                // Already subscribed - this is normal, not an error
                 return Ok(false); // Not an error, just already subscribed
             }
         }

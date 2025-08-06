@@ -65,7 +65,7 @@ async fn test_available_vs_subscribed_channels() {
     create_channel("announcements", "Important announcements", "bob").await.expect("Failed to create channel");
 
     // Test reading all available channels
-    let available = read_available_channels().await.expect("Failed to read available channels");
+    let available = read_channels().await.expect("Failed to read available channels");
     assert_eq!(available.len(), 3);
 
     // Test reading unsubscribed channels (should be all channels initially)

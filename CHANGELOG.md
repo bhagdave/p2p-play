@@ -5,6 +5,14 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Channel Auto-Subscription and Discovery System**: Comprehensive channel auto-subscription and discovery system for enhanced channel discoverability across the P2P network
+  - Added `ChannelAutoSubscriptionConfig` with configurable settings for auto-subscription behavior, notifications, and subscription limits
+  - Enhanced channel management commands: `ls ch available`, `ls ch unsubscribed`, `sub ch <channel>`, `unsub ch <channel>`, `set auto-sub [on|off|status]`
+  - Smart channel discovery with auto-subscription logic, spam prevention, and subscription limits (default: 10 max auto-subscriptions)
+  - Storage enhancements for managing available vs subscribed channels with async processing
+  - Integrated into unified network configuration for centralized management with persistent configuration and validation
+  - Distinguishes between available channels and subscribed channels, providing fine-grained control over subscription behavior
+  - Maintains full backward compatibility with existing commands and functionality
 - **Channel-Based TUI Navigation**: Implemented hierarchical channel → stories navigation system in the Terminal User Interface
   - Added `ViewMode` enum with `Channels` and `Stories(String)` variants to track navigation state between channel list and story views
   - Enhanced keyboard navigation with Enter key to drill down from channels to stories and Escape key to return to channels view

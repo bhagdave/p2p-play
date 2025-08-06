@@ -4,7 +4,7 @@ use crate::network::{
 };
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config,
-    load_node_description, mark_story_as_read, publish_story, read_available_channels, read_channels, read_local_stories,
+    load_node_description, mark_story_as_read, publish_story, read_channels, read_local_stories,
     read_subscribed_channels, read_unsubscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
     subscribe_to_channel, unsubscribe_from_channel,
 };
@@ -612,7 +612,7 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
     match rest {
         Some(" available") => {
             // List all discovered channels (subscribed + unsubscribed)
-            match read_available_channels().await {
+            match read_channels().await {
                 Ok(channels) => {
                     ui_logger.log("Available channels:".to_string());
                     if channels.is_empty() {
@@ -681,6 +681,7 @@ pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_log
 
     if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), channel_name).await {
         error_logger.log_error(&format!("Failed to subscribe to channel: {}", e));
+        ui_logger.log(format!("❌ Failed to subscribe to channel '{}': {}", channel_name, e));
     } else {
         ui_logger.log(format!("Subscribed to channel '{}'", channel_name));
     }

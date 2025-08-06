@@ -609,11 +609,6 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
     Ok(channels)
 }
 
-/// Get all available channels (discovered from the network)
-pub async fn read_available_channels() -> Result<Channels, Box<dyn Error>> {
-    // This is the same as read_channels since all discovered channels are stored
-    read_channels().await
-}
 
 /// Get channels that are available but not subscribed to by the given peer
 pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
