@@ -2346,19 +2346,24 @@ version = "0.7.5"
 dependencies = [
  "async-trait",
  "bytes",
+ "chacha20poly1305",
  "chrono",
  "crossterm",
  "env_logger",
  "futures",
+ "hkdf",
  "libp2p",
  "log",
  "once_cell",
+ "rand 0.8.5",
  "ratatui",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
+ "zeroize",
 ]
 
 [[package]]
