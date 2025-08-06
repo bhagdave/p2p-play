@@ -695,3 +695,284 @@ async fn test_ui_logger_functionality() {
     let message = receiver.try_recv().unwrap();
     assert_eq!(message, "Test message");
 }
+
+// Tests for batch delete story functionality
+#[tokio::test]
+async fn test_handle_delete_story_single_id() {
+    use p2p_play::error_logger::ErrorLogger;
+    use p2p_play::storage::{
+        clear_database_for_testing, create_new_story_with_channel, read_local_stories,
+    };
+
+    // Initialize clean database for testing
+    clear_database_for_testing().await.unwrap();
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("test_error.log");
+
+    // Create a test story first
+    create_new_story_with_channel("Test Story", "Test Header", "Test Body", "general")
+        .await
+        .unwrap();
+
+    let stories_before = read_local_stories().await.unwrap();
+    assert!(!stories_before.is_empty());
+
+    let story_id = stories_before[0].id;
+
+    // Test deleting single story
+    let result =
+        handle_delete_story(&format!("delete s {}", story_id), &ui_logger, &error_logger).await;
+
+    assert_eq!(result, Some(ActionResult::RefreshStories));
+
+    // Verify the story was deleted
+    let stories_after = read_local_stories().await.unwrap();
+    assert!(stories_after.iter().all(|s| s.id != story_id));
+
+    // Check UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    assert!(messages.iter().any(|m| m.contains("deleted successfully")));
+}
+
+#[tokio::test]
+async fn test_handle_delete_story_multiple_ids() {
+    use p2p_play::error_logger::ErrorLogger;
+    use p2p_play::storage::{
+        clear_database_for_testing, create_new_story_with_channel, read_local_stories,
+    };
+
+    // Initialize clean database for testing
+    clear_database_for_testing().await.unwrap();
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("test_error.log");
+
+    // Create multiple test stories
+    create_new_story_with_channel("Story 1", "Header 1", "Body 1", "general")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Story 2", "Header 2", "Body 2", "general")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Story 3", "Header 3", "Body 3", "general")
+        .await
+        .unwrap();
+
+    let stories_before = read_local_stories().await.unwrap();
+    assert!(stories_before.len() >= 3);
+
+    // Get the IDs of the first two stories
+    let id1 = stories_before[0].id;
+    let id2 = stories_before[1].id;
+
+    // Test deleting multiple stories
+    let result = handle_delete_story(
+        &format!("delete s {},{}", id1, id2),
+        &ui_logger,
+        &error_logger,
+    )
+    .await;
+
+    assert_eq!(result, Some(ActionResult::RefreshStories));
+
+    // Verify both stories were deleted
+    let stories_after = read_local_stories().await.unwrap();
+    assert!(stories_after.iter().all(|s| s.id != id1 && s.id != id2));
+
+    // Check UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    let success_messages: Vec<_> = messages
+        .iter()
+        .filter(|m| m.contains("deleted successfully"))
+        .collect();
+    assert_eq!(success_messages.len(), 2);
+}
+
+#[tokio::test]
+async fn test_handle_delete_story_invalid_id() {
+    use p2p_play::error_logger::ErrorLogger;
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("test_error.log");
+
+    // Test deleting with invalid (non-numeric) ID
+    let result = handle_delete_story("delete s abc", &ui_logger, &error_logger).await;
+
+    assert_eq!(result, None);
+
+    // Check UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    assert!(messages.iter().any(|m| m.contains("Invalid story id")));
+}
+
+#[tokio::test]
+async fn test_handle_delete_story_nonexistent_id() {
+    use p2p_play::error_logger::ErrorLogger;
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("test_error.log");
+
+    // Test deleting with non-existent ID
+    let result = handle_delete_story("delete s 99999", &ui_logger, &error_logger).await;
+
+    assert_eq!(result, None);
+
+    // Check UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    assert!(messages.iter().any(|m| m.contains("not found")));
+}
+
+#[tokio::test]
+async fn test_handle_delete_story_mixed_valid_invalid() {
+    use p2p_play::error_logger::ErrorLogger;
+    use p2p_play::storage::{
+        clear_database_for_testing, create_new_story_with_channel, read_local_stories,
+    };
+
+    // Initialize clean database for testing
+    clear_database_for_testing().await.unwrap();
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("test_error.log");
+
+    // Create a test story
+    create_new_story_with_channel("Test Story", "Test Header", "Test Body", "general")
+        .await
+        .unwrap();
+
+    let stories_before = read_local_stories().await.unwrap();
+    assert!(!stories_before.is_empty());
+
+    let valid_id = stories_before[0].id;
+    let invalid_id = 99999;
+
+    // Test deleting with mix of valid and invalid IDs
+    let result = handle_delete_story(
+        &format!("delete s {},{}", valid_id, invalid_id),
+        &ui_logger,
+        &error_logger,
+    )
+    .await;
+
+    assert_eq!(result, Some(ActionResult::RefreshStories));
+
+    // Verify the valid story was deleted
+    let stories_after = read_local_stories().await.unwrap();
+    assert!(stories_after.iter().all(|s| s.id != valid_id));
+
+    // Check UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    // Should have one success message and one error message
+    assert!(messages.iter().any(|m| m.contains("deleted successfully")));
+    assert!(messages.iter().any(|m| m.contains("not found")));
+}
+
+#[tokio::test]
+async fn test_handle_delete_story_with_spaces_and_invalid_entries() {
+    use p2p_play::error_logger::ErrorLogger;
+    use p2p_play::storage::{
+        clear_database_for_testing, create_new_story_with_channel, read_local_stories,
+    };
+
+    // Initialize clean database for testing
+    clear_database_for_testing().await.unwrap();
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("test_error.log");
+
+    // Create test stories
+    create_new_story_with_channel("Story 1", "Header 1", "Body 1", "general")
+        .await
+        .unwrap();
+    create_new_story_with_channel("Story 2", "Header 2", "Body 2", "general")
+        .await
+        .unwrap();
+
+    let stories_before = read_local_stories().await.unwrap();
+    assert!(stories_before.len() >= 2);
+
+    let id1 = stories_before[0].id;
+    let id2 = stories_before[1].id;
+
+    // Test deleting with spaces, empty entries, and invalid entries
+    let result = handle_delete_story(
+        &format!("delete s {}, ,{}, abc, ", id1, id2),
+        &ui_logger,
+        &error_logger,
+    )
+    .await;
+
+    assert_eq!(result, Some(ActionResult::RefreshStories));
+
+    // Verify both valid stories were deleted
+    let stories_after = read_local_stories().await.unwrap();
+    assert!(stories_after.iter().all(|s| s.id != id1 && s.id != id2));
+
+    // Check UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    // Should have success messages for valid IDs and error messages for invalid ones
+    let success_messages: Vec<_> = messages
+        .iter()
+        .filter(|m| m.contains("deleted successfully"))
+        .collect();
+    assert_eq!(success_messages.len(), 2);
+
+    let error_messages: Vec<_> = messages
+        .iter()
+        .filter(|m| m.contains("Invalid story id"))
+        .collect();
+    assert!(error_messages.len() >= 1); // At least one error for "abc"
+}
+
+#[tokio::test]
+async fn test_handle_delete_story_invalid_format() {
+    use p2p_play::error_logger::ErrorLogger;
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("test_error.log");
+
+    // Test with invalid command format
+    let result = handle_delete_story("delete s", &ui_logger, &error_logger).await;
+
+    assert_eq!(result, None);
+
+    // Check UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    assert!(messages.iter().any(|m| m.contains("Usage:")));
+}

@@ -9,7 +9,8 @@ use crate::storage::{
     subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{
-    ActionResult, DirectMessageConfig, ListMode, ListRequest, PeerName, PendingDirectMessage, Story,
+    ActionResult, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
+    PendingDirectMessage, Story,
 };
 use bytes::Bytes;
 use libp2p::PeerId;
@@ -126,9 +127,9 @@ pub async fn handle_list_stories(
                     ui_logger.log(format!("Local stories ({})", v.len()));
                     v.iter().for_each(|r| {
                         let status = if r.public {
-                            "📖 Public"
+                            format!("{} Public", Icons::book())
                         } else {
-                            "📕 Private"
+                            format!("{} Private", Icons::closed_book())
                         };
                         ui_logger.log(format!(
                             "{} | Channel: {} | {}: {}",
@@ -152,10 +153,15 @@ pub async fn handle_create_stories(
 
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
-            ui_logger.log("📖 Starting interactive story creation...".to_string());
-            ui_logger
-                .log("📝 This will guide you through creating a story step by step.".to_string());
-            ui_logger.log("📌 Use Esc at any time to cancel.".to_string());
+            ui_logger.log(format!(
+                "{} Starting interactive story creation...",
+                Icons::book()
+            ));
+            ui_logger.log(format!(
+                "{} This will guide you through creating a story step by step.",
+                Icons::memo()
+            ));
+            ui_logger.log(format!("{} Use Esc at any time to cancel.", Icons::pin()));
             return Some(ActionResult::StartStoryCreation);
         } else {
             // Parse pipe-separated arguments
@@ -215,7 +221,12 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                 match read_local_stories().await {
                     Ok(stories) => {
                         if let Some(story) = stories.iter().find(|s| s.id == id) {
-                            ui_logger.log(format!("📖 Story {}: {}", story.id, story.name));
+                            ui_logger.log(format!(
+                                "{} Story {}: {}",
+                                Icons::book(),
+                                story.id,
+                                story.name
+                            ));
                             ui_logger.log(format!("Channel: {}", story.channel));
                             ui_logger.log(format!("Header: {}", story.header));
                             ui_logger.log(format!("Body: {}", story.body));
@@ -250,27 +261,47 @@ pub async fn handle_delete_story(
     error_logger: &ErrorLogger,
 ) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("delete s ") {
-        match rest.trim().parse::<usize>() {
-            Ok(id) => match delete_local_story(id).await {
-                Ok(deleted) => {
-                    if deleted {
-                        ui_logger.log(format!("Story with id {} deleted successfully", id));
-                        return Some(ActionResult::RefreshStories);
-                    } else {
-                        ui_logger.log(format!("Story with id {} not found", id));
+        // Split by comma and process each ID
+        let id_strings: Vec<&str> = rest.split(',').map(|s| s.trim()).collect();
+        let mut any_deleted = false;
+
+        // Skip empty strings that might result from trailing commas or double commas
+        let valid_id_strings: Vec<&str> =
+            id_strings.into_iter().filter(|s| !s.is_empty()).collect();
+
+        if valid_id_strings.is_empty() {
+            ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
+            return None;
+        }
+
+        for id_str in valid_id_strings {
+            match id_str.parse::<usize>() {
+                Ok(id) => match delete_local_story(id).await {
+                    Ok(deleted) => {
+                        if deleted {
+                            ui_logger.log(format!("Story with id {} deleted successfully", id));
+                            any_deleted = true;
+                        } else {
+                            ui_logger.log(format!("Story with id {} not found", id));
+                        }
                     }
-                }
+                    Err(e) => {
+                        error_logger
+                            .log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                    }
+                },
                 Err(e) => {
-                    error_logger
-                        .log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                    ui_logger.log(format!("Invalid story id '{}': {}", id_str, e));
                 }
-            },
-            Err(e) => {
-                ui_logger.log(format!("Invalid story id '{}': {}", rest.trim(), e));
             }
         }
+
+        // Return RefreshStories if any story was successfully deleted
+        if any_deleted {
+            return Some(ActionResult::RefreshStories);
+        }
     } else {
-        ui_logger.log("Usage: delete s <id>".to_string());
+        ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
     }
     None
 }
@@ -286,10 +317,10 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("show story <id> to show story details".to_string());
     ui_logger.log("show desc to show your node description".to_string());
     ui_logger.log("get desc <peer_alias> to get description from peer".to_string());
-    ui_logger.log("delete s <id> to delete a story".to_string());
-    ui_logger.log("sub [ch] <channel> to subscribe to channel".to_string());
-    ui_logger.log("unsub [ch] <channel> to unsubscribe from channel".to_string());
     ui_logger.log("set auto-sub [on|off|status] to manage auto-subscription".to_string());
+    ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
+    ui_logger.log("sub <channel> to subscribe to channel".to_string());
+    ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
     ui_logger.log("dht bootstrap add/remove/list/clear/retry - manage bootstrap peers".to_string());
@@ -306,27 +337,48 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
         Ok(config) => {
             // For now, just validate and log success
             if let Err(e) = config.validate() {
-                ui_logger.log(format!("❌ Configuration validation failed: {}", e));
-            } else {
-                ui_logger.log("✅ Network configuration reloaded successfully".to_string());
                 ui_logger.log(format!(
-                    "📊 Bootstrap peers: {}",
+                    "{} Configuration validation failed: {}",
+                    Icons::cross(),
+                    e
+                ));
+            } else {
+                ui_logger.log(format!(
+                    "{} Network configuration reloaded successfully",
+                    Icons::check()
+                ));
+                ui_logger.log(format!(
+                    "{} Bootstrap peers: {}",
+                    Icons::chart(),
                     config.bootstrap.bootstrap_peers.len()
                 ));
                 ui_logger.log(format!(
-                    "🔧 Connection maintenance interval: {}s",
+                    "{} Connection maintenance interval: {}s",
+                    Icons::wrench(),
                     config.network.connection_maintenance_interval_seconds
                 ));
-                ui_logger.log(format!("🏓 Ping interval: {}s", config.ping.interval_secs));
                 ui_logger.log(format!(
-                    "💬 DM max retry attempts: {}",
+                    "{} Ping interval: {}s",
+                    Icons::ping(),
+                    config.ping.interval_secs
+                ));
+                ui_logger.log(format!(
+                    "{} DM max retry attempts: {}",
+                    Icons::speech(),
                     config.direct_message.max_retry_attempts
                 ));
-                ui_logger.log("⚠️  Note: Some configuration changes require application restart to take effect".to_string());
+                ui_logger.log(format!(
+                    "{}Note: Some configuration changes require application restart to take effect",
+                    Icons::warning()
+                ));
             }
         }
         Err(e) => {
-            ui_logger.log(format!("❌ Failed to reload configuration: {}", e));
+            ui_logger.log(format!(
+                "{} Failed to reload configuration: {}",
+                Icons::cross(),
+                e
+            ));
         }
     }
 }

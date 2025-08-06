@@ -15,12 +15,28 @@ All changes to this project will be documented in this file.
   - Maintains full backward compatibility with existing commands and functionality
 
 ### Fixed
+- **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
+  - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
+  - Replaced all hardcoded Unicode emojis throughout UI with conditional compilation using `#[cfg(windows)]`
+  - Updated cursor positioning logic to account for different display widths between ASCII and Unicode icons
+  - Non-Windows platforms continue to display colorful Unicode emojis for better user experience
+  - Added comprehensive tests for icon utility functionality
 - **Channel Subscription Database Integrity**: Fixed critical issue where channel subscriptions could fail silently due to missing foreign key enforcement
   - Enabled SQLite foreign key constraints (`PRAGMA foreign_keys = ON`) in database connections to ensure referential integrity
   - Enhanced subscription error handling to check if channels exist before attempting subscription
   - Improved user feedback when subscribing to non-existent channels with clear error messages
   - Added better debugging messages for channel creation and subscription processes
   - Fixed issue where users could subscribe to channels but wouldn't see them listed in the UI due to constraint violations
+- **Batch Story Deletion**: Enhanced story deletion functionality to support deleting multiple stories at once using comma-separated IDs
+  - Modified `handle_delete_story` function to parse comma-separated story IDs while maintaining full backward compatibility
+  - Added robust error handling that reports invalid IDs but continues processing remaining valid ones  
+  - Gracefully handles spaces and empty entries from trailing commas (e.g., `delete s 1, 2, 3,` works correctly)
+  - Updated help text from `delete s <id>` to `delete s <id1>[,<id2>,<id3>...]` to reflect new functionality
+  - Support for mixed valid/invalid scenarios: `delete s 1,999,2` reports errors for invalid IDs but continues processing valid ones
+  - Returns `RefreshStories` if any stories were successfully deleted, ensuring UI updates appropriately
+  - Comprehensive test suite with 7 new test cases covering single/multiple deletion, error handling, and edge cases
+  - Usage examples: `delete s 1` (single), `delete s 1,2,3` (multiple), `delete s 1, 2, 3` (with spaces)
+  - Fixes issue #150
 - **Channel-Based TUI Navigation**: Implemented hierarchical channel → stories navigation system in the Terminal User Interface
   - Added `ViewMode` enum with `Channels` and `Stories(String)` variants to track navigation state between channel list and story views
   - Enhanced keyboard navigation with Enter key to drill down from channels to stories and Escape key to return to channels view

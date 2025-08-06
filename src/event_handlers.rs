@@ -13,7 +13,7 @@ use crate::network::{
 };
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
-    ActionResult, DirectMessage, DirectMessageConfig, EventType, ListMode, ListRequest,
+    ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PublishedChannel, PublishedStory,
 };
 
@@ -807,7 +807,7 @@ pub async fn handle_request_response_event(
                             queue.retain(|msg| msg.target_peer_id != peer);
                         }
 
-                        ui_logger.log(format!("✅ Message delivered to {}", peer));
+                        ui_logger.log(format!("{} Message delivered to {}", Icons::check(), peer));
                     } else {
                         crate::log_network_error!(
                             error_logger,
@@ -822,7 +822,8 @@ pub async fn handle_request_response_event(
                         }
 
                         ui_logger.log(format!(
-                            "❌ Message rejected by {} (identity validation failed)",
+                            "{} Message rejected by {} (identity validation failed)",
+                            Icons::cross(),
                             peer
                         ));
                     }
@@ -903,7 +904,11 @@ pub async fn handle_node_description_event(
                         request.from_name, request.from_peer_id
                     );
 
-                    ui_logger.log(format!("📋 Description request from {}", request.from_name));
+                    ui_logger.log(format!(
+                        "{} Description request from {}",
+                        Icons::clipboard(),
+                        request.from_name
+                    ));
 
                     // Load our description and send it back
                     match load_node_description().await {
@@ -935,8 +940,10 @@ pub async fn handle_node_description_event(
                                     e
                                 );
                                 ui_logger.log(format!(
-                                    "❌ Failed to send description response to {}: {:?}",
-                                    peer, e
+                                    "{} Failed to send description response to {}: {:?}",
+                                    Icons::cross(),
+                                    peer,
+                                    e
                                 ));
                             } else {
                                 debug!("Sent description response to {}", peer);
@@ -990,15 +997,19 @@ pub async fn handle_node_description_event(
                     match response.description {
                         Some(description) => {
                             ui_logger.log(format!(
-                                "📋 Description from {} ({} bytes):",
+                                "{} Description from {} ({} bytes):",
+                                Icons::clipboard(),
                                 response.from_name,
                                 description.len()
                             ));
                             ui_logger.log(description);
                         }
                         None => {
-                            ui_logger
-                                .log(format!("📋 {} has no description set", response.from_name));
+                            ui_logger.log(format!(
+                                "{} {} has no description set",
+                                Icons::clipboard(),
+                                response.from_name
+                            ));
                         }
                     }
                 }
@@ -1016,14 +1027,17 @@ pub async fn handle_node_description_event(
             let user_message = match error {
                 request_response::OutboundFailure::UnsupportedProtocols => {
                     format!(
-                        "❌ Peer {} doesn't support node descriptions (version mismatch)",
+                        "{} Peer {} doesn't support node descriptions (version mismatch)",
+                        Icons::cross(),
                         peer
                     )
                 }
                 _ => {
                     format!(
-                        "❌ Failed to request description from {}: {:?}",
-                        peer, error
+                        "{} Failed to request description from {}: {:?}",
+                        Icons::cross(),
+                        peer,
+                        error
                     )
                 }
             };
@@ -1364,8 +1378,10 @@ pub async fn process_pending_messages(
     // Report exhausted messages to user
     for msg in exhausted_messages {
         ui_logger.log(format!(
-            "❌ Failed to deliver message to {} after {} attempts",
-            msg.target_name, msg.max_attempts
+            "{} Failed to deliver message to {} after {} attempts",
+            Icons::cross(),
+            msg.target_name,
+            msg.max_attempts
         ));
     }
 

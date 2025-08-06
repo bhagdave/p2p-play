@@ -753,3 +753,242 @@ impl PendingDirectMessage {
         self.attempts >= self.max_attempts
     }
 }
+
+/// Cross-platform icon utility for Windows compatibility
+/// On Windows, Unicode emojis often display as empty squares, so we provide ASCII alternatives
+pub struct Icons;
+
+impl Icons {
+    /// Target/ready indicator
+    pub fn target() -> &'static str {
+        #[cfg(windows)]
+        return "[!]";
+        #[cfg(not(windows))]
+        return "🎯";
+    }
+
+    /// Note/memo/input indicator
+    pub fn memo() -> &'static str {
+        #[cfg(windows)]
+        return ">";
+        #[cfg(not(windows))]
+        return "📝";
+    }
+
+    /// Help/configuration indicator
+    pub fn wrench() -> &'static str {
+        #[cfg(windows)]
+        return "[?]";
+        #[cfg(not(windows))]
+        return "🔧";
+    }
+
+    /// Clear/cleanup indicator
+    pub fn broom() -> &'static str {
+        #[cfg(windows)]
+        return "[CLR]";
+        #[cfg(not(windows))]
+        return "🧹";
+    }
+
+    /// Error/cancel indicator
+    pub fn cross() -> &'static str {
+        #[cfg(windows)]
+        return "[X]";
+        #[cfg(not(windows))]
+        return "❌";
+    }
+
+    /// Success indicator
+    pub fn check() -> &'static str {
+        #[cfg(windows)]
+        return "[OK]";
+        #[cfg(not(windows))]
+        return "✅";
+    }
+
+    /// Folder/channel indicator
+    pub fn folder() -> &'static str {
+        #[cfg(windows)]
+        return "[DIR]";
+        #[cfg(not(windows))]
+        return "📂";
+    }
+
+    /// Document/header indicator
+    pub fn document() -> &'static str {
+        #[cfg(windows)]
+        return "[DOC]";
+        #[cfg(not(windows))]
+        return "📄";
+    }
+
+    /// Book/story indicator (open)
+    pub fn book() -> &'static str {
+        #[cfg(windows)]
+        return "[BOOK]";
+        #[cfg(not(windows))]
+        return "📖";
+    }
+
+    /// Calendar/date indicator
+    pub fn calendar() -> &'static str {
+        #[cfg(windows)]
+        return "[DATE]";
+        #[cfg(not(windows))]
+        return "📅";
+    }
+
+    /// Label/ID indicator
+    pub fn label() -> &'static str {
+        #[cfg(windows)]
+        return "[ID]";
+        #[cfg(not(windows))]
+        return "🏷️ ";
+    }
+
+    /// Visibility indicator
+    pub fn eye() -> &'static str {
+        #[cfg(windows)]
+        return "[VIS]";
+        #[cfg(not(windows))]
+        return "👁️ ";
+    }
+
+    /// Message indicator
+    pub fn envelope() -> &'static str {
+        #[cfg(windows)]
+        return "[MSG]";
+        #[cfg(not(windows))]
+        return "📨";
+    }
+
+    /// Description/clipboard indicator
+    pub fn clipboard() -> &'static str {
+        #[cfg(windows)]
+        return "[DESC]";
+        #[cfg(not(windows))]
+        return "📋";
+    }
+
+    /// Statistics indicator
+    pub fn chart() -> &'static str {
+        #[cfg(windows)]
+        return "[STAT]";
+        #[cfg(not(windows))]
+        return "📊";
+    }
+
+    /// Direct message/speech indicator
+    pub fn speech() -> &'static str {
+        #[cfg(windows)]
+        return "[DM]";
+        #[cfg(not(windows))]
+        return "💬";
+    }
+
+    /// Private/closed book indicator
+    pub fn closed_book() -> &'static str {
+        #[cfg(windows)]
+        return "[PRIV]";
+        #[cfg(not(windows))]
+        return "📕";
+    }
+
+    /// Pin/pushpin indicator
+    pub fn pin() -> &'static str {
+        #[cfg(windows)]
+        return "[PIN]";
+        #[cfg(not(windows))]
+        return "📌";
+    }
+
+    /// Ping/table tennis indicator
+    pub fn ping() -> &'static str {
+        #[cfg(windows)]
+        return "[PING]";
+        #[cfg(not(windows))]
+        return "🏓";
+    }
+
+    /// Warning indicator
+    pub fn warning() -> &'static str {
+        #[cfg(windows)]
+        return "[WARN]";
+        #[cfg(not(windows))]
+        return "⚠️ ";
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Icons;
+
+    #[test]
+    fn test_icons_return_non_empty_strings() {
+        // Test that all icon functions return non-empty strings
+        assert!(!Icons::target().is_empty());
+        assert!(!Icons::memo().is_empty());
+        assert!(!Icons::wrench().is_empty());
+        assert!(!Icons::broom().is_empty());
+        assert!(!Icons::cross().is_empty());
+        assert!(!Icons::check().is_empty());
+        assert!(!Icons::folder().is_empty());
+        assert!(!Icons::document().is_empty());
+        assert!(!Icons::book().is_empty());
+        assert!(!Icons::calendar().is_empty());
+        assert!(!Icons::label().is_empty());
+        assert!(!Icons::eye().is_empty());
+        assert!(!Icons::envelope().is_empty());
+        assert!(!Icons::clipboard().is_empty());
+        assert!(!Icons::chart().is_empty());
+        assert!(!Icons::speech().is_empty());
+        assert!(!Icons::closed_book().is_empty());
+        assert!(!Icons::pin().is_empty());
+        assert!(!Icons::ping().is_empty());
+        assert!(!Icons::warning().is_empty());
+    }
+
+    #[test]
+    fn test_windows_icons_are_ascii() {
+        // On Windows, icons should be ASCII (no Unicode emojis)
+        #[cfg(windows)]
+        {
+            // These should not contain emoji characters
+            assert!(Icons::target().chars().all(|c| c.is_ascii()));
+            assert!(Icons::memo().chars().all(|c| c.is_ascii()));
+            assert!(Icons::folder().chars().all(|c| c.is_ascii()));
+            assert!(Icons::book().chars().all(|c| c.is_ascii()));
+            assert!(Icons::check().chars().all(|c| c.is_ascii())); // This should now be [OK] instead of [✓]
+        }
+    }
+
+    #[test]
+    fn test_check_icon_no_unicode() {
+        // Verify the check icon doesn't contain Unicode characters on Windows
+        let check_icon = Icons::check();
+        #[cfg(windows)]
+        {
+            assert_eq!(check_icon, "[OK]");
+            // Ensure no Unicode check mark character (U+2713)
+            assert!(!check_icon.contains('\u{2713}'));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(check_icon, "✅");
+        }
+    }
+
+    #[test]
+    fn test_non_windows_icons_contain_unicode() {
+        // On non-Windows platforms, icons should contain Unicode emojis
+        #[cfg(not(windows))]
+        {
+            // These should contain Unicode emoji characters
+            assert!(Icons::target().contains("🎯"));
+            assert!(Icons::memo().contains("📝"));
+            assert!(Icons::folder().contains("📂"));
+            assert!(Icons::book().contains("📖"));
+        }
+    }
+}
