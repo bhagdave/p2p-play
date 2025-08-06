@@ -198,6 +198,7 @@ pub type ChannelSubscriptions = Vec<ChannelSubscription>;
 pub enum ActionResult {
     RefreshStories,
     StartStoryCreation,
+    RefreshChannels,
 }
 
 pub enum EventType {

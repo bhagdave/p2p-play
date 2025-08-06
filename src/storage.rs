@@ -664,6 +664,37 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
     Ok(channels)
 }
 
+/// Get full channel details for channels that the user is subscribed to
+pub async fn read_subscribed_channels_with_details(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT c.name, c.description, c.created_by, c.created_at 
+        FROM channels c
+        INNER JOIN channel_subscriptions cs ON c.name = cs.channel_name AND cs.peer_id = ?
+        ORDER BY c.name
+        "#,
+    )?;
+    
+    let channel_iter = stmt.query_map([peer_id], |row| {
+        Ok(Channel {
+            name: row.get(0)?,
+            description: row.get(1)?,
+            created_by: row.get(2)?,
+            created_at: row.get::<_, i64>(3)? as u64,
+        })
+    })?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
 
 /// Get channels that are available but not subscribed to by the given peer
 pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<dyn Error>> {

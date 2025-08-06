@@ -716,19 +716,19 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
     }
 }
 
-pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
+pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) -> Option<crate::types::ActionResult> {
     let channel_name = if let Some(name) = cmd.strip_prefix("sub ch ") {
         name.trim()
     } else if let Some(name) = cmd.strip_prefix("sub ") {
         name.trim()
     } else {
         ui_logger.log("Usage: sub ch <channel_name> or sub <channel_name>".to_string());
-        return;
+        return None;
     };
 
     if channel_name.is_empty() {
         ui_logger.log("Usage: sub ch <channel_name> or sub <channel_name>".to_string());
-        return;
+        return None;
     }
 
     // First check if the channel exists in the channels table
@@ -737,21 +737,23 @@ pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_log
             let channel_exists = channels.iter().any(|c| c.name == channel_name);
             if !channel_exists {
                 ui_logger.log(format!("❌ Channel '{}' not found in available channels. Use 'ls ch available' to see all discovered channels.", channel_name));
-                return;
+                return None;
             }
         }
         Err(e) => {
             error_logger.log_error(&format!("Failed to check available channels: {}", e));
             ui_logger.log("❌ Could not verify channel exists. Please try again.".to_string());
-            return;
+            return None;
         }
     }
 
     if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), channel_name).await {
         error_logger.log_error(&format!("Failed to subscribe to channel: {}", e));
         ui_logger.log(format!("❌ Failed to subscribe to channel '{}': {}", channel_name, e));
+        None
     } else {
         ui_logger.log(format!("✅ Subscribed to channel '{}'", channel_name));
+        Some(crate::types::ActionResult::RefreshChannels)
     }
 }
 
@@ -759,25 +761,28 @@ pub async fn handle_unsubscribe_channel(
     cmd: &str,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) {
+) -> Option<crate::types::ActionResult> {
     let channel_name = if let Some(name) = cmd.strip_prefix("unsub ch ") {
         name.trim()
     } else if let Some(name) = cmd.strip_prefix("unsub ") {
         name.trim()
     } else {
         ui_logger.log("Usage: unsub ch <channel_name> or unsub <channel_name>".to_string());
-        return;
+        return None;
     };
 
     if channel_name.is_empty() {
         ui_logger.log("Usage: unsub ch <channel_name> or unsub <channel_name>".to_string());
-        return;
+        return None;
     }
 
     if let Err(e) = unsubscribe_from_channel(&PEER_ID.to_string(), channel_name).await {
         error_logger.log_error(&format!("Failed to unsubscribe from channel: {}", e));
+        ui_logger.log(format!("❌ Failed to unsubscribe from channel '{}': {}", channel_name, e));
+        None
     } else {
-        ui_logger.log(format!("Unsubscribed from channel '{}'", channel_name));
+        ui_logger.log(format!("✅ Unsubscribed from channel '{}'", channel_name));
+        Some(crate::types::ActionResult::RefreshChannels)
     }
 }
 

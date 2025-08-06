@@ -154,10 +154,10 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
         cmd if cmd.starts_with("sub ") => {
-            handle_subscribe_channel(cmd, ui_logger, error_logger).await
+            return handle_subscribe_channel(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("unsub ") => {
-            handle_unsubscribe_channel(cmd, ui_logger, error_logger).await
+            return handle_unsubscribe_channel(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("set auto-sub") => {
             handle_set_auto_subscription(cmd, ui_logger, error_logger).await
