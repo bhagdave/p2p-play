@@ -9,7 +9,8 @@ use crate::storage::{
     subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{
-    ActionResult, DirectMessageConfig, ListMode, ListRequest, PeerName, PendingDirectMessage, Story,
+    ActionResult, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
+    PendingDirectMessage, Story,
 };
 use bytes::Bytes;
 use libp2p::PeerId;
@@ -126,9 +127,9 @@ pub async fn handle_list_stories(
                     ui_logger.log(format!("Local stories ({})", v.len()));
                     v.iter().for_each(|r| {
                         let status = if r.public {
-                            "📖 Public"
+                            format!("{} Public", Icons::book())
                         } else {
-                            "📕 Private"
+                            format!("{} Private", Icons::closed_book())
                         };
                         ui_logger.log(format!(
                             "{} | Channel: {} | {}: {}",
@@ -152,10 +153,15 @@ pub async fn handle_create_stories(
 
         // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
-            ui_logger.log("📖 Starting interactive story creation...".to_string());
-            ui_logger
-                .log("📝 This will guide you through creating a story step by step.".to_string());
-            ui_logger.log("📌 Use Esc at any time to cancel.".to_string());
+            ui_logger.log(format!(
+                "{} Starting interactive story creation...",
+                Icons::book()
+            ));
+            ui_logger.log(format!(
+                "{} This will guide you through creating a story step by step.",
+                Icons::memo()
+            ));
+            ui_logger.log(format!("{} Use Esc at any time to cancel.", Icons::pin()));
             return Some(ActionResult::StartStoryCreation);
         } else {
             // Parse pipe-separated arguments
@@ -215,7 +221,12 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                 match read_local_stories().await {
                     Ok(stories) => {
                         if let Some(story) = stories.iter().find(|s| s.id == id) {
-                            ui_logger.log(format!("📖 Story {}: {}", story.id, story.name));
+                            ui_logger.log(format!(
+                                "{} Story {}: {}",
+                                Icons::book(),
+                                story.id,
+                                story.name
+                            ));
                             ui_logger.log(format!("Channel: {}", story.channel));
                             ui_logger.log(format!("Header: {}", story.header));
                             ui_logger.log(format!("Body: {}", story.body));
@@ -325,27 +336,48 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
         Ok(config) => {
             // For now, just validate and log success
             if let Err(e) = config.validate() {
-                ui_logger.log(format!("❌ Configuration validation failed: {}", e));
-            } else {
-                ui_logger.log("✅ Network configuration reloaded successfully".to_string());
                 ui_logger.log(format!(
-                    "📊 Bootstrap peers: {}",
+                    "{} Configuration validation failed: {}",
+                    Icons::cross(),
+                    e
+                ));
+            } else {
+                ui_logger.log(format!(
+                    "{} Network configuration reloaded successfully",
+                    Icons::check()
+                ));
+                ui_logger.log(format!(
+                    "{} Bootstrap peers: {}",
+                    Icons::chart(),
                     config.bootstrap.bootstrap_peers.len()
                 ));
                 ui_logger.log(format!(
-                    "🔧 Connection maintenance interval: {}s",
+                    "{} Connection maintenance interval: {}s",
+                    Icons::wrench(),
                     config.network.connection_maintenance_interval_seconds
                 ));
-                ui_logger.log(format!("🏓 Ping interval: {}s", config.ping.interval_secs));
                 ui_logger.log(format!(
-                    "💬 DM max retry attempts: {}",
+                    "{} Ping interval: {}s",
+                    Icons::ping(),
+                    config.ping.interval_secs
+                ));
+                ui_logger.log(format!(
+                    "{} DM max retry attempts: {}",
+                    Icons::speech(),
                     config.direct_message.max_retry_attempts
                 ));
-                ui_logger.log("⚠️  Note: Some configuration changes require application restart to take effect".to_string());
+                ui_logger.log(format!(
+                    "{}Note: Some configuration changes require application restart to take effect",
+                    Icons::warning()
+                ));
             }
         }
         Err(e) => {
-            ui_logger.log(format!("❌ Failed to reload configuration: {}", e));
+            ui_logger.log(format!(
+                "{} Failed to reload configuration: {}",
+                Icons::cross(),
+                e
+            ));
         }
     }
 }
