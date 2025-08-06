@@ -52,6 +52,10 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
     // Need to create or update connection
     debug!("Creating new SQLite database connection: {}", current_path);
     let conn = Connection::open(&current_path)?;
+    
+    // Enable foreign key constraints (SQLite has them disabled by default)
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+    
     let conn_arc = Arc::new(Mutex::new(conn));
 
     // Update the stored connection and path
@@ -60,7 +64,7 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
         *state = Some((conn_arc.clone(), current_path));
     }
 
-    debug!("Successfully connected to SQLite database");
+    debug!("Successfully connected to SQLite database with foreign keys enabled");
     Ok(conn_arc)
 }
 

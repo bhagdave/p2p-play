@@ -447,12 +447,18 @@ pub async fn handle_floodsub_event(
                                     "📺 Channel '{}' added to your channels list",
                                     channel_to_save.name
                                 ));
+                                debug!("Successfully created channel '{}' in database", channel_to_save.name);
                             }
                             Err(e) if e.to_string().contains("UNIQUE constraint") => {
                                 debug!(
-                                    "Published channel '{}' already exists",
+                                    "Published channel '{}' already exists in database",
                                     channel_to_save.name
                                 );
+                                // Still notify user that channel is available
+                                ui_logger_clone.log(format!(
+                                    "📺 Channel '{}' is available (already in your channels list)",
+                                    channel_to_save.name
+                                ));
                             }
                             Err(e) => {
                                 // Create error logger for spawned task

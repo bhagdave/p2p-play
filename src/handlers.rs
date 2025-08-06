@@ -679,11 +679,27 @@ pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_log
         return;
     }
 
+    // First check if the channel exists in the channels table
+    match read_channels().await {
+        Ok(channels) => {
+            let channel_exists = channels.iter().any(|c| c.name == channel_name);
+            if !channel_exists {
+                ui_logger.log(format!("❌ Channel '{}' not found in available channels. Use 'ls ch available' to see all discovered channels.", channel_name));
+                return;
+            }
+        }
+        Err(e) => {
+            error_logger.log_error(&format!("Failed to check available channels: {}", e));
+            ui_logger.log("❌ Could not verify channel exists. Please try again.".to_string());
+            return;
+        }
+    }
+
     if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), channel_name).await {
         error_logger.log_error(&format!("Failed to subscribe to channel: {}", e));
         ui_logger.log(format!("❌ Failed to subscribe to channel '{}': {}", channel_name, e));
     } else {
-        ui_logger.log(format!("Subscribed to channel '{}'", channel_name));
+        ui_logger.log(format!("✅ Subscribed to channel '{}'", channel_name));
     }
 }
 

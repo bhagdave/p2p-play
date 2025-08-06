@@ -13,6 +13,14 @@ All changes to this project will be documented in this file.
   - Integrated into unified network configuration for centralized management with persistent configuration and validation
   - Distinguishes between available channels and subscribed channels, providing fine-grained control over subscription behavior
   - Maintains full backward compatibility with existing commands and functionality
+
+### Fixed
+- **Channel Subscription Database Integrity**: Fixed critical issue where channel subscriptions could fail silently due to missing foreign key enforcement
+  - Enabled SQLite foreign key constraints (`PRAGMA foreign_keys = ON`) in database connections to ensure referential integrity
+  - Enhanced subscription error handling to check if channels exist before attempting subscription
+  - Improved user feedback when subscribing to non-existent channels with clear error messages
+  - Added better debugging messages for channel creation and subscription processes
+  - Fixed issue where users could subscribe to channels but wouldn't see them listed in the UI due to constraint violations
 - **Channel-Based TUI Navigation**: Implemented hierarchical channel → stories navigation system in the Terminal User Interface
   - Added `ViewMode` enum with `Channels` and `Stories(String)` variants to track navigation state between channel list and story views
   - Enhanced keyboard navigation with Enter key to drill down from channels to stories and Escape key to return to channels view
