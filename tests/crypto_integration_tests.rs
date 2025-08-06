@@ -18,8 +18,8 @@ async fn test_crypto_integration_with_libp2p_keys() {
     let alice_public_key = alice_keypair.public().encode_protobuf();
     let bob_public_key = bob_keypair.public().encode_protobuf();
 
-    alice_crypto.add_peer_public_key(bob_peer_id, bob_public_key);
-    bob_crypto.add_peer_public_key(alice_peer_id, alice_public_key);
+    alice_crypto.add_peer_public_key(bob_peer_id, bob_public_key).unwrap();
+    bob_crypto.add_peer_public_key(alice_peer_id, alice_public_key).unwrap();
 
     // Test message encryption/decryption
     let original_message = b"Hello from Alice to Bob via encrypted channel!";

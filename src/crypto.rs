@@ -8,6 +8,13 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
+// Security constants
+const ENCRYPTION_CONTEXT: &[u8] = b"p2p-play-encryption";
+const SHARED_SECRET_CONTEXT: &[u8] = b"p2p-play-shared-secret";
+const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB limit
+const REPLAY_PROTECTION_WINDOW_SECS: u64 = 300; // 5 minutes
+const MIN_PUBLIC_KEY_SIZE: usize = 32; // Minimum expected public key size
+
 /// Secure wrapper for encryption keys that zeros memory on drop
 #[derive(ZeroizeOnDrop)]
 struct SecureKey([u8; 32]);
@@ -80,8 +87,25 @@ impl CryptoService {
     }
 
     /// Add a peer's public key to the cache for encryption
-    pub fn add_peer_public_key(&mut self, peer_id: PeerId, public_key: Vec<u8>) {
+    pub fn add_peer_public_key(&mut self, peer_id: PeerId, public_key: Vec<u8>) -> Result<(), CryptoError> {
+        // Validate public key format and size
+        if public_key.is_empty() {
+            return Err(CryptoError::InvalidInput("Public key cannot be empty".to_string()));
+        }
+        
+        if public_key.len() < MIN_PUBLIC_KEY_SIZE {
+            return Err(CryptoError::InvalidInput(format!(
+                "Public key too small: {} bytes (minimum: {})",
+                public_key.len(), MIN_PUBLIC_KEY_SIZE
+            )));
+        }
+
+        // Try to decode the public key to verify it's valid
+        libp2p::identity::PublicKey::try_decode_protobuf(&public_key)
+            .map_err(|e| CryptoError::InvalidInput(format!("Invalid public key format: {}", e)))?;
+
         self.peer_public_keys.insert(peer_id, public_key);
+        Ok(())
     }
 
     /// Get our local peer ID
@@ -95,6 +119,18 @@ impl CryptoService {
         message: &[u8],
         recipient_peer_id: &PeerId,
     ) -> Result<EncryptedPayload, CryptoError> {
+        // Validate message size
+        if message.is_empty() {
+            return Err(CryptoError::InvalidInput("Message cannot be empty".to_string()));
+        }
+        
+        if message.len() > MAX_MESSAGE_SIZE {
+            return Err(CryptoError::InvalidInput(format!(
+                "Message too large: {} bytes (maximum: {})",
+                message.len(), MAX_MESSAGE_SIZE
+            )));
+        }
+
         // Get recipient's public key from cache
         let recipient_public_key =
             self.peer_public_keys
@@ -115,7 +151,7 @@ impl CryptoService {
         // Derive encryption key using HKDF with secure key handling
         let hk = Hkdf::<Sha256>::new(None, &shared_secret);
         let mut encryption_key_data = [0u8; 32];
-        hk.expand(b"p2p-play-encryption", &mut encryption_key_data)
+        hk.expand(ENCRYPTION_CONTEXT, &mut encryption_key_data)
             .map_err(|e| CryptoError::EncryptionFailed(format!("Key derivation failed: {}", e)))?;
         
         let secure_key = SecureKey::new(encryption_key_data);
@@ -142,10 +178,24 @@ impl CryptoService {
 
     /// Decrypt message intended for local peer
     pub fn decrypt_message(&self, encrypted: &EncryptedPayload) -> Result<Vec<u8>, CryptoError> {
+        // Validate encrypted payload
+        if encrypted.encrypted_data.is_empty() {
+            return Err(CryptoError::DecryptionFailed(
+                "Encrypted data cannot be empty".to_string(),
+            ));
+        }
+
         // Validate nonce size
         if encrypted.nonce.len() != 12 {
             return Err(CryptoError::DecryptionFailed(
-                "Invalid nonce size".to_string(),
+                format!("Invalid nonce size: {} (expected: 12)", encrypted.nonce.len()),
+            ));
+        }
+
+        // Validate sender public key
+        if encrypted.sender_public_key.len() < MIN_PUBLIC_KEY_SIZE {
+            return Err(CryptoError::DecryptionFailed(
+                format!("Sender public key too small: {} bytes", encrypted.sender_public_key.len()),
             ));
         }
 
@@ -159,7 +209,7 @@ impl CryptoService {
         // Derive decryption key using HKDF with secure key handling
         let hk = Hkdf::<Sha256>::new(None, &shared_secret);
         let mut decryption_key_data = [0u8; 32];
-        hk.expand(b"p2p-play-encryption", &mut decryption_key_data)
+        hk.expand(ENCRYPTION_CONTEXT, &mut decryption_key_data)
             .map_err(|e| CryptoError::DecryptionFailed(format!("Key derivation failed: {}", e)))?;
         
         let secure_key = SecureKey::new(decryption_key_data);
@@ -177,15 +227,34 @@ impl CryptoService {
             .decrypt(nonce, encrypted.encrypted_data.as_ref())
             .map_err(|e| CryptoError::DecryptionFailed(format!("Decryption failed: {}", e)))?;
 
+        // Check decrypted message size
+        if decrypted_data.len() > MAX_MESSAGE_SIZE {
+            return Err(CryptoError::DecryptionFailed(
+                "Decrypted message exceeds size limit".to_string(),
+            ));
+        }
+
         Ok(decrypted_data)
     }
 
     /// Sign message with local private key
     pub fn sign_message(&self, message: &[u8]) -> Result<MessageSignature, CryptoError> {
+        // Validate message
+        if message.is_empty() {
+            return Err(CryptoError::SignatureFailed("Message cannot be empty".to_string()));
+        }
+        
+        if message.len() > MAX_MESSAGE_SIZE {
+            return Err(CryptoError::SignatureFailed(format!(
+                "Message too large: {} bytes (maximum: {})",
+                message.len(), MAX_MESSAGE_SIZE
+            )));
+        }
+
         // Get current timestamp
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
+            .map_err(|e| CryptoError::SignatureFailed(format!("Timestamp generation failed: {}", e)))?
             .as_secs();
 
         // Create message to sign (message + timestamp for replay protection)
@@ -208,12 +277,51 @@ impl CryptoService {
         })
     }
 
-    /// Verify message signature
+    /// Verify message signature with replay protection
     pub fn verify_signature(
         &self,
         message: &[u8],
         signature: &MessageSignature,
     ) -> Result<bool, CryptoError> {
+        // Validate inputs
+        if message.is_empty() {
+            return Err(CryptoError::VerificationFailed("Message cannot be empty".to_string()));
+        }
+        
+        if message.len() > MAX_MESSAGE_SIZE {
+            return Err(CryptoError::VerificationFailed(format!(
+                "Message too large: {} bytes (maximum: {})",
+                message.len(), MAX_MESSAGE_SIZE
+            )));
+        }
+
+        if signature.public_key.len() < MIN_PUBLIC_KEY_SIZE {
+            return Err(CryptoError::VerificationFailed(
+                format!("Public key too small: {} bytes", signature.public_key.len())
+            ));
+        }
+
+        // Check for replay attacks - reject messages older than the time window
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| CryptoError::VerificationFailed(format!("Current time error: {}", e)))?
+            .as_secs();
+        
+        if current_time.saturating_sub(signature.timestamp) > REPLAY_PROTECTION_WINDOW_SECS {
+            return Err(CryptoError::VerificationFailed(format!(
+                "Message too old (timestamp: {}, current: {}, max age: {}s)",
+                signature.timestamp, current_time, REPLAY_PROTECTION_WINDOW_SECS
+            )));
+        }
+
+        // Reject messages from the future (with small tolerance for clock skew)
+        if signature.timestamp > current_time + 60 { // 1 minute tolerance
+            return Err(CryptoError::VerificationFailed(format!(
+                "Message from future (timestamp: {}, current: {})",
+                signature.timestamp, current_time
+            )));
+        }
+
         // Recreate the signed message (message + timestamp)
         let mut message_to_verify = message.to_vec();
         message_to_verify.extend_from_slice(&signature.timestamp.to_be_bytes());
@@ -266,7 +374,7 @@ impl CryptoService {
             hasher.update(pub_key1);
         }
 
-        hasher.update(b"p2p-play-shared-secret");
+        hasher.update(SHARED_SECRET_CONTEXT);
         let result = hasher.finalize();
         Ok(result.to_vec())
     }
@@ -327,12 +435,12 @@ mod tests {
         // Add Bob's public key to Alice's cache
         let bob_peer_id = bob_crypto.local_peer_id();
         let bob_public_key = bob_keypair.public().encode_protobuf();
-        alice_crypto.add_peer_public_key(bob_peer_id, bob_public_key);
+        alice_crypto.add_peer_public_key(bob_peer_id, bob_public_key).unwrap();
 
         // Add Alice's public key to Bob's cache
         let alice_peer_id = alice_crypto.local_peer_id();
         let alice_public_key = alice_crypto.local_keypair.public().encode_protobuf();
-        bob_crypto.add_peer_public_key(alice_peer_id, alice_public_key);
+        bob_crypto.add_peer_public_key(alice_peer_id, alice_public_key).unwrap();
 
         // Encrypt message from Alice to Bob
         let encrypted = alice_crypto.encrypt_message(message, &bob_peer_id).unwrap();
@@ -365,16 +473,17 @@ mod tests {
     #[test]
     fn test_public_key_management() {
         let keypair = create_test_keypair();
-        let mut crypto_service = CryptoService::new(keypair);
+        let mut crypto_service = CryptoService::new(keypair.clone());
 
         let peer_id = PeerId::random();
-        let public_key = b"test_public_key".to_vec();
+        // Use a real public key format instead of test bytes
+        let public_key = keypair.public().encode_protobuf();
 
         // Initially, peer should not be found
         assert!(crypto_service.public_key_from_peer_id(&peer_id).is_err());
 
         // Add peer public key
-        crypto_service.add_peer_public_key(peer_id, public_key.clone());
+        crypto_service.add_peer_public_key(peer_id, public_key.clone()).unwrap();
 
         // Now it should be found
         let retrieved_key = crypto_service.public_key_from_peer_id(&peer_id).unwrap();
@@ -399,5 +508,88 @@ mod tests {
             }
             other => panic!("Unexpected error: {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_input_validation() {
+        let keypair = create_test_keypair();
+        let mut crypto_service = CryptoService::new(keypair.clone());
+
+        // Test empty message encryption
+        let peer_id = PeerId::random();
+        let result = crypto_service.encrypt_message(b"", &peer_id);
+        assert!(matches!(result.unwrap_err(), CryptoError::InvalidInput(_)));
+
+        // Test empty message signing
+        let result = crypto_service.sign_message(b"");
+        assert!(matches!(result.unwrap_err(), CryptoError::SignatureFailed(_)));
+
+        // Test invalid public key addition
+        let result = crypto_service.add_peer_public_key(peer_id, vec![]);
+        assert!(matches!(result.unwrap_err(), CryptoError::InvalidInput(_)));
+
+        // Test too small public key
+        let result = crypto_service.add_peer_public_key(peer_id, vec![1, 2, 3]);
+        assert!(matches!(result.unwrap_err(), CryptoError::InvalidInput(_)));
+
+        // Test invalid public key format
+        let result = crypto_service.add_peer_public_key(peer_id, vec![0; 64]);
+        assert!(matches!(result.unwrap_err(), CryptoError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn test_message_size_limits() {
+        let alice_keypair = create_test_keypair();
+        let bob_keypair = create_test_keypair();
+
+        let mut alice_crypto = CryptoService::new(alice_keypair);
+        let bob_crypto = CryptoService::new(bob_keypair.clone());
+
+        let bob_peer_id = bob_crypto.local_peer_id();
+        let bob_public_key = bob_keypair.public().encode_protobuf();
+        alice_crypto.add_peer_public_key(bob_peer_id, bob_public_key).unwrap();
+
+        // Test message at limit (should succeed)
+        let large_message = vec![42u8; 1024 * 1024]; // 1MB
+        let result = alice_crypto.encrypt_message(&large_message, &bob_peer_id);
+        assert!(result.is_ok());
+
+        // Test message over limit (should fail)
+        let oversized_message = vec![42u8; 1024 * 1024 + 1]; // 1MB + 1 byte
+        let result = alice_crypto.encrypt_message(&oversized_message, &bob_peer_id);
+        assert!(matches!(result.unwrap_err(), CryptoError::InvalidInput(_)));
+    }
+
+    #[test]
+    fn test_replay_protection() {
+        let keypair = create_test_keypair();
+        let crypto_service = CryptoService::new(keypair);
+
+        let message = b"test message";
+
+        // Create a signature
+        let mut signature = crypto_service.sign_message(message).unwrap();
+
+        // Valid signature should pass
+        let result = crypto_service.verify_signature(message, &signature);
+        assert!(result.is_ok() && result.unwrap());
+
+        // Modify timestamp to be too old (should fail)
+        signature.timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() - 400; // 400 seconds ago (beyond 300 second window)
+
+        let result = crypto_service.verify_signature(message, &signature);
+        assert!(matches!(result.unwrap_err(), CryptoError::VerificationFailed(_)));
+
+        // Modify timestamp to be from future (should fail)
+        signature.timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() + 120; // 2 minutes in future
+
+        let result = crypto_service.verify_signature(message, &signature);
+        assert!(matches!(result.unwrap_err(), CryptoError::VerificationFailed(_)));
     }
 }

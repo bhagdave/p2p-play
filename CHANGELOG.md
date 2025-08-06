@@ -33,11 +33,15 @@ All changes to this project will be documented in this file.
   - **Ed25519 Digital Signatures**: Fast, secure digital signatures using existing libp2p keypairs with timestamp-based replay protection
   - **Secure Key Derivation**: HKDF-SHA256 for deriving encryption keys from shared secrets with proper cryptographic safety
   - **Memory Security**: Automatic secure memory clearing using zeroize for sensitive cryptographic key material
-  - **Public Key Management**: Efficient caching and retrieval of peer public keys with seamless libp2p integration
+  - **Input Validation**: Comprehensive validation including message size limits (1MB), public key format verification, and empty input checks
+  - **Replay Protection**: Enforced timestamp validation with configurable time windows (5 minutes) to prevent replay attacks
+  - **Security Constants**: Replaced hardcoded magic strings with named constants for better maintainability and security
+  - **Enhanced Error Handling**: Detailed error messages with proper input validation and timestamp verification
+  - **Public Key Management**: Efficient caching and retrieval of peer public keys with seamless libp2p integration and format validation
   - **Comprehensive API**: Complete encrypt/decrypt/sign/verify functionality following exact specification requirements
   - **Integration Ready**: Designed for DirectMessage encryption and secure message routing through intermediate nodes
   - **Memory Safety**: Proper handling of sensitive cryptographic data with secure random nonce generation and automatic memory clearing
-  - **Extensive Testing**: 6 unit tests and 3 integration tests with 100% roundtrip verification and error path coverage
+  - **Extensive Testing**: 9 unit tests and 3 integration tests with 100% roundtrip verification, input validation, and replay protection coverage
   - **Usage Documentation**: Complete examples in `docs/crypto_usage.md` with integration patterns and security guarantees
   - **Dependencies Added**: chacha20poly1305 (0.10), hkdf (0.12), rand (0.8), sha2 (0.10), zeroize (1.8)
   - **Module Export**: Available as `p2p_play::crypto` for easy external integration
