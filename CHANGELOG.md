@@ -4,6 +4,14 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
+  - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
+  - Replaced all hardcoded Unicode emojis throughout UI with conditional compilation using `#[cfg(windows)]`
+  - Updated cursor positioning logic to account for different display widths between ASCII and Unicode icons
+  - Non-Windows platforms continue to display colorful Unicode emojis for better user experience
+  - Added comprehensive tests for icon utility functionality
+
 ### Added
 - **Channel-Based TUI Navigation**: Implemented hierarchical channel → stories navigation system in the Terminal User Interface
   - Added `ViewMode` enum with `Channels` and `Stories(String)` variants to track navigation state between channel list and story views
