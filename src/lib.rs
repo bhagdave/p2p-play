@@ -1,5 +1,6 @@
 pub mod bootstrap;
 pub mod bootstrap_logger;
+pub mod crypto;
 pub mod error_logger;
 pub mod event_handlers;
 pub mod handlers;

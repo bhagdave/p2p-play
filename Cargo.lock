@@ -2345,19 +2345,24 @@ name = "p2p-play"
 version = "0.7.5"
 dependencies = [
  "bytes",
+ "chacha20poly1305",
  "chrono",
  "crossterm",
  "env_logger",
  "futures",
+ "hkdf",
  "libp2p",
  "log",
  "once_cell",
+ "rand 0.8.5",
  "ratatui",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
+ "x25519-dalek",
 ]
 
 [[package]]
