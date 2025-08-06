@@ -250,27 +250,47 @@ pub async fn handle_delete_story(
     error_logger: &ErrorLogger,
 ) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("delete s ") {
-        match rest.trim().parse::<usize>() {
-            Ok(id) => match delete_local_story(id).await {
-                Ok(deleted) => {
-                    if deleted {
-                        ui_logger.log(format!("Story with id {} deleted successfully", id));
-                        return Some(ActionResult::RefreshStories);
-                    } else {
-                        ui_logger.log(format!("Story with id {} not found", id));
+        // Split by comma and process each ID
+        let id_strings: Vec<&str> = rest.split(',').map(|s| s.trim()).collect();
+        let mut any_deleted = false;
+
+        // Skip empty strings that might result from trailing commas or double commas
+        let valid_id_strings: Vec<&str> =
+            id_strings.into_iter().filter(|s| !s.is_empty()).collect();
+
+        if valid_id_strings.is_empty() {
+            ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
+            return None;
+        }
+
+        for id_str in valid_id_strings {
+            match id_str.parse::<usize>() {
+                Ok(id) => match delete_local_story(id).await {
+                    Ok(deleted) => {
+                        if deleted {
+                            ui_logger.log(format!("Story with id {} deleted successfully", id));
+                            any_deleted = true;
+                        } else {
+                            ui_logger.log(format!("Story with id {} not found", id));
+                        }
                     }
-                }
+                    Err(e) => {
+                        error_logger
+                            .log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                    }
+                },
                 Err(e) => {
-                    error_logger
-                        .log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                    ui_logger.log(format!("Invalid story id '{}': {}", id_str, e));
                 }
-            },
-            Err(e) => {
-                ui_logger.log(format!("Invalid story id '{}': {}", rest.trim(), e));
             }
         }
+
+        // Return RefreshStories if any story was successfully deleted
+        if any_deleted {
+            return Some(ActionResult::RefreshStories);
+        }
     } else {
-        ui_logger.log("Usage: delete s <id>".to_string());
+        ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
     }
     None
 }
@@ -286,7 +306,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("show story <id> to show story details".to_string());
     ui_logger.log("show desc to show your node description".to_string());
     ui_logger.log("get desc <peer_alias> to get description from peer".to_string());
-    ui_logger.log("delete s <id> to delete a story".to_string());
+    ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
