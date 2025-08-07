@@ -1,7 +1,7 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     establish_direct_connection, handle_create_channel, handle_create_description,
-    handle_create_stories, handle_delete_story, handle_direct_message,
+    handle_create_stories_with_sender, handle_delete_story, handle_direct_message,
     handle_get_description, handle_help, handle_list_channels,
     handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
     handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
