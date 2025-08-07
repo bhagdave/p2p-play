@@ -2,6 +2,7 @@ use crate::error_logger::ErrorLogger;
 use crate::network::{
     DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC,
 };
+use crate::relay::{RelayService, RelayError};
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config,
     load_node_description, mark_story_as_read, publish_story, read_channels, read_local_stories,
@@ -9,7 +10,7 @@ use crate::storage::{
     subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{
-    ActionResult, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
+    ActionResult, DirectMessage, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
     PendingDirectMessage, Story,
 };
 use bytes::Bytes;
@@ -560,6 +561,258 @@ pub async fn handle_direct_message(
         );
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
+    }
+}
+
+/// Enhanced direct message handler with relay support as fallback
+pub async fn handle_direct_message_with_relay(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    peer_names: &HashMap<PeerId, String>,
+    local_peer_name: &Option<String>,
+    sorted_peer_names_cache: &SortedPeerNamesCache,
+    ui_logger: &UILogger,
+    dm_config: &DirectMessageConfig,
+    relay_service: &mut Option<RelayService>,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+) {
+    if let Some(rest) = cmd.strip_prefix("msg ") {
+        let (to_name, message) =
+            match parse_direct_message_command(rest, sorted_peer_names_cache.get_sorted_names()) {
+                Some((name, msg)) => (name, msg),
+                None => {
+                    ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
+                    return;
+                }
+            };
+
+        if to_name.is_empty() || message.is_empty() {
+            ui_logger.log("Both peer alias and message must be non-empty".to_string());
+            return;
+        }
+
+        let from_name = match local_peer_name {
+            Some(name) => name.clone(),
+            None => {
+                ui_logger.log("You must set your name first using 'name <alias>'".to_string());
+                return;
+            }
+        };
+
+        if to_name.trim().is_empty() {
+            ui_logger.log("Peer name cannot be empty".to_string());
+            return;
+        }
+
+        if to_name.len() > 50 {
+            ui_logger.log("Peer name too long (max 50 characters)".to_string());
+            return;
+        }
+
+        // Try to find current peer ID
+        let target_peer_info = peer_names
+            .iter()
+            .find(|(_, name)| name == &&to_name)
+            .map(|(peer_id, _)| (*peer_id, false));
+
+        if let Some((target_peer_id, _)) = target_peer_info {
+            // Check relay configuration to see if we should prefer direct or always use relay
+            let prefer_direct = relay_service
+                .as_ref()
+                .map(|rs| rs.config().prefer_direct)
+                .unwrap_or(true);
+
+            if prefer_direct {
+                // 1. Try direct connection first if peer is known and connected
+                ui_logger.log(format!("⏳ Attempting direct message to {}...", to_name));
+                
+                let direct_msg_request = DirectMessageRequest {
+                    from_peer_id: PEER_ID.to_string(),
+                    from_name: from_name.clone(),
+                    to_name: to_name.clone(),
+                    message: message.clone(),
+                    timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs(),
+                };
+
+                // Attempt direct send
+                let request_id = swarm
+                    .behaviour_mut()
+                    .request_response
+                    .send_request(&target_peer_id, direct_msg_request.clone());
+
+                ui_logger.log(format!("📨 Direct message sent to {} (request_id: {:?})", to_name, request_id));
+                debug!("Direct message sent to {} with request_id {:?}", to_name, request_id);
+                
+                // Still try relay as a backup for reliability
+                if let Some(relay_svc) = relay_service {
+                    if relay_svc.config().enable_relay {
+                        debug!("Also sending via relay for backup delivery to {}", to_name);
+                        try_relay_delivery(
+                            swarm,
+                            relay_svc,
+                            &from_name,
+                            &to_name,
+                            &message,
+                            &target_peer_id,
+                            ui_logger,
+                        ).await;
+                    }
+                }
+                return;
+            }
+        }
+
+        // 2. Try relay delivery if relay service is available and enabled
+        if let Some(relay_svc) = relay_service {
+            if relay_svc.config().enable_relay {
+                let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
+                    peer_id
+                } else {
+                    // For unknown peers, we can't encrypt directly to them yet
+                    ui_logger.log(format!("❌ Cannot relay to unknown peer '{}' - peer not in network", to_name));
+                    // Fall through to queuing system
+                    ui_logger.log(format!("📥 Queueing message for {} - will retry when peer connects", to_name));
+                    queue_message_for_retry(
+                        &from_name,
+                        &to_name,
+                        &message,
+                        &target_peer_info,
+                        dm_config,
+                        pending_messages,
+                        ui_logger,
+                    );
+                    return;
+                };
+
+                // Try relay delivery
+                if try_relay_delivery(
+                    swarm,
+                    relay_svc,
+                    &from_name,
+                    &to_name,
+                    &message,
+                    &relay_target_peer_id,
+                    ui_logger,
+                ).await {
+                    return; // Successfully sent via relay
+                }
+            }
+        }
+
+        // 3. Fall back to traditional queuing system for retry
+        ui_logger.log(format!("📥 Queueing message for {} - will retry when peer connects", to_name));
+        queue_message_for_retry(
+            &from_name,
+            &to_name,
+            &message,
+            &target_peer_info,
+            dm_config,
+            pending_messages,
+            ui_logger,
+        );
+    } else {
+        ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
+    }
+}
+
+/// Helper function to attempt relay delivery
+async fn try_relay_delivery(
+    swarm: &mut Swarm<StoryBehaviour>,
+    relay_service: &mut RelayService,
+    from_name: &str,
+    to_name: &str,
+    message: &str,
+    target_peer_id: &PeerId,
+    ui_logger: &UILogger,
+) -> bool {
+    ui_logger.log(format!("📡 Trying relay delivery to {}...", to_name));
+    
+    // Create DirectMessage struct for relay
+    let direct_msg = DirectMessage {
+        from_peer_id: PEER_ID.to_string(),
+        from_name: from_name.to_string(),
+        to_name: to_name.to_string(),
+        message: message.to_string(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+
+    // Create and broadcast relay message
+    match relay_service.create_relay_message(&direct_msg, target_peer_id) {
+        Ok(relay_msg) => {
+            // Broadcast the relay message via floodsub
+            match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
+                Ok(()) => {
+                    ui_logger.log(format!("✅ Message sent to {} via relay network", to_name));
+                    debug!("Relay message broadcasted successfully for {}", to_name);
+                    true
+                }
+                Err(e) => {
+                    ui_logger.log(format!("❌ Failed to broadcast relay message: {}", e));
+                    debug!("Relay broadcast failed: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            ui_logger.log(format!("❌ Failed to create relay message: {}", e));
+            debug!("Relay message creation failed: {}", e);
+            false
+        }
+    }
+}
+
+/// Helper function to queue message for retry
+fn queue_message_for_retry(
+    from_name: &str,
+    to_name: &str,
+    message: &str,
+    target_peer_info: &Option<(PeerId, bool)>,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+    ui_logger: &UILogger,
+) {
+    let (target_peer_id, is_placeholder) = target_peer_info.unwrap_or_else(|| {
+        // Generate a placeholder PeerId for queueing
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        to_name.hash(&mut hasher);
+        let placeholder_id =
+            PeerId::from_bytes(&hasher.finish().to_be_bytes()).unwrap_or(PeerId::random());
+        (placeholder_id, true)
+    });
+
+    let direct_msg_request = DirectMessageRequest {
+        from_peer_id: PEER_ID.to_string(),
+        from_name: from_name.to_string(),
+        to_name: to_name.to_string(),
+        message: message.to_string(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+
+    let pending_msg = PendingDirectMessage::new(
+        target_peer_id,
+        to_name.to_string(),
+        direct_msg_request,
+        dm_config.max_retry_attempts,
+        is_placeholder,
+    );
+
+    if let Ok(mut queue) = pending_messages.lock() {
+        queue.push(pending_msg);
+        ui_logger.log(format!("Message for {} added to retry queue", to_name));
+        debug!("Message queued for {} with fallback to retry system", to_name);
+    } else {
+        ui_logger.log("Failed to queue message - retry system unavailable".to_string());
     }
 }
 
