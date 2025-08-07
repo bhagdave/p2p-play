@@ -51,12 +51,12 @@ async fn test_available_vs_subscribed_channels() {
 
     let peer_id = "test_peer_123";
 
-    // Create some test channels
+    // Create some test channels (avoid "general" as it's created by default in migrations)
     create_channel("rust-programming", "Rust programming discussions", "alice").await.expect("Failed to create channel");
-    create_channel("general", "General discussions", "system").await.expect("Failed to create channel");
+    create_channel("testing", "Test discussions", "system").await.expect("Failed to create channel");
     create_channel("announcements", "Important announcements", "bob").await.expect("Failed to create channel");
 
-    // Test reading all available channels
+    // Test reading all available channels (3 created, default "general" gets cleared in test init)
     let available = read_channels().await.expect("Failed to read available channels");
     assert_eq!(available.len(), 3);
 
@@ -79,7 +79,7 @@ async fn test_available_vs_subscribed_channels() {
     assert_eq!(sub_count, 1);
 
     // Subscribe to another channel
-    subscribe_to_channel(peer_id, "general").await.expect("Failed to subscribe");
+    subscribe_to_channel(peer_id, "testing").await.expect("Failed to subscribe");
 
     // Test updated counts
     let sub_count_after = get_auto_subscription_count(peer_id).await.expect("Failed to get subscription count");
@@ -87,7 +87,10 @@ async fn test_available_vs_subscribed_channels() {
 
     let unsubscribed_final = read_unsubscribed_channels(peer_id).await.expect("Failed to read unsubscribed channels");
     assert_eq!(unsubscribed_final.len(), 1);
-    assert_eq!(unsubscribed_final[0].name, "announcements");
+    
+    // Should have "announcements" unsubscribed
+    let unsubscribed_names: Vec<&str> = unsubscribed_final.iter().map(|ch| ch.name.as_str()).collect();
+    assert!(unsubscribed_names.contains(&"announcements"));
 
     println!("✅ Available vs subscribed channels test passed!");
 }
