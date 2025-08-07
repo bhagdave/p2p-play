@@ -5,6 +5,9 @@ use p2p_play::types::{ActionResult, DirectMessageConfig, PendingDirectMessage, S
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
+// Mutex to ensure database-dependent tests don't interfere with each other
+static TEST_DB_MUTEX: Mutex<()> = Mutex::new(());
+
 #[tokio::test]
 async fn test_handle_set_name_valid() {
     let mut local_peer_name = None;
@@ -699,6 +702,8 @@ async fn test_ui_logger_functionality() {
 // Tests for batch delete story functionality
 #[tokio::test]
 async fn test_handle_delete_story_single_id() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::error_logger::ErrorLogger;
     use p2p_play::storage::{
         clear_database_for_testing, create_new_story_with_channel, read_local_stories,
@@ -742,6 +747,8 @@ async fn test_handle_delete_story_single_id() {
 
 #[tokio::test]
 async fn test_handle_delete_story_multiple_ids() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::error_logger::ErrorLogger;
     use p2p_play::storage::{
         clear_database_for_testing, create_new_story_with_channel, read_local_stories,
@@ -845,6 +852,8 @@ async fn test_handle_delete_story_nonexistent_id() {
 
 #[tokio::test]
 async fn test_handle_delete_story_mixed_valid_invalid() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::error_logger::ErrorLogger;
     use p2p_play::storage::{
         clear_database_for_testing, create_new_story_with_channel, read_local_stories,
@@ -895,6 +904,8 @@ async fn test_handle_delete_story_mixed_valid_invalid() {
 
 #[tokio::test]
 async fn test_handle_delete_story_with_spaces_and_invalid_entries() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::error_logger::ErrorLogger;
     use p2p_play::storage::{
         clear_database_for_testing, create_new_story_with_channel, read_local_stories,
@@ -975,4 +986,109 @@ async fn test_handle_delete_story_invalid_format() {
     }
 
     assert!(messages.iter().any(|m| m.contains("Usage:")));
+}
+
+#[tokio::test]
+async fn test_story_auto_publish_on_creation() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
+    use p2p_play::storage::{clear_database_for_testing, create_new_story_with_channel, read_local_stories};
+
+    // Initialize clean database for testing
+    clear_database_for_testing().await.unwrap();
+
+    // Create a test story
+    create_new_story_with_channel("Auto Publish Test", "Test Header", "Test Body", "general")
+        .await
+        .unwrap();
+
+    // Read the stories back
+    let stories = read_local_stories().await.unwrap();
+    
+    // Find our test story
+    let test_story = stories.iter().find(|s| s.name == "Auto Publish Test");
+    assert!(test_story.is_some(), "Story should be created");
+    
+    let story = test_story.unwrap();
+    
+    // Verify the story is automatically public (auto-published)
+    assert!(story.public, "Story should be automatically public/published");
+    assert_eq!(story.name, "Auto Publish Test");
+    assert_eq!(story.header, "Test Header");
+    assert_eq!(story.body, "Test Body");
+    assert_eq!(story.channel, "general");
+}
+
+#[tokio::test]
+async fn test_story_creation_broadcasts_to_peers() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
+    use p2p_play::handlers::{handle_create_stories, UILogger};
+    use p2p_play::error_logger::ErrorLogger;
+    use p2p_play::storage::clear_database_for_testing;
+    use tokio::sync::mpsc;
+
+    // Initialize clean database for testing
+    clear_database_for_testing().await.unwrap();
+
+    let (ui_sender, mut ui_receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(ui_sender);
+    let error_logger = ErrorLogger::new("test_errors.log");
+
+    // Test story creation with pipe format (non-interactive)
+    let result = handle_create_stories(
+        "create s AutoBroadcast|Header|Body|general",
+        &ui_logger,
+        &error_logger,
+    )
+    .await;
+
+    // Should return RefreshStories to indicate success and auto-publish
+    assert_eq!(result, Some(p2p_play::types::ActionResult::RefreshStories));
+
+    // Check UI messages for success indication
+    let mut messages = Vec::new();
+    while let Ok(msg) = ui_receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    // Should contain a success message (updated to match new message)
+    assert!(
+        messages.iter().any(|m| m.contains("created and auto-published")),
+        "Should have creation and auto-publish success message"
+    );
+}
+
+#[tokio::test]
+async fn test_manual_publish_still_works() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
+    use p2p_play::storage::{clear_database_for_testing, create_new_story_with_channel, read_local_stories, publish_story};
+    use tokio::sync::mpsc;
+
+    // Initialize clean database for testing
+    clear_database_for_testing().await.unwrap();
+
+    // Create a story (will be auto-published)
+    create_new_story_with_channel("Manual Publish Test", "Test Header", "Test Body", "general")
+        .await
+        .unwrap();
+
+    let stories = read_local_stories().await.unwrap();
+    let test_story = stories.iter().find(|s| s.name == "Manual Publish Test").unwrap();
+    
+    // Story should already be public from auto-publish
+    assert!(test_story.public);
+
+    // Test that manual publish command still works (should be a no-op for already public stories)
+    let (story_sender, mut story_receiver) = mpsc::unbounded_channel();
+    
+    let result = publish_story(test_story.id, story_sender).await;
+    assert!(result.is_ok(), "Manual publish should still work");
+
+    // Should receive the story in the broadcast channel
+    if let Ok(broadcasted_story) = story_receiver.try_recv() {
+        assert_eq!(broadcasted_story.id, test_story.id);
+        assert!(broadcasted_story.public);
+    }
 }
