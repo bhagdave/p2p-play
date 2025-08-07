@@ -5,6 +5,19 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Message Relay Mechanism**: Comprehensive message relay system enabling secure message delivery through intermediate nodes when direct peer connections are unavailable
+  - End-to-end encrypted messaging using ChaCha20Poly1305 cryptography with only intended recipients able to decrypt messages
+  - Intelligent routing with direct-first strategy that falls back to relay delivery and finally to retry queue for maximum reliability  
+  - Security features including rate limiting (10 messages/minute per peer), hop count limits (max 3 hops), and replay protection (5-minute message age window)
+  - Resource management with automatic cleanup of expired confirmations and rate limits
+  - Enhanced user experience with visual feedback showing delivery method: direct, relay network, or retry queue
+  - Seamless integration with existing floodsub infrastructure using dedicated relay topic
+  - Configurable relay settings through RelayConfig: enable_relay, enable_forwarding, max_hops, prefer_direct, rate_limit_per_peer
+  - New `src/relay.rs` module with complete RelayService implementation including encryption, forwarding, and rate limiting
+  - Extended message types in `src/types.rs`: RelayMessage, RelayConfig, RelayConfirmation for relay functionality
+  - Enhanced direct message handler with intelligent fallback mechanism in `handle_direct_message_with_relay()` function
+  - Comprehensive test coverage with 71 unit tests passing including 5 relay service tests
+  - Fixes issue #155
 - **Automatic Story Publishing**: Implemented automatic story publishing when stories are created, eliminating the friction of requiring users to manually run `publish s <id>` after story creation
   - Modified `create_new_story_with_channel()` to set stories as public by default instead of private
   - Enhanced story creation handlers to automatically broadcast newly created stories to connected peers

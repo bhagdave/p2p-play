@@ -6,6 +6,7 @@ pub mod event_handlers;
 pub mod handlers;
 pub mod migrations;
 pub mod network;
+pub mod relay;
 pub mod storage;
 pub mod types;
 pub mod ui;

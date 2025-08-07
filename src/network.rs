@@ -63,6 +63,7 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key
 
 pub static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 pub static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
+pub static RELAY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("relay"));
 
 fn generate_and_save_keypair() -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
@@ -246,6 +247,8 @@ pub fn create_swarm(
     debug!("Created floodsub with peer id: {:?}", PEER_ID.clone());
     debug!("Subscribing to topic: {:?}", TOPIC.clone());
     behaviour.floodsub.subscribe(TOPIC.clone());
+    debug!("Subscribing to relay topic: {:?}", RELAY_TOPIC.clone());
+    behaviour.floodsub.subscribe(RELAY_TOPIC.clone());
 
     // Enhanced swarm configuration with improved connection management
     let swarm_config = SwarmConfig::with_tokio_executor()
