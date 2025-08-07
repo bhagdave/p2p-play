@@ -27,9 +27,14 @@ async fn test_new_commands_integration() {
     conn.execute("DELETE FROM channels", []).expect("Failed to clear channels");
     drop(conn); // Release the lock
 
-    // Setup test environment with config in working directory  
-    let default_config = UnifiedNetworkConfig::new();
-    save_unified_network_config(&default_config).await.expect("Failed to save config");
+    // Setup test environment with config in working directory - use optimized config to match expectations
+    let mut optimized_config = UnifiedNetworkConfig::new();
+    // Set the optimized values that other tests expect
+    optimized_config.network.connection_maintenance_interval_seconds = 10;
+    optimized_config.network.connection_establishment_timeout_seconds = 45;
+    optimized_config.ping.interval_secs = 50;
+    optimized_config.ping.timeout_secs = 45;
+    save_unified_network_config(&optimized_config).await.expect("Failed to save config");
     
     let (ui_sender, mut ui_receiver) = mpsc::unbounded_channel();
     let ui_logger = UILogger::new(ui_sender);
