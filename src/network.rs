@@ -155,7 +155,7 @@ pub fn create_swarm(
     ping_config: &PingConfig,
 ) -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     use libp2p::tcp::Config;
-    use libp2p::{Transport, core::upgrade, noise, swarm::Config as SwarmConfig, tcp, yamux};
+    use libp2p::{Transport, core::upgrade, dns, noise, swarm::Config as SwarmConfig, tcp, yamux};
     use std::num::NonZeroU8;
     use std::time::Duration;
 
@@ -177,7 +177,8 @@ pub fn create_swarm(
     let mut yamux_config = yamux::Config::default();
     yamux_config.set_max_num_streams(512); // Allow more concurrent streams for better connection reuse
 
-    let transp = tcp::tokio::Transport::new(tcp_config)
+    let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
+        .map_err(|e| format!("Failed to create DNS transport: {}", e))?
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux_config)
