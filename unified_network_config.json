@@ -32,5 +32,13 @@
     "auto_subscribe_to_new_channels": false,
     "notify_new_channels": true,
     "max_auto_subscriptions": 10
+  },
+  "relay": {
+    "enable_relay": true,
+    "enable_forwarding": true,
+    "max_hops": 3,
+    "relay_timeout_ms": 5000,
+    "prefer_direct": true,
+    "rate_limit_per_peer": 10
   }
 }

@@ -2,7 +2,7 @@ use crate::error_logger::ErrorLogger;
 use crate::network::{
     DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC,
 };
-use crate::relay::{RelayService, RelayError};
+use crate::relay::RelayService;
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config,
     load_node_description, mark_story_as_read, publish_story, read_channels, read_local_stories,

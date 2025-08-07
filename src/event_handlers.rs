@@ -9,7 +9,7 @@ use crate::handlers::{
 };
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
-    PEER_ID, StoryBehaviour, TOPIC, RELAY_TOPIC,
+    PEER_ID, StoryBehaviour, TOPIC,
 };
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
