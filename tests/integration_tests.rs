@@ -2,6 +2,38 @@ use p2p_play::storage::*;
 use p2p_play::types::*;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
+use std::env;
+use uuid::Uuid;
+
+/// Helper function to set up test isolation with unique database path
+async fn setup_test_database() -> String {
+    let unique_db_path = format!("/tmp/test_db_{}.db", Uuid::new_v4());
+    unsafe {
+        env::set_var("TEST_DATABASE_PATH", &unique_db_path);
+    }
+    
+    // Reset database connection to use the new path
+    reset_db_connection_for_testing().await.unwrap();
+    
+    // Initialize the test database
+    ensure_stories_file_exists().await.unwrap();
+    
+    unique_db_path
+}
+
+/// Helper function to cleanup test database
+async fn cleanup_test_database(db_path: &str) {
+    // Reset the environment variable
+    unsafe {
+        env::remove_var("TEST_DATABASE_PATH");
+    }
+    
+    // Try to remove the test database file
+    if let Err(e) = std::fs::remove_file(db_path) {
+        // It's ok if the file doesn't exist or can't be removed in tests
+        eprintln!("Could not remove test database {}: {}", db_path, e);
+    }
+}
 
 #[tokio::test]
 async fn test_story_workflow_integration() {
@@ -396,9 +428,8 @@ async fn test_name_command_shows_current_alias() {
 async fn test_channel_creation_and_management() {
     use p2p_play::storage::*;
 
-    // Initialize database
-    ensure_stories_file_exists().await.unwrap();
-    clear_database_for_testing().await.unwrap();
+    // Set up isolated test database
+    let db_path = setup_test_database().await;
 
     // Test channel creation
     let channel_name = "tech";
@@ -424,15 +455,17 @@ async fn test_channel_creation_and_management() {
         .unwrap();
     let channels_after = read_channels().await.unwrap();
     assert_eq!(channels.len(), channels_after.len()); // Should be same count
+
+    // Cleanup
+    cleanup_test_database(&db_path).await;
 }
 
 #[tokio::test]
 async fn test_channel_subscriptions() {
     use p2p_play::storage::*;
 
-    // Initialize database
-    ensure_stories_file_exists().await.unwrap();
-    clear_database_for_testing().await.unwrap();
+    // Set up isolated test database
+    let db_path = setup_test_database().await;
 
     let peer_id = "test_peer_123";
     let channel1 = "tech";
@@ -467,6 +500,9 @@ async fn test_channel_subscriptions() {
     subscribe_to_channel(peer_id, channel2).await.unwrap();
     let final_subscriptions = read_subscribed_channels(peer_id).await.unwrap();
     assert_eq!(final_subscriptions.len(), 1);
+
+    // Cleanup
+    cleanup_test_database(&db_path).await;
 }
 
 #[tokio::test]
@@ -506,9 +542,8 @@ async fn test_stories_with_channels() {
 async fn test_channel_story_filtering() {
     use p2p_play::storage::*;
 
-    // Initialize database
-    ensure_stories_file_exists().await.unwrap();
-    clear_database_for_testing().await.unwrap();
+    // Set up isolated test database
+    let db_path = setup_test_database().await;
 
     let peer_id = "filter_test_peer";
 
@@ -561,15 +596,17 @@ async fn test_channel_story_filtering() {
 
     assert_eq!(general_stories.len(), 1);
     assert_eq!(general_stories[0].name, "General Post");
+
+    // Cleanup
+    cleanup_test_database(&db_path).await;
 }
 
 #[tokio::test]
 async fn test_channel_workflow_integration() {
     use p2p_play::storage::*;
 
-    // Initialize database
-    ensure_stories_file_exists().await.unwrap();
-    clear_database_for_testing().await.unwrap();
+    // Set up isolated test database
+    let db_path = setup_test_database().await;
 
     // Simulate two peers with different channel subscriptions
     let peer1_id = "peer1";
@@ -629,6 +666,9 @@ async fn test_channel_workflow_integration() {
 
     assert_eq!(tech_channel.created_by, peer1_id);
     assert_eq!(art_channel.created_by, peer2_id);
+
+    // Cleanup
+    cleanup_test_database(&db_path).await;
 }
 
 #[tokio::test]

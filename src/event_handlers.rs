@@ -1,5 +1,12 @@
 use crate::error_logger::ErrorLogger;
-use crate::handlers::*;
+use crate::handlers::{
+    establish_direct_connection, handle_create_channel, handle_create_description,
+    handle_create_stories, handle_delete_story, handle_direct_message,
+    handle_get_description, handle_help, handle_list_channels,
+    handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
+    handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
+    handle_subscribe_channel, handle_unsubscribe_channel, SortedPeerNamesCache, UILogger,
+};
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
     PEER_ID, StoryBehaviour, TOPIC,
@@ -20,7 +27,48 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-/// Handle response events by publishing them to the network
+/// Handle auto-subscription to a channel with error handling and limits checking
+async fn handle_auto_subscription(
+    peer_id: &str,
+    channel_name: &str,
+    max_auto_subs: usize,
+    ui_logger: &UILogger,
+) -> Result<bool, String> {
+    // Check if already subscribed
+    match crate::storage::read_subscribed_channels(peer_id).await {
+        Ok(subscribed) => {
+            if subscribed.contains(&channel_name.to_string()) {
+                // Already subscribed - this is normal, not an error
+                return Ok(false); // Not an error, just already subscribed
+            }
+        }
+        Err(e) => {
+            return Err(format!("Failed to check existing subscriptions: {}", e));
+        }
+    }
+
+    // Check subscription count against limit
+    match crate::storage::get_auto_subscription_count(peer_id).await {
+        Ok(current_count) => {
+            if current_count >= max_auto_subs {
+                ui_logger.log(format!(
+                    "⚠️  Auto-subscription limit reached ({}/{}). Use 'sub ch {}' to subscribe manually.",
+                    current_count, max_auto_subs, channel_name
+                ));
+                return Ok(false); // Not an error, just hit the limit
+            }
+        }
+        Err(e) => {
+            return Err(format!("Failed to check subscription count: {}", e));
+        }
+    }
+
+    // Attempt to auto-subscribe
+    match crate::storage::subscribe_to_channel(peer_id, channel_name).await {
+        Ok(_) => Ok(true),
+        Err(e) => Err(format!("Failed to subscribe: {}", e)),
+    }
+}
 pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBehaviour>) {
     debug!("Response received");
     let json = serde_json::to_string(&resp).expect("can jsonify response");
@@ -90,7 +138,9 @@ pub async fn handle_input_event(
 ) -> Option<ActionResult> {
     let line = line.trim();
     match line {
-        "ls ch" => handle_list_channels(ui_logger, error_logger).await,
+        cmd if cmd.starts_with("ls ch") => {
+            handle_list_channels(cmd, ui_logger, error_logger).await
+        }
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
@@ -104,10 +154,13 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
         cmd if cmd.starts_with("sub ") => {
-            handle_subscribe_channel(cmd, ui_logger, error_logger).await
+            return handle_subscribe_channel(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("unsub ") => {
-            handle_unsubscribe_channel(cmd, ui_logger, error_logger).await
+            return handle_unsubscribe_channel(cmd, ui_logger, error_logger).await;
+        }
+        cmd if cmd.starts_with("set auto-sub") => {
+            handle_set_auto_subscription(cmd, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("publish s") => {
             handle_publish_story(cmd, story_sender.clone(), ui_logger, error_logger).await
@@ -341,28 +394,42 @@ pub async fn handle_floodsub_event(
                         published_channel.channel.description,
                         msg.source
                     );
-                    ui_logger.log(format!(
-                        "📺 Received channel '{}' - {} from {}",
-                        published_channel.channel.name,
-                        published_channel.channel.description,
-                        published_channel.publisher
-                    ));
 
-                    // Save the received channel to local storage asynchronously
-                    let channel_to_save = published_channel.channel.clone();
-                    let ui_logger_clone = ui_logger.clone();
-                    tokio::spawn(async move {
-                        // Add validation before saving
-                        if channel_to_save.name.is_empty() || channel_to_save.description.is_empty()
-                        {
-                            debug!(
-                                "Ignoring invalid published channel with empty name or description"
-                            );
-                            return;
+                    // Load auto-subscription config to determine behavior
+                    let auto_sub_config = match crate::storage::load_unified_network_config().await {
+                        Ok(config) => config.channel_auto_subscription,
+                        Err(e) => {
+                            debug!("Failed to load auto-subscription config: {}", e);
+                            crate::types::ChannelAutoSubscriptionConfig::new() // Use defaults
                         }
+                    };
 
-                        // Distinguish error types
-                        match crate::storage::create_channel(
+                    // Show notification if enabled
+                    if auto_sub_config.notify_new_channels {
+                        ui_logger.log(format!(
+                            "📺 New channel discovered: '{}' - {} from {}",
+                            published_channel.channel.name,
+                            published_channel.channel.description,
+                            published_channel.publisher
+                        ));
+                    }
+
+                    // Handle auto-subscription if enabled (but avoid the tokio::spawn Send issue)
+                    let should_auto_subscribe = auto_sub_config.auto_subscribe_to_new_channels;
+                    let max_auto_subs = auto_sub_config.max_auto_subscriptions;
+
+                    // Save the received channel to local storage synchronously to avoid race condition
+                    let channel_to_save = &published_channel.channel;
+                    let peer_id_str = PEER_ID.to_string();
+                    
+                    // Add validation before saving
+                    if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
+                        debug!(
+                            "Ignoring invalid published channel with empty name or description"
+                        );
+                    } else {
+                        // Save the channel first - synchronously to ensure it exists before subscription
+                        let channel_saved = match crate::storage::create_channel(
                             &channel_to_save.name,
                             &channel_to_save.description,
                             &channel_to_save.created_by,
@@ -370,30 +437,58 @@ pub async fn handle_floodsub_event(
                         .await
                         {
                             Ok(_) => {
-                                ui_logger_clone.log(format!(
+                                ui_logger.log(format!(
                                     "📺 Channel '{}' added to your channels list",
                                     channel_to_save.name
                                 ));
+                                debug!("Successfully created channel '{}' in database", channel_to_save.name);
+                                true
                             }
                             Err(e) if e.to_string().contains("UNIQUE constraint") => {
                                 debug!(
-                                    "Published channel '{}' already exists",
+                                    "Published channel '{}' already exists in database",
                                     channel_to_save.name
                                 );
+                                // Still notify user that channel is available
+                                ui_logger.log(format!(
+                                    "📺 Channel '{}' is available (already in your channels list)",
+                                    channel_to_save.name
+                                ));
+                                true // Channel exists, can proceed with subscription
                             }
                             Err(e) => {
-                                // Create error logger for spawned task
-                                let error_logger_for_task = ErrorLogger::new("errors.log");
                                 crate::log_network_error!(
-                                    error_logger_for_task,
+                                    error_logger,
                                     "storage",
                                     "Failed to save received published channel '{}': {}",
                                     channel_to_save.name,
                                     e
                                 );
+                                false
+                            }
+                        };
+
+                        // Only attempt auto-subscription AFTER successful channel creation to avoid race condition
+                        if channel_saved && should_auto_subscribe {
+                            match handle_auto_subscription(&peer_id_str, &channel_to_save.name, max_auto_subs, &ui_logger).await {
+                                Ok(true) => {
+                                    ui_logger.log(format!(
+                                        "✅ Auto-subscribed to channel '{}'",
+                                        channel_to_save.name
+                                    ));
+                                }
+                                Ok(false) => {
+                                    // Auto-subscription was skipped (already subscribed or limit reached)
+                                }
+                                Err(e) => {
+                                    ui_logger.log(format!(
+                                        "❌ Failed to auto-subscribe to '{}': {}",
+                                        channel_to_save.name, e
+                                    ));
+                                }
                             }
                         }
-                    });
+                    }
                 }
             } else if let Ok(channel) = serde_json::from_slice::<crate::types::Channel>(&msg.data) {
                 debug!(

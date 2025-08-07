@@ -158,6 +158,17 @@ pub struct DirectMessageConfig {
     pub enable_timed_retries: bool,
 }
 
+/// Configuration for channel auto-subscription behavior
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChannelAutoSubscriptionConfig {
+    /// Auto-subscribe to new channels when discovered
+    pub auto_subscribe_to_new_channels: bool,
+    /// Show notifications for new channel discoveries
+    pub notify_new_channels: bool,
+    /// Limit auto-subscriptions to prevent spam
+    pub max_auto_subscriptions: usize,
+}
+
 /// Unified network configuration that consolidates all network-related settings
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnifiedNetworkConfig {
@@ -165,6 +176,7 @@ pub struct UnifiedNetworkConfig {
     pub network: NetworkConfig,
     pub ping: PingConfig,
     pub direct_message: DirectMessageConfig,
+    pub channel_auto_subscription: ChannelAutoSubscriptionConfig,
 }
 
 /// Pending direct message for retry logic
@@ -186,6 +198,7 @@ pub type ChannelSubscriptions = Vec<ChannelSubscription>;
 pub enum ActionResult {
     RefreshStories,
     StartStoryCreation,
+    RefreshChannels,
 }
 
 pub enum EventType {
@@ -561,6 +574,34 @@ impl Default for DirectMessageConfig {
     }
 }
 
+impl ChannelAutoSubscriptionConfig {
+    pub fn new() -> Self {
+        Self {
+            auto_subscribe_to_new_channels: false, // Conservative default
+            notify_new_channels: true,             // Enable notifications by default
+            max_auto_subscriptions: 10,            // Reasonable limit for spam prevention
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_auto_subscriptions == 0 {
+            return Err("max_auto_subscriptions must be greater than 0".to_string());
+        }
+
+        if self.max_auto_subscriptions > 100 {
+            return Err("max_auto_subscriptions should not exceed 100 to prevent spam".to_string());
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for ChannelAutoSubscriptionConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PingConfig {
     /// Create a new PingConfig with lenient default values
     pub fn new() -> Self {
@@ -624,6 +665,7 @@ impl UnifiedNetworkConfig {
             network: NetworkConfig::new(),
             ping: PingConfig::new(),
             direct_message: DirectMessageConfig::new(),
+            channel_auto_subscription: ChannelAutoSubscriptionConfig::new(),
         }
     }
 
@@ -633,6 +675,7 @@ impl UnifiedNetworkConfig {
         self.network.validate()?;
         self.ping.validate()?;
         self.direct_message.validate()?;
+        self.channel_auto_subscription.validate()?;
         Ok(())
     }
 

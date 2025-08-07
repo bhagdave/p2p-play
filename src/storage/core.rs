@@ -1,5 +1,5 @@
 use crate::types::{
-    BootstrapConfig, ChannelSubscription, ChannelSubscriptions, Channels,
+    BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
     DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
 };
 use crate::storage::{utils, mappers};
@@ -53,6 +53,10 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
     // Need to create or update connection
     debug!("Creating new SQLite database connection: {}", current_path);
     let conn = Connection::open(&current_path)?;
+    
+    // Enable foreign key constraints (SQLite has them disabled by default)
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+    
     let conn_arc = Arc::new(Mutex::new(conn));
 
     // Update the stored connection and path
@@ -61,7 +65,7 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
         *state = Some((conn_arc.clone(), current_path));
     }
 
-    debug!("Successfully connected to SQLite database");
+    debug!("Successfully connected to SQLite database with foreign keys enabled");
     Ok(conn_arc)
 }
 
@@ -69,6 +73,57 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
 pub async fn reset_db_connection_for_testing() -> Result<(), Box<dyn Error>> {
     let mut state = DB_STATE.write().await;
     *state = None;
+    // Add a small delay to ensure any pending database operations complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    Ok(())
+}
+
+/// Initialize a clean test database with proper isolation
+pub async fn init_test_database() -> Result<(), Box<dyn Error>> {
+    reset_db_connection_for_testing().await?;
+    ensure_stories_file_exists().await?;
+    
+    // Clear all existing data for clean test (only if tables exist)
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+    
+    // Disable foreign key checks temporarily to allow clean deletion
+    conn.execute("PRAGMA foreign_keys = OFF", [])?;
+    
+    // Check if tables exist and clear them
+    let table_exists = |table_name: &str| -> Result<bool, Box<dyn Error>> {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='{}'", 
+            table_name
+        ))?;
+        let exists = stmt.exists([])?;
+        Ok(exists)
+    };
+    
+    if table_exists("channel_subscriptions")? {
+        conn.execute("DELETE FROM channel_subscriptions", [])?;
+    }
+    if table_exists("channels")? {
+        conn.execute("DELETE FROM channels", [])?;
+    }
+    if table_exists("stories")? {
+        conn.execute("DELETE FROM stories", [])?;
+    }
+    if table_exists("peer_names")? {
+        conn.execute("DELETE FROM peer_names", [])?;
+    }
+    if table_exists("story_read_status")? {
+        conn.execute("DELETE FROM story_read_status", [])?;
+    }
+    
+    // Re-enable foreign key checks
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+    
+    drop(conn); // Release the lock
+    
+    // Add a small delay to ensure all operations complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+    
     Ok(())
 }
 
@@ -554,6 +609,78 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
     }
 
     Ok(channels)
+}
+
+/// Get full channel details for channels that the user is subscribed to
+pub async fn read_subscribed_channels_with_details(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT c.name, c.description, c.created_by, c.created_at 
+        FROM channels c
+        INNER JOIN channel_subscriptions cs ON c.name = cs.channel_name AND cs.peer_id = ?
+        ORDER BY c.name
+        "#,
+    )?;
+    
+    let channel_iter = stmt.query_map([peer_id], |row| {
+        Ok(Channel {
+            name: row.get(0)?,
+            description: row.get(1)?,
+            created_by: row.get(2)?,
+            created_at: row.get::<_, i64>(3)? as u64,
+        })
+    })?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
+
+/// Get channels that are available but not subscribed to by the given peer
+pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT c.name, c.description, c.created_by, c.created_at 
+        FROM channels c
+        LEFT JOIN channel_subscriptions cs ON c.name = cs.channel_name AND cs.peer_id = ?
+        WHERE cs.channel_name IS NULL
+        ORDER BY c.name
+        "#,
+    )?;
+    
+    let channel_iter = stmt.query_map([peer_id], |row| {
+        Ok(Channel {
+            name: row.get(0)?,
+            description: row.get(1)?,
+            created_by: row.get(2)?,
+            created_at: row.get::<_, i64>(3)? as u64,
+        })
+    })?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
+/// Get the count of current auto-subscriptions for a peer (to check against limits)
+pub async fn get_auto_subscription_count(peer_id: &str) -> Result<usize, Box<dyn Error>> {
+    let subscribed = read_subscribed_channels(peer_id).await?;
+    // For now, we'll count all subscriptions as auto-subscriptions
+    // In the future, we could add a flag to track which were auto vs manual
+    Ok(subscribed.len())
 }
 
 pub async fn read_channel_subscriptions() -> Result<ChannelSubscriptions, Box<dyn Error>> {

@@ -240,15 +240,15 @@ async fn main() {
         }
     }
 
-    // Load initial channels and update UI
-    match storage::read_channels().await {
+    // Load initial subscribed channels and update UI
+    match storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
         Ok(channels) => {
-            debug!("Loaded {} channels", channels.len());
+            debug!("Loaded {} subscribed channels", channels.len());
             app.update_channels(channels);
         }
         Err(e) => {
-            error!("Failed to load channels: {}", e);
-            app.add_to_log(format!("Failed to load channels: {}", e));
+            error!("Failed to load subscribed channels: {}", e);
+            app.add_to_log(format!("Failed to load subscribed channels: {}", e));
         }
     }
 
@@ -533,6 +533,21 @@ async fn main() {
                                 // Start interactive story creation mode
                                 app.start_story_creation();
                             }
+                            ActionResult::RefreshChannels => {
+                                // Channels were updated, refresh them
+                                match storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
+                                    Ok(channels) => {
+                                        debug!("Refreshed {} subscribed channels", channels.len());
+                                        app.update_channels(channels);
+                                    }
+                                    Err(e) => {
+                                        error_logger.log_error(&format!(
+                                            "Failed to refresh subscribed channels: {}",
+                                            e
+                                        ));
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -582,6 +597,21 @@ async fn main() {
                                 // Start interactive story creation mode
                                 app.start_story_creation();
                             }
+                            ActionResult::RefreshChannels => {
+                                // Channels were updated, refresh them
+                                match storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
+                                    Ok(channels) => {
+                                        debug!("Refreshed {} subscribed channels", channels.len());
+                                        app.update_channels(channels);
+                                    }
+                                    Err(e) => {
+                                        error_logger.log_error(&format!(
+                                            "Failed to refresh subscribed channels: {}",
+                                            e
+                                        ));
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -628,6 +658,21 @@ async fn main() {
                             ActionResult::StartStoryCreation => {
                                 // Start interactive story creation mode
                                 app.start_story_creation();
+                            }
+                            ActionResult::RefreshChannels => {
+                                // Channels were updated, refresh them
+                                match storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
+                                    Ok(channels) => {
+                                        debug!("Refreshed {} subscribed channels", channels.len());
+                                        app.update_channels(channels);
+                                    }
+                                    Err(e) => {
+                                        error_logger.log_error(&format!(
+                                            "Failed to refresh subscribed channels: {}",
+                                            e
+                                        ));
+                                    }
+                                }
                             }
                         }
                     }
