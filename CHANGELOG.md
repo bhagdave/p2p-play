@@ -5,6 +5,17 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Automatic Story Publishing**: Implemented automatic story publishing when stories are created, eliminating the friction of requiring users to manually run `publish s <id>` after story creation
+  - Modified `create_new_story_with_channel()` to set stories as public by default instead of private
+  - Enhanced story creation handlers to automatically broadcast newly created stories to connected peers
+  - Updated event handling to trigger auto-publish when stories are created
+  - Stories now automatically appear in other connected peers' story lists immediately upon creation
+  - Updated success message to indicate "created and auto-published" 
+  - Modified help text to clarify that `create s` now auto-publishes and `publish s` is for manual re-publishing
+  - Manual `publish s <id>` command continues to work as before for re-publishing stories
+  - Channel subscription filtering is preserved - only subscribed peers receive auto-published stories
+  - No breaking changes to existing workflows - maintains full backward compatibility
+  - Fixes issue #157
 - **Channel Auto-Subscription and Discovery System**: Comprehensive channel auto-subscription and discovery system for enhanced channel discoverability across the P2P network
   - Added `ChannelAutoSubscriptionConfig` with configurable settings for auto-subscription behavior, notifications, and subscription limits
   - Enhanced channel management commands: `ls ch available`, `ls ch unsubscribed`, `sub ch <channel>`, `unsub ch <channel>`, `set auto-sub [on|off|status]`
