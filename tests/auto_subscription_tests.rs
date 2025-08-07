@@ -3,7 +3,11 @@
 use p2p_play::storage::*;
 use p2p_play::types::*;
 use std::env;
+use std::sync::Mutex;
 use tempfile::TempDir;
+
+// Mutex to ensure database-dependent tests don't interfere with each other
+static TEST_DB_MUTEX: Mutex<()> = Mutex::new(());
 
 #[tokio::test]
 async fn test_auto_subscription_config() {
@@ -39,6 +43,8 @@ async fn test_unified_config_with_auto_subscription() {
 
 #[tokio::test]
 async fn test_available_vs_subscribed_channels() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     // Setup test database with unique name to prevent test interference
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test_channels.db");
@@ -121,6 +127,8 @@ async fn test_channel_auto_subscription_config_persistence() {
 
 #[tokio::test]
 async fn test_auto_subscription_logic() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     // Test the auto-subscription logic function with unique database
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test_auto_sub_logic.db");
