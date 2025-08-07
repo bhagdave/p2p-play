@@ -1144,6 +1144,12 @@ pub async fn handle_event(
         EventType::ChannelSubscription(subscription) => {
             handle_channel_subscription_event(subscription).await;
         }
+        EventType::RelayMessage(relay_msg) => {
+            handle_relay_message_event(relay_msg).await;
+        }
+        EventType::RelayConfirmation(relay_confirmation) => {
+            handle_relay_confirmation_event(relay_confirmation).await;
+        }
     }
     None
 }
@@ -1480,6 +1486,20 @@ pub async fn retry_messages_for_peer(
             msg.target_name, request_id
         );
     }
+}
+
+/// Handle relay message events (placeholder for now)
+async fn handle_relay_message_event(_relay_msg: crate::types::RelayMessage) {
+    // Placeholder for relay message handling
+    // This will be implemented in Phase 3 when we integrate with RelayService
+    debug!("Received relay message event (not yet implemented)");
+}
+
+/// Handle relay confirmation events (placeholder for now)
+async fn handle_relay_confirmation_event(_relay_confirmation: crate::types::RelayConfirmation) {
+    // Placeholder for relay confirmation handling
+    // This will be implemented in Phase 3 when we integrate with RelayService
+    debug!("Received relay confirmation event (not yet implemented)");
 }
 
 #[cfg(test)]
