@@ -270,6 +270,18 @@ impl RelayService {
         debug!("Updated relay configuration");
         Ok(())
     }
+
+    /// Get access to the crypto service for testing
+    #[cfg(test)]
+    pub fn crypto_service(&mut self) -> &mut CryptoService {
+        &mut self.crypto
+    }
+
+    /// Update rate limiting for testing
+    #[cfg(test)]
+    pub fn test_update_rate_limit(&mut self, peer_id: &PeerId) {
+        self.update_rate_limit(peer_id);
+    }
 }
 
 #[cfg(test)]
