@@ -16,6 +16,12 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 use tokio::time::{interval, Duration};
 
+// Configuration constants for event processing intervals
+const CONNECTION_MAINTENANCE_INTERVAL_SECS: u64 = 30;
+const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
+const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
+const DM_RETRY_INTERVAL_SECS: u64 = 10;
+
 /// Event processor that handles the main application event loop
 pub struct EventProcessor {
     // UI communication channels
@@ -71,10 +77,10 @@ impl EventProcessor {
             response_sender,
             story_sender,
             ui_sender,
-            connection_maintenance_interval: interval(Duration::from_secs(30)),
-            bootstrap_retry_interval: interval(Duration::from_secs(5)),
-            bootstrap_status_log_interval: interval(Duration::from_secs(60)),
-            dm_retry_interval: interval(Duration::from_secs(10)),
+            connection_maintenance_interval: interval(Duration::from_secs(CONNECTION_MAINTENANCE_INTERVAL_SECS)),
+            bootstrap_retry_interval: interval(Duration::from_secs(BOOTSTRAP_RETRY_INTERVAL_SECS)),
+            bootstrap_status_log_interval: interval(Duration::from_secs(BOOTSTRAP_STATUS_LOG_INTERVAL_SECS)),
+            dm_retry_interval: interval(Duration::from_secs(DM_RETRY_INTERVAL_SECS)),
             dm_config,
             pending_messages,
             ui_logger,

@@ -146,10 +146,14 @@ impl App {
 
     #[cfg(test)]
     pub fn new_for_test() -> Self {
-        // Create a mock terminal for testing that doesn't require actual terminal access
+        // Create a minimal test version that doesn't require terminal initialization
+        // This avoids the "No such device or address" error in CI environments
         use std::io;
-        let backend = CrosstermBackend::new(io::stdout()); // Use stdout() but don't enable raw mode
-        let terminal = Terminal::new(backend).expect("Failed to create mock terminal");
+        
+        // Use stdout but don't enable raw mode or alternate screen
+        // The key is not calling enable_raw_mode() or EnterAlternateScreen which cause CI issues
+        let backend = CrosstermBackend::new(io::stdout());
+        let terminal = Terminal::new(backend).expect("Failed to create test terminal");
         
         App {
             terminal,
