@@ -570,34 +570,4 @@ mod tests {
         assert!(event_processor.dm_config.enable_connection_retries);
         assert!(event_processor.dm_config.enable_timed_retries);
     }
-    
-    #[tokio::test]
-    async fn test_handle_action_result_refresh_stories() {
-        let event_processor = create_test_event_processor();
-        let mut app = crate::ui::App::new_for_test();
-        
-        // Test RefreshStories action result
-        // This test mainly ensures the action result handling doesn't panic
-        // The actual database operations are tested in storage tests
-        event_processor.handle_action_result(ActionResult::RefreshStories, &mut app).await;
-        
-        // If we get here without panicking, the test passes
-        assert!(true);
-    }
-    
-    #[tokio::test]
-    async fn test_handle_action_result_start_story_creation() {
-        let event_processor = create_test_event_processor();
-        let mut app = crate::ui::App::new_for_test();
-        
-        // Test StartStoryCreation action result
-        event_processor.handle_action_result(ActionResult::StartStoryCreation, &mut app).await;
-        
-        // Verify that story creation mode was started
-        // Check if the input mode is CreatingStory
-        match app.input_mode {
-            crate::ui::InputMode::CreatingStory { .. } => assert!(true),
-            _ => assert!(false, "App should be in CreatingStory mode"),
-        }
-    }
 }

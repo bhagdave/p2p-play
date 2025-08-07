@@ -144,54 +144,6 @@ impl App {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub fn new_for_test() -> Self {
-        // Create a minimal test version that doesn't require terminal initialization
-        // This avoids resource conflicts in CI environments by using a synchronization approach
-        use std::io;
-        use std::sync::{Arc, Mutex};
-        use std::time::Duration;
-        
-        // Use a mutex to ensure only one test terminal is created at a time
-        // This prevents "Resource temporarily unavailable" errors in concurrent test runs
-        static TERMINAL_MUTEX: std::sync::LazyLock<Arc<Mutex<()>>> = std::sync::LazyLock::new(|| Arc::new(Mutex::new(())));
-        
-        let _guard = TERMINAL_MUTEX.lock().expect("Failed to acquire terminal mutex");
-        
-        // Add a small delay to avoid rapid terminal creation/destruction conflicts
-        std::thread::sleep(Duration::from_millis(10));
-        
-        let backend = CrosstermBackend::new(io::stdout());
-        let terminal = Terminal::new(backend).expect("Failed to create test terminal");
-        
-        App {
-            terminal,
-            should_quit: false,
-            input: String::new(),
-            output_log: vec![
-                format!("{} P2P-Play Terminal UI - Ready!", Icons::target()),
-                format!(
-                    "{} Press 'i' to enter input mode, 'Esc' to exit input mode",
-                    Icons::memo()
-                ),
-                format!("{} Type 'help' for available commands", Icons::wrench()),
-                format!("{} Press 'c' to clear output", Icons::broom()),
-                format!("{} Press 'q' to quit", Icons::cross()),
-                "".to_string(),
-            ],
-            peers: HashMap::new(),
-            stories: Vec::new(),
-            channels: Vec::new(),
-            unread_counts: HashMap::new(),
-            view_mode: ViewMode::Channels,
-            local_peer_name: None,
-            list_state: ListState::default(),
-            input_mode: InputMode::Normal,
-            scroll_offset: 0,
-            auto_scroll: true,
-        }
-    }
-
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         if let Event::Key(key) = event {
             #[cfg(windows)]
