@@ -117,6 +117,7 @@ All changes to this project will be documented in this file.
   - Improved user feedback when subscribing to non-existent channels with clear error messages
   - Added better debugging messages for channel creation and subscription processes
   - Fixed issue where users could subscribe to channels but wouldn't see them listed in the UI due to constraint violations
+- **Bootstrap DNS errors**: Fixed multiple bootstrap DNS and handshake issues to try and get DHT bootstrap working
 
 ## [0.7.5] 2025-08-03
 
