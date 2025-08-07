@@ -149,6 +149,15 @@ pub async fn handle_create_stories(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
 ) -> Option<ActionResult> {
+    handle_create_stories_with_sender(cmd, ui_logger, error_logger, None).await
+}
+
+pub async fn handle_create_stories_with_sender(
+    cmd: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+    story_sender: Option<tokio::sync::mpsc::UnboundedSender<crate::types::Story>>,
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
@@ -182,9 +191,30 @@ pub async fn handle_create_stories(
                     error_logger.log_error(&format!("Failed to create story: {}", e));
                 } else {
                     ui_logger.log(format!(
-                        "Story created successfully in channel '{}'",
+                        "Story created and auto-published to channel '{}'",
                         channel
                     ));
+
+                    // Auto-broadcast the newly created story to connected peers
+                    if let Some(sender) = story_sender {
+                        // Read the stories to find the one we just created
+                        match read_local_stories().await {
+                            Ok(stories) => {
+                                // Find the most recently created story by name
+                                if let Some(created_story) = stories.iter().find(|s| s.name == *name && s.header == *header && s.body == *body) {
+                                    if let Err(e) = sender.send(created_story.clone()) {
+                                        error_logger.log_error(&format!("Failed to broadcast newly created story: {}", e));
+                                    } else {
+                                        ui_logger.log("Story automatically shared with connected peers".to_string());
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error_logger.log_error(&format!("Failed to read stories for auto-broadcast: {}", e));
+                            }
+                        }
+                    }
+
                     return Some(ActionResult::RefreshStories);
                 };
             }
@@ -311,10 +341,10 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
     ui_logger.log("ls sub to list your subscriptions".to_string());
-    ui_logger.log("create s name|header|body[|channel] to create story".to_string());
+    ui_logger.log("create s name|header|body[|channel] to create and auto-publish story".to_string());
     ui_logger.log("create ch name|description to create channel".to_string());
     ui_logger.log("create desc <description> to create node description".to_string());
-    ui_logger.log("publish s to publish story".to_string());
+    ui_logger.log("publish s to manually publish/re-publish story".to_string());
     ui_logger.log("show story <id> to show story details".to_string());
     ui_logger.log("show desc to show your node description".to_string());
     ui_logger.log("get desc <peer_alias> to get description from peer".to_string());

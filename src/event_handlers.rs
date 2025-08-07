@@ -1,7 +1,7 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     establish_direct_connection, handle_create_channel, handle_create_description,
-    handle_create_stories, handle_delete_story, handle_direct_message,
+    handle_create_stories_with_sender, handle_delete_story, handle_direct_message,
     handle_get_description, handle_help, handle_list_channels,
     handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
     handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
@@ -146,7 +146,7 @@ pub async fn handle_input_event(
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("create s") => {
-            return handle_create_stories(cmd, ui_logger, error_logger).await;
+            return handle_create_stories_with_sender(cmd, ui_logger, error_logger, Some(story_sender.clone())).await;
         }
         cmd if cmd.starts_with("create ch") => {
             return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger)

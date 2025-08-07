@@ -5,6 +5,9 @@ use tempfile::NamedTempFile;
 use std::env;
 use uuid::Uuid;
 
+// Mutex to ensure database-dependent tests don't interfere with each other
+static TEST_DB_MUTEX: Mutex<()> = Mutex::new(());
+
 /// Helper function to set up test isolation with unique database path
 async fn setup_test_database() -> String {
     let unique_db_path = format!("/tmp/test_db_{}.db", Uuid::new_v4());
@@ -426,6 +429,8 @@ async fn test_name_command_shows_current_alias() {
 // Channel functionality tests
 #[tokio::test]
 async fn test_channel_creation_and_management() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -462,6 +467,8 @@ async fn test_channel_creation_and_management() {
 
 #[tokio::test]
 async fn test_channel_subscriptions() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -507,6 +514,8 @@ async fn test_channel_subscriptions() {
 
 #[tokio::test]
 async fn test_stories_with_channels() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::storage::*;
 
     // Initialize database
@@ -540,6 +549,8 @@ async fn test_stories_with_channels() {
 
 #[tokio::test]
 async fn test_channel_story_filtering() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -603,6 +614,8 @@ async fn test_channel_story_filtering() {
 
 #[tokio::test]
 async fn test_channel_workflow_integration() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -714,6 +727,8 @@ async fn test_story_serialization_with_channel() {
 
 #[tokio::test]
 async fn test_channel_subscription_data_structures() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    
     use p2p_play::storage::*;
     use p2p_play::types::*;
 
