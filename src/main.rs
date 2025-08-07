@@ -6,6 +6,7 @@ mod event_handlers;
 mod handlers;
 mod migrations;
 mod network;
+mod relay;
 mod storage;
 mod types;
 mod ui;
