@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.8.0] TBC
 
 ### Added
 - **Refactored Event Processing Architecture**: Extracted the massive main.rs event loop (377 lines) into a dedicated `EventProcessor` struct for better separation of concerns and improved maintainability
