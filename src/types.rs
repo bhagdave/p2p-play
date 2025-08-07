@@ -68,7 +68,7 @@ pub struct DirectMessage {
 }
 
 /// Encrypted message for relay delivery
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RelayMessage {
     pub message_id: String,           // Unique message identifier
     pub target_peer_id: String,       // Intended recipient
@@ -237,6 +237,7 @@ pub enum ActionResult {
     RefreshStories,
     StartStoryCreation,
     RefreshChannels,
+    RebroadcastRelayMessage(crate::types::RelayMessage),
 }
 
 pub enum EventType {
@@ -253,8 +254,6 @@ pub enum EventType {
     DirectMessage(DirectMessage),
     Channel(Channel),
     ChannelSubscription(ChannelSubscription),
-    RelayMessage(RelayMessage),
-    RelayConfirmation(RelayConfirmation),
 }
 
 impl Story {
@@ -1056,6 +1055,14 @@ impl Icons {
         #[cfg(not(windows))]
         return "⚠️ ";
     }
+
+    /// Relay/antenna indicator for forwarded messages
+    pub fn antenna() -> &'static str {
+        #[cfg(windows)]
+        return "[RELAY]";
+        #[cfg(not(windows))]
+        return "📡";
+    }
 }
 
 #[cfg(test)]
@@ -1085,6 +1092,7 @@ mod tests {
         assert!(!Icons::pin().is_empty());
         assert!(!Icons::ping().is_empty());
         assert!(!Icons::warning().is_empty());
+        assert!(!Icons::antenna().is_empty());
     }
 
     #[test]

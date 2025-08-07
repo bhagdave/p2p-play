@@ -321,10 +321,20 @@ impl EventProcessor {
         }
 
         // Exchange public keys for encryption if relay service is available
-        if let Some(ref mut _relay_svc) = self.relay_service {
-            // TODO: Implement proper public key exchange mechanism
-            // For now, we'll rely on the existing peer discovery for public key exchange
-            debug!("Relay service available for peer {} - public key exchange not yet implemented", peer_id);
+        if let Some(ref mut relay_svc) = self.relay_service {
+            // Extract public key from PeerId using crypto service
+            match relay_svc.crypto_service().public_key_from_peer_id(&peer_id) {
+                Ok(public_key) => {
+                    if let Err(e) = relay_svc.crypto_service().add_peer_public_key(peer_id, public_key) {
+                        debug!("Failed to cache public key for peer {}: {}", peer_id, e);
+                    } else {
+                        debug!("Successfully cached public key for peer {}", peer_id);
+                    }
+                }
+                Err(e) => {
+                    debug!("Failed to extract public key for peer {}: {}", peer_id, e);
+                }
+            }
         }
 
         // Retry any pending direct messages for this peer
@@ -485,6 +495,11 @@ impl EventProcessor {
                         ));
                     }
                 }
+            }
+            ActionResult::RebroadcastRelayMessage(_) => {
+                // This should already be handled in handle_event where we have access to the swarm
+                // If we get here, it means there's a logic error
+                debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
             }
         }
     }

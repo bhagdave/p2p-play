@@ -285,7 +285,7 @@ pub async fn handle_floodsub_event(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     relay_service: &mut Option<crate::relay::RelayService>,
-) -> Option<()> {
+) -> Option<crate::types::ActionResult> {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
             debug!("Message event received from {:?}", msg.source);
@@ -342,7 +342,7 @@ pub async fn handle_floodsub_event(
                             ui_logger.log(format!("Warning: Failed to save received story: {}", e));
                         } else {
                             // Signal that stories need to be refreshed only if save was successful
-                            return Some(());
+                            return Some(crate::types::ActionResult::RefreshStories);
                         }
                     } else {
                         debug!(
@@ -551,7 +551,8 @@ pub async fn handle_floodsub_event(
                     match relay_svc.process_relay_message(&relay_msg) {
                         Ok(crate::relay::RelayAction::DeliverLocally(direct_msg)) => {
                             ui_logger.log(format!(
-                                "💬 Relay message delivered: {} -> {}: {}",
+                                "{} Relay message delivered: {} -> {}: {}",
+                                crate::types::Icons::speech(),
                                 direct_msg.from_name,
                                 direct_msg.to_name, 
                                 direct_msg.message
@@ -559,14 +560,16 @@ pub async fn handle_floodsub_event(
                             debug!("Relay message decrypted and delivered locally: {}", relay_msg.message_id);
                         }
                         Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
-                            // TODO: Re-broadcast the forwarded message via floodsub
+                            // Return action to re-broadcast the forwarded message via floodsub
                             debug!("Forwarding relay message: {}", forward_msg.message_id);
                             ui_logger.log(format!(
-                                "📡 Forwarding relay message {} (hops: {}/{})",
+                                "{} Forwarding relay message {} (hops: {}/{})",
+                                crate::types::Icons::antenna(),
                                 &forward_msg.message_id[..8],
                                 forward_msg.hop_count,
                                 forward_msg.max_hops
                             ));
+                            return Some(crate::types::ActionResult::RebroadcastRelayMessage(forward_msg));
                         }
                         Ok(crate::relay::RelayAction::DropMessage(reason)) => {
                             debug!("Dropping relay message {}: {}", relay_msg.message_id, reason);
@@ -1142,7 +1145,7 @@ pub async fn handle_event(
             handle_mdns_event(mdns_event, swarm, error_logger).await;
         }
         EventType::FloodsubEvent(floodsub_event) => {
-            if let Some(()) = handle_floodsub_event(
+            if let Some(action_result) = handle_floodsub_event(
                 floodsub_event,
                 response_sender,
                 peer_names,
@@ -1154,8 +1157,18 @@ pub async fn handle_event(
             )
             .await
             {
-                // Stories were updated, refresh them
-                return Some(ActionResult::RefreshStories);
+                match action_result {
+                    crate::types::ActionResult::RefreshStories => {
+                        return Some(ActionResult::RefreshStories);
+                    }
+                    crate::types::ActionResult::RebroadcastRelayMessage(relay_msg) => {
+                        // Rebroadcast the relay message via floodsub
+                        if let Err(e) = broadcast_relay_message(swarm, &relay_msg).await {
+                            error_logger.log_error(&format!("Failed to rebroadcast relay message: {}", e));
+                        }
+                    }
+                    _ => {} // Other action results are not expected from floodsub events
+                }
             }
         }
         EventType::PingEvent(ping_event) => {
@@ -1196,12 +1209,6 @@ pub async fn handle_event(
         }
         EventType::ChannelSubscription(subscription) => {
             handle_channel_subscription_event(subscription).await;
-        }
-        EventType::RelayMessage(relay_msg) => {
-            handle_relay_message_event(relay_msg).await;
-        }
-        EventType::RelayConfirmation(relay_confirmation) => {
-            handle_relay_confirmation_event(relay_confirmation).await;
         }
     }
     None
@@ -1539,18 +1546,6 @@ pub async fn retry_messages_for_peer(
             msg.target_name, request_id
         );
     }
-}
-
-/// Handle relay message events
-async fn handle_relay_message_event(relay_msg: crate::types::RelayMessage) {
-    debug!("Received relay message with ID: {} (processing not yet implemented)", relay_msg.message_id);
-    // TODO: Process relay message with RelayService when available in main event loop
-}
-
-/// Handle relay confirmation events
-async fn handle_relay_confirmation_event(relay_confirmation: crate::types::RelayConfirmation) {
-    debug!("Received relay confirmation for message ID: {} (processing not yet implemented)", relay_confirmation.message_id);
-    // TODO: Process relay confirmation with RelayService when available in main event loop
 }
 
 /// Broadcast a relay message via floodsub

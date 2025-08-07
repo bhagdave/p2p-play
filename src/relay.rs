@@ -1,3 +1,15 @@
+//! Application-level message relay service for P2P-Play
+//! 
+//! This module implements application-level message relaying through intermediate peers
+//! for the P2P-Play story sharing application. This is different from libp2p's relay
+//! protocol - it operates at the application message level using floodsub for transport.
+//!
+//! Key features:
+//! - End-to-end encryption of relayed messages using ChaCha20Poly1305
+//! - Digital signature authentication using Ed25519
+//! - Rate limiting and hop count controls to prevent network abuse
+//! - Automatic fallback from direct messaging to relay delivery
+
 use crate::crypto::{CryptoService, CryptoError};
 use crate::types::{DirectMessage, RelayConfig, RelayMessage, RelayConfirmation};
 use libp2p::PeerId;

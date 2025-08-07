@@ -30,7 +30,7 @@ impl SecureKey {
 }
 
 /// Encrypted message envelope
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct EncryptedPayload {
     pub encrypted_data: Vec<u8>,
     pub nonce: Vec<u8>,             // For authenticated encryption
@@ -38,7 +38,7 @@ pub struct EncryptedPayload {
 }
 
 /// Digital signature container
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MessageSignature {
     pub signature: Vec<u8>,
     pub public_key: Vec<u8>,
