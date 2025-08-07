@@ -568,7 +568,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_action_result_refresh_stories() {
         let event_processor = create_test_event_processor();
-        let mut app = crate::ui::App::new().expect("Failed to create test app");
+        let mut app = crate::ui::App::new_for_test();
         
         // Test RefreshStories action result
         // This test mainly ensures the action result handling doesn't panic
@@ -582,7 +582,7 @@ mod tests {
     #[tokio::test]
     async fn test_handle_action_result_start_story_creation() {
         let event_processor = create_test_event_processor();
-        let mut app = crate::ui::App::new().expect("Failed to create test app");
+        let mut app = crate::ui::App::new_for_test();
         
         // Test StartStoryCreation action result
         event_processor.handle_action_result(ActionResult::StartStoryCreation, &mut app).await;

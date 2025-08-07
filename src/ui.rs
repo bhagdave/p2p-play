@@ -144,6 +144,41 @@ impl App {
         Ok(())
     }
 
+    #[cfg(test)]
+    pub fn new_for_test() -> Self {
+        // Create a mock terminal for testing that doesn't require actual terminal access
+        use std::io;
+        let backend = CrosstermBackend::new(io::stdout()); // Use stdout() but don't enable raw mode
+        let terminal = Terminal::new(backend).expect("Failed to create mock terminal");
+        
+        App {
+            terminal,
+            should_quit: false,
+            input: String::new(),
+            output_log: vec![
+                format!("{} P2P-Play Terminal UI - Ready!", Icons::target()),
+                format!(
+                    "{} Press 'i' to enter input mode, 'Esc' to exit input mode",
+                    Icons::memo()
+                ),
+                format!("{} Type 'help' for available commands", Icons::wrench()),
+                format!("{} Press 'c' to clear output", Icons::broom()),
+                format!("{} Press 'q' to quit", Icons::cross()),
+                "".to_string(),
+            ],
+            peers: HashMap::new(),
+            stories: Vec::new(),
+            channels: Vec::new(),
+            unread_counts: HashMap::new(),
+            view_mode: ViewMode::Channels,
+            local_peer_name: None,
+            list_state: ListState::default(),
+            input_mode: InputMode::Normal,
+            scroll_offset: 0,
+            auto_scroll: true,
+        }
+    }
+
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
         if let Event::Key(key) = event {
             #[cfg(windows)]
