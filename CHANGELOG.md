@@ -13,20 +13,37 @@ All changes to this project will be documented in this file.
   - Integrated into unified network configuration for centralized management with persistent configuration and validation
   - Distinguishes between available channels and subscribed channels, providing fine-grained control over subscription behavior
   - Maintains full backward compatibility with existing commands and functionality
-
-### Fixed
-- **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
-  - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
-  - Replaced all hardcoded Unicode emojis throughout UI with conditional compilation using `#[cfg(windows)]`
-  - Updated cursor positioning logic to account for different display widths between ASCII and Unicode icons
-  - Non-Windows platforms continue to display colorful Unicode emojis for better user experience
-  - Added comprehensive tests for icon utility functionality
-- **Channel Subscription Database Integrity**: Fixed critical issue where channel subscriptions could fail silently due to missing foreign key enforcement
-  - Enabled SQLite foreign key constraints (`PRAGMA foreign_keys = ON`) in database connections to ensure referential integrity
-  - Enhanced subscription error handling to check if channels exist before attempting subscription
-  - Improved user feedback when subscribing to non-existent channels with clear error messages
-  - Added better debugging messages for channel creation and subscription processes
-  - Fixed issue where users could subscribe to channels but wouldn't see them listed in the UI due to constraint violations
+- **Refactored Storage Operations**: Significantly reduced code duplication in storage.rs by creating reusable database operation patterns
+  - Created new `src/storage/` module structure with specialized submodules:
+    - `utils.rs` - Common utilities (timestamp generation, ID generation, boolean conversion)
+    - `mappers.rs` - Result mapping functions for converting database rows to structs
+    - `query_builder.rs` - Fluent query builder for complex database operations  
+    - `traits.rs` - Generic CRUD operation traits and configuration management patterns
+  - Eliminated duplicate Story row-to-struct mapping logic across 6+ functions using `map_row_to_story`
+  - Replaced duplicate timestamp generation patterns with centralized `get_current_timestamp()` utility
+  - Replaced duplicate ID generation patterns with reusable `get_next_id()` function
+  - Standardized boolean handling with `rust_bool_to_db()` and `db_bool_to_rust()` converters
+  - Added 8 new unit tests covering the refactored storage components
+  - Maintained 100% backward compatibility - all existing functionality preserved
+  - All 57 tests continue to pass after refactoring
+- **Crypto Module for End-to-End Encryption**: Comprehensive cryptographic security module providing message encryption, decryption, and digital signatures for secure P2P communications
+  - **ChaCha20-Poly1305 AEAD**: Industry-standard authenticated encryption with associated data for message confidentiality and integrity
+  - **Ed25519 Digital Signatures**: Fast, secure digital signatures using existing libp2p keypairs with timestamp-based replay protection
+  - **Secure Key Derivation**: HKDF-SHA256 for deriving encryption keys from shared secrets with proper cryptographic safety
+  - **Memory Security**: Automatic secure memory clearing using zeroize for sensitive cryptographic key material
+  - **Input Validation**: Comprehensive validation including message size limits (1MB), public key format verification, and empty input checks
+  - **Replay Protection**: Enforced timestamp validation with configurable time windows (5 minutes) to prevent replay attacks
+  - **Security Constants**: Replaced hardcoded magic strings with named constants for better maintainability and security
+  - **Enhanced Error Handling**: Detailed error messages with proper input validation and timestamp verification
+  - **Public Key Management**: Efficient caching and retrieval of peer public keys with seamless libp2p integration and format validation
+  - **Comprehensive API**: Complete encrypt/decrypt/sign/verify functionality following exact specification requirements
+  - **Integration Ready**: Designed for DirectMessage encryption and secure message routing through intermediate nodes
+  - **Memory Safety**: Proper handling of sensitive cryptographic data with secure random nonce generation and automatic memory clearing
+  - **Extensive Testing**: 9 unit tests and 3 integration tests with 100% roundtrip verification, input validation, and replay protection coverage
+  - **Usage Documentation**: Complete examples in `docs/crypto_usage.md` with integration patterns and security guarantees
+  - **Dependencies Added**: chacha20poly1305 (0.10), hkdf (0.12), rand (0.8), sha2 (0.10), zeroize (1.8)
+  - **Module Export**: Available as `p2p_play::crypto` for easy external integration
+  - Fixes issue #154
 - **Batch Story Deletion**: Enhanced story deletion functionality to support deleting multiple stories at once using comma-separated IDs
   - Modified `handle_delete_story` function to parse comma-separated story IDs while maintaining full backward compatibility
   - Added robust error handling that reports invalid IDs but continues processing remaining valid ones  
@@ -52,6 +69,20 @@ All changes to this project will be documented in this file.
   - Maintained backward compatibility by supporting both `PublishedChannel` and legacy `Channel` message formats
   - Added comprehensive unit tests for `PublishedChannel` functionality including serialization and equality tests
   - Channel broadcasting now follows the exact same pattern as story broadcasting for consistency across the application
+
+### Fixed
+- **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
+  - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
+  - Replaced all hardcoded Unicode emojis throughout UI with conditional compilation using `#[cfg(windows)]`
+  - Updated cursor positioning logic to account for different display widths between ASCII and Unicode icons
+  - Non-Windows platforms continue to display colorful Unicode emojis for better user experience
+  - Added comprehensive tests for icon utility functionality
+- **Channel Subscription Database Integrity**: Fixed critical issue where channel subscriptions could fail silently due to missing foreign key enforcement
+  - Enabled SQLite foreign key constraints (`PRAGMA foreign_keys = ON`) in database connections to ensure referential integrity
+  - Enhanced subscription error handling to check if channels exist before attempting subscription
+  - Improved user feedback when subscribing to non-existent channels with clear error messages
+  - Added better debugging messages for channel creation and subscription processes
+  - Fixed issue where users could subscribe to channels but wouldn't see them listed in the UI due to constraint violations
 
 ## [0.7.5] 2025-08-03
 
