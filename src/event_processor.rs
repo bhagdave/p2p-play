@@ -4,6 +4,7 @@ use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{self, track_successful_connection, trigger_immediate_connection_maintenance, handle_event};
 use crate::handlers::{SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
 use crate::network::{StoryBehaviour, StoryBehaviourEvent, PEER_ID, TOPIC};
+use crate::relay::RelayService;
 use crate::storage;
 use crate::types::{ActionResult, DirectMessageConfig, EventType, PeerName, PendingDirectMessage};
 use crate::ui::{App, AppEvent, handle_ui_events};
@@ -51,6 +52,9 @@ pub struct EventProcessor {
     ui_logger: UILogger,
     error_logger: ErrorLogger,
     bootstrap_logger: BootstrapLogger,
+    
+    // Relay service for secure message routing
+    relay_service: Option<RelayService>,
 }
 
 impl EventProcessor {
@@ -68,6 +72,7 @@ impl EventProcessor {
         ui_logger: UILogger,
         error_logger: ErrorLogger,
         bootstrap_logger: BootstrapLogger,
+        relay_service: Option<RelayService>,
     ) -> Self {
         Self {
             ui_rcv,
@@ -86,6 +91,7 @@ impl EventProcessor {
             ui_logger,
             error_logger,
             bootstrap_logger,
+            relay_service,
         }
     }
 
@@ -283,7 +289,7 @@ impl EventProcessor {
     /// Handle connection established events
     #[allow(clippy::too_many_arguments)]
     async fn handle_connection_established(
-        &self,
+        &mut self,
         peer_id: PeerId,
         endpoint: &libp2p::core::ConnectedPoint,
         swarm: &mut Swarm<StoryBehaviour>,
@@ -312,6 +318,13 @@ impl EventProcessor {
             let json_bytes = Bytes::from(json.into_bytes());
             swarm.behaviour_mut().floodsub.publish(TOPIC.clone(), json_bytes);
             debug!("Sent local peer name '{}' to newly connected peer {}", name, peer_id);
+        }
+
+        // Exchange public keys for encryption if relay service is available
+        if let Some(ref mut _relay_svc) = self.relay_service {
+            // TODO: Implement proper public key exchange mechanism
+            // For now, we'll rely on the existing peer discovery for public key exchange
+            debug!("Relay service available for peer {} - public key exchange not yet implemented", peer_id);
         }
 
         // Retry any pending direct messages for this peer
@@ -404,7 +417,7 @@ impl EventProcessor {
 
     /// Process events with priority handling
     async fn process_event(
-        &self,
+        &mut self,
         event: EventType,
         app: &mut App,
         swarm: &mut Swarm<StoryBehaviour>,
@@ -425,6 +438,7 @@ impl EventProcessor {
             &self.bootstrap_logger,
             &self.dm_config,
             &self.pending_messages,
+            &mut self.relay_service,
         )
         .await;
 
@@ -557,6 +571,7 @@ mod tests {
             ui_logger,
             error_logger,
             bootstrap_logger,
+            None, // No relay service in tests
         )
     }
     

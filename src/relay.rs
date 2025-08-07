@@ -271,9 +271,14 @@ impl RelayService {
         Ok(())
     }
 
+    /// Get access to the crypto service
+    pub fn crypto_service(&mut self) -> &mut CryptoService {
+        &mut self.crypto
+    }
+
     /// Get access to the crypto service for testing
     #[cfg(test)]
-    pub fn crypto_service(&mut self) -> &mut CryptoService {
+    pub fn crypto_service_for_testing(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }
 

@@ -1,7 +1,7 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     establish_direct_connection, handle_create_channel, handle_create_description,
-    handle_create_stories_with_sender, handle_delete_story, handle_direct_message,
+    handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
     handle_get_description, handle_help, handle_list_channels,
     handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
     handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
@@ -135,6 +135,7 @@ pub async fn handle_input_event(
     error_logger: &ErrorLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+    relay_service: &mut Option<crate::relay::RelayService>,
 ) -> Option<ActionResult> {
     let line = line.trim();
     match line {
@@ -212,7 +213,7 @@ pub async fn handle_input_event(
             }
         }
         cmd if cmd.starts_with("msg ") => {
-            handle_direct_message(
+            handle_direct_message_with_relay(
                 cmd,
                 swarm,
                 peer_names,
@@ -220,6 +221,7 @@ pub async fn handle_input_event(
                 sorted_peer_names_cache,
                 ui_logger,
                 dm_config,
+                relay_service,
                 pending_messages,
             )
             .await;
@@ -282,6 +284,7 @@ pub async fn handle_floodsub_event(
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
+    relay_service: &mut Option<crate::relay::RelayService>,
 ) -> Option<()> {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
@@ -542,13 +545,44 @@ pub async fn handle_floodsub_event(
                 });
             } else if let Ok(relay_msg) = serde_json::from_slice::<crate::types::RelayMessage>(&msg.data) {
                 debug!("Received relay message from {}: {}", msg.source, relay_msg.message_id);
-                // For now, just log the relay message - full implementation will come in next phase
-                ui_logger.log(format!(
-                    "📡 Relay message received from {} (ID: {}, hops: {})",
-                    msg.source, 
-                    &relay_msg.message_id[..8], // Show first 8 chars of ID
-                    relay_msg.hop_count
-                ));
+                
+                // Process relay message if relay service is available
+                if let Some(relay_svc) = relay_service {
+                    match relay_svc.process_relay_message(&relay_msg) {
+                        Ok(crate::relay::RelayAction::DeliverLocally(direct_msg)) => {
+                            ui_logger.log(format!(
+                                "💬 Relay message delivered: {} -> {}: {}",
+                                direct_msg.from_name,
+                                direct_msg.to_name, 
+                                direct_msg.message
+                            ));
+                            debug!("Relay message decrypted and delivered locally: {}", relay_msg.message_id);
+                        }
+                        Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
+                            // TODO: Re-broadcast the forwarded message via floodsub
+                            debug!("Forwarding relay message: {}", forward_msg.message_id);
+                            ui_logger.log(format!(
+                                "📡 Forwarding relay message {} (hops: {}/{})",
+                                &forward_msg.message_id[..8],
+                                forward_msg.hop_count,
+                                forward_msg.max_hops
+                            ));
+                        }
+                        Ok(crate::relay::RelayAction::DropMessage(reason)) => {
+                            debug!("Dropping relay message {}: {}", relay_msg.message_id, reason);
+                        }
+                        Err(e) => {
+                            debug!("Failed to process relay message {}: {}", relay_msg.message_id, e);
+                        }
+                    }
+                } else {
+                    // Relay service not available, just log
+                    ui_logger.log(format!(
+                        "📡 Relay message received but relay service disabled (ID: {}, hops: {})",
+                        &relay_msg.message_id[..8],
+                        relay_msg.hop_count
+                    ));
+                }
             } else if let Ok(relay_confirmation) = serde_json::from_slice::<crate::types::RelayConfirmation>(&msg.data) {
                 debug!("Received relay confirmation from {}: {}", msg.source, relay_confirmation.message_id);
                 ui_logger.log(format!(
@@ -1078,6 +1112,7 @@ pub async fn handle_event(
     bootstrap_logger: &crate::bootstrap_logger::BootstrapLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+    relay_service: &mut Option<crate::relay::RelayService>,
 ) -> Option<ActionResult> {
     debug!("Event Received");
     match event {
@@ -1099,6 +1134,7 @@ pub async fn handle_event(
                 error_logger,
                 dm_config,
                 pending_messages,
+                relay_service,
             )
             .await;
         }
@@ -1114,6 +1150,7 @@ pub async fn handle_event(
                 sorted_peer_names_cache,
                 ui_logger,
                 error_logger,
+                relay_service,
             )
             .await
             {
@@ -1504,18 +1541,16 @@ pub async fn retry_messages_for_peer(
     }
 }
 
-/// Handle relay message events (placeholder for now)
-async fn handle_relay_message_event(_relay_msg: crate::types::RelayMessage) {
-    // Placeholder for relay message handling
-    // This will be implemented in Phase 3 when we integrate with RelayService
-    debug!("Received relay message event (not yet implemented)");
+/// Handle relay message events
+async fn handle_relay_message_event(relay_msg: crate::types::RelayMessage) {
+    debug!("Received relay message with ID: {} (processing not yet implemented)", relay_msg.message_id);
+    // TODO: Process relay message with RelayService when available in main event loop
 }
 
-/// Handle relay confirmation events (placeholder for now)
-async fn handle_relay_confirmation_event(_relay_confirmation: crate::types::RelayConfirmation) {
-    // Placeholder for relay confirmation handling
-    // This will be implemented in Phase 3 when we integrate with RelayService
-    debug!("Received relay confirmation event (not yet implemented)");
+/// Handle relay confirmation events
+async fn handle_relay_confirmation_event(relay_confirmation: crate::types::RelayConfirmation) {
+    debug!("Received relay confirmation for message ID: {} (processing not yet implemented)", relay_confirmation.message_id);
+    // TODO: Process relay confirmation with RelayService when available in main event loop
 }
 
 /// Broadcast a relay message via floodsub

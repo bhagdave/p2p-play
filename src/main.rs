@@ -14,10 +14,12 @@ mod ui;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
+use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
-use network::{PEER_ID, create_swarm};
+use network::{PEER_ID, KEYS, create_swarm};
+use relay::RelayService;
 use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
     load_unified_network_config,
@@ -207,6 +209,16 @@ async fn main() {
     )
     .expect("swarm can be started");
 
+    // Initialize crypto service with shared keypair
+    let crypto_service = CryptoService::new(KEYS.clone());
+    
+    // Initialize relay service with crypto and configuration
+    let relay_service = if unified_config.relay.enable_relay {
+        Some(RelayService::new(unified_config.relay.clone(), crypto_service))
+    } else {
+        None
+    };
+
     // Create event processor
     let mut event_processor = EventProcessor::new(
         ui_rcv,
@@ -221,6 +233,7 @@ async fn main() {
         ui_logger,
         error_logger,
         bootstrap_logger,
+        relay_service,
     );
 
     // Run the main event loop
