@@ -5,7 +5,7 @@ use crate::network::{
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config,
     load_node_description, mark_story_as_read, publish_story, read_channels, read_local_stories,
-    read_subscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
+    read_subscribed_channels, read_unsubscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
     subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{
@@ -308,7 +308,7 @@ pub async fn handle_delete_story(
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
-    ui_logger.log("ls ch to list channels".to_string());
+    ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
     ui_logger.log("ls sub to list your subscriptions".to_string());
     ui_logger.log("create s name|header|body[|channel] to create story".to_string());
     ui_logger.log("create ch name|description to create channel".to_string());
@@ -317,6 +317,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("show story <id> to show story details".to_string());
     ui_logger.log("show desc to show your node description".to_string());
     ui_logger.log("get desc <peer_alias> to get description from peer".to_string());
+    ui_logger.log("set auto-sub [on|off|status] to manage auto-subscription".to_string());
     ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
@@ -658,34 +659,101 @@ pub async fn handle_create_channel(
     None
 }
 
-pub async fn handle_list_channels(ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    match read_channels().await {
-        Ok(channels) => {
-            ui_logger.log("Available channels:".to_string());
-            for channel in channels {
-                ui_logger.log(format!("  {} - {}", channel.name, channel.description));
+pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
+    let rest = cmd.strip_prefix("ls ch");
+    match rest {
+        Some(" available") => {
+            // List all discovered channels (subscribed + unsubscribed)
+            match read_channels().await {
+                Ok(channels) => {
+                    ui_logger.log("Available channels:".to_string());
+                    if channels.is_empty() {
+                        ui_logger.log("  (no channels discovered)".to_string());
+                    } else {
+                        for channel in channels {
+                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
+                        }
+                    }
+                }
+                Err(e) => error_logger.log_error(&format!("Failed to read available channels: {}", e)),
             }
         }
-        Err(e) => error_logger.log_error(&format!("Failed to read channels: {}", e)),
+        Some(" unsubscribed") => {
+            // List channels available but not subscribed to
+            match read_unsubscribed_channels(&PEER_ID.to_string()).await {
+                Ok(channels) => {
+                    ui_logger.log("Unsubscribed channels:".to_string());
+                    if channels.is_empty() {
+                        ui_logger.log("  (no unsubscribed channels)".to_string());
+                    } else {
+                        for channel in channels {
+                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
+                        }
+                    }
+                }
+                Err(e) => error_logger.log_error(&format!("Failed to read unsubscribed channels: {}", e)),
+            }
+        }
+        Some("") | None => {
+            // Default behavior - list all channels
+            match read_channels().await {
+                Ok(channels) => {
+                    ui_logger.log("Available channels:".to_string());
+                    if channels.is_empty() {
+                        ui_logger.log("  (no channels discovered)".to_string());
+                    } else {
+                        for channel in channels {
+                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
+                        }
+                    }
+                }
+                Err(e) => error_logger.log_error(&format!("Failed to read channels: {}", e)),
+            }
+        }
+        _ => {
+            ui_logger.log("Usage: ls ch [available|unsubscribed]".to_string());
+        }
     }
 }
 
-pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    if let Some(channel_name) = cmd.strip_prefix("sub ") {
-        let channel_name = channel_name.trim();
-
-        if channel_name.is_empty() {
-            ui_logger.log("Usage: sub <channel_name>".to_string());
-            return;
-        }
-
-        if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), channel_name).await {
-            error_logger.log_error(&format!("Failed to subscribe to channel: {}", e));
-        } else {
-            ui_logger.log(format!("Subscribed to channel '{}'", channel_name));
-        }
+pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) -> Option<crate::types::ActionResult> {
+    let channel_name = if let Some(name) = cmd.strip_prefix("sub ch ") {
+        name.trim()
+    } else if let Some(name) = cmd.strip_prefix("sub ") {
+        name.trim()
     } else {
-        ui_logger.log("Usage: sub <channel_name>".to_string());
+        ui_logger.log("Usage: sub ch <channel_name> or sub <channel_name>".to_string());
+        return None;
+    };
+
+    if channel_name.is_empty() {
+        ui_logger.log("Usage: sub ch <channel_name> or sub <channel_name>".to_string());
+        return None;
+    }
+
+    // First check if the channel exists in the channels table
+    match read_channels().await {
+        Ok(channels) => {
+            let channel_exists = channels.iter().any(|c| c.name == channel_name);
+            if !channel_exists {
+                ui_logger.log(format!("❌ Channel '{}' not found in available channels. Use 'ls ch available' to see all discovered channels.", channel_name));
+                return None;
+            }
+        }
+        Err(e) => {
+            error_logger.log_error(&format!("Failed to check available channels: {}", e));
+            ui_logger.log("❌ Could not verify channel exists. Please try again.".to_string());
+            return None;
+        }
+    }
+
+    if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), channel_name).await {
+        error_logger.log_error(&format!("Failed to subscribe to channel: {}", e));
+        ui_logger.log(format!("❌ Failed to subscribe to channel '{}': {}", channel_name, e));
+        None
+    } else {
+        ui_logger.log(format!("✅ Subscribed to channel '{}'", channel_name));
+        Some(crate::types::ActionResult::RefreshChannels)
     }
 }
 
@@ -693,22 +761,28 @@ pub async fn handle_unsubscribe_channel(
     cmd: &str,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-) {
-    if let Some(channel_name) = cmd.strip_prefix("unsub ") {
-        let channel_name = channel_name.trim();
-
-        if channel_name.is_empty() {
-            ui_logger.log("Usage: unsub <channel_name>".to_string());
-            return;
-        }
-
-        if let Err(e) = unsubscribe_from_channel(&PEER_ID.to_string(), channel_name).await {
-            error_logger.log_error(&format!("Failed to unsubscribe from channel: {}", e));
-        } else {
-            ui_logger.log(format!("Unsubscribed from channel '{}'", channel_name));
-        }
+) -> Option<crate::types::ActionResult> {
+    let channel_name = if let Some(name) = cmd.strip_prefix("unsub ch ") {
+        name.trim()
+    } else if let Some(name) = cmd.strip_prefix("unsub ") {
+        name.trim()
     } else {
-        ui_logger.log("Usage: unsub <channel_name>".to_string());
+        ui_logger.log("Usage: unsub ch <channel_name> or unsub <channel_name>".to_string());
+        return None;
+    };
+
+    if channel_name.is_empty() {
+        ui_logger.log("Usage: unsub ch <channel_name> or unsub <channel_name>".to_string());
+        return None;
+    }
+
+    if let Err(e) = unsubscribe_from_channel(&PEER_ID.to_string(), channel_name).await {
+        error_logger.log_error(&format!("Failed to unsubscribe from channel: {}", e));
+        ui_logger.log(format!("❌ Failed to unsubscribe from channel '{}': {}", channel_name, e));
+        None
+    } else {
+        ui_logger.log(format!("✅ Unsubscribed from channel '{}'", channel_name));
+        Some(crate::types::ActionResult::RefreshChannels)
     }
 }
 
@@ -725,6 +799,68 @@ pub async fn handle_list_subscriptions(ui_logger: &UILogger, error_logger: &Erro
             }
         }
         Err(e) => error_logger.log_error(&format!("Failed to read subscriptions: {}", e)),
+    }
+}
+
+/// Handle setting auto-subscription configuration
+pub async fn handle_set_auto_subscription(
+    cmd: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
+    let rest = cmd.strip_prefix("set auto-sub ");
+    match rest {
+        Some("on") => {
+            // Enable auto-subscription
+            match crate::storage::load_unified_network_config().await {
+                Ok(mut config) => {
+                    config.channel_auto_subscription.auto_subscribe_to_new_channels = true;
+                    match crate::storage::save_unified_network_config(&config).await {
+                        Ok(_) => ui_logger.log("✅ Auto-subscription enabled".to_string()),
+                        Err(e) => error_logger.log_error(&format!("Failed to save config: {}", e)),
+                    }
+                }
+                Err(e) => error_logger.log_error(&format!("Failed to load config: {}", e)),
+            }
+        }
+        Some("off") => {
+            // Disable auto-subscription
+            match crate::storage::load_unified_network_config().await {
+                Ok(mut config) => {
+                    config.channel_auto_subscription.auto_subscribe_to_new_channels = false;
+                    match crate::storage::save_unified_network_config(&config).await {
+                        Ok(_) => ui_logger.log("❌ Auto-subscription disabled".to_string()),
+                        Err(e) => error_logger.log_error(&format!("Failed to save config: {}", e)),
+                    }
+                }
+                Err(e) => error_logger.log_error(&format!("Failed to load config: {}", e)),
+            }
+        }
+        Some("status") | None => {
+            // Show current status
+            match crate::storage::load_unified_network_config().await {
+                Ok(config) => {
+                    let status = if config.channel_auto_subscription.auto_subscribe_to_new_channels {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    };
+                    ui_logger.log(format!("Auto-subscription is currently {}", status));
+                    ui_logger.log(format!(
+                        "Notifications: {}",
+                        if config.channel_auto_subscription.notify_new_channels { "enabled" } else { "disabled" }
+                    ));
+                    ui_logger.log(format!(
+                        "Max auto-subscriptions: {}",
+                        config.channel_auto_subscription.max_auto_subscriptions
+                    ));
+                }
+                Err(e) => error_logger.log_error(&format!("Failed to load config: {}", e)),
+            }
+        }
+        _ => {
+            ui_logger.log("Usage: set auto-sub [on|off|status]".to_string());
+        }
     }
 }
 

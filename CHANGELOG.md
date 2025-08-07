@@ -5,6 +5,14 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Channel Auto-Subscription and Discovery System**: Comprehensive channel auto-subscription and discovery system for enhanced channel discoverability across the P2P network
+  - Added `ChannelAutoSubscriptionConfig` with configurable settings for auto-subscription behavior, notifications, and subscription limits
+  - Enhanced channel management commands: `ls ch available`, `ls ch unsubscribed`, `sub ch <channel>`, `unsub ch <channel>`, `set auto-sub [on|off|status]`
+  - Smart channel discovery with auto-subscription logic, spam prevention, and subscription limits (default: 10 max auto-subscriptions)
+  - Storage enhancements for managing available vs subscribed channels with async processing
+  - Integrated into unified network configuration for centralized management with persistent configuration and validation
+  - Distinguishes between available channels and subscribed channels, providing fine-grained control over subscription behavior
+  - Maintains full backward compatibility with existing commands and functionality
 - **Refactored Storage Operations**: Significantly reduced code duplication in storage.rs by creating reusable database operation patterns
   - Created new `src/storage/` module structure with specialized submodules:
     - `utils.rs` - Common utilities (timestamp generation, ID generation, boolean conversion)
@@ -18,16 +26,6 @@ All changes to this project will be documented in this file.
   - Added 8 new unit tests covering the refactored storage components
   - Maintained 100% backward compatibility - all existing functionality preserved
   - All 57 tests continue to pass after refactoring
-
-### Fixed
-- **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
-  - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
-  - Replaced all hardcoded Unicode emojis throughout UI with conditional compilation using `#[cfg(windows)]`
-  - Updated cursor positioning logic to account for different display widths between ASCII and Unicode icons
-  - Non-Windows platforms continue to display colorful Unicode emojis for better user experience
-  - Added comprehensive tests for icon utility functionality
-
-### Added
 - **Crypto Module for End-to-End Encryption**: Comprehensive cryptographic security module providing message encryption, decryption, and digital signatures for secure P2P communications
   - **ChaCha20-Poly1305 AEAD**: Industry-standard authenticated encryption with associated data for message confidentiality and integrity
   - **Ed25519 Digital Signatures**: Fast, secure digital signatures using existing libp2p keypairs with timestamp-based replay protection
@@ -71,6 +69,20 @@ All changes to this project will be documented in this file.
   - Maintained backward compatibility by supporting both `PublishedChannel` and legacy `Channel` message formats
   - Added comprehensive unit tests for `PublishedChannel` functionality including serialization and equality tests
   - Channel broadcasting now follows the exact same pattern as story broadcasting for consistency across the application
+
+### Fixed
+- **Windows Unicode Compatibility**: Fixed display of emoji icons in Windows terminals that showed as empty squares
+  - Created cross-platform `Icons` utility with ASCII alternatives for Windows (e.g., `[ID]`, `[DIR]`, `[BOOK]` instead of 🏷️, 📂, 📖)
+  - Replaced all hardcoded Unicode emojis throughout UI with conditional compilation using `#[cfg(windows)]`
+  - Updated cursor positioning logic to account for different display widths between ASCII and Unicode icons
+  - Non-Windows platforms continue to display colorful Unicode emojis for better user experience
+  - Added comprehensive tests for icon utility functionality
+- **Channel Subscription Database Integrity**: Fixed critical issue where channel subscriptions could fail silently due to missing foreign key enforcement
+  - Enabled SQLite foreign key constraints (`PRAGMA foreign_keys = ON`) in database connections to ensure referential integrity
+  - Enhanced subscription error handling to check if channels exist before attempting subscription
+  - Improved user feedback when subscribing to non-existent channels with clear error messages
+  - Added better debugging messages for channel creation and subscription processes
+  - Fixed issue where users could subscribe to channels but wouldn't see them listed in the UI due to constraint violations
 
 ## [0.7.5] 2025-08-03
 
