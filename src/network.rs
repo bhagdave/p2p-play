@@ -177,7 +177,8 @@ pub fn create_swarm(
     let mut yamux_config = yamux::Config::default();
     yamux_config.set_max_num_streams(512); // Allow more concurrent streams for better connection reuse
 
-    let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))?
+    let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
+        .map_err(|e| format!("Failed to create DNS transport: {}", e))?
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux_config)
