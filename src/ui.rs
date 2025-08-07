@@ -147,11 +147,20 @@ impl App {
     #[cfg(test)]
     pub fn new_for_test() -> Self {
         // Create a minimal test version that doesn't require terminal initialization
-        // This avoids the "No such device or address" error in CI environments
+        // This avoids resource conflicts in CI environments by using a synchronization approach
         use std::io;
+        use std::sync::{Arc, Mutex};
+        use std::time::Duration;
         
-        // Use stdout but don't enable raw mode or alternate screen
-        // The key is not calling enable_raw_mode() or EnterAlternateScreen which cause CI issues
+        // Use a mutex to ensure only one test terminal is created at a time
+        // This prevents "Resource temporarily unavailable" errors in concurrent test runs
+        static TERMINAL_MUTEX: std::sync::LazyLock<Arc<Mutex<()>>> = std::sync::LazyLock::new(|| Arc::new(Mutex::new(())));
+        
+        let _guard = TERMINAL_MUTEX.lock().expect("Failed to acquire terminal mutex");
+        
+        // Add a small delay to avoid rapid terminal creation/destruction conflicts
+        std::thread::sleep(Duration::from_millis(10));
+        
         let backend = CrosstermBackend::new(io::stdout());
         let terminal = Terminal::new(backend).expect("Failed to create test terminal");
         
