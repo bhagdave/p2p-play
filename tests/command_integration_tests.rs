@@ -27,9 +27,10 @@ async fn test_new_commands_integration() {
     conn.execute("DELETE FROM channels", []).expect("Failed to clear channels");
     drop(conn); // Release the lock
 
-    // Setup test environment with config in working directory  
+    // Setup test environment with config in temp directory
     let default_config = UnifiedNetworkConfig::new();
-    save_unified_network_config(&default_config).await.expect("Failed to save config");
+    let config_path = temp_dir.path().join("unified_network_config.json");
+    save_unified_network_config_to_path(&default_config, config_path.to_str().unwrap()).await.expect("Failed to save config");
     
     let (ui_sender, mut ui_receiver) = mpsc::unbounded_channel();
     let ui_logger = UILogger::new(ui_sender);
