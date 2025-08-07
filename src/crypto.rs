@@ -46,6 +46,7 @@ pub struct MessageSignature {
 }
 
 /// Crypto service for message encryption/decryption
+#[derive(Clone)]
 pub struct CryptoService {
     local_keypair: Keypair,
     // Peer public key cache for encryption

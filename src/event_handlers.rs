@@ -540,6 +540,22 @@ pub async fn handle_floodsub_event(
                         }
                     }
                 });
+            } else if let Ok(relay_msg) = serde_json::from_slice::<crate::types::RelayMessage>(&msg.data) {
+                debug!("Received relay message from {}: {}", msg.source, relay_msg.message_id);
+                // For now, just log the relay message - full implementation will come in next phase
+                ui_logger.log(format!(
+                    "📡 Relay message received from {} (ID: {}, hops: {})",
+                    msg.source, 
+                    &relay_msg.message_id[..8], // Show first 8 chars of ID
+                    relay_msg.hop_count
+                ));
+            } else if let Ok(relay_confirmation) = serde_json::from_slice::<crate::types::RelayConfirmation>(&msg.data) {
+                debug!("Received relay confirmation from {}: {}", msg.source, relay_confirmation.message_id);
+                ui_logger.log(format!(
+                    "✅ Message delivery confirmed: {} (path length: {})",
+                    &relay_confirmation.message_id[..8],
+                    relay_confirmation.relay_path_length
+                ));
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                 match req.mode {
                     ListMode::ALL => {
@@ -1144,6 +1160,12 @@ pub async fn handle_event(
         EventType::ChannelSubscription(subscription) => {
             handle_channel_subscription_event(subscription).await;
         }
+        EventType::RelayMessage(relay_msg) => {
+            handle_relay_message_event(relay_msg).await;
+        }
+        EventType::RelayConfirmation(relay_confirmation) => {
+            handle_relay_confirmation_event(relay_confirmation).await;
+        }
     }
     None
 }
@@ -1480,6 +1502,56 @@ pub async fn retry_messages_for_peer(
             msg.target_name, request_id
         );
     }
+}
+
+/// Handle relay message events (placeholder for now)
+async fn handle_relay_message_event(_relay_msg: crate::types::RelayMessage) {
+    // Placeholder for relay message handling
+    // This will be implemented in Phase 3 when we integrate with RelayService
+    debug!("Received relay message event (not yet implemented)");
+}
+
+/// Handle relay confirmation events (placeholder for now)
+async fn handle_relay_confirmation_event(_relay_confirmation: crate::types::RelayConfirmation) {
+    // Placeholder for relay confirmation handling
+    // This will be implemented in Phase 3 when we integrate with RelayService
+    debug!("Received relay confirmation event (not yet implemented)");
+}
+
+/// Broadcast a relay message via floodsub
+pub async fn broadcast_relay_message(
+    swarm: &mut Swarm<StoryBehaviour>,
+    relay_msg: &crate::types::RelayMessage,
+) -> Result<(), String> {
+    let json = serde_json::to_string(relay_msg)
+        .map_err(|e| format!("Failed to serialize relay message: {}", e))?;
+    
+    let json_bytes = Bytes::from(json.into_bytes());
+    swarm
+        .behaviour_mut()
+        .floodsub
+        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
+    
+    debug!("Broadcasted relay message with ID: {}", relay_msg.message_id);
+    Ok(())
+}
+
+/// Broadcast a relay confirmation via floodsub
+pub async fn broadcast_relay_confirmation(
+    swarm: &mut Swarm<StoryBehaviour>,
+    confirmation: &crate::types::RelayConfirmation,
+) -> Result<(), String> {
+    let json = serde_json::to_string(confirmation)
+        .map_err(|e| format!("Failed to serialize relay confirmation: {}", e))?;
+    
+    let json_bytes = Bytes::from(json.into_bytes());
+    swarm
+        .behaviour_mut()
+        .floodsub
+        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
+    
+    debug!("Broadcasted relay confirmation for message: {}", confirmation.message_id);
+    Ok(())
 }
 
 #[cfg(test)]

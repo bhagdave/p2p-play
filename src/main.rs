@@ -1,11 +1,13 @@
 mod bootstrap;
 mod bootstrap_logger;
+mod crypto;
 mod error_logger;
 mod event_handlers;
 mod event_processor;
 mod handlers;
 mod migrations;
 mod network;
+mod relay;
 mod storage;
 mod types;
 mod ui;
