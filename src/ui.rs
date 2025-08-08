@@ -1,8 +1,8 @@
 use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
 use crossterm::{
     event::{
-        self, Event, KeyCode, KeyModifiers, KeyboardEnhancementFlags, 
-        PushKeyboardEnhancementFlags, PopKeyboardEnhancementFlags
+        self, Event, KeyCode, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+        PushKeyboardEnhancementFlags,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -108,7 +108,11 @@ impl App {
         // UI initialization code that's difficult to test without a real terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen)?;
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )?;
         let backend = CrosstermBackend::new(io::stdout());
         let terminal = Terminal::new(backend)?;
 
@@ -124,6 +128,7 @@ impl App {
                 ),
                 format!("{} Type 'help' for available commands", Icons::wrench()),
                 format!("{} Press 'c' to clear output", Icons::broom()),
+                format!("{} Press ScrollLock to toggle auto-scroll", Icons::check()),
                 format!("{} Press 'q' to quit", Icons::cross()),
                 "".to_string(),
             ],
@@ -143,7 +148,11 @@ impl App {
     pub fn cleanup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         // Terminal cleanup code that's difficult to test
         disable_raw_mode()?;
-        execute!(self.terminal.backend_mut(), LeaveAlternateScreen)?;
+        execute!(
+            self.terminal.backend_mut(),
+            PopKeyboardEnhancementFlags,
+            LeaveAlternateScreen
+        )?;
         Ok(())
     }
 
@@ -203,6 +212,24 @@ impl App {
                         self.auto_scroll = true;
                         // Reset scroll offset to ensure clean transition to auto-scroll
                         self.scroll_offset = 0;
+                    }
+                    KeyCode::ScrollLock => {
+                        // Toggle auto-scroll on/off
+                        self.auto_scroll = !self.auto_scroll;
+                        if self.auto_scroll {
+                            // Reset scroll offset when re-enabling auto-scroll to go to bottom
+                            self.scroll_offset = 0;
+                        }
+                        // Add visual feedback to the log
+                        self.add_to_log(format!(
+                            "{} Auto-scroll {}",
+                            Icons::check(),
+                            if self.auto_scroll {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            }
+                        ));
                     }
                     KeyCode::Enter => {
                         // Handle navigation between channels and stories, or view story content
@@ -880,8 +907,8 @@ impl App {
             let input_text = match &self.input_mode {
                 InputMode::Normal => {
                     match &self.view_mode {
-                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ←/→ to navigate, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
-                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Enter to view story, Esc to return to channels, ←/→ to navigate, ↑/↓ to scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ←/→ to navigate, ↑/↓ to scroll, ScrollLock to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Enter to view story, Esc to return to channels, ←/→ to navigate, ↑/↓ to scroll, ScrollLock to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
                     }
                 }
                 InputMode::Editing => format!("Command: {}", self.input),

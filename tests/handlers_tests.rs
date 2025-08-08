@@ -780,12 +780,8 @@ async fn test_handle_delete_story_multiple_ids() {
     let id2 = stories_before[1].id;
 
     // Test deleting multiple stories
-    let result = handle_delete_story(
-        &format!("delete s {id1},{id2}"),
-        &ui_logger,
-        &error_logger,
-    )
-    .await;
+    let result =
+        handle_delete_story(&format!("delete s {id1},{id2}"), &ui_logger, &error_logger).await;
 
     assert_eq!(result, Some(ActionResult::RefreshStories));
 

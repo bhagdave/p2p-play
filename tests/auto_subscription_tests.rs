@@ -170,9 +170,7 @@ async fn test_channel_auto_subscription_config_persistence() {
             .max_auto_subscriptions,
         15
     );
-    assert!(
-        loaded_config.channel_auto_subscription.notify_new_channels
-    );
+    assert!(loaded_config.channel_auto_subscription.notify_new_channels);
 
     println!("✅ Config persistence test passed!");
 }

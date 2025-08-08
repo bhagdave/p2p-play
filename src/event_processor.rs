@@ -346,9 +346,7 @@ impl EventProcessor {
                 connection_id,
                 ..
             } => {
-                debug!(
-                    "Dialing peer: {peer_id:?} (connection id: {connection_id:?})"
-                );
+                debug!("Dialing peer: {peer_id:?} (connection id: {connection_id:?})");
                 None
             }
             _ => {
@@ -382,9 +380,7 @@ impl EventProcessor {
         // Add connected peer to peer_names if not already present
         if let std::collections::hash_map::Entry::Vacant(e) = peer_names.entry(peer_id) {
             e.insert(format!("Peer_{peer_id}"));
-            debug!(
-                "Added connected peer {peer_id} to peer_names with default name"
-            );
+            debug!("Added connected peer {peer_id} to peer_names with default name");
             sorted_peer_names_cache.update(peer_names);
         }
 
@@ -397,9 +393,7 @@ impl EventProcessor {
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
-            debug!(
-                "Sent local peer name '{name}' to newly connected peer {peer_id}"
-            );
+            debug!("Sent local peer name '{name}' to newly connected peer {peer_id}");
         }
 
         // Public keys will be exchanged when needed for encryption
@@ -437,9 +431,7 @@ impl EventProcessor {
 
         // Remove the peer name when connection is closed
         if let Some(name) = peer_names.remove(&peer_id) {
-            debug!(
-                "Removed peer name '{name}' for disconnected peer {peer_id}"
-            );
+            debug!("Removed peer name '{name}' for disconnected peer {peer_id}");
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
         }
@@ -625,9 +617,7 @@ fn update_bootstrap_status(
             if is_in_progress {
                 // Get the actual number of peers in the routing table
                 let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
-                debug!(
-                    "Bootstrap marked as connected with {peer_count} peers in routing table"
-                );
+                debug!("Bootstrap marked as connected with {peer_count} peers in routing table");
                 auto_bootstrap.mark_connected(peer_count);
             }
         }

@@ -269,9 +269,7 @@ impl CryptoService {
         // Get current timestamp
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| {
-                CryptoError::SignatureFailed(format!("Timestamp generation failed: {e}"))
-            })?
+            .map_err(|e| CryptoError::SignatureFailed(format!("Timestamp generation failed: {e}")))?
             .as_secs();
 
         // Create message to sign (message + timestamp for replay protection)
