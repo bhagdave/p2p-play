@@ -2,6 +2,20 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **ScrollLock Key Auto-Scroll Toggle**: Restored auto-scroll control functionality with ScrollLock key after Escape key was repurposed for navigation
+  - Added ScrollLock key handler that toggles auto-scroll on/off with visual feedback
+  - Enabled enhanced keyboard mode in crossterm to detect ScrollLock key presses
+  - ScrollLock key is semantically appropriate for scroll control and doesn't conflict with existing navigation
+  - Shows "Auto-scroll enabled/disabled" message when toggling for immediate user feedback
+  - Updated help text to document ScrollLock functionality in startup messages and status bar
+  - Maintains existing auto-scroll behavior (End key still enables auto-scroll, arrow keys still disable)
+  - Fixes issue #190 where users lost easy auto-scroll toggle capability
+
+### Fixed
+
 ## [0.8.2] 2025-08-08
 
 ### Fixed
