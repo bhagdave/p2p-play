@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.8.3] 2025-08-09
 
 ### Added
 - **ScrollLock Key Auto-Scroll Toggle**: Restored auto-scroll control functionality with ScrollLock key after Escape key was repurposed for navigation
@@ -15,10 +15,25 @@ All changes to this project will be documented in this file.
   - Fixes issue #190 where users lost easy auto-scroll toggle capability
 
 ### Fixed
+- **TUI Story Read Status**: Fixed issue where stories were not marked as read when viewed with Enter key in the Terminal User Interface
+  - Added new `AppEvent::StoryViewed` variant to track when stories are viewed in the TUI
+  - Enhanced Enter key handler to return story viewed event after displaying content
+  - Updated event processor to mark stories as read and refresh unread counts automatically
+  - Stories now properly update their read status and unread counts in real-time when viewed
+  - Maintains existing event-driven architecture and reuses existing database functions
+  - Fixes issue #189
 
 ## [0.8.2] 2025-08-08
 
 ### Fixed
+- **Direct Message Duplicate Delivery**: Fixed prefer_direct flag behavior where direct messages to connected peers were incorrectly sent twice - once via direct request-response protocol and again via relay network as a "backup"
+  - When `prefer_direct=true` (default configuration), successful direct messages no longer attempt relay backup delivery
+  - Eliminates duplicate message delivery and unnecessary network traffic when direct connections are available
+  - Improves privacy by preventing messages intended for direct delivery from being broadcast over the relay network
+  - Reduces confusing user experience with multiple success log messages for the same message
+  - Users who want relay backup can set `"prefer_direct": false` in `unified_network_config.json` to maintain the previous behavior
+  - Added comprehensive tests to validate both `prefer_direct=true` and `prefer_direct=false` configurations
+  - Fixes issue #192
 - **Windows Release**: Fixed test that was failing on the windows release
 
 ## [0.8.0] 2025-08-08

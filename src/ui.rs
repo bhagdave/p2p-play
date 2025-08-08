@@ -101,6 +101,7 @@ pub struct PartialStory {
 pub enum AppEvent {
     Input(String),
     Quit,
+    StoryViewed { story_id: usize, channel: String },
 }
 
 impl App {
@@ -242,6 +243,11 @@ impl App {
                             ViewMode::Stories(_) => {
                                 if let Some(story) = self.get_selected_story() {
                                     self.display_story_content(&story);
+                                    // Return event to mark story as read asynchronously
+                                    return Some(AppEvent::StoryViewed {
+                                        story_id: story.id,
+                                        channel: story.channel.clone(),
+                                    });
                                 }
                             }
                         }
