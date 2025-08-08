@@ -1,6 +1,9 @@
 use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
 use crossterm::{
-    event::{self, Event, KeyCode, KeyModifiers},
+    event::{
+        self, Event, KeyCode, KeyModifiers, KeyboardEnhancementFlags, 
+        PushKeyboardEnhancementFlags, PopKeyboardEnhancementFlags
+    },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
