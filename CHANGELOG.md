@@ -5,6 +5,14 @@ All changes to this project will be documented in this file.
 ## [0.8.2] 2025-08-08
 
 ### Fixed
+- **Direct Message Duplicate Delivery**: Fixed prefer_direct flag behavior where direct messages to connected peers were incorrectly sent twice - once via direct request-response protocol and again via relay network as a "backup"
+  - When `prefer_direct=true` (default configuration), successful direct messages no longer attempt relay backup delivery
+  - Eliminates duplicate message delivery and unnecessary network traffic when direct connections are available
+  - Improves privacy by preventing messages intended for direct delivery from being broadcast over the relay network
+  - Reduces confusing user experience with multiple success log messages for the same message
+  - Users who want relay backup can set `"prefer_direct": false` in `unified_network_config.json` to maintain the previous behavior
+  - Added comprehensive tests to validate both `prefer_direct=true` and `prefer_direct=false` configurations
+  - Fixes issue #192
 - **Windows Release**: Fixed test that was failing on the windows release
 
 ## [0.8.0] 2025-08-08
