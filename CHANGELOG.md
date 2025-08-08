@@ -2,6 +2,17 @@
 
 All changes to this project will be documented in this file.
 
+## [0.8.3] 2025-01-14
+
+### Fixed
+- **TUI Story Read Status**: Fixed issue where stories were not marked as read when viewed with Enter key in the Terminal User Interface
+  - Added new `AppEvent::StoryViewed` variant to track when stories are viewed in the TUI
+  - Enhanced Enter key handler to return story viewed event after displaying content
+  - Updated event processor to mark stories as read and refresh unread counts automatically
+  - Stories now properly update their read status and unread counts in real-time when viewed
+  - Maintains existing event-driven architecture and reuses existing database functions
+  - Fixes issue #189
+
 ## [0.8.2] 2025-08-08
 
 ### Fixed
