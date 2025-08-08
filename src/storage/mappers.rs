@@ -1,7 +1,7 @@
-/// Result mapping functions for converting database rows to structs
-use crate::types::{Story, Channel, ChannelSubscription, StoryReadStatus};
-use rusqlite::Row;
 use super::utils::{db_bool_to_rust, get_optional_string_with_default, get_timestamp_with_default};
+/// Result mapping functions for converting database rows to structs
+use crate::types::{Channel, ChannelSubscription, Story, StoryReadStatus};
+use rusqlite::Row;
 
 /// Map a database row to a Story struct
 /// Standard mapping for: id, name, header, body, public, channel, created_at
@@ -73,30 +73,34 @@ pub fn map_row_to_channel_unread_count(row: &Row) -> Result<(String, usize), rus
 mod tests {
     use super::*;
     use rusqlite::Connection;
-    
+
     #[test]
     fn test_bool_conversion_in_mapping() {
         let conn = Connection::open_in_memory().unwrap();
-        
+
         conn.execute(
             "CREATE TABLE test_stories (
                 id INTEGER, name TEXT, header TEXT, body TEXT, 
                 public INTEGER, channel TEXT, created_at INTEGER
-            )", 
-            []
-        ).unwrap();
-        
+            )",
+            [],
+        )
+        .unwrap();
+
         conn.execute(
             "INSERT INTO test_stories VALUES (1, 'test', 'header', 'body', 1, 'general', 1000)",
-            []
-        ).unwrap();
-        
-        let mut stmt = conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM test_stories").unwrap();
+            [],
+        )
+        .unwrap();
+
+        let mut stmt = conn
+            .prepare("SELECT id, name, header, body, public, channel, created_at FROM test_stories")
+            .unwrap();
         let story_result = stmt.query_row([], map_row_to_story).unwrap();
-        
+
         assert_eq!(story_result.id, 1);
         assert_eq!(story_result.name, "test");
-        assert_eq!(story_result.public, true);
+        assert!(story_result.public);
         assert_eq!(story_result.channel, "general");
         assert_eq!(story_result.created_at, 1000);
     }

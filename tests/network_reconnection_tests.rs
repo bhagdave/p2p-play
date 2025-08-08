@@ -107,14 +107,14 @@ async fn test_memory_cleanup_validation() {
 
     // Add some old entries that should be cleaned up
     for i in 0..10 {
-        let peer_id = format!("old_peer_{}", i);
+        let peer_id = format!("old_peer_{i}");
         peer_throttling.insert(peer_id.clone(), old_time);
         successful_connections.insert(peer_id, old_time);
     }
 
     // Add some recent entries that should be kept
     for i in 0..5 {
-        let peer_id = format!("recent_peer_{}", i);
+        let peer_id = format!("recent_peer_{i}");
         peer_throttling.insert(peer_id.clone(), now);
         successful_connections.insert(peer_id, now);
     }
@@ -131,11 +131,11 @@ async fn test_memory_cleanup_validation() {
     assert_eq!(successful_connections.len(), 5);
 
     // Verify all remaining entries are recent
-    for (_, timestamp) in &peer_throttling {
+    for timestamp in peer_throttling.values() {
         assert!(now.duration_since(*timestamp) < Duration::from_secs(3600));
     }
 
-    for (_, timestamp) in &successful_connections {
+    for timestamp in successful_connections.values() {
         assert!(now.duration_since(*timestamp) < Duration::from_secs(3600));
     }
 }

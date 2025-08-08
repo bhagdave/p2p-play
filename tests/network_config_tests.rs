@@ -228,5 +228,5 @@ async fn test_ensure_network_config_exists() {
     // Ensure config exists should create it
     // Note: This test would need to be adapted since ensure_network_config_exists()
     // uses a hardcoded path. For this test, we're testing the pattern.
-    assert!(!fs::metadata(path).is_ok());
+    assert!(fs::metadata(path).is_err());
 }

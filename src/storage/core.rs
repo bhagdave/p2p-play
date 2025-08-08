@@ -1,8 +1,8 @@
+use crate::storage::{mappers, utils};
 use crate::types::{
     BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
     DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
 };
-use crate::storage::{utils, mappers};
 use log::debug;
 use rusqlite::Connection;
 use std::collections::HashMap;
@@ -51,12 +51,12 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
     }
 
     // Need to create or update connection
-    debug!("Creating new SQLite database connection: {}", current_path);
+    debug!("Creating new SQLite database connection: {current_path}");
     let conn = Connection::open(&current_path)?;
-    
+
     // Enable foreign key constraints (SQLite has them disabled by default)
     conn.execute("PRAGMA foreign_keys = ON", [])?;
-    
+
     let conn_arc = Arc::new(Mutex::new(conn));
 
     // Update the stored connection and path
@@ -82,24 +82,23 @@ pub async fn reset_db_connection_for_testing() -> Result<(), Box<dyn Error>> {
 pub async fn init_test_database() -> Result<(), Box<dyn Error>> {
     reset_db_connection_for_testing().await?;
     ensure_stories_file_exists().await?;
-    
+
     // Clear all existing data for clean test (only if tables exist)
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Disable foreign key checks temporarily to allow clean deletion
     conn.execute("PRAGMA foreign_keys = OFF", [])?;
-    
+
     // Check if tables exist and clear them
     let table_exists = |table_name: &str| -> Result<bool, Box<dyn Error>> {
         let mut stmt = conn.prepare(&format!(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='{}'", 
-            table_name
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
         ))?;
         let exists = stmt.exists([])?;
         Ok(exists)
     };
-    
+
     if table_exists("channel_subscriptions")? {
         conn.execute("DELETE FROM channel_subscriptions", [])?;
     }
@@ -115,15 +114,15 @@ pub async fn init_test_database() -> Result<(), Box<dyn Error>> {
     if table_exists("story_read_status")? {
         conn.execute("DELETE FROM story_read_status", [])?;
     }
-    
+
     // Re-enable foreign key checks
     conn.execute("PRAGMA foreign_keys = ON", [])?;
-    
+
     drop(conn); // Release the lock
-    
+
     // Add a small delay to ensure all operations complete
     tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
-    
+
     Ok(())
 }
 
@@ -137,12 +136,12 @@ async fn create_tables() -> Result<(), Box<dyn Error>> {
 
 pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
     let db_path = get_database_path();
-    debug!("Initializing SQLite database at: {}", db_path);
+    debug!("Initializing SQLite database at: {db_path}");
 
     // Ensure the directory exists for the database file
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
         if !parent.exists() {
-            debug!("Creating directory: {:?}", parent);
+            debug!("Creating directory: {parent:?}");
             tokio::fs::create_dir_all(parent).await?;
         }
     }
@@ -274,13 +273,13 @@ pub async fn create_new_story_with_channel(
     channel: &str,
 ) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
-    
+
     // Get the next ID using utility function
     let next_id = utils::get_next_id(&conn_arc, "stories").await?;
-    
+
     // Get the current timestamp using utility function
     let created_at = utils::get_current_timestamp();
-    
+
     let conn = conn_arc.lock().await;
     // Insert the new story
     conn.execute(
@@ -297,9 +296,9 @@ pub async fn create_new_story_with_channel(
     )?;
 
     debug!("Created story:");
-    debug!("Name: {}", name);
-    debug!("Header: {}", header);
-    debug!("Body: {}", body);
+    debug!("Name: {name}");
+    debug!("Header: {header}");
+    debug!("Body: {body}");
 
     Ok(())
 }
@@ -378,10 +377,10 @@ pub async fn delete_local_story(id: usize) -> Result<bool, Box<dyn Error>> {
     let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", [&id.to_string()])?;
 
     if rows_affected > 0 {
-        debug!("Deleted story with ID: {}", id);
+        debug!("Deleted story with ID: {id}");
         Ok(true)
     } else {
-        debug!("No story found with ID: {}", id);
+        debug!("No story found with ID: {id}");
         Ok(false)
     }
 }
@@ -404,14 +403,17 @@ pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story
 
 pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
-    
+
     // Check if story already exists (by name and content to avoid duplicates)
     {
         let conn = conn_arc.lock().await;
         let mut stmt =
             conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
-        let existing = stmt.query_row([&story.name, &story.header, &story.body], mappers::map_row_to_i64);
-        
+        let existing = stmt.query_row(
+            [&story.name, &story.header, &story.body],
+            mappers::map_row_to_i64,
+        );
+
         if existing.is_ok() {
             debug!("Story already exists locally, skipping save");
             return Ok(());
@@ -436,7 +438,7 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
         ],
     )?;
 
-    debug!("Saved received story to local storage with ID: {}", new_id);
+    debug!("Saved received story to local storage with ID: {new_id}");
     Ok(())
 }
 
@@ -543,7 +545,7 @@ pub async fn create_channel(
         [name, description, created_by, &timestamp.to_string()],
     )?;
 
-    debug!("Created channel: {} - {}", name, description);
+    debug!("Created channel: {name} - {description}");
     Ok(())
 }
 
@@ -574,7 +576,7 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> Result<(
         [peer_id, channel_name, &timestamp.to_string()],
     )?;
 
-    debug!("Subscribed {} to channel: {}", peer_id, channel_name);
+    debug!("Subscribed {peer_id} to channel: {channel_name}");
     Ok(())
 }
 
@@ -590,7 +592,7 @@ pub async fn unsubscribe_from_channel(
         [peer_id, channel_name],
     )?;
 
-    debug!("Unsubscribed {} from channel: {}", peer_id, channel_name);
+    debug!("Unsubscribed {peer_id} from channel: {channel_name}");
     Ok(())
 }
 
@@ -612,7 +614,9 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
 }
 
 /// Get full channel details for channels that the user is subscribed to
-pub async fn read_subscribed_channels_with_details(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
+pub async fn read_subscribed_channels_with_details(
+    peer_id: &str,
+) -> Result<Channels, Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -624,7 +628,7 @@ pub async fn read_subscribed_channels_with_details(peer_id: &str) -> Result<Chan
         ORDER BY c.name
         "#,
     )?;
-    
+
     let channel_iter = stmt.query_map([peer_id], |row| {
         Ok(Channel {
             name: row.get(0)?,
@@ -642,7 +646,6 @@ pub async fn read_subscribed_channels_with_details(peer_id: &str) -> Result<Chan
     Ok(channels)
 }
 
-
 /// Get channels that are available but not subscribed to by the given peer
 pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
@@ -657,7 +660,7 @@ pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<d
         ORDER BY c.name
         "#,
     )?;
-    
+
     let channel_iter = stmt.query_map([peer_id], |row| {
         Ok(Channel {
             name: row.get(0)?,
@@ -859,7 +862,7 @@ pub async fn save_direct_message_config_to_path(
 ) -> Result<(), Box<dyn Error>> {
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
-    debug!("Saved direct message config to {}", path);
+    debug!("Saved direct message config to {path}");
     Ok(())
 }
 
@@ -879,7 +882,7 @@ pub async fn load_direct_message_config_from_path(
             // Validate the loaded config
             config.validate()?;
 
-            debug!("Loaded direct message config from {}", path);
+            debug!("Loaded direct message config from {path}");
             Ok(config)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -920,7 +923,7 @@ pub async fn save_network_config_to_path(
 ) -> Result<(), Box<dyn Error>> {
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
-    debug!("Saved network config to {}", path);
+    debug!("Saved network config to {path}");
     Ok(())
 }
 
@@ -938,7 +941,7 @@ pub async fn load_network_config_from_path(path: &str) -> Result<NetworkConfig, 
             // Validate the loaded config
             config.validate()?;
 
-            debug!("Loaded network config from {}", path);
+            debug!("Loaded network config from {path}");
             Ok(config)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -978,7 +981,7 @@ pub async fn save_unified_network_config_to_path(
 ) -> Result<(), Box<dyn Error>> {
     config
         .validate()
-        .map_err(|e| format!("Configuration validation failed: {}", e))?;
+        .map_err(|e| format!("Configuration validation failed: {e}"))?;
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, &json).await?;
     Ok(())
@@ -998,14 +1001,14 @@ pub async fn load_unified_network_config_from_path(
             let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
             config
                 .validate()
-                .map_err(|e| format!("Configuration validation failed: {}", e))?;
+                .map_err(|e| format!("Configuration validation failed: {e}"))?;
             Ok(config)
         }
         Err(_) => {
             // File doesn't exist, create with defaults
             let default_config = UnifiedNetworkConfig::new();
             save_unified_network_config_to_path(&default_config, path).await?;
-            debug!("Created default unified network config file at: {}", path);
+            debug!("Created default unified network config file at: {path}");
             Ok(default_config)
         }
     }
@@ -1041,8 +1044,7 @@ pub async fn mark_story_as_read(
     )?;
 
     debug!(
-        "Marked story {} as read for peer {} in channel {}",
-        story_id, peer_id, channel_name
+        "Marked story {story_id} as read for peer {peer_id} in channel {channel_name}"
     );
     Ok(())
 }

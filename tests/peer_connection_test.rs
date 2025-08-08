@@ -13,10 +13,7 @@ fn test_peer_tracking_logic() {
     // After our fix: peer should be added immediately with a default name
 
     // Simulate our connection established logic
-    if !peer_names.contains_key(&peer_id) {
-        // Use full peer ID to avoid collisions between peers with similar prefixes
-        peer_names.insert(peer_id, format!("Peer_{}", peer_id));
-    }
+    peer_names.entry(peer_id).or_insert_with(|| format!("Peer_{peer_id}"));
 
     // Verify the peer is now tracked
     assert!(peer_names.contains_key(&peer_id));
@@ -46,12 +43,12 @@ fn test_ui_display_logic() {
     };
 
     // Test default name display
-    let default_name = format!("Peer_{}", peer_id);
+    let default_name = format!("Peer_{peer_id}");
     let display_content =
         if default_name.starts_with("Peer_") && default_name.contains(&peer_id.to_string()) {
-            format!("Peer_{} [{}]", peer_id_display, peer_id_display)
+            format!("Peer_{peer_id_display} [{peer_id_display}]")
         } else {
-            format!("{} ({})", default_name, peer_id_display)
+            format!("{default_name} ({peer_id_display})")
         };
 
     assert!(display_content.contains("["));
@@ -61,9 +58,9 @@ fn test_ui_display_logic() {
     let real_name = "Alice".to_string();
     let display_content =
         if real_name.starts_with("Peer_") && real_name.contains(&peer_id.to_string()) {
-            format!("Peer_{} [{}]", peer_id_display, peer_id_display)
+            format!("Peer_{peer_id_display} [{peer_id_display}]")
         } else {
-            format!("{} ({})", real_name, peer_id_display)
+            format!("{real_name} ({peer_id_display})")
         };
 
     assert!(display_content.contains("("));
@@ -74,15 +71,15 @@ fn test_ui_display_logic() {
     let display_content = if custom_peer_name.starts_with("Peer_")
         && custom_peer_name.contains(&peer_id.to_string())
     {
-        format!("Peer_{} [{}]", peer_id_display, peer_id_display)
+        format!("Peer_{peer_id_display} [{peer_id_display}]")
     } else {
-        format!("{} ({})", custom_peer_name, peer_id_display)
+        format!("{custom_peer_name} ({peer_id_display})")
     };
 
     // Should use parentheses for custom names, even if they start with "Peer_"
     assert!(display_content.contains("("));
     assert!(display_content.contains(")"));
-    assert_eq!(display_content, format!("Peer_Alice ({})", peer_id_display));
+    assert_eq!(display_content, format!("Peer_Alice ({peer_id_display})"));
 }
 
 #[test]
@@ -92,7 +89,7 @@ fn test_peer_name_lookup() {
     let peer_id = PeerId::random();
 
     // Add peer with default name
-    let default_name = format!("Peer_{}", peer_id);
+    let default_name = format!("Peer_{peer_id}");
     peer_names.insert(peer_id, default_name.clone());
 
     // Test lookup by default name

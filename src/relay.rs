@@ -1,5 +1,17 @@
-use crate::crypto::{CryptoService, CryptoError};
-use crate::types::{DirectMessage, RelayConfig, RelayMessage, RelayConfirmation};
+//! Application-level message relay service for P2P-Play
+//!
+//! This module implements application-level message relaying through intermediate peers
+//! for the P2P-Play story sharing application. This is different from libp2p's relay
+//! protocol - it operates at the application message level using floodsub for transport.
+//!
+//! Key features:
+//! - End-to-end encryption of relayed messages using ChaCha20Poly1305
+//! - Digital signature authentication using Ed25519
+//! - Rate limiting and hop count controls to prevent network abuse
+//! - Automatic fallback from direct messaging to relay delivery
+
+use crate::crypto::{CryptoError, CryptoService};
+use crate::types::{DirectMessage, RelayConfig, RelayConfirmation, RelayMessage};
 use libp2p::PeerId;
 use log::{debug, warn};
 use std::collections::HashMap;
@@ -17,9 +29,9 @@ pub struct RelayService {
 /// Actions to take after processing relay message
 #[derive(Debug)]
 pub enum RelayAction {
-    DeliverLocally(DirectMessage),     // Message is for us
-    ForwardMessage(RelayMessage),      // Forward to other peers  
-    DropMessage(String),               // Drop with reason
+    DeliverLocally(DirectMessage), // Message is for us
+    ForwardMessage(RelayMessage),  // Forward to other peers
+    DropMessage(String),           // Drop with reason
 }
 
 #[derive(Debug)]
@@ -35,12 +47,12 @@ pub enum RelayError {
 impl std::fmt::Display for RelayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RelayError::EncryptionFailed(msg) => write!(f, "Relay encryption failed: {}", msg),
-            RelayError::DecryptionFailed(msg) => write!(f, "Relay decryption failed: {}", msg),
+            RelayError::EncryptionFailed(msg) => write!(f, "Relay encryption failed: {msg}"),
+            RelayError::DecryptionFailed(msg) => write!(f, "Relay decryption failed: {msg}"),
             RelayError::RateLimitExceeded => write!(f, "Rate limit exceeded for relay"),
             RelayError::MaxHopsExceeded => write!(f, "Maximum hop count exceeded"),
-            RelayError::InvalidMessage(msg) => write!(f, "Invalid relay message: {}", msg),
-            RelayError::CryptoError(err) => write!(f, "Crypto error in relay: {}", err),
+            RelayError::InvalidMessage(msg) => write!(f, "Invalid relay message: {msg}"),
+            RelayError::CryptoError(err) => write!(f, "Crypto error in relay: {err}"),
         }
     }
 }
@@ -79,8 +91,9 @@ impl RelayService {
         let message_id = Uuid::new_v4().to_string();
 
         // Serialize the direct message for encryption
-        let message_bytes = serde_json::to_vec(direct_msg)
-            .map_err(|e| RelayError::InvalidMessage(format!("Failed to serialize message: {}", e)))?;
+        let message_bytes = serde_json::to_vec(direct_msg).map_err(|e| {
+            RelayError::InvalidMessage(format!("Failed to serialize message: {e}"))
+        })?;
 
         // Encrypt the message for the target recipient
         let encrypted_payload = self
@@ -88,9 +101,7 @@ impl RelayService {
             .encrypt_message(&message_bytes, target_peer_id)?;
 
         // Sign the message with our private key
-        let sender_signature = self
-            .crypto
-            .sign_message(&message_bytes)?;
+        let sender_signature = self.crypto.sign_message(&message_bytes)?;
 
         let relay_message = RelayMessage::new(
             message_id.clone(),
@@ -102,12 +113,16 @@ impl RelayService {
         );
 
         // Track the message for confirmation
-        self.pending_confirmations.insert(message_id, Instant::now());
+        self.pending_confirmations
+            .insert(message_id, Instant::now());
 
         // Update rate limiting
         self.update_rate_limit(&self.crypto.local_peer_id());
 
-        debug!("Created relay message with ID: {}", relay_message.message_id);
+        debug!(
+            "Created relay message with ID: {}",
+            relay_message.message_id
+        );
         Ok(relay_message)
     }
 
@@ -131,8 +146,9 @@ impl RelayService {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        
-        if current_time.saturating_sub(relay_msg.timestamp) > 300 { // 5 minutes
+
+        if current_time.saturating_sub(relay_msg.timestamp) > 300 {
+            // 5 minutes
             return Ok(RelayAction::DropMessage("Message too old".to_string()));
         }
 
@@ -143,7 +159,10 @@ impl RelayService {
                 match serde_json::from_slice::<DirectMessage>(&decrypted_bytes) {
                     Ok(direct_msg) => {
                         // Verify the signature to ensure authenticity
-                        match self.crypto.verify_signature(&decrypted_bytes, &relay_msg.sender_signature) {
+                        match self
+                            .crypto
+                            .verify_signature(&decrypted_bytes, &relay_msg.sender_signature)
+                        {
                             Ok(true) => {
                                 debug!("Successfully decrypted relay message for local delivery");
                                 Ok(RelayAction::DeliverLocally(direct_msg))
@@ -153,14 +172,16 @@ impl RelayService {
                                 Ok(RelayAction::DropMessage("Invalid signature".to_string()))
                             }
                             Err(e) => {
-                                warn!("Signature verification error: {}", e);
-                                Ok(RelayAction::DropMessage(format!("Signature error: {}", e)))
+                                warn!("Signature verification error: {e}");
+                                Ok(RelayAction::DropMessage(format!("Signature error: {e}")))
                             }
                         }
                     }
                     Err(e) => {
-                        warn!("Failed to deserialize decrypted relay message: {}", e);
-                        Ok(RelayAction::DropMessage("Invalid decrypted message format".to_string()))
+                        warn!("Failed to deserialize decrypted relay message: {e}");
+                        Ok(RelayAction::DropMessage(
+                            "Invalid decrypted message format".to_string(),
+                        ))
                     }
                 }
             }
@@ -173,8 +194,11 @@ impl RelayService {
                     if let Err(e) = forwarded_msg.increment_hop_count() {
                         return Ok(RelayAction::DropMessage(e));
                     }
-                    
-                    debug!("Forwarding relay message (hop: {})", forwarded_msg.hop_count);
+
+                    debug!(
+                        "Forwarding relay message (hop: {})",
+                        forwarded_msg.hop_count
+                    );
                     Ok(RelayAction::ForwardMessage(forwarded_msg))
                 } else {
                     Ok(RelayAction::DropMessage("Forwarding disabled".to_string()))
@@ -204,16 +228,16 @@ impl RelayService {
     pub fn check_rate_limit(&mut self, peer_id: &PeerId) -> bool {
         let now = Instant::now();
         let window = Duration::from_secs(60); // 1 minute window
-        
+
         // Clean up old entries
         self.cleanup_rate_limits(now, window);
-        
+
         // Get or create entry for this peer
-        let entries = self.rate_limits.entry(*peer_id).or_insert_with(Vec::new);
-        
+        let entries = self.rate_limits.entry(*peer_id).or_default();
+
         // Remove entries outside the time window
         entries.retain(|&timestamp| now.duration_since(timestamp) < window);
-        
+
         // Check if under the limit
         entries.len() < self.config.rate_limit_per_peer as usize
     }
@@ -221,7 +245,7 @@ impl RelayService {
     /// Update rate limiting for a peer
     fn update_rate_limit(&mut self, peer_id: &PeerId) {
         let now = Instant::now();
-        let entries = self.rate_limits.entry(*peer_id).or_insert_with(Vec::new);
+        let entries = self.rate_limits.entry(*peer_id).or_default();
         entries.push(now);
     }
 
@@ -234,11 +258,7 @@ impl RelayService {
     }
 
     /// Generate delivery confirmation
-    pub fn create_confirmation(
-        &self,
-        message_id: &str,
-        hop_count: u8,
-    ) -> RelayConfirmation {
+    pub fn create_confirmation(&self, message_id: &str, hop_count: u8) -> RelayConfirmation {
         RelayConfirmation::new(
             message_id.to_string(),
             self.crypto.local_peer_id().to_string(),
@@ -250,10 +270,9 @@ impl RelayService {
     pub fn cleanup_pending_confirmations(&mut self) {
         let timeout = Duration::from_millis(self.config.relay_timeout_ms);
         let now = Instant::now();
-        
-        self.pending_confirmations.retain(|_, &mut timestamp| {
-            now.duration_since(timestamp) < timeout
-        });
+
+        self.pending_confirmations
+            .retain(|_, &mut timestamp| now.duration_since(timestamp) < timeout);
     }
 
     /// Get current configuration
@@ -265,15 +284,20 @@ impl RelayService {
     pub fn update_config(&mut self, new_config: RelayConfig) -> Result<(), String> {
         // Validate the new configuration
         new_config.validate()?;
-        
+
         self.config = new_config;
         debug!("Updated relay configuration");
         Ok(())
     }
 
+    /// Get access to the crypto service
+    pub fn crypto_service(&mut self) -> &mut CryptoService {
+        &mut self.crypto
+    }
+
     /// Get access to the crypto service for testing
     #[cfg(test)]
-    pub fn crypto_service(&mut self) -> &mut CryptoService {
+    pub fn crypto_service_for_testing(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }
 

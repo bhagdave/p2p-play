@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 #[async_trait::async_trait]
 pub trait DatabaseOperation<T> {
     type Error: Error + Send + Sync + 'static;
-    
+
     /// Execute the operation with a database connection
     async fn execute(&self, conn: &Arc<Mutex<Connection>>) -> Result<T, Self::Error>;
 }
@@ -34,16 +34,13 @@ where
 {
     /// Validate the configuration
     fn validate(&self) -> Result<(), Box<dyn Error>>;
-    
+
     /// Get the default file path for this config type
     fn default_file_path() -> &'static str;
 }
 
 /// Generic configuration save operation
-pub async fn save_config_to_path<T>(
-    config: &T,
-    path: &str,
-) -> Result<(), Box<dyn Error>>
+pub async fn save_config_to_path<T>(config: &T, path: &str) -> Result<(), Box<dyn Error>>
 where
     T: serde::Serialize + for<'de> serde::Deserialize<'de> + ConfigStorage<T> + Default + Clone,
 {
@@ -102,49 +99,58 @@ impl QueryPattern for StandardQueryBuilder {
     fn build_select_all(&self) -> String {
         "SELECT * FROM {} ORDER BY created_at DESC".to_string()
     }
-    
+
     fn build_select_by_id(&self, table: &str) -> String {
-        format!("SELECT * FROM {} WHERE id = ?", table)
+        format!("SELECT * FROM {table} WHERE id = ?")
     }
-    
+
     fn build_insert(&self, table: &str, columns: &[&str]) -> String {
         let placeholders = columns.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-        format!("INSERT INTO {} ({}) VALUES ({})", table, columns.join(", "), placeholders)
+        format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            table,
+            columns.join(", "),
+            placeholders
+        )
     }
-    
+
     fn build_update(&self, table: &str, columns: &[&str], where_clause: &str) -> String {
-        let set_clause = columns.iter().map(|col| format!("{} = ?", col)).collect::<Vec<_>>().join(", ");
-        format!("UPDATE {} SET {} WHERE {}", table, set_clause, where_clause)
+        let set_clause = columns
+            .iter()
+            .map(|col| format!("{col} = ?"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("UPDATE {table} SET {set_clause} WHERE {where_clause}")
     }
-    
+
     fn build_delete(&self, table: &str, where_clause: &str) -> String {
-        format!("DELETE FROM {} WHERE {}", table, where_clause)
+        format!("DELETE FROM {table} WHERE {where_clause}")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_query_builder() {
         let builder = StandardQueryBuilder;
-        
+
         assert_eq!(
             builder.build_select_by_id("stories"),
             "SELECT * FROM stories WHERE id = ?"
         );
-        
+
         assert_eq!(
             builder.build_insert("stories", &["name", "header", "body"]),
             "INSERT INTO stories (name, header, body) VALUES (?, ?, ?)"
         );
-        
+
         assert_eq!(
             builder.build_update("stories", &["name", "public"], "id = ?"),
             "UPDATE stories SET name = ?, public = ? WHERE id = ?"
         );
-        
+
         assert_eq!(
             builder.build_delete("stories", "id = ?"),
             "DELETE FROM stories WHERE id = ?"

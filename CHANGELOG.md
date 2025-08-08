@@ -5,6 +5,21 @@ All changes to this project will be documented in this file.
 ## [0.8.0] TBC
 
 ### Added
+- **Secure Message Routing via Intermediate Nodes**: Comprehensive relay messaging system enabling secure message delivery through intermediate peers when direct connections are unavailable
+  - End-to-end encryption using ChaCha20Poly1305 with only intended recipients able to decrypt message content
+  - Transparent fallback from direct messaging to relay network delivery with automatic retry mechanisms
+  - Digital signature authentication using Ed25519 to prevent message spoofing and ensure sender verification
+  - Hop count limiting (max 3 hops) and rate limiting (10 messages/peer/minute) to prevent network abuse
+  - Timestamp-based replay protection with configurable message age windows (5 minutes)
+  - Configurable relay behavior through RelayConfig: enable_relay, enable_forwarding, max_hops, prefer_direct, rate_limit_per_peer
+  - New `src/relay.rs` module providing complete RelayService implementation for message encryption, forwarding, and validation
+  - Enhanced `src/crypto.rs` module with ChaCha20Poly1305 AEAD encryption and Ed25519 digital signatures
+  - Extended message types in `src/types.rs`: RelayMessage, RelayConfig, RelayConfirmation for relay infrastructure
+  - Integration with existing floodsub network using dedicated relay message handling
+  - Resource management with automatic cleanup of expired confirmations and rate limit tracking
+  - User feedback showing delivery method: direct connection, relay network, or retry queue
+  - Comprehensive integration tests covering end-to-end encryption, multi-hop forwarding, and security controls
+  - Fixes issue #153
 - **Refactored Event Processing Architecture**: Extracted the massive main.rs event loop (377 lines) into a dedicated `EventProcessor` struct for better separation of concerns and improved maintainability
   - Created new `src/event_processor.rs` module with structured event handling architecture
   - Eliminated code duplication by consolidating three identical ActionResult handling blocks into a single `handle_action_result` method
