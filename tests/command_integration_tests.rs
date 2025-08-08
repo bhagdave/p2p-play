@@ -17,37 +17,55 @@ async fn test_new_commands_integration() {
     }
 
     // Reset and initialize storage
-    reset_db_connection_for_testing().await.expect("Failed to reset connection");
-    ensure_stories_file_exists().await.expect("Failed to initialize storage");
-    
+    reset_db_connection_for_testing()
+        .await
+        .expect("Failed to reset connection");
+    ensure_stories_file_exists()
+        .await
+        .expect("Failed to initialize storage");
+
     // Clear all existing data for clean test
     let conn_arc = get_db_connection().await.expect("Failed to get connection");
     let conn = conn_arc.lock().await;
-    conn.execute("DELETE FROM channel_subscriptions", []).expect("Failed to clear subscriptions");
-    conn.execute("DELETE FROM channels", []).expect("Failed to clear channels");
+    conn.execute("DELETE FROM channel_subscriptions", [])
+        .expect("Failed to clear subscriptions");
+    conn.execute("DELETE FROM channels", [])
+        .expect("Failed to clear channels");
     drop(conn); // Release the lock
 
     // Setup test environment with config in working directory - use optimized config to match expectations
     let mut optimized_config = UnifiedNetworkConfig::new();
     // Set the optimized values that other tests expect
-    optimized_config.network.connection_maintenance_interval_seconds = 10;
-    optimized_config.network.connection_establishment_timeout_seconds = 45;
+    optimized_config
+        .network
+        .connection_maintenance_interval_seconds = 10;
+    optimized_config
+        .network
+        .connection_establishment_timeout_seconds = 45;
     optimized_config.ping.interval_secs = 50;
     optimized_config.ping.timeout_secs = 45;
-    save_unified_network_config(&optimized_config).await.expect("Failed to save config");
-    
+    save_unified_network_config(&optimized_config)
+        .await
+        .expect("Failed to save config");
+
     let (ui_sender, mut ui_receiver) = mpsc::unbounded_channel();
     let ui_logger = UILogger::new(ui_sender);
     let error_logger = p2p_play::error_logger::ErrorLogger::new("test_errors.log");
 
     // Test 1: Create some channels
-    create_channel("rust-lang", "Rust programming discussions", "alice").await.expect("Failed to create channel");
-    create_channel("javascript", "JavaScript development", "bob").await.expect("Failed to create channel");
-    create_channel("devops", "DevOps and infrastructure", "charlie").await.expect("Failed to create channel");
+    create_channel("rust-lang", "Rust programming discussions", "alice")
+        .await
+        .expect("Failed to create channel");
+    create_channel("javascript", "JavaScript development", "bob")
+        .await
+        .expect("Failed to create channel");
+    create_channel("devops", "DevOps and infrastructure", "charlie")
+        .await
+        .expect("Failed to create channel");
 
     // Test 2: Test "ls ch available" command
     handle_list_channels("ls ch available", &ui_logger, &error_logger).await;
-    
+
     // Check UI output
     let mut available_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
@@ -61,7 +79,7 @@ async fn test_new_commands_integration() {
 
     // Test 3: Test "ls ch unsubscribed" command (should show all channels initially)
     handle_list_channels("ls ch unsubscribed", &ui_logger, &error_logger).await;
-    
+
     let mut unsubscribed_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         unsubscribed_output.push_str(&msg);
@@ -72,7 +90,7 @@ async fn test_new_commands_integration() {
 
     // Test 4: Test subscription with new "sub ch" command
     handle_subscribe_channel("sub ch rust-lang", &ui_logger, &error_logger).await;
-    
+
     let mut sub_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         sub_output.push_str(&msg);
@@ -82,7 +100,7 @@ async fn test_new_commands_integration() {
 
     // Test 5: Test "ls ch unsubscribed" after subscription (should not show rust-lang)
     handle_list_channels("ls ch unsubscribed", &ui_logger, &error_logger).await;
-    
+
     let mut unsubscribed_after_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         unsubscribed_after_output.push_str(&msg);
@@ -95,18 +113,21 @@ async fn test_new_commands_integration() {
 
     // Test 6: Test "set auto-sub status" command
     handle_set_auto_subscription("set auto-sub status", &ui_logger, &error_logger).await;
-    
+
     let mut status_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         status_output.push_str(&msg);
         status_output.push('\n');
     }
-    println!("Status output: '{}'", status_output); // Debug output
-    assert!(status_output.contains("Auto-subscription is currently") || status_output.contains("Failed to load config"));
+    println!("Status output: '{status_output}'"); // Debug output
+    assert!(
+        status_output.contains("Auto-subscription is currently")
+            || status_output.contains("Failed to load config")
+    );
 
     // Test 7: Test enabling auto-subscription
     handle_set_auto_subscription("set auto-sub on", &ui_logger, &error_logger).await;
-    
+
     let mut enable_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         enable_output.push_str(&msg);
@@ -116,7 +137,7 @@ async fn test_new_commands_integration() {
 
     // Test 8: Test disabling auto-subscription
     handle_set_auto_subscription("set auto-sub off", &ui_logger, &error_logger).await;
-    
+
     let mut disable_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         disable_output.push_str(&msg);
@@ -126,7 +147,7 @@ async fn test_new_commands_integration() {
 
     // Test 9: Test unsubscription with new "unsub ch" command
     handle_unsubscribe_channel("unsub ch rust-lang", &ui_logger, &error_logger).await;
-    
+
     let mut unsub_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         unsub_output.push_str(&msg);
@@ -136,7 +157,7 @@ async fn test_new_commands_integration() {
 
     // Test 10: Verify rust-lang is back in unsubscribed list
     handle_list_channels("ls ch unsubscribed", &ui_logger, &error_logger).await;
-    
+
     let mut final_unsubscribed_output = String::new();
     while let Ok(msg) = ui_receiver.try_recv() {
         final_unsubscribed_output.push_str(&msg);

@@ -28,7 +28,7 @@ fn test_input_mode() {
 
 #[test]
 fn test_app_event_variants() {
-    let events = vec![AppEvent::Input("test".to_string()), AppEvent::Quit];
+    let events = [AppEvent::Input("test".to_string()), AppEvent::Quit];
 
     // Test that we can create all event variants
     assert_eq!(events.len(), 2);

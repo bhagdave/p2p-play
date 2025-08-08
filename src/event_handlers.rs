@@ -1,11 +1,11 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
-    establish_direct_connection, handle_create_channel, handle_create_description,
-    handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
-    handle_get_description, handle_help, handle_list_channels,
+    SortedPeerNamesCache, UILogger, establish_direct_connection, handle_create_channel,
+    handle_create_description, handle_create_stories_with_sender, handle_delete_story,
+    handle_direct_message_with_relay, handle_get_description, handle_help, handle_list_channels,
     handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
     handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
-    handle_subscribe_channel, handle_unsubscribe_channel, SortedPeerNamesCache, UILogger,
+    handle_subscribe_channel, handle_unsubscribe_channel,
 };
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
@@ -43,7 +43,7 @@ async fn handle_auto_subscription(
             }
         }
         Err(e) => {
-            return Err(format!("Failed to check existing subscriptions: {}", e));
+            return Err(format!("Failed to check existing subscriptions: {e}"));
         }
     }
 
@@ -52,21 +52,20 @@ async fn handle_auto_subscription(
         Ok(current_count) => {
             if current_count >= max_auto_subs {
                 ui_logger.log(format!(
-                    "⚠️  Auto-subscription limit reached ({}/{}). Use 'sub ch {}' to subscribe manually.",
-                    current_count, max_auto_subs, channel_name
+                    "⚠️  Auto-subscription limit reached ({current_count}/{max_auto_subs}). Use 'sub ch {channel_name}' to subscribe manually."
                 ));
                 return Ok(false); // Not an error, just hit the limit
             }
         }
         Err(e) => {
-            return Err(format!("Failed to check subscription count: {}", e));
+            return Err(format!("Failed to check subscription count: {e}"));
         }
     }
 
     // Attempt to auto-subscribe
     match crate::storage::subscribe_to_channel(peer_id, channel_name).await {
         Ok(_) => Ok(true),
-        Err(e) => Err(format!("Failed to subscribe: {}", e)),
+        Err(e) => Err(format!("Failed to subscribe: {e}")),
     }
 }
 pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBehaviour>) {
@@ -94,7 +93,7 @@ pub async fn handle_publish_story_event(
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
     debug!("Currently connected peers: {}", connected_peers.len());
     for peer in &connected_peers {
-        debug!("Connected to: {}", peer);
+        debug!("Connected to: {peer}");
     }
 
     if connected_peers.is_empty() {
@@ -139,15 +138,19 @@ pub async fn handle_input_event(
 ) -> Option<ActionResult> {
     let line = line.trim();
     match line {
-        cmd if cmd.starts_with("ls ch") => {
-            handle_list_channels(cmd, ui_logger, error_logger).await
-        }
+        cmd if cmd.starts_with("ls ch") => handle_list_channels(cmd, ui_logger, error_logger).await,
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("create s") => {
-            return handle_create_stories_with_sender(cmd, ui_logger, error_logger, Some(story_sender.clone())).await;
+            return handle_create_stories_with_sender(
+                cmd,
+                ui_logger,
+                error_logger,
+                Some(story_sender.clone()),
+            )
+            .await;
         }
         cmd if cmd.starts_with("create ch") => {
             return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger)
@@ -191,7 +194,7 @@ pub async fn handle_input_event(
         "name" => {
             // Show current alias when no arguments provided
             match local_peer_name {
-                Some(name) => ui_logger.log(format!("Current alias: {}", name)),
+                Some(name) => ui_logger.log(format!("Current alias: {name}")),
                 None => ui_logger.log("No alias set. Use 'name <alias>' to set one.".to_string()),
             }
         }
@@ -241,9 +244,9 @@ pub async fn handle_mdns_event(
         libp2p::mdns::Event::Discovered(discovered_list) => {
             debug!("Discovered Peers event");
             for (peer, addr) in discovered_list {
-                debug!("Discovered a peer:{} at {}", peer, addr);
+                debug!("Discovered a peer:{peer} at {addr}");
                 if !swarm.is_connected(&peer) {
-                    debug!("Attempting to dial peer: {}", peer);
+                    debug!("Attempting to dial peer: {peer}");
                     if let Err(e) = swarm.dial(peer) {
                         crate::log_network_error!(
                             error_logger,
@@ -254,17 +257,17 @@ pub async fn handle_mdns_event(
                         );
                     }
                 } else {
-                    debug!("Already connected to peer: {}", peer);
+                    debug!("Already connected to peer: {peer}");
                 }
             }
         }
         libp2p::mdns::Event::Expired(expired_list) => {
             debug!("Expired Peers event");
             for (peer, _addr) in expired_list {
-                debug!("Expired a peer:{} at {}", peer, _addr);
+                debug!("Expired a peer:{peer} at {_addr}");
                 let discovered_nodes: Vec<_> = swarm.behaviour().mdns.discovered_nodes().collect();
                 if !discovered_nodes.contains(&(&peer)) {
-                    debug!("Removing peer from partial view: {}", peer);
+                    debug!("Removing peer from partial view: {peer}");
                     swarm
                         .behaviour_mut()
                         .floodsub
@@ -293,7 +296,7 @@ pub async fn handle_floodsub_event(
             if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
                 if resp.receiver == PEER_ID.to_string() {
                     debug!("Response from {}:", msg.source);
-                    resp.data.iter().for_each(|r| debug!("{:?}", r));
+                    resp.data.iter().for_each(|r| debug!("{r:?}"));
                 }
             } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                 if published.publisher != PEER_ID.to_string() {
@@ -339,7 +342,7 @@ pub async fn handle_floodsub_event(
                                 "Failed to save received story: {}",
                                 e
                             );
-                            ui_logger.log(format!("Warning: Failed to save received story: {}", e));
+                            ui_logger.log(format!("Warning: Failed to save received story: {e}"));
                         } else {
                             // Signal that stories need to be refreshed only if save was successful
                             return Some(crate::types::ActionResult::RefreshStories);
@@ -399,10 +402,11 @@ pub async fn handle_floodsub_event(
                     );
 
                     // Load auto-subscription config to determine behavior
-                    let auto_sub_config = match crate::storage::load_unified_network_config().await {
+                    let auto_sub_config = match crate::storage::load_unified_network_config().await
+                    {
                         Ok(config) => config.channel_auto_subscription,
                         Err(e) => {
-                            debug!("Failed to load auto-subscription config: {}", e);
+                            debug!("Failed to load auto-subscription config: {e}");
                             crate::types::ChannelAutoSubscriptionConfig::new() // Use defaults
                         }
                     };
@@ -424,12 +428,10 @@ pub async fn handle_floodsub_event(
                     // Save the received channel to local storage synchronously to avoid race condition
                     let channel_to_save = &published_channel.channel;
                     let peer_id_str = PEER_ID.to_string();
-                    
+
                     // Add validation before saving
                     if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
-                        debug!(
-                            "Ignoring invalid published channel with empty name or description"
-                        );
+                        debug!("Ignoring invalid published channel with empty name or description");
                     } else {
                         // Save the channel first - synchronously to ensure it exists before subscription
                         let channel_saved = match crate::storage::create_channel(
@@ -444,7 +446,10 @@ pub async fn handle_floodsub_event(
                                     "📺 Channel '{}' added to your channels list",
                                     channel_to_save.name
                                 ));
-                                debug!("Successfully created channel '{}' in database", channel_to_save.name);
+                                debug!(
+                                    "Successfully created channel '{}' in database",
+                                    channel_to_save.name
+                                );
                                 true
                             }
                             Err(e) if e.to_string().contains("UNIQUE constraint") => {
@@ -473,7 +478,14 @@ pub async fn handle_floodsub_event(
 
                         // Only attempt auto-subscription AFTER successful channel creation to avoid race condition
                         if channel_saved && should_auto_subscribe {
-                            match handle_auto_subscription(&peer_id_str, &channel_to_save.name, max_auto_subs, &ui_logger).await {
+                            match handle_auto_subscription(
+                                &peer_id_str,
+                                &channel_to_save.name,
+                                max_auto_subs,
+                                ui_logger,
+                            )
+                            .await
+                            {
                                 Ok(true) => {
                                     ui_logger.log(format!(
                                         "✅ Auto-subscribed to channel '{}'",
@@ -543,9 +555,14 @@ pub async fn handle_floodsub_event(
                         }
                     }
                 });
-            } else if let Ok(relay_msg) = serde_json::from_slice::<crate::types::RelayMessage>(&msg.data) {
-                debug!("Received relay message from {}: {}", msg.source, relay_msg.message_id);
-                
+            } else if let Ok(relay_msg) =
+                serde_json::from_slice::<crate::types::RelayMessage>(&msg.data)
+            {
+                debug!(
+                    "Received relay message from {}: {}",
+                    msg.source, relay_msg.message_id
+                );
+
                 // Process relay message if relay service is available
                 if let Some(relay_svc) = relay_service {
                     match relay_svc.process_relay_message(&relay_msg) {
@@ -554,10 +571,13 @@ pub async fn handle_floodsub_event(
                                 "{} Relay message delivered: {} -> {}: {}",
                                 crate::types::Icons::speech(),
                                 direct_msg.from_name,
-                                direct_msg.to_name, 
+                                direct_msg.to_name,
                                 direct_msg.message
                             ));
-                            debug!("Relay message decrypted and delivered locally: {}", relay_msg.message_id);
+                            debug!(
+                                "Relay message decrypted and delivered locally: {}",
+                                relay_msg.message_id
+                            );
                         }
                         Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
                             // Return action to re-broadcast the forwarded message via floodsub
@@ -569,13 +589,21 @@ pub async fn handle_floodsub_event(
                                 forward_msg.hop_count,
                                 forward_msg.max_hops
                             ));
-                            return Some(crate::types::ActionResult::RebroadcastRelayMessage(forward_msg));
+                            return Some(crate::types::ActionResult::RebroadcastRelayMessage(
+                                forward_msg,
+                            ));
                         }
                         Ok(crate::relay::RelayAction::DropMessage(reason)) => {
-                            debug!("Dropping relay message {}: {}", relay_msg.message_id, reason);
+                            debug!(
+                                "Dropping relay message {}: {}",
+                                relay_msg.message_id, reason
+                            );
                         }
                         Err(e) => {
-                            debug!("Failed to process relay message {}: {}", relay_msg.message_id, e);
+                            debug!(
+                                "Failed to process relay message {}: {}",
+                                relay_msg.message_id, e
+                            );
                         }
                     }
                 } else {
@@ -586,8 +614,13 @@ pub async fn handle_floodsub_event(
                         relay_msg.hop_count
                     ));
                 }
-            } else if let Ok(relay_confirmation) = serde_json::from_slice::<crate::types::RelayConfirmation>(&msg.data) {
-                debug!("Received relay confirmation from {}: {}", msg.source, relay_confirmation.message_id);
+            } else if let Ok(relay_confirmation) =
+                serde_json::from_slice::<crate::types::RelayConfirmation>(&msg.data)
+            {
+                debug!(
+                    "Received relay confirmation from {}: {}",
+                    msg.source, relay_confirmation.message_id
+                );
                 ui_logger.log(format!(
                     "✅ Message delivery confirmed: {} (path length: {})",
                     &relay_confirmation.message_id[..8],
@@ -666,7 +699,7 @@ pub async fn handle_kad_event(
                     "Kademlia bootstrap failed: {:?}",
                     e
                 );
-                ui_logger.log(format!("DHT bootstrap failed: {:?}", e));
+                ui_logger.log(format!("DHT bootstrap failed: {e:?}"));
             }
             libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
                 debug!(
@@ -674,7 +707,7 @@ pub async fn handle_kad_event(
                     get_closest_peers_ok.peers.len()
                 );
                 for peer in &get_closest_peers_ok.peers {
-                    debug!("Closest peer: {:?}", peer);
+                    debug!("Closest peer: {peer:?}");
                 }
             }
             libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
@@ -686,15 +719,15 @@ pub async fn handle_kad_event(
                 );
             }
             _ => {
-                debug!("Other Kademlia query result: {:?}", result);
+                debug!("Other Kademlia query result: {result:?}");
             }
         },
         libp2p::kad::Event::RoutingUpdated {
             peer, is_new_peer, ..
         } => {
             if is_new_peer {
-                debug!("New peer added to DHT routing table: {}", peer);
-                ui_logger.log(format!("New peer added to DHT: {}", peer));
+                debug!("New peer added to DHT routing table: {peer}");
+                ui_logger.log(format!("New peer added to DHT: {peer}"));
 
                 // Add the peer to floodsub partial view if connected
                 if swarm.is_connected(&peer) {
@@ -702,7 +735,7 @@ pub async fn handle_kad_event(
                         .behaviour_mut()
                         .floodsub
                         .add_node_to_partial_view(peer);
-                    debug!("Added DHT peer {} to floodsub partial view", peer);
+                    debug!("Added DHT peer {peer} to floodsub partial view");
                 }
             }
         }
@@ -714,15 +747,15 @@ pub async fn handle_kad_event(
                 debug!("Received DHT GetProvider request");
             }
             _ => {
-                debug!("Received other DHT inbound request: {:?}", request);
+                debug!("Received other DHT inbound request: {request:?}");
             }
         },
         libp2p::kad::Event::ModeChanged { new_mode } => {
-            debug!("Kademlia mode changed to: {:?}", new_mode);
-            ui_logger.log(format!("DHT mode changed to: {:?}", new_mode));
+            debug!("Kademlia mode changed to: {new_mode:?}");
+            ui_logger.log(format!("DHT mode changed to: {new_mode:?}"));
         }
         _ => {
-            debug!("Other Kademlia event: {:?}", kad_event);
+            debug!("Other Kademlia event: {kad_event:?}");
         }
     }
 }
@@ -835,14 +868,14 @@ pub async fn handle_request_response_event(
                     {
                         error_logger.log_network_error(
                             "direct_message",
-                            &format!("Failed to send response to {}: {:?}", peer, e),
+                            &format!("Failed to send response to {peer}: {e:?}"),
                         );
                     }
                 }
                 request_response::Message::Response { response, .. } => {
                     // Handle response to our direct message request
                     if response.received {
-                        debug!("Direct message was received by peer {}", peer);
+                        debug!("Direct message was received by peer {peer}");
 
                         // Remove successful message from retry queue
                         if let Ok(mut queue) = pending_messages.lock() {
@@ -876,12 +909,11 @@ pub async fn handle_request_response_event(
             // Log to error file instead of TUI to avoid corrupting the interface
             error_logger.log_network_error(
                 "direct_message",
-                &format!("Failed to send direct message to {}: {:?}", peer, error),
+                &format!("Failed to send direct message to {peer}: {error:?}"),
             );
             // Don't immediately report failure to user - let retry logic handle it
             debug!(
-                "Direct message to {} failed, will be retried automatically",
-                peer
+                "Direct message to {peer} failed, will be retried automatically"
             );
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
@@ -889,13 +921,12 @@ pub async fn handle_request_response_event(
             error_logger.log_network_error(
                 "direct_message",
                 &format!(
-                    "Failed to receive direct message from {}: {:?}",
-                    peer, error
+                    "Failed to receive direct message from {peer}: {error:?}"
                 ),
             );
         }
         request_response::Event::ResponseSent { peer, .. } => {
-            debug!("Response sent to {}", peer);
+            debug!("Response sent to {peer}");
         }
     }
 }
@@ -988,7 +1019,7 @@ pub async fn handle_node_description_event(
                                     e
                                 ));
                             } else {
-                                debug!("Sent description response to {}", peer);
+                                debug!("Sent description response to {peer}");
                             }
                         }
                         Err(e) => {
@@ -1096,7 +1127,7 @@ pub async fn handle_node_description_event(
             );
         }
         request_response::Event::ResponseSent { peer, .. } => {
-            debug!("Node description response sent to {}", peer);
+            debug!("Node description response sent to {peer}");
         }
     }
 }
@@ -1164,7 +1195,8 @@ pub async fn handle_event(
                     crate::types::ActionResult::RebroadcastRelayMessage(relay_msg) => {
                         // Rebroadcast the relay message via floodsub
                         if let Err(e) = broadcast_relay_message(swarm, &relay_msg).await {
-                            error_logger.log_error(&format!("Failed to rebroadcast relay message: {}", e));
+                            error_logger
+                                .log_error(&format!("Failed to rebroadcast relay message: {e}"));
                         }
                     }
                     _ => {} // Other action results are not expected from floodsub events
@@ -1297,7 +1329,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
             };
 
             if should_attempt {
-                debug!("Reconnecting to discovered peer: {}", peer);
+                debug!("Reconnecting to discovered peer: {peer}");
                 if let Err(e) = swarm.dial(peer) {
                     crate::log_network_error!(
                         error_logger,
@@ -1316,7 +1348,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
 pub fn track_successful_connection(peer_id: PeerId) {
     if let Ok(mut connections) = LAST_SUCCESSFUL_CONNECTIONS.try_lock() {
         connections.insert(peer_id, Instant::now());
-        debug!("Tracked successful connection to peer: {}", peer_id);
+        debug!("Tracked successful connection to peer: {peer_id}");
     }
 }
 
@@ -1554,15 +1586,18 @@ pub async fn broadcast_relay_message(
     relay_msg: &crate::types::RelayMessage,
 ) -> Result<(), String> {
     let json = serde_json::to_string(relay_msg)
-        .map_err(|e| format!("Failed to serialize relay message: {}", e))?;
-    
+        .map_err(|e| format!("Failed to serialize relay message: {e}"))?;
+
     let json_bytes = Bytes::from(json.into_bytes());
     swarm
         .behaviour_mut()
         .floodsub
         .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
-    
-    debug!("Broadcasted relay message with ID: {}", relay_msg.message_id);
+
+    debug!(
+        "Broadcasted relay message with ID: {}",
+        relay_msg.message_id
+    );
     Ok(())
 }
 
@@ -1572,15 +1607,18 @@ pub async fn broadcast_relay_confirmation(
     confirmation: &crate::types::RelayConfirmation,
 ) -> Result<(), String> {
     let json = serde_json::to_string(confirmation)
-        .map_err(|e| format!("Failed to serialize relay confirmation: {}", e))?;
-    
+        .map_err(|e| format!("Failed to serialize relay confirmation: {e}"))?;
+
     let json_bytes = Bytes::from(json.into_bytes());
     swarm
         .behaviour_mut()
         .floodsub
         .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
-    
-    debug!("Broadcasted relay confirmation for message: {}", confirmation.message_id);
+
+    debug!(
+        "Broadcasted relay confirmation for message: {}",
+        confirmation.message_id
+    );
     Ok(())
 }
 
@@ -1709,8 +1747,7 @@ mod tests {
             let result = match_command_type_with_trim(input);
             assert_eq!(
                 result, expected_type,
-                "Command '{}' should match {} handler",
-                input, expected_type
+                "Command '{input}' should match {expected_type} handler"
             );
         }
     }

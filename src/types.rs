@@ -70,35 +70,35 @@ pub struct DirectMessage {
 /// Encrypted message for relay delivery
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RelayMessage {
-    pub message_id: String,           // Unique message identifier
-    pub target_peer_id: String,       // Intended recipient
-    pub target_name: String,          // Recipient's alias
-    pub encrypted_payload: EncryptedPayload,  // From crypto module
-    pub sender_signature: MessageSignature,   // Authentication
-    pub hop_count: u8,                // Prevent infinite loops
-    pub max_hops: u8,                 // Maximum relay hops allowed
-    pub timestamp: u64,               // For replay protection
-    pub relay_attempt: bool,          // Distinguishes from direct attempts
+    pub message_id: String,                  // Unique message identifier
+    pub target_peer_id: String,              // Intended recipient
+    pub target_name: String,                 // Recipient's alias
+    pub encrypted_payload: EncryptedPayload, // From crypto module
+    pub sender_signature: MessageSignature,  // Authentication
+    pub hop_count: u8,                       // Prevent infinite loops
+    pub max_hops: u8,                        // Maximum relay hops allowed
+    pub timestamp: u64,                      // For replay protection
+    pub relay_attempt: bool,                 // Distinguishes from direct attempts
 }
 
 /// Relay delivery confirmation
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RelayConfirmation {
     pub message_id: String,
-    pub delivered_to: String,         // Target peer ID
-    pub relay_path_length: u8,        // Number of hops used
+    pub delivered_to: String,  // Target peer ID
+    pub relay_path_length: u8, // Number of hops used
     pub delivery_timestamp: u64,
 }
 
 /// Configuration for relay behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelayConfig {
-    pub enable_relay: bool,           // Master relay switch
-    pub enable_forwarding: bool,      // Act as relay for others
-    pub max_hops: u8,                 // Default: 3
-    pub relay_timeout_ms: u64,        // Default: 5000ms
-    pub prefer_direct: bool,          // Try direct first
-    pub rate_limit_per_peer: u32,     // Messages per minute
+    pub enable_relay: bool,       // Master relay switch
+    pub enable_forwarding: bool,  // Act as relay for others
+    pub max_hops: u8,             // Default: 3
+    pub relay_timeout_ms: u64,    // Default: 5000ms
+    pub prefer_direct: bool,      // Try direct first
+    pub rate_limit_per_peer: u32, // Messages per minute
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -369,7 +369,7 @@ impl DirectMessage {
 impl RelayMessage {
     pub fn new(
         message_id: String,
-        target_peer_id: String, 
+        target_peer_id: String,
         target_name: String,
         encrypted_payload: EncryptedPayload,
         sender_signature: MessageSignature,
@@ -395,7 +395,10 @@ impl RelayMessage {
 
     pub fn increment_hop_count(&mut self) -> Result<(), String> {
         if self.hop_count >= self.max_hops {
-            return Err(format!("Max hops exceeded: {}/{}", self.hop_count, self.max_hops));
+            return Err(format!(
+                "Max hops exceeded: {}/{}",
+                self.hop_count, self.max_hops
+            ));
         }
         self.hop_count += 1;
         Ok(())
@@ -558,7 +561,7 @@ impl BootstrapConfig {
 
         for peer in &self.bootstrap_peers {
             if let Err(e) = peer.parse::<libp2p::Multiaddr>() {
-                return Err(format!("Invalid multiaddr '{}': {}", peer, e));
+                return Err(format!("Invalid multiaddr '{peer}': {e}"));
             }
         }
 
@@ -822,7 +825,7 @@ impl UnifiedNetworkConfig {
                 let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
                 config
                     .validate()
-                    .map_err(|e| format!("Configuration validation failed: {}", e))?;
+                    .map_err(|e| format!("Configuration validation failed: {e}"))?;
                 Ok(config)
             }
             Err(_) => {
@@ -835,7 +838,7 @@ impl UnifiedNetworkConfig {
     /// Save unified configuration to a file
     pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         self.validate()
-            .map_err(|e| format!("Configuration validation failed: {}", e))?;
+            .map_err(|e| format!("Configuration validation failed: {e}"))?;
         let content = serde_json::to_string_pretty(self)?;
         std::fs::write(path, content)?;
         Ok(())

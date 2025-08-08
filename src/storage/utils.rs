@@ -18,7 +18,7 @@ pub async fn get_next_id(
     table: &str,
 ) -> Result<i64, Box<dyn Error>> {
     let conn = conn.lock().await;
-    let query = format!("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM {}", table);
+    let query = format!("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM {table}");
     let mut stmt = conn.prepare(&query)?;
     let next_id: i64 = stmt.query_row([], |row| row.get(0))?;
     Ok(next_id)
@@ -35,8 +35,14 @@ pub fn rust_bool_to_db(value: bool) -> String {
 }
 
 /// Get optional string with default value
-pub fn get_optional_string_with_default(row: &Row, index: usize, default: &str) -> Result<String, rusqlite::Error> {
-    Ok(row.get::<_, Option<String>>(index)?.unwrap_or_else(|| default.to_string()))
+pub fn get_optional_string_with_default(
+    row: &Row,
+    index: usize,
+    default: &str,
+) -> Result<String, rusqlite::Error> {
+    Ok(row
+        .get::<_, Option<String>>(index)?
+        .unwrap_or_else(|| default.to_string()))
 }
 
 /// Get timestamp with default value of 0
@@ -58,10 +64,10 @@ mod tests {
 
     #[test]
     fn test_bool_conversion() {
-        assert_eq!(db_bool_to_rust(0), false);
-        assert_eq!(db_bool_to_rust(1), true);
-        assert_eq!(db_bool_to_rust(42), true);
-        
+        assert!(!db_bool_to_rust(0));
+        assert!(db_bool_to_rust(1));
+        assert!(db_bool_to_rust(42));
+
         assert_eq!(rust_bool_to_db(false), "0");
         assert_eq!(rust_bool_to_db(true), "1");
     }

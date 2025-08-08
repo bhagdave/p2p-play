@@ -1,8 +1,8 @@
 use p2p_play::storage::*;
 use p2p_play::types::*;
+use std::env;
 use std::sync::{Arc, Mutex};
 use tempfile::NamedTempFile;
-use std::env;
 use uuid::Uuid;
 
 // Mutex to ensure database-dependent tests don't interfere with each other
@@ -14,13 +14,13 @@ async fn setup_test_database() -> String {
     unsafe {
         env::set_var("TEST_DATABASE_PATH", &unique_db_path);
     }
-    
+
     // Reset database connection to use the new path
     reset_db_connection_for_testing().await.unwrap();
-    
+
     // Initialize the test database
     ensure_stories_file_exists().await.unwrap();
-    
+
     unique_db_path
 }
 
@@ -30,11 +30,11 @@ async fn cleanup_test_database(db_path: &str) {
     unsafe {
         env::remove_var("TEST_DATABASE_PATH");
     }
-    
+
     // Try to remove the test database file
     if let Err(e) = std::fs::remove_file(db_path) {
         // It's ok if the file doesn't exist or can't be removed in tests
-        eprintln!("Could not remove test database {}: {}", db_path, e);
+        eprintln!("Could not remove test database {db_path}: {e}");
     }
 }
 
@@ -260,9 +260,9 @@ async fn test_sequential_story_operations() {
     let mut story_ids = Vec::new();
     for i in 0..10 {
         let story_id = create_new_story_in_path(
-            &format!("Story {}", i),
-            &format!("Header {}", i),
-            &format!("Body {}", i),
+            &format!("Story {i}"),
+            &format!("Header {i}"),
+            &format!("Body {i}"),
             path,
         )
         .await
@@ -277,7 +277,7 @@ async fn test_sequential_story_operations() {
     // Verify IDs are sequential
     for (i, story) in stories.iter().enumerate() {
         assert_eq!(story.id, i);
-        assert_eq!(story.name, format!("Story {}", i));
+        assert_eq!(story.name, format!("Story {i}"));
     }
 }
 
@@ -433,7 +433,7 @@ async fn test_name_command_shows_current_alias() {
 #[tokio::test]
 async fn test_channel_creation_and_management() {
     let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
-    
+
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -471,7 +471,7 @@ async fn test_channel_creation_and_management() {
 #[tokio::test]
 async fn test_channel_subscriptions() {
     let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
-    
+
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -518,7 +518,7 @@ async fn test_channel_subscriptions() {
 #[tokio::test]
 async fn test_stories_with_channels() {
     let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
-    
+
     use p2p_play::storage::*;
 
     // Initialize database
@@ -553,7 +553,7 @@ async fn test_stories_with_channels() {
 #[tokio::test]
 async fn test_channel_story_filtering() {
     let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
-    
+
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -618,7 +618,7 @@ async fn test_channel_story_filtering() {
 #[tokio::test]
 async fn test_channel_workflow_integration() {
     let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
-    
+
     use p2p_play::storage::*;
 
     // Set up isolated test database
@@ -731,7 +731,7 @@ async fn test_story_serialization_with_channel() {
 #[tokio::test]
 async fn test_channel_subscription_data_structures() {
     let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
-    
+
     use p2p_play::storage::*;
     use p2p_play::types::*;
 

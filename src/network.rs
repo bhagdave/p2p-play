@@ -46,17 +46,17 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key
         match identity::Keypair::from_protobuf_encoding(&bytes) {
             Ok(keypair) => {
                 let peer_id = PeerId::from(keypair.public());
-                debug!("Successfully loaded keypair with PeerId: {}", peer_id);
+                debug!("Successfully loaded keypair with PeerId: {peer_id}");
                 keypair
             }
             Err(e) => {
-                warn!("Error loading keypair: {}, generating new one", e);
+                warn!("Error loading keypair: {e}, generating new one");
                 generate_and_save_keypair()
             }
         }
     }
     Err(e) => {
-        debug!("No existing key file found ({}), generating new one", e);
+        debug!("No existing key file found ({e}), generating new one");
         generate_and_save_keypair()
     }
 });
@@ -68,19 +68,19 @@ pub static RELAY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("relay"));
 fn generate_and_save_keypair() -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
     let peer_id = PeerId::from(keypair.public());
-    debug!("Generated new keypair with PeerId: {}", peer_id);
+    debug!("Generated new keypair with PeerId: {peer_id}");
 
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
             Ok(_) => debug!("Successfully saved keypair to file"),
             Err(e) => {
                 let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
-                error_logger.log_error(&format!("Failed to save keypair: {}", e));
+                error_logger.log_error(&format!("Failed to save keypair: {e}"));
             }
         },
         Err(e) => {
             let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
-            error_logger.log_error(&format!("Failed to encode keypair: {}", e));
+            error_logger.log_error(&format!("Failed to encode keypair: {e}"));
         }
     }
     keypair
@@ -178,7 +178,7 @@ pub fn create_swarm(
     yamux_config.set_max_num_streams(512); // Allow more concurrent streams for better connection reuse
 
     let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
-        .map_err(|e| format!("Failed to create DNS transport: {}", e))?
+        .map_err(|e| format!("Failed to create DNS transport: {e}"))?
         .upgrade(upgrade::Version::V1)
         .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux_config)
@@ -186,7 +186,7 @@ pub fn create_swarm(
 
     // Load network configuration
     let network_config = NetworkConfig::load_from_file("network_config.json").unwrap_or_else(|e| {
-        warn!("Failed to load network config: {}, using defaults", e);
+        warn!("Failed to load network config: {e}, using defaults");
         NetworkConfig::new()
     });
 

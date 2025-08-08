@@ -6,8 +6,8 @@ use crate::relay::RelayService;
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, load_bootstrap_config,
     load_node_description, mark_story_as_read, publish_story, read_channels, read_local_stories,
-    read_subscribed_channels, read_unsubscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
-    subscribe_to_channel, unsubscribe_from_channel,
+    read_subscribed_channels, read_unsubscribed_channels, save_bootstrap_config,
+    save_local_peer_name, save_node_description, subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
@@ -92,7 +92,7 @@ pub async fn handle_list_stories(
                 mode: ListMode::ALL,
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            debug!("JSON od request: {}", json);
+            debug!("JSON od request: {json}");
             let json_bytes = Bytes::from(json.into_bytes());
             debug!(
                 "Publishing to topic: {:?} from peer:{:?}",
@@ -107,14 +107,13 @@ pub async fn handle_list_stories(
         }
         Some(story_peer_id) => {
             ui_logger.log(format!(
-                "Requesting all stories from peer: {}",
-                story_peer_id
+                "Requesting all stories from peer: {story_peer_id}"
             ));
             let req = ListRequest {
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            debug!("JSON od request: {}", json);
+            debug!("JSON od request: {json}");
             let json_bytes = Bytes::from(json.into_bytes());
             swarm
                 .behaviour_mut()
@@ -138,7 +137,7 @@ pub async fn handle_list_stories(
                         ));
                     });
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to fetch local stories: {}", e)),
+                Err(e) => error_logger.log_error(&format!("Failed to fetch local stories: {e}")),
             };
         }
     };
@@ -188,11 +187,10 @@ pub async fn handle_create_stories_with_sender(
                 let channel = elements.get(3).unwrap_or(&"general");
 
                 if let Err(e) = create_new_story_with_channel(name, header, body, channel).await {
-                    error_logger.log_error(&format!("Failed to create story: {}", e));
+                    error_logger.log_error(&format!("Failed to create story: {e}"));
                 } else {
                     ui_logger.log(format!(
-                        "Story created and auto-published to channel '{}'",
-                        channel
+                        "Story created and auto-published to channel '{channel}'"
                     ));
 
                     // Auto-broadcast the newly created story to connected peers
@@ -201,16 +199,25 @@ pub async fn handle_create_stories_with_sender(
                         match read_local_stories().await {
                             Ok(stories) => {
                                 // Find the most recently created story by name
-                                if let Some(created_story) = stories.iter().find(|s| s.name == *name && s.header == *header && s.body == *body) {
+                                if let Some(created_story) = stories.iter().find(|s| {
+                                    s.name == *name && s.header == *header && s.body == *body
+                                }) {
                                     if let Err(e) = sender.send(created_story.clone()) {
-                                        error_logger.log_error(&format!("Failed to broadcast newly created story: {}", e));
+                                        error_logger.log_error(&format!(
+                                            "Failed to broadcast newly created story: {e}"
+                                        ));
                                     } else {
-                                        ui_logger.log("Story automatically shared with connected peers".to_string());
+                                        ui_logger.log(
+                                            "Story automatically shared with connected peers"
+                                                .to_string(),
+                                        );
                                     }
                                 }
                             }
                             Err(e) => {
-                                error_logger.log_error(&format!("Failed to read stories for auto-broadcast: {}", e));
+                                error_logger.log_error(&format!(
+                                    "Failed to read stories for auto-broadcast: {e}"
+                                ));
                             }
                         }
                     }
@@ -234,9 +241,9 @@ pub async fn handle_publish_story(
             Ok(id) => {
                 if let Err(e) = publish_story(id, story_sender).await {
                     error_logger
-                        .log_error(&format!("Failed to publish story with id {}: {}", id, e));
+                        .log_error(&format!("Failed to publish story with id {id}: {e}"));
                 } else {
-                    ui_logger.log(format!("Published story with id: {}", id));
+                    ui_logger.log(format!("Published story with id: {id}"));
                 }
             }
             Err(e) => ui_logger.log(format!("invalid id: {}, {}", rest.trim(), e)),
@@ -269,11 +276,11 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                             // Mark the story as read
                             mark_story_as_read_for_peer(story.id, peer_id, &story.channel).await;
                         } else {
-                            ui_logger.log(format!("Story with id {} not found", id));
+                            ui_logger.log(format!("Story with id {id} not found"));
                         }
                     }
                     Err(e) => {
-                        ui_logger.log(format!("Error reading stories: {}", e));
+                        ui_logger.log(format!("Error reading stories: {e}"));
                     }
                 }
             }
@@ -310,19 +317,19 @@ pub async fn handle_delete_story(
                 Ok(id) => match delete_local_story(id).await {
                     Ok(deleted) => {
                         if deleted {
-                            ui_logger.log(format!("Story with id {} deleted successfully", id));
+                            ui_logger.log(format!("Story with id {id} deleted successfully"));
                             any_deleted = true;
                         } else {
-                            ui_logger.log(format!("Story with id {} not found", id));
+                            ui_logger.log(format!("Story with id {id} not found"));
                         }
                     }
                     Err(e) => {
                         error_logger
-                            .log_error(&format!("Failed to delete story with id {}: {}", id, e));
+                            .log_error(&format!("Failed to delete story with id {id}: {e}"));
                     }
                 },
                 Err(e) => {
-                    ui_logger.log(format!("Invalid story id '{}': {}", id_str, e));
+                    ui_logger.log(format!("Invalid story id '{id_str}': {e}"));
                 }
             }
         }
@@ -341,7 +348,8 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
     ui_logger.log("ls sub to list your subscriptions".to_string());
-    ui_logger.log("create s name|header|body[|channel] to create and auto-publish story".to_string());
+    ui_logger
+        .log("create s name|header|body[|channel] to create and auto-publish story".to_string());
     ui_logger.log("create ch name|description to create channel".to_string());
     ui_logger.log("create desc <description> to create node description".to_string());
     ui_logger.log("publish s to manually publish/re-publish story".to_string());
@@ -430,7 +438,7 @@ pub async fn handle_set_name(
 
         // Save the peer name to storage for persistence across restarts
         if let Err(e) = save_local_peer_name(name).await {
-            ui_logger.log(format!("Warning: Failed to save peer name: {}", e));
+            ui_logger.log(format!("Warning: Failed to save peer name: {e}"));
         }
 
         // Return a PeerName message to broadcast to connected peers
@@ -582,12 +590,10 @@ pub async fn handle_direct_message(
         }
 
         ui_logger.log(format!(
-            "Direct message queued for {}: {}",
-            to_name, message
+            "Direct message queued for {to_name}: {message}"
         ));
         debug!(
-            "Queued direct message to {} from {} (request_id: {:?})",
-            to_name, from_name, request_id
+            "Queued direct message to {to_name} from {from_name} (request_id: {request_id:?})"
         );
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
@@ -654,8 +660,8 @@ pub async fn handle_direct_message_with_relay(
 
             if prefer_direct {
                 // 1. Try direct connection first if peer is known and connected
-                ui_logger.log(format!("⏳ Attempting direct message to {}...", to_name));
-                
+                ui_logger.log(format!("⏳ Attempting direct message to {to_name}..."));
+
                 let direct_msg_request = DirectMessageRequest {
                     from_peer_id: PEER_ID.to_string(),
                     from_name: from_name.clone(),
@@ -673,13 +679,17 @@ pub async fn handle_direct_message_with_relay(
                     .request_response
                     .send_request(&target_peer_id, direct_msg_request.clone());
 
-                ui_logger.log(format!("📨 Direct message sent to {} (request_id: {:?})", to_name, request_id));
-                debug!("Direct message sent to {} with request_id {:?}", to_name, request_id);
-                
+                ui_logger.log(format!(
+                    "📨 Direct message sent to {to_name} (request_id: {request_id:?})"
+                ));
+                debug!(
+                    "Direct message sent to {to_name} with request_id {request_id:?}"
+                );
+
                 // Still try relay as a backup for reliability
                 if let Some(relay_svc) = relay_service {
                     if relay_svc.config().enable_relay {
-                        debug!("Also sending via relay for backup delivery to {}", to_name);
+                        debug!("Also sending via relay for backup delivery to {to_name}");
                         try_relay_delivery(
                             swarm,
                             relay_svc,
@@ -688,7 +698,8 @@ pub async fn handle_direct_message_with_relay(
                             &message,
                             &target_peer_id,
                             ui_logger,
-                        ).await;
+                        )
+                        .await;
                     }
                 }
                 return;
@@ -702,9 +713,13 @@ pub async fn handle_direct_message_with_relay(
                     peer_id
                 } else {
                     // For unknown peers, we can't encrypt directly to them yet
-                    ui_logger.log(format!("❌ Cannot relay to unknown peer '{}' - peer not in network", to_name));
+                    ui_logger.log(format!(
+                        "❌ Cannot relay to unknown peer '{to_name}' - peer not in network"
+                    ));
                     // Fall through to queuing system
-                    ui_logger.log(format!("📥 Queueing message for {} - will retry when peer connects", to_name));
+                    ui_logger.log(format!(
+                        "📥 Queueing message for {to_name} - will retry when peer connects"
+                    ));
                     queue_message_for_retry(
                         &from_name,
                         &to_name,
@@ -726,14 +741,18 @@ pub async fn handle_direct_message_with_relay(
                     &message,
                     &relay_target_peer_id,
                     ui_logger,
-                ).await {
+                )
+                .await
+                {
                     return; // Successfully sent via relay
                 }
             }
         }
 
         // 3. Fall back to traditional queuing system for retry
-        ui_logger.log(format!("📥 Queueing message for {} - will retry when peer connects", to_name));
+        ui_logger.log(format!(
+            "📥 Queueing message for {to_name} - will retry when peer connects"
+        ));
         queue_message_for_retry(
             &from_name,
             &to_name,
@@ -758,8 +777,8 @@ async fn try_relay_delivery(
     target_peer_id: &PeerId,
     ui_logger: &UILogger,
 ) -> bool {
-    ui_logger.log(format!("📡 Trying relay delivery to {}...", to_name));
-    
+    ui_logger.log(format!("📡 Trying relay delivery to {to_name}..."));
+
     // Create DirectMessage struct for relay
     let direct_msg = DirectMessage {
         from_peer_id: PEER_ID.to_string(),
@@ -778,20 +797,20 @@ async fn try_relay_delivery(
             // Broadcast the relay message via floodsub
             match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
                 Ok(()) => {
-                    ui_logger.log(format!("✅ Message sent to {} via relay network", to_name));
-                    debug!("Relay message broadcasted successfully for {}", to_name);
+                    ui_logger.log(format!("✅ Message sent to {to_name} via relay network"));
+                    debug!("Relay message broadcasted successfully for {to_name}");
                     true
                 }
                 Err(e) => {
-                    ui_logger.log(format!("❌ Failed to broadcast relay message: {}", e));
-                    debug!("Relay broadcast failed: {}", e);
+                    ui_logger.log(format!("❌ Failed to broadcast relay message: {e}"));
+                    debug!("Relay broadcast failed: {e}");
                     false
                 }
             }
         }
         Err(e) => {
-            ui_logger.log(format!("❌ Failed to create relay message: {}", e));
-            debug!("Relay message creation failed: {}", e);
+            ui_logger.log(format!("❌ Failed to create relay message: {e}"));
+            debug!("Relay message creation failed: {e}");
             false
         }
     }
@@ -839,8 +858,10 @@ fn queue_message_for_retry(
 
     if let Ok(mut queue) = pending_messages.lock() {
         queue.push(pending_msg);
-        ui_logger.log(format!("Message for {} added to retry queue", to_name));
-        debug!("Message queued for {} with fallback to retry system", to_name);
+        ui_logger.log(format!("Message for {to_name} added to retry queue"));
+        debug!(
+            "Message queued for {to_name} with fallback to retry system"
+        );
     } else {
         ui_logger.log("Failed to queue message - retry system unavailable".to_string());
     }
@@ -876,15 +897,14 @@ pub async fn handle_create_channel(
         };
 
         if let Err(e) = create_channel(name, description, &creator).await {
-            error_logger.log_error(&format!("Failed to create channel: {}", e));
+            error_logger.log_error(&format!("Failed to create channel: {e}"));
         } else {
-            ui_logger.log(format!("Channel '{}' created successfully", name));
+            ui_logger.log(format!("Channel '{name}' created successfully"));
 
             // Auto-subscribe to the channel we created
             if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), name).await {
                 error_logger.log_error(&format!(
-                    "Failed to auto-subscribe to created channel: {}",
-                    e
+                    "Failed to auto-subscribe to created channel: {e}"
                 ));
             }
 
@@ -902,7 +922,7 @@ pub async fn handle_create_channel(
                 Ok(json) => json,
                 Err(e) => {
                     error_logger
-                        .log_error(&format!("Failed to serialize published channel: {}", e));
+                        .log_error(&format!("Failed to serialize published channel: {e}"));
                     return Some(ActionResult::RefreshStories);
                 }
             };
@@ -912,15 +932,14 @@ pub async fn handle_create_channel(
                 .floodsub
                 .publish(TOPIC.clone(), published_json_bytes);
             debug!(
-                "Broadcasted published channel '{}' to connected peers",
-                name
+                "Broadcasted published channel '{name}' to connected peers"
             );
 
             // 2. Broadcast legacy Channel format for backward compatibility with older nodes
             let legacy_json = match serde_json::to_string(&channel) {
                 Ok(json) => json,
                 Err(e) => {
-                    error_logger.log_error(&format!("Failed to serialize legacy channel: {}", e));
+                    error_logger.log_error(&format!("Failed to serialize legacy channel: {e}"));
                     return Some(ActionResult::RefreshStories);
                 }
             };
@@ -930,11 +949,10 @@ pub async fn handle_create_channel(
                 .floodsub
                 .publish(TOPIC.clone(), legacy_json_bytes);
             debug!(
-                "Broadcasted legacy channel '{}' for backward compatibility",
-                name
+                "Broadcasted legacy channel '{name}' for backward compatibility"
             );
 
-            ui_logger.log(format!("Channel '{}' shared with network", name));
+            ui_logger.log(format!("Channel '{name}' shared with network"));
 
             return Some(ActionResult::RefreshStories);
         }
@@ -958,7 +976,9 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
                         }
                     }
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to read available channels: {}", e)),
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to read available channels: {e}"))
+                }
             }
         }
         Some(" unsubscribed") => {
@@ -974,7 +994,9 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
                         }
                     }
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to read unsubscribed channels: {}", e)),
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to read unsubscribed channels: {e}"))
+                }
             }
         }
         Some("") | None => {
@@ -990,7 +1012,7 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
                         }
                     }
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to read channels: {}", e)),
+                Err(e) => error_logger.log_error(&format!("Failed to read channels: {e}")),
             }
         }
         _ => {
@@ -999,7 +1021,11 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
     }
 }
 
-pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) -> Option<crate::types::ActionResult> {
+pub async fn handle_subscribe_channel(
+    cmd: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) -> Option<crate::types::ActionResult> {
     let channel_name = if let Some(name) = cmd.strip_prefix("sub ch ") {
         name.trim()
     } else if let Some(name) = cmd.strip_prefix("sub ") {
@@ -1019,23 +1045,25 @@ pub async fn handle_subscribe_channel(cmd: &str, ui_logger: &UILogger, error_log
         Ok(channels) => {
             let channel_exists = channels.iter().any(|c| c.name == channel_name);
             if !channel_exists {
-                ui_logger.log(format!("❌ Channel '{}' not found in available channels. Use 'ls ch available' to see all discovered channels.", channel_name));
+                ui_logger.log(format!("❌ Channel '{channel_name}' not found in available channels. Use 'ls ch available' to see all discovered channels."));
                 return None;
             }
         }
         Err(e) => {
-            error_logger.log_error(&format!("Failed to check available channels: {}", e));
+            error_logger.log_error(&format!("Failed to check available channels: {e}"));
             ui_logger.log("❌ Could not verify channel exists. Please try again.".to_string());
             return None;
         }
     }
 
     if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), channel_name).await {
-        error_logger.log_error(&format!("Failed to subscribe to channel: {}", e));
-        ui_logger.log(format!("❌ Failed to subscribe to channel '{}': {}", channel_name, e));
+        error_logger.log_error(&format!("Failed to subscribe to channel: {e}"));
+        ui_logger.log(format!(
+            "❌ Failed to subscribe to channel '{channel_name}': {e}"
+        ));
         None
     } else {
-        ui_logger.log(format!("✅ Subscribed to channel '{}'", channel_name));
+        ui_logger.log(format!("✅ Subscribed to channel '{channel_name}'"));
         Some(crate::types::ActionResult::RefreshChannels)
     }
 }
@@ -1060,11 +1088,13 @@ pub async fn handle_unsubscribe_channel(
     }
 
     if let Err(e) = unsubscribe_from_channel(&PEER_ID.to_string(), channel_name).await {
-        error_logger.log_error(&format!("Failed to unsubscribe from channel: {}", e));
-        ui_logger.log(format!("❌ Failed to unsubscribe from channel '{}': {}", channel_name, e));
+        error_logger.log_error(&format!("Failed to unsubscribe from channel: {e}"));
+        ui_logger.log(format!(
+            "❌ Failed to unsubscribe from channel '{channel_name}': {e}"
+        ));
         None
     } else {
-        ui_logger.log(format!("✅ Unsubscribed from channel '{}'", channel_name));
+        ui_logger.log(format!("✅ Unsubscribed from channel '{channel_name}'"));
         Some(crate::types::ActionResult::RefreshChannels)
     }
 }
@@ -1077,11 +1107,11 @@ pub async fn handle_list_subscriptions(ui_logger: &UILogger, error_logger: &Erro
                 ui_logger.log("  (no subscriptions)".to_string());
             } else {
                 for channel in channels {
-                    ui_logger.log(format!("  {}", channel));
+                    ui_logger.log(format!("  {channel}"));
                 }
             }
         }
-        Err(e) => error_logger.log_error(&format!("Failed to read subscriptions: {}", e)),
+        Err(e) => error_logger.log_error(&format!("Failed to read subscriptions: {e}")),
     }
 }
 
@@ -1097,48 +1127,59 @@ pub async fn handle_set_auto_subscription(
             // Enable auto-subscription
             match crate::storage::load_unified_network_config().await {
                 Ok(mut config) => {
-                    config.channel_auto_subscription.auto_subscribe_to_new_channels = true;
+                    config
+                        .channel_auto_subscription
+                        .auto_subscribe_to_new_channels = true;
                     match crate::storage::save_unified_network_config(&config).await {
                         Ok(_) => ui_logger.log("✅ Auto-subscription enabled".to_string()),
-                        Err(e) => error_logger.log_error(&format!("Failed to save config: {}", e)),
+                        Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                     }
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {}", e)),
+                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
             }
         }
         Some("off") => {
             // Disable auto-subscription
             match crate::storage::load_unified_network_config().await {
                 Ok(mut config) => {
-                    config.channel_auto_subscription.auto_subscribe_to_new_channels = false;
+                    config
+                        .channel_auto_subscription
+                        .auto_subscribe_to_new_channels = false;
                     match crate::storage::save_unified_network_config(&config).await {
                         Ok(_) => ui_logger.log("❌ Auto-subscription disabled".to_string()),
-                        Err(e) => error_logger.log_error(&format!("Failed to save config: {}", e)),
+                        Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                     }
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {}", e)),
+                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
             }
         }
         Some("status") | None => {
             // Show current status
             match crate::storage::load_unified_network_config().await {
                 Ok(config) => {
-                    let status = if config.channel_auto_subscription.auto_subscribe_to_new_channels {
+                    let status = if config
+                        .channel_auto_subscription
+                        .auto_subscribe_to_new_channels
+                    {
                         "enabled"
                     } else {
                         "disabled"
                     };
-                    ui_logger.log(format!("Auto-subscription is currently {}", status));
+                    ui_logger.log(format!("Auto-subscription is currently {status}"));
                     ui_logger.log(format!(
                         "Notifications: {}",
-                        if config.channel_auto_subscription.notify_new_channels { "enabled" } else { "disabled" }
+                        if config.channel_auto_subscription.notify_new_channels {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
                     ));
                     ui_logger.log(format!(
                         "Max auto-subscriptions: {}",
                         config.channel_auto_subscription.max_auto_subscriptions
                     ));
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {}", e)),
+                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
             }
         }
         _ => {
@@ -1150,7 +1191,7 @@ pub async fn handle_set_auto_subscription(
 /// Mark a story as read (should be called after displaying it)
 pub async fn mark_story_as_read_for_peer(story_id: usize, peer_id: &str, channel_name: &str) {
     if let Err(e) = mark_story_as_read(story_id, peer_id, channel_name).await {
-        debug!("Failed to mark story {} as read: {}", story_id, e);
+        debug!("Failed to mark story {story_id} as read: {e}");
     }
 }
 
@@ -1165,7 +1206,7 @@ pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &st
             app.update_unread_counts(unread_counts);
         }
         Err(e) => {
-            debug!("Failed to refresh unread counts: {}", e);
+            debug!("Failed to refresh unread counts: {e}");
         }
     }
 }
@@ -1177,7 +1218,7 @@ pub async fn establish_direct_connection(
 ) {
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
-            ui_logger.log(format!("Manually dialing address: {}", addr));
+            ui_logger.log(format!("Manually dialing address: {addr}"));
             match swarm.dial(addr) {
                 Ok(_) => {
                     ui_logger.log("Dialing initiated successfully".to_string());
@@ -1187,18 +1228,18 @@ pub async fn establish_direct_connection(
 
                     // Add existing connected peers to floodsub immediately
                     for peer in connected_peers {
-                        debug!("Connected to peer: {}", peer);
-                        debug!("Adding peer to floodsub: {}", peer);
+                        debug!("Connected to peer: {peer}");
+                        debug!("Adding peer to floodsub: {peer}");
                         swarm
                             .behaviour_mut()
                             .floodsub
                             .add_node_to_partial_view(peer);
                     }
                 }
-                Err(e) => ui_logger.log(format!("Failed to dial: {}", e)),
+                Err(e) => ui_logger.log(format!("Failed to dial: {e}")),
             }
         }
-        Err(e) => ui_logger.log(format!("Failed to parse address: {}", e)),
+        Err(e) => ui_logger.log(format!("Failed to parse address: {e}")),
     }
 }
 
@@ -1225,7 +1266,7 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
             ));
         }
         Err(e) => {
-            ui_logger.log(format!("Failed to save description: {}", e));
+            ui_logger.log(format!("Failed to save description: {e}"));
         }
     }
 }
@@ -1256,8 +1297,7 @@ pub async fn handle_get_description(
         Some(peer) => peer,
         None => {
             ui_logger.log(format!(
-                "Peer '{}' not found in connected peers.",
-                peer_alias
+                "Peer '{peer_alias}' not found in connected peers."
             ));
             return;
         }
@@ -1266,8 +1306,7 @@ pub async fn handle_get_description(
     // Check if we're connected to this peer
     if !swarm.is_connected(&target_peer) {
         ui_logger.log(format!(
-            "Not connected to peer '{}'. Use 'connect' to establish connection.",
-            peer_alias
+            "Not connected to peer '{peer_alias}'. Use 'connect' to establish connection."
         ));
         return;
     }
@@ -1289,7 +1328,7 @@ pub async fn handle_get_description(
         .node_description
         .send_request(&target_peer, description_request);
 
-    ui_logger.log(format!("Requesting description from '{}'...", peer_alias));
+    ui_logger.log(format!("Requesting description from '{peer_alias}'..."));
 }
 
 /// Handle showing local node description
@@ -1309,7 +1348,7 @@ pub async fn handle_show_description(ui_logger: &UILogger) {
             );
         }
         Err(e) => {
-            ui_logger.log(format!("Failed to load description: {}", e));
+            ui_logger.log(format!("Failed to load description: {e}"));
         }
     }
 }
@@ -1366,7 +1405,7 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
 
     // Validate the multiaddr format
     if let Err(e) = multiaddr.parse::<libp2p::Multiaddr>() {
-        ui_logger.log(format!("Invalid multiaddr '{}': {}", multiaddr, e));
+        ui_logger.log(format!("Invalid multiaddr '{multiaddr}': {e}"));
         return;
     }
 
@@ -1376,19 +1415,19 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
             if config.add_peer(multiaddr.clone()) {
                 match save_bootstrap_config(&config).await {
                     Ok(_) => {
-                        ui_logger.log(format!("Added bootstrap peer: {}", multiaddr));
+                        ui_logger.log(format!("Added bootstrap peer: {multiaddr}"));
                         ui_logger.log(format!(
                             "Total bootstrap peers: {}",
                             config.bootstrap_peers.len()
                         ));
                     }
-                    Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
+                    Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {e}")),
                 }
             } else {
-                ui_logger.log(format!("Bootstrap peer already exists: {}", multiaddr));
+                ui_logger.log(format!("Bootstrap peer already exists: {multiaddr}"));
             }
         }
-        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {e}")),
     }
 }
 
@@ -1413,19 +1452,19 @@ async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
             if config.remove_peer(&multiaddr) {
                 match save_bootstrap_config(&config).await {
                     Ok(_) => {
-                        ui_logger.log(format!("Removed bootstrap peer: {}", multiaddr));
+                        ui_logger.log(format!("Removed bootstrap peer: {multiaddr}"));
                         ui_logger.log(format!(
                             "Total bootstrap peers: {}",
                             config.bootstrap_peers.len()
                         ));
                     }
-                    Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
+                    Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {e}")),
                 }
             } else {
-                ui_logger.log(format!("Bootstrap peer not found: {}", multiaddr));
+                ui_logger.log(format!("Bootstrap peer not found: {multiaddr}"));
             }
         }
-        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {e}")),
     }
 }
 
@@ -1446,7 +1485,7 @@ async fn handle_bootstrap_list(ui_logger: &UILogger) {
                 config.bootstrap_timeout_ms
             ));
         }
-        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {e}")),
     }
 }
 
@@ -1457,13 +1496,13 @@ async fn handle_bootstrap_clear(ui_logger: &UILogger) {
             config.clear_peers();
             match save_bootstrap_config(&config).await {
                 Ok(_) => {
-                    ui_logger.log(format!("Cleared {} bootstrap peers", peer_count));
+                    ui_logger.log(format!("Cleared {peer_count} bootstrap peers"));
                     ui_logger.log("Warning: No bootstrap peers configured. Add peers to enable DHT connectivity.".to_string());
                 }
-                Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {}", e)),
+                Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {e}")),
             }
         }
-        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {e}")),
     }
 }
 
@@ -1488,26 +1527,25 @@ async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &U
                                 .behaviour_mut()
                                 .kad
                                 .add_address(&peer_id, addr.clone());
-                            ui_logger.log(format!("Added bootstrap peer to DHT: {}", peer_addr));
+                            ui_logger.log(format!("Added bootstrap peer to DHT: {peer_addr}"));
                         } else {
-                            ui_logger.log(format!("Failed to extract peer ID from: {}", peer_addr));
+                            ui_logger.log(format!("Failed to extract peer ID from: {peer_addr}"));
                         }
                     }
                     Err(e) => ui_logger.log(format!(
-                        "Invalid multiaddr in config '{}': {}",
-                        peer_addr, e
+                        "Invalid multiaddr in config '{peer_addr}': {e}"
                     )),
                 }
             }
 
             // Start bootstrap process
             if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
-                ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
+                ui_logger.log(format!("Failed to start DHT bootstrap: {e:?}"));
             } else {
                 ui_logger.log("DHT bootstrap retry started successfully".to_string());
             }
         }
-        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {}", e)),
+        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {e}")),
     }
 }
 
@@ -1526,8 +1564,7 @@ async fn handle_direct_bootstrap(
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
             ui_logger.log(format!(
-                "Attempting to bootstrap DHT with peer at: {}",
-                addr
+                "Attempting to bootstrap DHT with peer at: {addr}"
             ));
 
             // Add the address as a bootstrap peer in the DHT
@@ -1539,7 +1576,7 @@ async fn handle_direct_bootstrap(
 
                 // Start bootstrap process (this will handle dialing the peer internally)
                 if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
-                    ui_logger.log(format!("Failed to start DHT bootstrap: {:?}", e));
+                    ui_logger.log(format!("Failed to start DHT bootstrap: {e:?}"));
                 } else {
                     ui_logger.log("DHT bootstrap started successfully".to_string());
                 }
@@ -1547,7 +1584,7 @@ async fn handle_direct_bootstrap(
                 ui_logger.log("Failed to extract peer ID from multiaddr".to_string());
             }
         }
-        Err(e) => ui_logger.log(format!("Failed to parse multiaddr: {}", e)),
+        Err(e) => ui_logger.log(format!("Failed to parse multiaddr: {e}")),
     }
 }
 
