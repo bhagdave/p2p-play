@@ -381,6 +381,7 @@ async fn test_name_command_shows_current_alias() {
     // Setup direct message config and pending messages for the function
     let dm_config = DirectMessageConfig::new();
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut relay_service = None;
 
     // Test case 1: No alias set
     let mut local_peer_name = None;
@@ -395,6 +396,7 @@ async fn test_name_command_shows_current_alias() {
         &error_logger,
         &dm_config,
         &pending_messages,
+        &mut relay_service,
     )
     .await;
 
@@ -415,6 +417,7 @@ async fn test_name_command_shows_current_alias() {
         &error_logger,
         &dm_config,
         &pending_messages,
+        &mut relay_service,
     )
     .await;
 
