@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.8.0] 2025-08-08
 
 ### Added
 - **Secure Message Routing via Intermediate Nodes**: Comprehensive relay messaging system enabling secure message delivery through intermediate peers when direct connections are unavailable
