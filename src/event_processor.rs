@@ -4,7 +4,7 @@ use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
-use crate::handlers::{SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
+use crate::handlers::{SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui, mark_story_as_read_for_peer};
 use crate::network::{PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC};
 use crate::relay::RelayService;
 use crate::storage;
@@ -200,6 +200,12 @@ impl EventProcessor {
                         AppEvent::Quit => {
                             debug!("Quit event received in main loop");
                             app.should_quit = true;
+                            None
+                        }
+                        AppEvent::StoryViewed { story_id, channel } => {
+                            // Mark story as read and refresh unread counts
+                            mark_story_as_read_for_peer(story_id, &PEER_ID.to_string(), &channel).await;
+                            refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                             None
                         }
                     }
