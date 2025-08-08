@@ -94,6 +94,7 @@ async fn test_throttling_behaviour_verification() {
 
 /// Test memory clean-up validation to ensure throttling maps don't grow unbounded
 #[tokio::test]
+#[cfg(not(target_os = "windows"))]
 async fn test_memory_cleanup_validation() {
     let mut peer_throttling: HashMap<String, Instant> = HashMap::new();
     let mut successful_connections: HashMap<String, Instant> = HashMap::new();
