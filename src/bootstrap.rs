@@ -113,13 +113,13 @@ impl AutoBootstrap {
                             .kad
                             .add_address(&peer_id, addr.clone());
                         peers_added += 1;
-                        debug!("Added bootstrap peer to DHT: {}", peer_addr);
+                        debug!("Added bootstrap peer to DHT: {peer_addr}");
                     } else {
-                        warn!("Failed to extract peer ID from: {}", peer_addr);
+                        warn!("Failed to extract peer ID from: {peer_addr}");
                     }
                 }
                 Err(e) => {
-                    warn!("Invalid multiaddr in config '{}': {}", peer_addr, e);
+                    warn!("Invalid multiaddr in config '{peer_addr}': {e}");
                 }
             }
         }
@@ -129,11 +129,11 @@ impl AutoBootstrap {
             match swarm.behaviour_mut().kad.bootstrap() {
                 Ok(_) => {
                     bootstrap_logger
-                        .log(&format!("DHT bootstrap started with {} peers", peers_added));
+                        .log(&format!("DHT bootstrap started with {peers_added} peers"));
                     true
                 }
                 Err(e) => {
-                    let error_msg = format!("Failed to start DHT bootstrap: {:?}", e);
+                    let error_msg = format!("Failed to start DHT bootstrap: {e:?}");
                     error_logger.log_error(&error_msg);
                     bootstrap_logger.log_error(&error_msg);
                     {
@@ -149,7 +149,7 @@ impl AutoBootstrap {
             }
         } else {
             let error_msg = "No valid bootstrap peers could be added".to_string();
-            warn!("{}", error_msg);
+            warn!("{error_msg}");
             {
                 let retry_count = *self.retry_count.lock().unwrap();
                 let mut status = self.status.lock().unwrap();
@@ -233,7 +233,7 @@ impl AutoBootstrap {
             let mut next_retry_time = self.next_retry_time.lock().unwrap();
             *next_retry_time = None;
         }
-        debug!("Bootstrap marked as connected with {} peers", peer_count);
+        debug!("Bootstrap marked as connected with {peer_count} peers");
     }
 
     /// Handle bootstrap failure
@@ -255,7 +255,7 @@ impl AutoBootstrap {
         match &*status {
             BootstrapStatus::NotStarted => "DHT: Not started".to_string(),
             BootstrapStatus::InProgress { attempts, .. } => {
-                format!("DHT: Bootstrapping (attempt {})", attempts)
+                format!("DHT: Bootstrapping (attempt {attempts})")
             }
             BootstrapStatus::Connected {
                 peer_count,
@@ -272,7 +272,7 @@ impl AutoBootstrap {
                 attempts,
                 last_error,
             } => {
-                format!("DHT: Failed after {} attempts ({})", attempts, last_error)
+                format!("DHT: Failed after {attempts} attempts ({last_error})")
             }
         }
     }

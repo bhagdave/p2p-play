@@ -230,7 +230,7 @@ impl App {
                         self.input.clear();
                         self.input_mode = InputMode::Normal;
                         if !input.is_empty() {
-                            self.add_to_log(format!("> {}", input));
+                            self.add_to_log(format!("> {input}"));
                             return Some(AppEvent::Input(input));
                         }
                     }
@@ -333,7 +333,7 @@ impl App {
                                         &new_partial.channel,
                                     ) {
                                         let create_command =
-                                            format!("create s {}|{}|{}|{}", name, header, body, ch);
+                                            format!("create s {name}|{header}|{body}|{ch}");
                                         self.input_mode = InputMode::Normal;
                                         self.add_to_log(format!(
                                             "{} Story creation complete!",
@@ -543,7 +543,7 @@ impl App {
         self.add_to_log(format!("{} Body:", Icons::book()));
         // Split the body into lines for better readability
         for line in story.body.lines() {
-            self.add_to_log(format!("   {}", line));
+            self.add_to_log(format!("   {line}"));
         }
         self.add_to_log(format!(
             "{} ═══════════════════════════════════════════",
@@ -791,13 +791,13 @@ impl App {
                     let peer_id_display = if peer_id_str.len() >= 20 { &peer_id_str[..20] } else { &peer_id_str };
 
                     let content = if name.is_empty() {
-                        format!("{}", peer_id)
+                        format!("{peer_id}")
                     } else if name.starts_with("Peer_") && name.contains(&peer_id.to_string()) {
                         // This is a default name we assigned (contains full peer ID), show truncated version
-                        format!("Peer_{} [{}]", peer_id_display, peer_id_display)
+                        format!("Peer_{peer_id_display} [{peer_id_display}]")
                     } else {
                         // This is a real name the peer set (or a custom name that starts with "Peer_")
-                        format!("{} ({})", name, peer_id_display)
+                        format!("{name} ({peer_id_display})")
                     };
                     ListItem::new(content)
                 })
@@ -858,7 +858,7 @@ impl App {
                             ListItem::new(format!("{} {}: {}", status, story.id, story.name))
                         })
                         .collect();
-                    (story_items, format!("Stories in '{}' (Press Esc to return to channels)", selected_channel))
+                    (story_items, format!("Stories in '{selected_channel}' (Press Esc to return to channels)"))
                 }
             };
 

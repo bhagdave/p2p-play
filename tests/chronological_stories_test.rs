@@ -28,7 +28,7 @@ async fn test_story_chronological_order_and_channel_display() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    println!("Start time: {}", start_time);
+    println!("Start time: {start_time}");
 
     create_new_story_with_channel(
         "First Story",
@@ -152,7 +152,7 @@ async fn test_story_chronological_order_and_channel_display() {
             "{} [{}] {}: {}",
             status, story.channel, story.id, story.name
         );
-        println!("UI format: {}", ui_format);
+        println!("UI format: {ui_format}");
 
         // Verify the format includes channel info
         assert!(

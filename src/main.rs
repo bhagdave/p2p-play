@@ -14,10 +14,12 @@ mod ui;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
+use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
-use network::{PEER_ID, create_swarm};
+use network::{KEYS, PEER_ID, create_swarm};
+use relay::RelayService;
 use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
     load_unified_network_config,
@@ -52,14 +54,14 @@ async fn main() {
     let mut app = match App::new() {
         Ok(app) => app,
         Err(e) => {
-            error!("Failed to initialize UI: {}", e);
+            error!("Failed to initialize UI: {e}");
             process::exit(1);
         }
     };
 
     // Ensure stories.json file exists
     if let Err(e) = ensure_stories_file_exists().await {
-        error!("Failed to initialize stories file: {}", e);
+        error!("Failed to initialize stories file: {e}");
         let _ = app.cleanup();
         process::exit(1);
     }
@@ -80,10 +82,9 @@ async fn main() {
 
     // Load unified network configuration
     if let Err(e) = ensure_unified_network_config_exists().await {
-        error!("Failed to initialize unified network config: {}", e);
+        error!("Failed to initialize unified network config: {e}");
         app.add_to_log(format!(
-            "Failed to initialize unified network config: {}",
-            e
+            "Failed to initialize unified network config: {e}"
         ));
     }
 
@@ -93,21 +94,20 @@ async fn main() {
                 "Loaded unified network config: connection_maintenance_interval_seconds={}",
                 config.network.connection_maintenance_interval_seconds
             );
-            app.add_to_log(format!("Loaded unified network config from file"));
+            app.add_to_log("Loaded unified network config from file".to_string());
             config
         }
         Err(e) => {
-            error!("Failed to load unified network config: {}", e);
+            error!("Failed to load unified network config: {e}");
             app.add_to_log(format!(
-                "Failed to load unified network config: {}, using defaults",
-                e
+                "Failed to load unified network config: {e}, using defaults"
             ));
             UnifiedNetworkConfig::new()
         }
     };
 
     // Extract individual configs for convenience
-    let network_config = &unified_config.network;
+    let _network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
 
     let mut swarm = create_swarm(&unified_config.ping).expect("Failed to create swarm");
@@ -125,15 +125,15 @@ async fn main() {
     let mut local_peer_name: Option<String> = match load_local_peer_name().await {
         Ok(saved_name) => {
             if let Some(ref name) = saved_name {
-                debug!("Loaded saved peer name: {}", name);
-                app.add_to_log(format!("Loaded saved peer name: {}", name));
+                debug!("Loaded saved peer name: {name}");
+                app.add_to_log(format!("Loaded saved peer name: {name}"));
                 app.update_local_peer_name(saved_name.clone());
             }
             saved_name
         }
         Err(e) => {
-            error!("Failed to load saved peer name: {}", e);
-            app.add_to_log(format!("Failed to load saved peer name: {}", e));
+            error!("Failed to load saved peer name: {e}");
+            app.add_to_log(format!("Failed to load saved peer name: {e}"));
             None
         }
     };
@@ -150,17 +150,17 @@ async fn main() {
             if !subscriptions.contains(&"general".to_string()) {
                 if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
                 {
-                    error!("Failed to auto-subscribe to general channel: {}", e);
+                    error!("Failed to auto-subscribe to general channel: {e}");
                 } else {
                     debug!("Auto-subscribed to general channel");
                 }
             }
         }
         Err(e) => {
-            error!("Failed to check subscriptions: {}", e);
+            error!("Failed to check subscriptions: {e}");
             // Try to subscribe to general anyway
             if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await {
-                error!("Failed to auto-subscribe to general channel: {}", e);
+                error!("Failed to auto-subscribe to general channel: {e}");
             }
         }
     }
@@ -175,8 +175,8 @@ async fn main() {
             // Note: Unread counts are loaded separately after this in the init phase
         }
         Err(e) => {
-            error!("Failed to load local stories: {}", e);
-            app.add_to_log(format!("Failed to load local stories: {}", e));
+            error!("Failed to load local stories: {e}");
+            app.add_to_log(format!("Failed to load local stories: {e}"));
         }
     }
 
@@ -187,8 +187,8 @@ async fn main() {
             app.update_channels(channels);
         }
         Err(e) => {
-            error!("Failed to load subscribed channels: {}", e);
-            app.add_to_log(format!("Failed to load subscribed channels: {}", e));
+            error!("Failed to load subscribed channels: {e}");
+            app.add_to_log(format!("Failed to load subscribed channels: {e}"));
         }
     }
 
@@ -207,6 +207,19 @@ async fn main() {
     )
     .expect("swarm can be started");
 
+    // Initialize crypto service with shared keypair
+    let crypto_service = CryptoService::new(KEYS.clone());
+
+    // Initialize relay service with crypto and configuration
+    let relay_service = if unified_config.relay.enable_relay {
+        Some(RelayService::new(
+            unified_config.relay.clone(),
+            crypto_service,
+        ))
+    } else {
+        None
+    };
+
     // Create event processor
     let mut event_processor = EventProcessor::new(
         ui_rcv,
@@ -221,20 +234,23 @@ async fn main() {
         ui_logger,
         error_logger,
         bootstrap_logger,
+        relay_service,
     );
 
     // Run the main event loop
-    event_processor.run(
-        &mut app,
-        &mut swarm,
-        &mut peer_names,
-        &mut local_peer_name,
-        &mut sorted_peer_names_cache,
-        &mut auto_bootstrap,
-    ).await;
+    event_processor
+        .run(
+            &mut app,
+            &mut swarm,
+            &mut peer_names,
+            &mut local_peer_name,
+            &mut sorted_peer_names_cache,
+            &mut auto_bootstrap,
+        )
+        .await;
 
     // Cleanup
     if let Err(e) = app.cleanup() {
-        error!("Error during cleanup: {}", e);
+        error!("Error during cleanup: {e}");
     }
 }

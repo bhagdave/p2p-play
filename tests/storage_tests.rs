@@ -369,9 +369,9 @@ async fn test_publish_all_stories() {
     let mut story_ids = vec![];
     for i in 0..3 {
         let id = create_new_story_in_path(
-            &format!("Story {}", i),
-            &format!("Header {}", i),
-            &format!("Body {}", i),
+            &format!("Story {i}"),
+            &format!("Header {i}"),
+            &format!("Body {i}"),
             path,
         )
         .await

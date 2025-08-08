@@ -22,7 +22,7 @@ fn test_peer_id_consistency() {
 #[test]
 fn test_topic_creation() {
     let topic = TOPIC.clone();
-    let topic_str = format!("{:?}", topic);
+    let topic_str = format!("{topic:?}");
     assert!(topic_str.contains("stories"));
 }
 
@@ -36,8 +36,8 @@ fn test_network_constants() {
     assert!(!peer_id.to_string().is_empty());
 
     // Topic should contain expected content
-    let topic_str = format!("{:?}", topic);
-    assert!(topic_str.len() > 0);
+    let topic_str = format!("{topic:?}");
+    assert!(!topic_str.is_empty());
 }
 
 #[test]
@@ -51,7 +51,7 @@ fn test_network_configuration() {
     assert_eq!(peer_id, *PEER_ID);
 
     // Verify topic is valid
-    let topic_str = format!("{:?}", topic);
+    let topic_str = format!("{topic:?}");
     assert!(!topic_str.is_empty());
     assert!(topic_str.contains("stories"));
 }
@@ -134,7 +134,7 @@ fn test_tcp_configuration_components() {
 
     // Test topic creation
     let topic = TOPIC.clone();
-    let topic_str = format!("{:?}", topic);
+    let topic_str = format!("{topic:?}");
     assert!(
         topic_str.contains("stories"),
         "Topic should contain 'stories'"
@@ -145,7 +145,7 @@ fn test_tcp_configuration_components() {
     let topic_2 = TOPIC.clone();
     assert_eq!(peer_id, peer_id_2, "Peer ID should be consistent");
     assert_eq!(
-        format!("{:?}", topic),
+        format!("{topic:?}"),
         format!("{:?}", topic_2),
         "Topic should be consistent"
     );
