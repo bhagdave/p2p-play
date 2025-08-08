@@ -402,25 +402,9 @@ impl EventProcessor {
             );
         }
 
-        // Exchange public keys for encryption if relay service is available
-        if let Some(ref mut relay_svc) = self.relay_service {
-            // Extract public key from PeerId using crypto service
-            match relay_svc.crypto_service().public_key_from_peer_id(&peer_id) {
-                Ok(public_key) => {
-                    if let Err(e) = relay_svc
-                        .crypto_service()
-                        .add_peer_public_key(peer_id, public_key)
-                    {
-                        debug!("Failed to cache public key for peer {peer_id}: {e}");
-                    } else {
-                        debug!("Successfully cached public key for peer {peer_id}");
-                    }
-                }
-                Err(e) => {
-                    debug!("Failed to extract public key for peer {peer_id}: {e}");
-                }
-            }
-        }
+        // Public keys will be exchanged when needed for encryption
+        // This avoids the circular dependency issue with extracting keys from PeerID
+        debug!("Connected to peer {peer_id} - public key exchange will occur when messaging");
 
         // Retry any pending direct messages for this peer
         event_handlers::retry_messages_for_peer(
