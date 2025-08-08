@@ -99,11 +99,9 @@ async fn test_memory_cleanup_validation() {
     let mut successful_connections: HashMap<String, Instant> = HashMap::new();
 
     let now = Instant::now();
-    // Create an old time by getting an instant and adding the duration forward
-    // This avoids potential underflow on Windows systems
-    let old_time = now
-        .checked_sub(Duration::from_secs(3700))
-        .unwrap_or_else(|| Instant::now() - Duration::from_secs(10)); // Fallback to 10 seconds ago
+    // Create an old time that's guaranteed to be older than our cleanup threshold
+    // Use a much simpler approach that works consistently across platforms
+    let old_time = now - Duration::from_secs(7200); // 2 hours ago - well beyond our 1 hour cleanup threshold
 
     // Add some old entries that should be cleaned up
     for i in 0..10 {
