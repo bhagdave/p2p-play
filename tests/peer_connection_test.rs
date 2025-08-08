@@ -13,7 +13,9 @@ fn test_peer_tracking_logic() {
     // After our fix: peer should be added immediately with a default name
 
     // Simulate our connection established logic
-    peer_names.entry(peer_id).or_insert_with(|| format!("Peer_{peer_id}"));
+    peer_names
+        .entry(peer_id)
+        .or_insert_with(|| format!("Peer_{peer_id}"));
 
     // Verify the peer is now tracked
     assert!(peer_names.contains_key(&peer_id));

@@ -29,9 +29,7 @@ impl ErrorLogger {
     /// Log network/connection errors that should be hidden from UI but preserved in logs
     pub fn log_network_error(&self, source: &str, error_message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!(
-            "[{timestamp}] NETWORK_ERROR [{source}]: {error_message}\n"
-        );
+        let log_entry = format!("[{timestamp}] NETWORK_ERROR [{source}]: {error_message}\n");
 
         if let Err(e) = self.write_to_file(&log_entry) {
             // If file writing fails, use warn instead of error to avoid console spam

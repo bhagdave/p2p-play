@@ -1043,9 +1043,7 @@ pub async fn mark_story_as_read(
         [&story_id.to_string(), peer_id, &read_at.to_string(), channel_name],
     )?;
 
-    debug!(
-        "Marked story {story_id} as read for peer {peer_id} in channel {channel_name}"
-    );
+    debug!("Marked story {story_id} as read for peer {peer_id} in channel {channel_name}");
     Ok(())
 }
 

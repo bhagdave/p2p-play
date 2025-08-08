@@ -83,9 +83,7 @@ async fn main() {
     // Load unified network configuration
     if let Err(e) = ensure_unified_network_config_exists().await {
         error!("Failed to initialize unified network config: {e}");
-        app.add_to_log(format!(
-            "Failed to initialize unified network config: {e}"
-        ));
+        app.add_to_log(format!("Failed to initialize unified network config: {e}"));
     }
 
     let unified_config = match load_unified_network_config().await {
