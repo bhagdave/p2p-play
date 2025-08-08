@@ -91,9 +91,8 @@ impl RelayService {
         let message_id = Uuid::new_v4().to_string();
 
         // Serialize the direct message for encryption
-        let message_bytes = serde_json::to_vec(direct_msg).map_err(|e| {
-            RelayError::InvalidMessage(format!("Failed to serialize message: {e}"))
-        })?;
+        let message_bytes = serde_json::to_vec(direct_msg)
+            .map_err(|e| RelayError::InvalidMessage(format!("Failed to serialize message: {e}")))?;
 
         // Encrypt the message for the target recipient
         let encrypted_payload = self

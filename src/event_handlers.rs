@@ -912,17 +912,13 @@ pub async fn handle_request_response_event(
                 &format!("Failed to send direct message to {peer}: {error:?}"),
             );
             // Don't immediately report failure to user - let retry logic handle it
-            debug!(
-                "Direct message to {peer} failed, will be retried automatically"
-            );
+            debug!("Direct message to {peer} failed, will be retried automatically");
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
             // Log to error file instead of TUI to avoid corrupting the interface
             error_logger.log_network_error(
                 "direct_message",
-                &format!(
-                    "Failed to receive direct message from {peer}: {error:?}"
-                ),
+                &format!("Failed to receive direct message from {peer}: {error:?}"),
             );
         }
         request_response::Event::ResponseSent { peer, .. } => {

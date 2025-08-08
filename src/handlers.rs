@@ -106,9 +106,7 @@ pub async fn handle_list_stories(
             debug!("Published request");
         }
         Some(story_peer_id) => {
-            ui_logger.log(format!(
-                "Requesting all stories from peer: {story_peer_id}"
-            ));
+            ui_logger.log(format!("Requesting all stories from peer: {story_peer_id}"));
             let req = ListRequest {
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
@@ -240,8 +238,7 @@ pub async fn handle_publish_story(
         match rest.trim().parse::<usize>() {
             Ok(id) => {
                 if let Err(e) = publish_story(id, story_sender).await {
-                    error_logger
-                        .log_error(&format!("Failed to publish story with id {id}: {e}"));
+                    error_logger.log_error(&format!("Failed to publish story with id {id}: {e}"));
                 } else {
                     ui_logger.log(format!("Published story with id: {id}"));
                 }
@@ -589,12 +586,8 @@ pub async fn handle_direct_message(
             queue.push(pending_msg);
         }
 
-        ui_logger.log(format!(
-            "Direct message queued for {to_name}: {message}"
-        ));
-        debug!(
-            "Queued direct message to {to_name} from {from_name} (request_id: {request_id:?})"
-        );
+        ui_logger.log(format!("Direct message queued for {to_name}: {message}"));
+        debug!("Queued direct message to {to_name} from {from_name} (request_id: {request_id:?})");
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
     }
@@ -682,9 +675,7 @@ pub async fn handle_direct_message_with_relay(
                 ui_logger.log(format!(
                     "📨 Direct message sent to {to_name} (request_id: {request_id:?})"
                 ));
-                debug!(
-                    "Direct message sent to {to_name} with request_id {request_id:?}"
-                );
+                debug!("Direct message sent to {to_name} with request_id {request_id:?}");
 
                 // When prefer_direct=true, don't attempt relay backup for successful direct sends
                 return;
@@ -844,9 +835,7 @@ fn queue_message_for_retry(
     if let Ok(mut queue) = pending_messages.lock() {
         queue.push(pending_msg);
         ui_logger.log(format!("Message for {to_name} added to retry queue"));
-        debug!(
-            "Message queued for {to_name} with fallback to retry system"
-        );
+        debug!("Message queued for {to_name} with fallback to retry system");
     } else {
         ui_logger.log("Failed to queue message - retry system unavailable".to_string());
     }
@@ -888,9 +877,8 @@ pub async fn handle_create_channel(
 
             // Auto-subscribe to the channel we created
             if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), name).await {
-                error_logger.log_error(&format!(
-                    "Failed to auto-subscribe to created channel: {e}"
-                ));
+                error_logger
+                    .log_error(&format!("Failed to auto-subscribe to created channel: {e}"));
             }
 
             // Broadcast the channel to other peers
@@ -906,8 +894,7 @@ pub async fn handle_create_channel(
             let published_json = match serde_json::to_string(&published_channel) {
                 Ok(json) => json,
                 Err(e) => {
-                    error_logger
-                        .log_error(&format!("Failed to serialize published channel: {e}"));
+                    error_logger.log_error(&format!("Failed to serialize published channel: {e}"));
                     return Some(ActionResult::RefreshStories);
                 }
             };
@@ -916,9 +903,7 @@ pub async fn handle_create_channel(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), published_json_bytes);
-            debug!(
-                "Broadcasted published channel '{name}' to connected peers"
-            );
+            debug!("Broadcasted published channel '{name}' to connected peers");
 
             // 2. Broadcast legacy Channel format for backward compatibility with older nodes
             let legacy_json = match serde_json::to_string(&channel) {
@@ -933,9 +918,7 @@ pub async fn handle_create_channel(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), legacy_json_bytes);
-            debug!(
-                "Broadcasted legacy channel '{name}' for backward compatibility"
-            );
+            debug!("Broadcasted legacy channel '{name}' for backward compatibility");
 
             ui_logger.log(format!("Channel '{name}' shared with network"));
 
@@ -1281,9 +1264,7 @@ pub async fn handle_get_description(
     let target_peer = match target_peer {
         Some(peer) => peer,
         None => {
-            ui_logger.log(format!(
-                "Peer '{peer_alias}' not found in connected peers."
-            ));
+            ui_logger.log(format!("Peer '{peer_alias}' not found in connected peers."));
             return;
         }
     };
@@ -1517,9 +1498,9 @@ async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &U
                             ui_logger.log(format!("Failed to extract peer ID from: {peer_addr}"));
                         }
                     }
-                    Err(e) => ui_logger.log(format!(
-                        "Invalid multiaddr in config '{peer_addr}': {e}"
-                    )),
+                    Err(e) => {
+                        ui_logger.log(format!("Invalid multiaddr in config '{peer_addr}': {e}"))
+                    }
                 }
             }
 
@@ -1548,9 +1529,7 @@ async fn handle_direct_bootstrap(
 
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
-            ui_logger.log(format!(
-                "Attempting to bootstrap DHT with peer at: {addr}"
-            ));
+            ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {addr}"));
 
             // Add the address as a bootstrap peer in the DHT
             if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {

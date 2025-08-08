@@ -780,12 +780,8 @@ async fn test_handle_delete_story_multiple_ids() {
     let id2 = stories_before[1].id;
 
     // Test deleting multiple stories
-    let result = handle_delete_story(
-        &format!("delete s {id1},{id2}"),
-        &ui_logger,
-        &error_logger,
-    )
-    .await;
+    let result =
+        handle_delete_story(&format!("delete s {id1},{id2}"), &ui_logger, &error_logger).await;
 
     assert_eq!(result, Some(ActionResult::RefreshStories));
 
@@ -1108,12 +1104,12 @@ async fn test_manual_publish_still_works() {
 
 #[tokio::test]
 async fn test_handle_direct_message_with_relay_prefer_direct() {
+    use libp2p::identity::Keypair;
+    use p2p_play::crypto::CryptoService;
+    use p2p_play::relay::RelayService;
+    use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
-    use p2p_play::relay::RelayService;
-    use p2p_play::crypto::CryptoService;
-    use p2p_play::types::RelayConfig;
-    use libp2p::identity::Keypair;
 
     // Setup test environment
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
@@ -1121,24 +1117,24 @@ async fn test_handle_direct_message_with_relay_prefer_direct() {
 
     let ping_config = p2p_play::types::PingConfig::new();
     let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
-    
+
     // Create a connected peer
     let mut peer_names = HashMap::new();
     let connected_peer_id = libp2p::PeerId::random();
     peer_names.insert(connected_peer_id, "TestPeer".to_string());
-    
+
     let local_peer_name = Some("LocalPeer".to_string());
     let mut cache = SortedPeerNamesCache::new();
     cache.update(&peer_names);
-    
+
     let dm_config = DirectMessageConfig::new();
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
-    
+
     // Create RelayService with prefer_direct=true
     let mut relay_config = RelayConfig::new();
     relay_config.prefer_direct = true;
     relay_config.enable_relay = true;
-    
+
     let keypair = Keypair::generate_ed25519();
     let crypto_service = CryptoService::new(keypair);
     let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
@@ -1163,19 +1159,99 @@ async fn test_handle_direct_message_with_relay_prefer_direct() {
         log_messages.push(msg);
     }
 
-    // Verify expected behavior: 
+    // Verify expected behavior:
     // 1. Should attempt direct message
     // 2. Should NOT attempt relay backup when prefer_direct=true
-    let has_direct_attempt = log_messages.iter().any(|msg| 
+    let has_direct_attempt = log_messages.iter().any(|msg| {
         msg.contains("Attempting direct message") || msg.contains("Direct message sent")
-    );
-    let has_relay_attempt = log_messages.iter().any(|msg| 
-        msg.contains("relay") && (msg.contains("Trying relay delivery") || msg.contains("sent via relay"))
+    });
+    let has_relay_attempt = log_messages.iter().any(|msg| {
+        msg.contains("relay")
+            && (msg.contains("Trying relay delivery") || msg.contains("sent via relay"))
+    });
+
+    assert!(
+        has_direct_attempt,
+        "Should attempt direct message. Messages: {:?}",
+        log_messages
     );
 
-    assert!(has_direct_attempt, "Should attempt direct message. Messages: {:?}", log_messages);
-    
     // This is the key assertion - with prefer_direct=true, there should be no relay backup
     // This test will fail with the current bug, and pass after the fix
-    assert!(!has_relay_attempt, "Should NOT attempt relay backup when prefer_direct=true. Messages: {:?}", log_messages);
+    assert!(
+        !has_relay_attempt,
+        "Should NOT attempt relay backup when prefer_direct=true. Messages: {:?}",
+        log_messages
+    );
+}
+
+#[tokio::test]
+async fn test_handle_direct_message_with_relay_prefer_relay() {
+    use libp2p::identity::Keypair;
+    use p2p_play::crypto::CryptoService;
+    use p2p_play::relay::RelayService;
+    use p2p_play::types::RelayConfig;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    // Setup test environment
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+
+    let ping_config = p2p_play::types::PingConfig::new();
+    let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
+
+    // Create a connected peer
+    let mut peer_names = HashMap::new();
+    let connected_peer_id = libp2p::PeerId::random();
+    peer_names.insert(connected_peer_id, "TestPeer".to_string());
+
+    let local_peer_name = Some("LocalPeer".to_string());
+    let mut cache = SortedPeerNamesCache::new();
+    cache.update(&peer_names);
+
+    let dm_config = DirectMessageConfig::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> =
+        Arc::new(Mutex::new(Vec::new()));
+
+    // Create RelayService with prefer_direct=false
+    let mut relay_config = RelayConfig::new();
+    relay_config.prefer_direct = false; // This should use relay instead of direct
+    relay_config.enable_relay = true;
+
+    let keypair = Keypair::generate_ed25519();
+    let crypto_service = CryptoService::new(keypair);
+    let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
+
+    // Test: Send message with prefer_direct=false
+    p2p_play::handlers::handle_direct_message_with_relay(
+        "msg TestPeer Hello relay",
+        &mut swarm,
+        &peer_names,
+        &local_peer_name,
+        &cache,
+        &ui_logger,
+        &dm_config,
+        &mut relay_service,
+        &pending_messages,
+    )
+    .await;
+
+    // Collect all log messages
+    let mut log_messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        log_messages.push(msg);
+    }
+
+    // Verify expected behavior:
+    // With prefer_direct=false, it should go directly to relay
+    let has_relay_attempt = log_messages
+        .iter()
+        .any(|msg| msg.contains("relay") && msg.contains("Trying relay delivery"));
+
+    assert!(
+        has_relay_attempt,
+        "Should attempt relay when prefer_direct=false. Messages: {:?}",
+        log_messages
+    );
 }
