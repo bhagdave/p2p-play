@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [0.8.1] 2025-08-08
+## [0.8.2] 2025-08-08
 
 ### Fixed
 - **Windows Release**: Fixed test that was failing on the windows release
