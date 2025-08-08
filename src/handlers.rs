@@ -686,22 +686,7 @@ pub async fn handle_direct_message_with_relay(
                     "Direct message sent to {to_name} with request_id {request_id:?}"
                 );
 
-                // Still try relay as a backup for reliability
-                if let Some(relay_svc) = relay_service {
-                    if relay_svc.config().enable_relay {
-                        debug!("Also sending via relay for backup delivery to {to_name}");
-                        try_relay_delivery(
-                            swarm,
-                            relay_svc,
-                            &from_name,
-                            &to_name,
-                            &message,
-                            &target_peer_id,
-                            ui_logger,
-                        )
-                        .await;
-                    }
-                }
+                // When prefer_direct=true, don't attempt relay backup for successful direct sends
                 return;
             }
         }
