@@ -2,6 +2,7 @@ mod bootstrap;
 mod bootstrap_logger;
 mod crypto;
 mod error_logger;
+mod errors;
 mod event_handlers;
 mod event_processor;
 mod handlers;
