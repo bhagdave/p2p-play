@@ -52,7 +52,11 @@ async fn main() {
 
     // Initialize the UI
     let mut app = match App::new() {
-        Ok(app) => app,
+        Ok(mut app) => {
+            // Set the peer ID in the UI
+            app.update_local_peer_id(PEER_ID.to_string());
+            app
+        },
         Err(e) => {
             error!("Failed to initialize UI: {e}");
             process::exit(1);
