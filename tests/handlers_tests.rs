@@ -132,7 +132,7 @@ async fn test_handle_show_story() {
     while let Ok(msg) = receiver.try_recv() {
         messages.push(msg);
     }
-    assert!(messages.iter().any(|m| m.contains("Invalid story id")));
+    assert!(messages.iter().any(|m| m.contains("Invalid story ID")));
 
     // Test non-existent story ID
     handle_show_story("show story 999", &ui_logger, "test_peer").await;
@@ -822,7 +822,7 @@ async fn test_handle_delete_story_invalid_id() {
         messages.push(msg);
     }
 
-    assert!(messages.iter().any(|m| m.contains("Invalid story id")));
+    assert!(messages.iter().any(|m| m.contains("Invalid story ID")));
 }
 
 #[tokio::test]
@@ -958,7 +958,7 @@ async fn test_handle_delete_story_with_spaces_and_invalid_entries() {
 
     let error_messages: Vec<_> = messages
         .iter()
-        .filter(|m| m.contains("Invalid story id"))
+        .filter(|m| m.contains("Invalid story ID"))
         .collect();
     assert!(!error_messages.is_empty()); // At least one error for "abc"
 }

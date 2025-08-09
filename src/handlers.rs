@@ -275,7 +275,7 @@ pub async fn handle_publish_story(
     error_logger: &ErrorLogger,
 ) {
     if let Some(rest) = cmd.strip_prefix("publish s") {
-        match rest.trim().parse::<usize>() {
+        match ContentValidator::validate_story_id(rest) {
             Ok(id) => {
                 if let Err(e) = publish_story(id, story_sender).await {
                     error_logger.log_error(&format!("Failed to publish story with id {id}: {e}"));
@@ -283,14 +283,14 @@ pub async fn handle_publish_story(
                     ui_logger.log(format!("Published story with id: {id}"));
                 }
             }
-            Err(e) => ui_logger.log(format!("invalid id: {}, {}", rest.trim(), e)),
+            Err(e) => ui_logger.log(format!("Invalid story ID: {e}")),
         };
     }
 }
 
 pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
     if let Some(rest) = cmd.strip_prefix("show story ") {
-        match rest.trim().parse::<usize>() {
+        match ContentValidator::validate_story_id(rest) {
             Ok(id) => {
                 // Read local stories to find the story with the given ID
                 match read_local_stories().await {
@@ -322,7 +322,7 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                 }
             }
             Err(e) => {
-                ui_logger.log(format!("Invalid story id '{}': {}", rest.trim(), e));
+                ui_logger.log(format!("Invalid story ID: {e}"));
             }
         }
     } else {
@@ -353,7 +353,7 @@ pub async fn handle_delete_story(
         let is_batch_operation = valid_id_strings.len() > 1;
 
         for id_str in valid_id_strings {
-            match id_str.parse::<usize>() {
+            match ContentValidator::validate_story_id(id_str) {
                 Ok(id) => match delete_local_story(id).await {
                     Ok(deleted) => {
                         if deleted {
@@ -373,7 +373,7 @@ pub async fn handle_delete_story(
                     }
                 },
                 Err(e) => {
-                    let failure_msg = format!("Invalid story id '{id_str}': {e}");
+                    let failure_msg = format!("Invalid story ID: {e}");
                     ui_logger.log(format!("❌ {failure_msg}"));
                     failed_deletions.push(failure_msg);
                 }
@@ -734,7 +734,7 @@ pub async fn handle_direct_message(
                 }
             };
 
-        // Validate peer name
+        // Validate and sanitize peer name
         let validated_to_name = match ContentValidator::validate_peer_name(&to_name) {
             Ok(validated) => validated,
             Err(e) => {
