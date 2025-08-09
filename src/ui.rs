@@ -1,3 +1,4 @@
+use crate::errors::UIResult;
 use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
 use crossterm::{
     event::{
@@ -106,7 +107,7 @@ pub enum AppEvent {
 }
 
 impl App {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> UIResult<Self> {
         // UI initialization code that's difficult to test without a real terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -148,7 +149,7 @@ impl App {
         })
     }
 
-    pub fn cleanup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn cleanup(&mut self) -> UIResult<()> {
         // Terminal cleanup code that's difficult to test
         disable_raw_mode()?;
         execute!(
@@ -635,6 +636,59 @@ impl App {
         ));
     }
 
+    /// Display a user-friendly error message in the UI log
+    pub fn display_error(&mut self, error: &crate::errors::AppError) {
+        use crate::errors::{AppError, ConfigError, NetworkError, StorageError, UIError};
+        
+        let user_message = match error {
+            AppError::Storage(StorageError::StoryNotFound { id }) => {
+                format!("{} Story #{id} not found", Icons::cross())
+            }
+            AppError::Storage(StorageError::ChannelNotFound { name }) => {
+                format!("{} Channel '{}' not found", Icons::cross(), name)
+            }
+            AppError::Storage(StorageError::DatabaseConnection { reason }) => {
+                format!("{} Database connection failed: {}", Icons::cross(), reason)
+            }
+            AppError::Storage(StorageError::FileIO(_)) => {
+                format!("{} File operation failed - check permissions", Icons::cross())
+            }
+            AppError::Network(NetworkError::SwarmCreation { reason }) => {
+                format!("{} Network setup failed: {}", Icons::cross(), reason)
+            }
+            AppError::Network(NetworkError::PeerConnectionFailed { peer_id }) => {
+                format!("{} Failed to connect to peer {}", Icons::cross(), peer_id)
+            }
+            AppError::Network(NetworkError::BroadcastFailed { reason }) => {
+                format!("{} Message broadcast failed: {}", Icons::cross(), reason)
+            }
+            AppError::UI(UIError::TerminalInit(_)) => {
+                format!("{} Terminal initialization failed - check terminal compatibility", Icons::cross())
+            }
+            AppError::Config(ConfigError::FileNotFound { path }) => {
+                format!("{} Configuration file not found: {}", Icons::cross(), path)
+            }
+            AppError::Config(ConfigError::Validation { reason }) => {
+                format!("{} Invalid configuration: {}", Icons::cross(), reason)
+            }
+            AppError::Crypto(crypto_error) => {
+                format!("{} Encryption error: {}", Icons::cross(), crypto_error)
+            }
+            AppError::Relay(relay_error) => {
+                format!("{} Relay error: {}", Icons::cross(), relay_error)
+            }
+            _ => {
+                // Fallback for other errors
+                format!("{} Error: {}", Icons::cross(), error)
+            }
+        };
+        
+        self.add_to_log(user_message);
+        
+        // Also log detailed error information for debugging
+        debug!("Detailed error: {:#}", error);
+    }
+
     pub fn start_story_creation(&mut self) {
         self.input_mode = InputMode::CreatingStory {
             step: StoryCreationStep::Name,
@@ -739,7 +793,7 @@ impl App {
         self.scroll_offset += 1;
     }
 
-    pub fn draw(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn draw(&mut self) -> UIResult<()> {
         self.terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -1016,7 +1070,7 @@ impl App {
 pub async fn handle_ui_events(
     app: &mut App,
     ui_sender: mpsc::UnboundedSender<AppEvent>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> UIResult<()> {
     #[cfg(windows)]
     let poll_timeout = std::time::Duration::from_millis(80); // Slower polling on Windows
 

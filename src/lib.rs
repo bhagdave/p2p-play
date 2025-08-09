@@ -2,6 +2,7 @@ pub mod bootstrap;
 pub mod bootstrap_logger;
 pub mod crypto;
 pub mod error_logger;
+pub mod errors;
 pub mod event_handlers;
 pub mod event_processor;
 pub mod handlers;
@@ -13,5 +14,6 @@ pub mod types;
 pub mod ui;
 
 pub use crypto::*;
+pub use errors::*;
 pub use storage::*;
 pub use types::*;

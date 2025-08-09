@@ -2,6 +2,7 @@ mod bootstrap;
 mod bootstrap_logger;
 mod crypto;
 mod error_logger;
+mod errors;
 mod event_handlers;
 mod event_processor;
 mod handlers;
@@ -16,6 +17,7 @@ use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
 use crypto::CryptoService;
 use error_logger::ErrorLogger;
+use errors::{AppError, AppResult};
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
 use network::{KEYS, PEER_ID, create_swarm};
@@ -30,12 +32,28 @@ use ui::App;
 use libp2p::{PeerId, Swarm};
 use log::{debug, error};
 use std::collections::HashMap;
+use std::error::Error;
 use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() {
+    if let Err(e) = run_app().await {
+        eprintln!("Application error: {e}");
+        // Log the error chain for debugging
+        let mut source = e.source();
+        let mut indent = 1;
+        while let Some(err) = source {
+            eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
+            source = err.source();
+            indent += 1;
+        }
+        std::process::exit(1);
+    }
+}
+
+async fn run_app() -> AppResult<()> {
     // Set up custom logger that filters libp2p errors from console but logs them to file
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
@@ -252,7 +270,12 @@ async fn main() {
         .await;
 
     // Cleanup
-    if let Err(e) = app.cleanup() {
-        error!("Error during cleanup: {e}");
-    }
+    app.cleanup()
+        .map_err(AppError::from)
+        .map_err(|e| {
+            error!("Error during cleanup: {e}");
+            e
+        })?;
+
+    Ok(())
 }

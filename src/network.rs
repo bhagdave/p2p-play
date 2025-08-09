@@ -1,3 +1,4 @@
+use crate::errors::NetworkResult;
 use crate::types::NetworkConfig;
 use crate::types::PingConfig;
 use libp2p::floodsub::{Behaviour, Event, Topic};
@@ -179,7 +180,7 @@ impl From<kad::Event> for StoryBehaviourEvent {
 
 pub fn create_swarm(
     ping_config: &PingConfig,
-) -> Result<Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
+) -> NetworkResult<Swarm<StoryBehaviour>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, dns, noise, swarm::Config as SwarmConfig, tcp, yamux};
     use std::num::NonZeroU8;

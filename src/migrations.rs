@@ -1,8 +1,8 @@
+use crate::errors::StorageResult;
 use rusqlite::Connection;
-use std::error::Error;
 
 /// Creates the database tables if they don't exist
-pub fn create_tables(conn: &Connection) -> Result<(), Box<dyn Error>> {
+pub fn create_tables(conn: &Connection) -> StorageResult<()> {
     // Create stories table
     conn.execute(
         r#"
