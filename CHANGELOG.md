@@ -4,6 +4,8 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] 2025-01-20
+
 ### Added
 - **Standardized Error Handling**: Replaced generic `Box<dyn Error>` with domain-specific error types
   - Added central `errors.rs` module with `StorageError`, `NetworkError`, `UIError`, `ConfigError`, and `AppError`
@@ -13,10 +15,6 @@ All changes to this project will be documented in this file.
   - All 101+ generic error usages replaced with specific error types
   - Better error logging in main.rs with complete error chain display
   - Fixes issue #170
-
-## [0.9.0] 2025-01-20
-
-### Added
 - **Auto-Share Configuration**: Added configuration options to control automatic story sharing behavior
   - Added `config auto-share [on|off|status]` command to control global automatic story sharing
   - Added `config sync-days <N>` command to set story sync timeframe (how many days back to sync)
