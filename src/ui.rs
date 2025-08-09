@@ -66,6 +66,7 @@ pub struct App {
     pub input_mode: InputMode,
     pub scroll_offset: usize,
     pub auto_scroll: bool, // Track if we should auto-scroll to bottom
+    pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -146,6 +147,7 @@ impl App {
             input_mode: InputMode::Normal,
             scroll_offset: 0,
             auto_scroll: true, // Start with auto-scroll enabled
+            network_health: None,
         })
     }
 
@@ -481,6 +483,10 @@ impl App {
         self.unread_counts = unread_counts;
     }
 
+    pub fn update_network_health(&mut self, network_health: crate::network_circuit_breakers::NetworkHealthSummary) {
+        self.network_health = Some(network_health);
+    }
+
     pub fn enter_channel(&mut self, channel_name: String) {
         self.view_mode = ViewMode::Stories(channel_name);
         // Reset list selection when entering stories view
@@ -806,13 +812,26 @@ impl App {
 
             // Status bar
             let version = env!("CARGO_PKG_VERSION");
+            
+            // Add network health to status
+            let network_health_text = if let Some(ref health) = self.network_health {
+                if health.overall_healthy {
+                    "🟢 Network OK".to_string()
+                } else {
+                    format!("🔴 Network Issues ({}/{})", health.failed_operations, health.total_operations)
+                }
+            } else {
+                "⚪ Network Status Unknown".to_string()
+            };
+            
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play v{} | Peer: {} ({}) | Connected: {} | Mode: {} | AUTO: {}",
+                    "P2P-Play v{} | Peer: {} ({}) | Connected: {} | {} | Mode: {} | AUTO: {}",
                     version,
                     name,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
                     self.peers.len(),
+                    network_health_text,
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
@@ -822,10 +841,11 @@ impl App {
                 )
             } else {
                 format!(
-                    "P2P-Play v{} | Peer ID: {} | Connected: {} | Mode: {} | AUTO: {}",
+                    "P2P-Play v{} | Peer ID: {} | Connected: {} | {} | Mode: {} | AUTO: {}",
                     version,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
                     self.peers.len(),
+                    network_health_text,
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
@@ -835,8 +855,18 @@ impl App {
                 )
             };
 
+            let status_bar_color = if let Some(ref health) = self.network_health {
+                if health.overall_healthy {
+                    Color::Green
+                } else {
+                    Color::Red
+                }
+            } else {
+                Color::Yellow
+            };
+
             let status_bar = Paragraph::new(status_text)
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(status_bar_color))
                 .block(Block::default().borders(Borders::ALL).title("Status"));
             f.render_widget(status_bar, chunks[0]);
 

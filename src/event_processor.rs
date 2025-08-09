@@ -27,6 +27,7 @@ const CONNECTION_MAINTENANCE_INTERVAL_SECS: u64 = 30;
 const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
 const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
+const NETWORK_HEALTH_UPDATE_INTERVAL_SECS: u64 = 15; // Update network health every 15 seconds
 
 /// Event processor that handles the main application event loop
 pub struct EventProcessor {
@@ -48,6 +49,7 @@ pub struct EventProcessor {
     bootstrap_retry_interval: tokio::time::Interval,
     bootstrap_status_log_interval: tokio::time::Interval,
     dm_retry_interval: tokio::time::Interval,
+    network_health_update_interval: tokio::time::Interval,
 
     // Configuration and state
     dm_config: DirectMessageConfig,
@@ -99,6 +101,7 @@ impl EventProcessor {
                 BOOTSTRAP_STATUS_LOG_INTERVAL_SECS,
             )),
             dm_retry_interval: interval(Duration::from_secs(DM_RETRY_INTERVAL_SECS)),
+            network_health_update_interval: interval(Duration::from_secs(NETWORK_HEALTH_UPDATE_INTERVAL_SECS)),
             dm_config,
             pending_messages,
             ui_logger,
@@ -255,6 +258,12 @@ impl EventProcessor {
                     peer_names,
                     &self.ui_logger,
                 ).await;
+                None
+            },
+            _ = self.network_health_update_interval.tick() => {
+                // Update network health status in UI
+                let health_summary = self.network_circuit_breakers.health_summary().await;
+                app.update_network_health(health_summary);
                 None
             },
             // Network events are processed but heavy operations are spawned to background
@@ -558,6 +567,7 @@ impl EventProcessor {
             &self.dm_config,
             &self.pending_messages,
             &mut self.relay_service,
+            &self.network_circuit_breakers,
         )
         .await;
 
@@ -678,6 +688,13 @@ mod tests {
         let error_logger = ErrorLogger::new("test_errors.log");
         let bootstrap_logger = BootstrapLogger::new("test_bootstrap.log");
 
+        // Create disabled circuit breakers for testing
+        let cb_config = crate::types::NetworkCircuitBreakerConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let network_circuit_breakers = crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+
         EventProcessor::new(
             ui_rcv,
             ui_log_rcv,
@@ -692,6 +709,7 @@ mod tests {
             error_logger,
             bootstrap_logger,
             None, // No relay service in tests
+            network_circuit_breakers,
         )
     }
 
