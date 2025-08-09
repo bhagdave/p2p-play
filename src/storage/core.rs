@@ -733,11 +733,12 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Clear all tables
-    conn.execute("DELETE FROM channel_subscriptions", [])?;
-    conn.execute("DELETE FROM stories", [])?;
-    conn.execute("DELETE FROM channels", [])?; // Clear all channels, general will be recreated by migrations
-    conn.execute("DELETE FROM peer_name", [])?;
+    // Clear all tables in correct order (respecting foreign key constraints)
+    conn.execute("DELETE FROM story_read_status", [])?; // Clear first - has FKs to stories and channels
+    conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear second - has FK to channels
+    conn.execute("DELETE FROM stories", [])?; // Clear third - referenced by story_read_status
+    conn.execute("DELETE FROM channels", [])?; // Clear fourth - referenced by subscriptions and read_status
+    conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
 
     // Recreate the general channel to ensure consistent test state
     conn.execute(

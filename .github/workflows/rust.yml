@@ -19,6 +19,4 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run tests
-      run: TEST_DATABASE_PATH="./test_stories.db" cargo test --verbose -- --test-threads=1
-      env:
-        TEST_DATABASE_PATH: ./test_stories.db
+      run: ./scripts/test_runner.sh
