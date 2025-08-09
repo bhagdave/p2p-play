@@ -5,6 +5,8 @@ tags
 peer_key
 stories.json
 *.db
+*.db-wal
+*.db-shm
 peer_name.json
 tags.lock
 tags.temp
