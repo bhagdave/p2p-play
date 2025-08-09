@@ -342,6 +342,10 @@ pub async fn handle_delete_story(
     None
 }
 
+pub async fn handle_peer_id(_cmd: &str, ui_logger: &UILogger) {
+    ui_logger.log(format!("Local Peer ID: {}", PEER_ID.to_string()));
+}
+
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
@@ -362,6 +366,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
+    ui_logger.log("peer id to show your full peer ID".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
     ui_logger.log("dht bootstrap add/remove/list/clear/retry - manage bootstrap peers".to_string());
     ui_logger.log("dht bootstrap <multiaddr> to bootstrap directly with peer".to_string());
