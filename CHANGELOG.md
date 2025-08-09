@@ -4,6 +4,16 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Standardized Error Handling**: Replaced generic `Box<dyn Error>` with domain-specific error types
+  - Added central `errors.rs` module with `StorageError`, `NetworkError`, `UIError`, `ConfigError`, and `AppError`
+  - Enhanced error debugging with structured error chains and context preservation
+  - Improved user-friendly error messages in the TUI with appropriate icons
+  - Added comprehensive error conversion traits using `thiserror` crate
+  - All 101+ generic error usages replaced with specific error types
+  - Better error logging in main.rs with complete error chain display
+  - Fixes issue #170
+
 ## [0.9.0] 2025-01-20
 
 ### Added
