@@ -1,3 +1,4 @@
+use crate::errors::ConfigResult;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
 };
@@ -636,7 +637,7 @@ impl NetworkConfig {
         }
     }
 
-    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let config: NetworkConfig = serde_json::from_str(&content)?;
@@ -652,7 +653,7 @@ impl NetworkConfig {
         }
     }
 
-    pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_to_file(&self, path: &str) -> ConfigResult<()> {
         let content = serde_json::to_string_pretty(self)?;
         std::fs::write(path, content)?;
         Ok(())
@@ -825,7 +826,7 @@ impl PingConfig {
     }
 
     /// Load ping configuration from a file, falling back to defaults if file doesn't exist
-    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let config: PingConfig = serde_json::from_str(&content)?;
@@ -897,7 +898,7 @@ impl UnifiedNetworkConfig {
     }
 
     /// Load unified configuration from a file, falling back to defaults if file doesn't exist
-    pub fn load_from_file(path: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
                 let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
@@ -914,7 +915,7 @@ impl UnifiedNetworkConfig {
     }
 
     /// Save unified configuration to a file
-    pub fn save_to_file(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn save_to_file(&self, path: &str) -> ConfigResult<()> {
         self.validate()
             .map_err(|e| format!("Configuration validation failed: {e}"))?;
         let content = serde_json::to_string_pretty(self)?;

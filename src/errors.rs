@@ -188,6 +188,56 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for StorageError {
     }
 }
 
+impl From<String> for NetworkError {
+    fn from(err: String) -> Self {
+        NetworkError::ProtocolError {
+            protocol: "unknown".to_string(),
+            reason: err,
+        }
+    }
+}
+
+impl From<&str> for NetworkError {
+    fn from(err: &str) -> Self {
+        NetworkError::ProtocolError {
+            protocol: "unknown".to_string(),
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<String> for UIError {
+    fn from(err: String) -> Self {
+        UIError::Rendering { reason: err }
+    }
+}
+
+impl From<&str> for UIError {
+    fn from(err: &str) -> Self {
+        UIError::Rendering { reason: err.to_string() }
+    }
+}
+
+impl<T> From<tokio::sync::mpsc::error::SendError<T>> for UIError {
+    fn from(err: tokio::sync::mpsc::error::SendError<T>) -> Self {
+        UIError::InputHandling {
+            reason: format!("Failed to send UI event: {err}"),
+        }
+    }
+}
+
+impl From<String> for ConfigError {
+    fn from(err: String) -> Self {
+        ConfigError::InvalidFormat { reason: err }
+    }
+}
+
+impl From<&str> for ConfigError {
+    fn from(err: &str) -> Self {
+        ConfigError::InvalidFormat { reason: err.to_string() }
+    }
+}
+
 impl StorageError {
     /// Create a StorageError from any error type with context
     pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {

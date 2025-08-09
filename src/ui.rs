@@ -1,3 +1,4 @@
+use crate::errors::UIResult;
 use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
 use crossterm::{
     event::{
@@ -106,7 +107,7 @@ pub enum AppEvent {
 }
 
 impl App {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> UIResult<Self> {
         // UI initialization code that's difficult to test without a real terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -148,7 +149,7 @@ impl App {
         })
     }
 
-    pub fn cleanup(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn cleanup(&mut self) -> UIResult<()> {
         // Terminal cleanup code that's difficult to test
         disable_raw_mode()?;
         execute!(
@@ -739,7 +740,7 @@ impl App {
         self.scroll_offset += 1;
     }
 
-    pub fn draw(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn draw(&mut self) -> UIResult<()> {
         self.terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -1016,7 +1017,7 @@ impl App {
 pub async fn handle_ui_events(
     app: &mut App,
     ui_sender: mpsc::UnboundedSender<AppEvent>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> UIResult<()> {
     #[cfg(windows)]
     let poll_timeout = std::time::Duration::from_millis(80); // Slower polling on Windows
 
