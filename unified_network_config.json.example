@@ -1,8 +1,8 @@
 {
   "bootstrap": {
     "bootstrap_peers": [
-      "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
-      "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
+      "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWExamplePeerID1ExampleExampleExampleExample1",
+      "/ip4/127.0.0.1/tcp/4002/p2p/12D3KooWExamplePeerID2ExampleExampleExampleExample2"
     ],
     "retry_interval_ms": 5000,
     "max_retry_attempts": 5,
@@ -40,5 +40,9 @@
     "relay_timeout_ms": 5000,
     "prefer_direct": true,
     "rate_limit_per_peer": 10
+  },
+  "auto_share": {
+    "global_auto_share": true,
+    "sync_days": 30
   }
 }

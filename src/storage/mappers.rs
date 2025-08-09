@@ -4,7 +4,7 @@ use crate::types::{Channel, ChannelSubscription, Story, StoryReadStatus};
 use rusqlite::Row;
 
 /// Map a database row to a Story struct
-/// Standard mapping for: id, name, header, body, public, channel, created_at
+/// Standard mapping for: id, name, header, body, public, channel, created_at, auto_share
 pub fn map_row_to_story(row: &Row) -> Result<Story, rusqlite::Error> {
     Ok(Story {
         id: row.get::<_, i64>(0)? as usize,
@@ -14,6 +14,7 @@ pub fn map_row_to_story(row: &Row) -> Result<Story, rusqlite::Error> {
         public: db_bool_to_rust(row.get::<_, i64>(4)?),
         channel: get_optional_string_with_default(row, 5, "general")?,
         created_at: get_timestamp_with_default(row, 6)?,
+        auto_share: None, // Default for backwards compatibility, to be updated when DB schema is migrated
     })
 }
 

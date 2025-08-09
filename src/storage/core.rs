@@ -206,7 +206,7 @@ pub async fn read_local_stories_for_sync(
     // Add channel filtering if channels are specified
     if !subscribed_channels.is_empty() {
         let placeholders = vec!["?"; subscribed_channels.len()].join(",");
-        query.push_str(&format!(" AND channel IN ({})", placeholders));
+        query.push_str(&format!(" AND channel IN ({placeholders})"));
         for channel in subscribed_channels {
             params.push(Box::new(channel.clone()));
         }
@@ -317,6 +317,12 @@ pub async fn create_new_story_with_channel(
     // Get the current timestamp using utility function
     let created_at = utils::get_current_timestamp();
 
+    // Load auto-share configuration to determine if story should be public
+    let should_be_public = match load_unified_network_config().await {
+        Ok(config) => config.auto_share.global_auto_share,
+        Err(_) => true, // Default to true if config can't be loaded
+    };
+
     let conn = conn_arc.lock().await;
     // Insert the new story
     conn.execute(
@@ -326,7 +332,7 @@ pub async fn create_new_story_with_channel(
             name,
             header,
             body,
-            &utils::rust_bool_to_db(true), // New stories are automatically published
+            &utils::rust_bool_to_db(should_be_public), // Use auto-share configuration
             channel,
             &created_at.to_string(),
         ],
@@ -365,6 +371,7 @@ pub async fn create_new_story_in_path(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
+        auto_share: None, // Use global setting by default
     });
     write_local_stories_to_path(&local_stories, path).await?;
     Ok(new_id)

@@ -123,7 +123,8 @@ fn test_story_formatting() {
         body: "Test Body".to_string(),
         public: true,
         channel: "general".to_string(),
-        created_at: 1640995200, // Fixed timestamp for testing (2022-01-01)
+        created_at: 1640995200,
+        auto_share: None, // Fixed timestamp for testing (2022-01-01)
     };
 
     let status = if story.public { "📖" } else { "📕" };

@@ -2,9 +2,19 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+
 ## [0.9.0] 2025-01-20
 
 ### Added
+- **Auto-Share Configuration**: Added configuration options to control automatic story sharing behavior
+  - Added `config auto-share [on|off|status]` command to control global automatic story sharing
+  - Added `config sync-days <N>` command to set story sync timeframe (how many days back to sync)
+  - New stories now respect the global auto-share setting when determining if they should be public/shared
+  - Story synchronization now uses the configured sync timeframe instead of syncing all stories
+  - Settings are persisted in `unified_network_config.json` and restored on application restart
+  - Default configuration enables auto-share with 30-day sync window for optimal user experience
+  - Fixes issue #159
 - **Story Synchronization Protocol**: Implemented automatic peer-to-peer story synchronization when connections are established
   - Added new `StorySyncRequest` and `StorySyncResponse` message types for efficient story exchange
   - Bidirectional sync automatically triggers when peers connect without manual intervention

@@ -60,6 +60,7 @@ pub struct App {
     pub unread_counts: HashMap<String, usize>, // Channel name -> unread count
     pub view_mode: ViewMode,
     pub local_peer_name: Option<String>,
+    pub local_peer_id: Option<String>,
     pub list_state: ListState,
     pub input_mode: InputMode,
     pub scroll_offset: usize,
@@ -139,6 +140,7 @@ impl App {
             unread_counts: HashMap::new(),
             view_mode: ViewMode::Channels,
             local_peer_name: None,
+            local_peer_id: None,
             list_state: ListState::default(),
             input_mode: InputMode::Normal,
             scroll_offset: 0,
@@ -459,6 +461,10 @@ impl App {
         self.local_peer_name = name;
     }
 
+    pub fn update_local_peer_id(&mut self, peer_id: String) {
+        self.local_peer_id = Some(peer_id);
+    }
+
     pub fn update_channels(&mut self, channels: Channels) {
         self.channels = channels;
         // Initialize selection to first channel if in channels view and we have channels
@@ -748,9 +754,10 @@ impl App {
             let version = env!("CARGO_PKG_VERSION");
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play v{} | Peer: {} | Connected: {} | Mode: {} | AUTO: {}",
+                    "P2P-Play v{} | Peer: {} ({}) | Connected: {} | Mode: {} | AUTO: {}",
                     version,
                     name,
+                    self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",
@@ -761,8 +768,9 @@ impl App {
                 )
             } else {
                 format!(
-                    "P2P-Play v{} | No peer name set | Connected: {} | Mode: {} | AUTO: {}",
+                    "P2P-Play v{} | Peer ID: {} | Connected: {} | Mode: {} | AUTO: {}",
                     version,
+                    self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
                     self.peers.len(),
                     match self.input_mode {
                         InputMode::Normal => "Normal",

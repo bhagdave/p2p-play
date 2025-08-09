@@ -34,6 +34,7 @@ async fn test_story_sync_response_creation() {
         public: true,
         channel: "general".to_string(),
         created_at: 2000,
+        auto_share: None,
     };
 
     let story2 = Story {
@@ -44,6 +45,7 @@ async fn test_story_sync_response_creation() {
         public: true,
         channel: "tech".to_string(),
         created_at: 3000,
+        auto_share: None,
     };
 
     let response = StorySyncResponse {
@@ -82,7 +84,8 @@ async fn test_story_sync_filtering_by_timestamp() {
         body: "Old Body".to_string(),
         public: true,
         channel: "general".to_string(),
-        created_at: 1000, // Old timestamp
+        created_at: 1000,
+        auto_share: None, // Old timestamp
     };
 
     let new_story = Story {
@@ -92,7 +95,8 @@ async fn test_story_sync_filtering_by_timestamp() {
         body: "New Body".to_string(),
         public: true,
         channel: "general".to_string(),
-        created_at: 2000, // New timestamp
+        created_at: 2000,
+        auto_share: None, // New timestamp
     };
 
     // Save the stories
@@ -148,6 +152,7 @@ async fn test_story_sync_filtering_by_channel() {
         public: true,
         channel: "general".to_string(),
         created_at: 1000,
+        auto_share: None,
     };
 
     let tech_story = Story {
@@ -158,6 +163,7 @@ async fn test_story_sync_filtering_by_channel() {
         public: true,
         channel: "tech".to_string(),
         created_at: 1000,
+        auto_share: None,
     };
 
     let private_story = Story {
@@ -168,6 +174,7 @@ async fn test_story_sync_filtering_by_channel() {
         public: false, // Not public
         channel: "general".to_string(),
         created_at: 1000,
+        auto_share: None,
     };
 
     // Save the stories
@@ -279,6 +286,7 @@ async fn test_story_deduplication() {
         public: true,
         channel: "general".to_string(),
         created_at: 1000,
+        auto_share: None,
     };
 
     // Save the same story twice - should succeed both times due to silent deduplication

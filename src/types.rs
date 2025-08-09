@@ -20,6 +20,9 @@ pub struct Story {
     pub public: bool,
     pub channel: String,
     pub created_at: u64,
+    /// Per-story auto-share preference (None uses global setting)
+    #[serde(default)]
+    pub auto_share: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -206,6 +209,15 @@ pub struct ChannelAutoSubscriptionConfig {
     pub max_auto_subscriptions: usize,
 }
 
+/// Configuration for automatic story sharing behavior
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AutoShareConfig {
+    /// Whether stories are auto-published on creation (global setting)
+    pub global_auto_share: bool,
+    /// How many days back to sync stories when connecting to peers
+    pub sync_days: u32,
+}
+
 /// Unified network configuration that consolidates all network-related settings
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnifiedNetworkConfig {
@@ -215,6 +227,7 @@ pub struct UnifiedNetworkConfig {
     pub direct_message: DirectMessageConfig,
     pub channel_auto_subscription: ChannelAutoSubscriptionConfig,
     pub relay: RelayConfig,
+    pub auto_share: AutoShareConfig,
 }
 
 /// Pending direct message for retry logic
@@ -277,6 +290,7 @@ impl Story {
             public,
             channel: "general".to_string(),
             created_at,
+            auto_share: None, // Use global setting by default
         }
     }
 
@@ -301,6 +315,33 @@ impl Story {
             public,
             channel,
             created_at,
+            auto_share: None, // Use global setting by default
+        }
+    }
+
+    pub fn new_with_auto_share(
+        id: usize,
+        name: String,
+        header: String,
+        body: String,
+        public: bool,
+        channel: String,
+        auto_share: Option<bool>,
+    ) -> Self {
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            id,
+            name,
+            header,
+            body,
+            public,
+            channel,
+            created_at,
+            auto_share,
         }
     }
 
@@ -745,6 +786,35 @@ impl Default for ChannelAutoSubscriptionConfig {
     }
 }
 
+impl AutoShareConfig {
+    pub fn new() -> Self {
+        Self {
+            global_auto_share: true, // Enable auto-share by default for good UX
+            sync_days: 30,           // Sync stories from last 30 days
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.sync_days == 0 {
+            return Err("sync_days must be greater than 0".to_string());
+        }
+
+        if self.sync_days > 365 {
+            return Err(
+                "sync_days should not exceed 365 days to avoid excessive data transfer".to_string(),
+            );
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for AutoShareConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PingConfig {
     /// Create a new PingConfig with lenient default values
     pub fn new() -> Self {
@@ -810,6 +880,7 @@ impl UnifiedNetworkConfig {
             direct_message: DirectMessageConfig::new(),
             channel_auto_subscription: ChannelAutoSubscriptionConfig::new(),
             relay: RelayConfig::new(),
+            auto_share: AutoShareConfig::new(),
         }
     }
 
@@ -821,6 +892,7 @@ impl UnifiedNetworkConfig {
         self.direct_message.validate()?;
         self.channel_auto_subscription.validate()?;
         self.relay.validate()?;
+        self.auto_share.validate()?;
         Ok(())
     }
 
