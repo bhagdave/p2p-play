@@ -2,7 +2,18 @@
 
 All changes to this project will be documented in this file.
 
-## [0.8.3] 2025-01-14
+## [0.8.3] 2025-08-09
+
+### Added
+- **Ctrl+S Auto-Scroll Toggle**: Restored auto-scroll control functionality with Ctrl+S key combination after Escape key was repurposed for navigation
+  - Added Ctrl+S key handler that toggles auto-scroll on/off with visual feedback showing current state
+  - Primary solution uses Ctrl+S for universal compatibility across all terminals and operating systems
+  - Fallback support for ScrollLock and F12 keys on systems where they are available and not captured by desktop environments
+  - Enabled enhanced keyboard mode in crossterm to support special key detection where possible
+  - Shows "Auto-scroll enabled/disabled (Ctrl+S)" message when toggling for immediate user feedback
+  - Updated help text and status bar to document Ctrl+S functionality throughout the interface
+  - Maintains existing auto-scroll behavior (End key still enables auto-scroll, arrow keys still disable)
+  - Fixes issue #190 where users lost easy auto-scroll toggle capability
 
 ### Fixed
 - **TUI Story Read Status**: Fixed issue where stories were not marked as read when viewed with Enter key in the Terminal User Interface
