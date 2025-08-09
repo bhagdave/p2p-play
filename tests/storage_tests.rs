@@ -17,6 +17,7 @@ async fn test_write_and_read_stories() {
             public: true,
             channel: "general".to_string(),
             created_at: 1234567890,
+            auto_share: None,
         },
         Story {
             id: 2,
@@ -26,6 +27,7 @@ async fn test_write_and_read_stories() {
             public: false,
             channel: "tech".to_string(),
             created_at: 1234567891,
+            auto_share: None,
         },
     ];
 
@@ -41,7 +43,8 @@ async fn test_write_and_read_stories() {
             body: "Another Body".to_string(),
             public: false,
             channel: "tech".to_string(),
-            created_at: 1234567891, // Newer timestamp
+            created_at: 1234567891,
+            auto_share: None, // Newer timestamp
         },
         Story {
             id: 1,
@@ -50,7 +53,8 @@ async fn test_write_and_read_stories() {
             body: "Test Body".to_string(),
             public: true,
             channel: "general".to_string(),
-            created_at: 1234567890, // Older timestamp
+            created_at: 1234567890,
+            auto_share: None, // Older timestamp
         },
     ];
 
@@ -73,6 +77,7 @@ async fn create_temp_stories_file() -> NamedTempFile {
         public: false,
         channel: "general".to_string(),
         created_at: 1234567800,
+            auto_share: None,
     }];
     write_local_stories_to_path(&initial_stories, temp_file.path().to_str().unwrap())
         .await
@@ -157,6 +162,7 @@ async fn test_save_received_story() {
         public: false, // This should be set to true
         channel: "general".to_string(),
         created_at: 1234567892,
+            auto_share: None,
     };
 
     let new_id = save_received_story_to_path(received_story, path)
@@ -186,6 +192,7 @@ async fn test_save_duplicate_received_story() {
         public: false,
         channel: "general".to_string(),
         created_at: 1234567893,
+            auto_share: None,
     };
 
     // Save first time

@@ -40,5 +40,9 @@
     "relay_timeout_ms": 5000,
     "prefer_direct": true,
     "rate_limit_per_peer": 10
+  },
+  "auto_share": {
+    "global_auto_share": true,
+    "sync_days": 30
   }
 }

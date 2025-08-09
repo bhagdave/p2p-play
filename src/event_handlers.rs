@@ -1,9 +1,10 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
-    SortedPeerNamesCache, UILogger, establish_direct_connection, handle_create_channel,
-    handle_create_description, handle_create_stories_with_sender, handle_delete_story,
-    handle_direct_message_with_relay, handle_get_description, handle_help, handle_list_channels,
-    handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
+    SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share, 
+    handle_config_sync_days, handle_create_channel, handle_create_description, 
+    handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay, 
+    handle_get_description, handle_help, handle_list_channels, handle_list_stories, 
+    handle_list_subscriptions, handle_publish_story, handle_reload_config, 
     handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
     handle_subscribe_channel, handle_unsubscribe_channel,
 };
@@ -182,6 +183,12 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
         cmd if cmd.starts_with("reload config") => handle_reload_config(cmd, ui_logger).await,
+        cmd if cmd.starts_with("config auto-share") => {
+            handle_config_auto_share(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("config sync-days") => {
+            handle_config_sync_days(cmd, ui_logger, error_logger).await
+        }
         cmd if cmd.starts_with("dht bootstrap") => {
             handle_dht_bootstrap(cmd, swarm, ui_logger).await
         }
@@ -2234,6 +2241,7 @@ mod tests {
             public: true,
             channel: "general".to_string(),
             created_at: 1234567890,
+            auto_share: None, // Use global setting for test
         };
 
         // Measure time taken for story publishing (should be very fast now)

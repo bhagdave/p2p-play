@@ -166,6 +166,7 @@ async fn test_story_deduplication() {
         public: true,
         channel: "general".to_string(),
         created_at: 1234567890,
+        auto_share: None,
     };
 
     // Save the same story multiple times

@@ -365,6 +365,7 @@ pub async fn create_new_story_in_path(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
+        auto_share: None, // Use global setting by default
     });
     write_local_stories_to_path(&local_stories, path).await?;
     Ok(new_id)
