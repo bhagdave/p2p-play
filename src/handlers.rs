@@ -355,7 +355,8 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("show desc to show your node description".to_string());
     ui_logger.log("get desc <peer_alias> to get description from peer".to_string());
     ui_logger.log("set auto-sub [on|off|status] to manage auto-subscription".to_string());
-    ui_logger.log("config auto-share [on|off|status] to control automatic story sharing".to_string());
+    ui_logger
+        .log("config auto-share [on|off|status] to control automatic story sharing".to_string());
     ui_logger.log("config sync-days <N> to set story sync timeframe (days)".to_string());
     ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
@@ -422,78 +423,85 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
     }
 }
 
-pub async fn handle_config_auto_share(
-    cmd: &str,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     use crate::storage::{load_unified_network_config, save_unified_network_config};
 
     if let Some(setting) = cmd.strip_prefix("config auto-share ").map(|s| s.trim()) {
         match setting {
-            "on" => {
-                match load_unified_network_config().await {
-                    Ok(mut config) => {
-                        config.auto_share.global_auto_share = true;
-                        match save_unified_network_config(&config).await {
-                            Ok(_) => {
-                                ui_logger.log(format!(
-                                    "{} Auto-share enabled - new stories will be shared automatically",
-                                    Icons::check()
-                                ));
-                            }
-                            Err(e) => {
-                                error_logger.log_error(&format!("Failed to save auto-share config: {e}"));
-                                ui_logger.log(format!("{} Failed to save auto-share configuration", Icons::cross()));
-                            }
+            "on" => match load_unified_network_config().await {
+                Ok(mut config) => {
+                    config.auto_share.global_auto_share = true;
+                    match save_unified_network_config(&config).await {
+                        Ok(_) => {
+                            ui_logger.log(format!(
+                                "{} Auto-share enabled - new stories will be shared automatically",
+                                Icons::check()
+                            ));
+                        }
+                        Err(e) => {
+                            error_logger
+                                .log_error(&format!("Failed to save auto-share config: {e}"));
+                            ui_logger.log(format!(
+                                "{} Failed to save auto-share configuration",
+                                Icons::cross()
+                            ));
                         }
                     }
-                    Err(e) => {
-                        error_logger.log_error(&format!("Failed to load config for auto-share update: {e}"));
-                        ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                    }
                 }
-            }
-            "off" => {
-                match load_unified_network_config().await {
-                    Ok(mut config) => {
-                        config.auto_share.global_auto_share = false;
-                        match save_unified_network_config(&config).await {
-                            Ok(_) => {
-                                ui_logger.log(format!(
-                                    "{} Auto-share disabled - stories will not be shared automatically",
-                                    Icons::check()
-                                ));
-                            }
-                            Err(e) => {
-                                error_logger.log_error(&format!("Failed to save auto-share config: {e}"));
-                                ui_logger.log(format!("{} Failed to save auto-share configuration", Icons::cross()));
-                            }
+                Err(e) => {
+                    error_logger
+                        .log_error(&format!("Failed to load config for auto-share update: {e}"));
+                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+                }
+            },
+            "off" => match load_unified_network_config().await {
+                Ok(mut config) => {
+                    config.auto_share.global_auto_share = false;
+                    match save_unified_network_config(&config).await {
+                        Ok(_) => {
+                            ui_logger.log(format!(
+                                "{} Auto-share disabled - stories will not be shared automatically",
+                                Icons::check()
+                            ));
+                        }
+                        Err(e) => {
+                            error_logger
+                                .log_error(&format!("Failed to save auto-share config: {e}"));
+                            ui_logger.log(format!(
+                                "{} Failed to save auto-share configuration",
+                                Icons::cross()
+                            ));
                         }
                     }
-                    Err(e) => {
-                        error_logger.log_error(&format!("Failed to load config for auto-share update: {e}"));
-                        ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                    }
                 }
-            }
-            "status" => {
-                match load_unified_network_config().await {
-                    Ok(config) => {
-                        let status = if config.auto_share.global_auto_share { "enabled" } else { "disabled" };
-                        ui_logger.log(format!(
-                            "{} Auto-share is currently {} (sync {} days)",
-                            Icons::chart(),
-                            status,
-                            config.auto_share.sync_days
-                        ));
-                    }
-                    Err(e) => {
-                        error_logger.log_error(&format!("Failed to load auto-share config: {e}"));
-                        ui_logger.log(format!("{} Failed to load auto-share status", Icons::cross()));
-                    }
+                Err(e) => {
+                    error_logger
+                        .log_error(&format!("Failed to load config for auto-share update: {e}"));
+                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
                 }
-            }
+            },
+            "status" => match load_unified_network_config().await {
+                Ok(config) => {
+                    let status = if config.auto_share.global_auto_share {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    };
+                    ui_logger.log(format!(
+                        "{} Auto-share is currently {} (sync {} days)",
+                        Icons::chart(),
+                        status,
+                        config.auto_share.sync_days
+                    ));
+                }
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to load auto-share config: {e}"));
+                    ui_logger.log(format!(
+                        "{} Failed to load auto-share status",
+                        Icons::cross()
+                    ));
+                }
+            },
             _ => {
                 ui_logger.log("Usage: config auto-share [on|off|status]".to_string());
             }
@@ -503,11 +511,7 @@ pub async fn handle_config_auto_share(
     }
 }
 
-pub async fn handle_config_sync_days(
-    cmd: &str,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+pub async fn handle_config_sync_days(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     use crate::storage::{load_unified_network_config, save_unified_network_config};
 
     if let Some(days_str) = cmd.strip_prefix("config sync-days ").map(|s| s.trim()) {
@@ -518,7 +522,10 @@ pub async fn handle_config_sync_days(
                     return;
                 }
                 if days > 365 {
-                    ui_logger.log("Sync days should not exceed 365 to avoid excessive data transfer".to_string());
+                    ui_logger.log(
+                        "Sync days should not exceed 365 to avoid excessive data transfer"
+                            .to_string(),
+                    );
                     return;
                 }
 
@@ -534,19 +541,26 @@ pub async fn handle_config_sync_days(
                                 ));
                             }
                             Err(e) => {
-                                error_logger.log_error(&format!("Failed to save sync-days config: {e}"));
-                                ui_logger.log(format!("{} Failed to save sync days configuration", Icons::cross()));
+                                error_logger
+                                    .log_error(&format!("Failed to save sync-days config: {e}"));
+                                ui_logger.log(format!(
+                                    "{} Failed to save sync days configuration",
+                                    Icons::cross()
+                                ));
                             }
                         }
                     }
                     Err(e) => {
-                        error_logger.log_error(&format!("Failed to load config for sync-days update: {e}"));
+                        error_logger
+                            .log_error(&format!("Failed to load config for sync-days update: {e}"));
                         ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
                     }
                 }
             }
             Err(_) => {
-                ui_logger.log(format!("Invalid number: '{}'. Please provide a valid number of days.", days_str));
+                ui_logger.log(format!(
+                    "Invalid number: '{days_str}'. Please provide a valid number of days.",
+                ));
             }
         }
     } else {

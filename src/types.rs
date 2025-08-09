@@ -789,8 +789,8 @@ impl Default for ChannelAutoSubscriptionConfig {
 impl AutoShareConfig {
     pub fn new() -> Self {
         Self {
-            global_auto_share: true,  // Enable auto-share by default for good UX
-            sync_days: 30,            // Sync stories from last 30 days
+            global_auto_share: true, // Enable auto-share by default for good UX
+            sync_days: 30,           // Sync stories from last 30 days
         }
     }
 
@@ -800,7 +800,9 @@ impl AutoShareConfig {
         }
 
         if self.sync_days > 365 {
-            return Err("sync_days should not exceed 365 days to avoid excessive data transfer".to_string());
+            return Err(
+                "sync_days should not exceed 365 days to avoid excessive data transfer".to_string(),
+            );
         }
 
         Ok(())

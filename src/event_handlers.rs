@@ -1,10 +1,10 @@
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
-    SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share, 
-    handle_config_sync_days, handle_create_channel, handle_create_description, 
-    handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay, 
-    handle_get_description, handle_help, handle_list_channels, handle_list_stories, 
-    handle_list_subscriptions, handle_publish_story, handle_reload_config, 
+    SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
+    handle_config_sync_days, handle_create_channel, handle_create_description,
+    handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
+    handle_get_description, handle_help, handle_list_channels, handle_list_stories,
+    handle_list_subscriptions, handle_publish_story, handle_reload_config,
     handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
     handle_subscribe_channel, handle_unsubscribe_channel,
 };
@@ -1383,6 +1383,20 @@ pub async fn initiate_story_sync_with_peer(
 ) {
     debug!("Initiating story sync with peer {}", peer_id);
 
+    // Load auto-share configuration to determine sync timeframe
+    let sync_days = match crate::storage::load_unified_network_config().await {
+        Ok(config) => config.auto_share.sync_days,
+        Err(_) => 30, // Default to 30 days if config can't be loaded
+    };
+
+    // Calculate last_sync_timestamp based on sync_days configuration
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let sync_timeframe_seconds = (sync_days as u64) * 24 * 60 * 60; // Convert days to seconds
+    let last_sync_timestamp = now.saturating_sub(sync_timeframe_seconds);
+
     // Get our subscribed channels to send in the sync request
     let subscribed_channels =
         match crate::storage::read_subscribed_channels(&PEER_ID.to_string()).await {
@@ -1393,16 +1407,13 @@ pub async fn initiate_story_sync_with_peer(
             }
         };
 
-    // For initial sync, set last_sync_timestamp to 0 to get all stories
+    // Create sync request with calculated timestamp based on sync_days configuration
     let request = crate::network::StorySyncRequest {
         from_peer_id: PEER_ID.to_string(),
         from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
-        last_sync_timestamp: 0, // Get all stories for initial sync
+        last_sync_timestamp, // Use calculated timestamp based on sync_days
         subscribed_channels,
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        timestamp: now,
     };
 
     // Send the story sync request
@@ -1414,18 +1425,14 @@ pub async fn initiate_story_sync_with_peer(
     match request_id {
         request_id => {
             debug!(
-                "Sent story sync request to peer {} (request ID: {:?})",
-                peer_id, request_id
+                "Sent story sync request to peer {} (request ID: {:?}, sync days: {})",
+                peer_id, request_id, sync_days
             );
             ui_logger.log(format!(
-                "{} Requesting story sync from peer {} (channels: {})",
+                "{} Requesting stories from {} (syncing {} days)",
                 Icons::sync(),
                 peer_id,
-                if request.subscribed_channels.is_empty() {
-                    "all".to_string()
-                } else {
-                    request.subscribed_channels.join(", ")
-                }
+                sync_days
             ));
         }
     }
