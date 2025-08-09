@@ -1,5 +1,6 @@
 use crate::errors::UIResult;
 use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
+use crate::validation::ContentSanitizer;
 use crossterm::{
     event::{
         self, Event, KeyCode, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
@@ -587,14 +588,20 @@ impl App {
     }
 
     pub fn display_story_content(&mut self, story: &Story) {
+        // Sanitize all story content for safe display
+        let sanitized_name = ContentSanitizer::sanitize_for_display(&story.name);
+        let sanitized_header = ContentSanitizer::sanitize_for_display(&story.header);
+        let sanitized_body = ContentSanitizer::sanitize_for_display(&story.body);
+        let sanitized_channel = ContentSanitizer::sanitize_for_display(&story.channel);
+
         self.add_to_log("".to_string());
         self.add_to_log(format!(
             "{} ═══════════════ STORY CONTENT ═══════════════",
             Icons::book()
         ));
-        self.add_to_log(format!("{} Title: {}", Icons::memo(), story.name));
+        self.add_to_log(format!("{} Title: {}", Icons::memo(), sanitized_name));
         self.add_to_log(format!("{}ID: {}", Icons::label(), story.id));
-        self.add_to_log(format!("{} Channel: {}", Icons::folder(), story.channel));
+        self.add_to_log(format!("{} Channel: {}", Icons::folder(), sanitized_channel));
         self.add_to_log(format!(
             "{}Visibility: {}",
             Icons::eye(),
@@ -607,11 +614,11 @@ impl App {
         ));
         self.add_to_log("".to_string());
         self.add_to_log(format!("{} Header:", Icons::document()));
-        self.add_to_log(format!("   {}", story.header));
+        self.add_to_log(format!("   {}", sanitized_header));
         self.add_to_log("".to_string());
         self.add_to_log(format!("{} Body:", Icons::book()));
         // Split the body into lines for better readability
-        for line in story.body.lines() {
+        for line in sanitized_body.lines() {
             self.add_to_log(format!("   {line}"));
         }
         self.add_to_log(format!(
@@ -627,12 +634,16 @@ impl App {
             .unwrap_or_default()
             .as_secs();
 
+        // Sanitize direct message content for safe display
+        let sanitized_from_name = ContentSanitizer::sanitize_for_display(&dm.from_name);
+        let sanitized_message = ContentSanitizer::sanitize_for_display(&dm.message);
+
         self.add_to_log(format!(
             "{} Direct message from {} ({}): {}",
             Icons::envelope(),
-            dm.from_name,
+            sanitized_from_name,
             timestamp,
-            dm.message
+            sanitized_message
         ));
     }
 

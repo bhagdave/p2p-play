@@ -14,6 +14,7 @@ use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
     PendingDirectMessage, Story,
 };
+use crate::validation::{ContentValidator};
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -185,11 +186,49 @@ pub async fn handle_create_stories_with_sender(
                 let body = elements.get(2).expect("body is there");
                 let channel = elements.get(3).unwrap_or(&"general");
 
-                if let Err(e) = create_new_story_with_channel(name, header, body, channel).await {
+                // Validate and sanitize story inputs
+                let validated_name = match ContentValidator::validate_story_name(name) {
+                    Ok(validated) => validated,
+                    Err(e) => {
+                        ui_logger.log(format!("Invalid story name: {e}"));
+                        return None;
+                    }
+                };
+
+                let validated_header = match ContentValidator::validate_story_header(header) {
+                    Ok(validated) => validated,
+                    Err(e) => {
+                        ui_logger.log(format!("Invalid story header: {e}"));
+                        return None;
+                    }
+                };
+
+                let validated_body = match ContentValidator::validate_story_body(body) {
+                    Ok(validated) => validated,
+                    Err(e) => {
+                        ui_logger.log(format!("Invalid story body: {e}"));
+                        return None;
+                    }
+                };
+
+                let validated_channel = match ContentValidator::validate_channel_name(channel) {
+                    Ok(validated) => validated,
+                    Err(e) => {
+                        ui_logger.log(format!("Invalid channel name: {e}"));
+                        return None;
+                    }
+                };
+
+                if let Err(e) = create_new_story_with_channel(
+                    &validated_name, 
+                    &validated_header, 
+                    &validated_body, 
+                    &validated_channel
+                ).await {
                     error_logger.log_error(&format!("Failed to create story: {e}"));
                 } else {
                     ui_logger.log(format!(
-                        "Story created and auto-published to channel '{channel}'"
+                        "Story created and auto-published to channel '{validated_channel}'"
                     ));
 
                     // Auto-broadcast the newly created story to connected peers
@@ -199,7 +238,7 @@ pub async fn handle_create_stories_with_sender(
                             Ok(stories) => {
                                 // Find the most recently created story by name
                                 if let Some(created_story) = stories.iter().find(|s| {
-                                    s.name == *name && s.header == *header && s.body == *body
+                                    s.name == validated_name && s.header == validated_header && s.body == validated_body
                                 }) {
                                     if let Err(e) = sender.send(created_story.clone()) {
                                         error_logger.log_error(&format!(
@@ -602,20 +641,25 @@ pub async fn handle_set_name(
 ) -> Option<PeerName> {
     if let Some(name) = cmd.strip_prefix("name ") {
         let name = name.trim();
-        if name.is_empty() {
-            ui_logger.log("Name cannot be empty".to_string());
-            return None;
-        }
+        
+        // Validate and sanitize peer name
+        let validated_name = match ContentValidator::validate_peer_name(name) {
+            Ok(validated) => validated,
+            Err(e) => {
+                ui_logger.log(format!("Invalid peer name: {e}"));
+                return None;
+            }
+        };
 
-        *local_peer_name = Some(name.to_string());
+        *local_peer_name = Some(validated_name.clone());
 
         // Save the peer name to storage for persistence across restarts
-        if let Err(e) = save_local_peer_name(name).await {
+        if let Err(e) = save_local_peer_name(&validated_name).await {
             ui_logger.log(format!("Warning: Failed to save peer name: {e}"));
         }
 
         // Return a PeerName message to broadcast to connected peers
-        Some(PeerName::new(PEER_ID.to_string(), name.to_string()))
+        Some(PeerName::new(PEER_ID.to_string(), validated_name))
     } else {
         ui_logger.log("Usage: name <alias>".to_string());
         None
@@ -690,10 +734,23 @@ pub async fn handle_direct_message(
                 }
             };
 
-        if to_name.is_empty() || message.is_empty() {
-            ui_logger.log("Both peer alias and message must be non-empty".to_string());
-            return;
-        }
+        // Validate peer name
+        let validated_to_name = match ContentValidator::validate_peer_name(&to_name) {
+            Ok(validated) => validated,
+            Err(e) => {
+                ui_logger.log(format!("Invalid peer name: {e}"));
+                return;
+            }
+        };
+
+        // Validate message content
+        let validated_message = match ContentValidator::validate_direct_message(&message) {
+            Ok(validated) => validated,
+            Err(e) => {
+                ui_logger.log(format!("Invalid message: {e}"));
+                return;
+            }
+        };
 
         let from_name = match local_peer_name {
             Some(name) => name.clone(),
@@ -703,20 +760,10 @@ pub async fn handle_direct_message(
             }
         };
 
-        if to_name.trim().is_empty() {
-            ui_logger.log("Peer name cannot be empty".to_string());
-            return;
-        }
-
-        if to_name.len() > 50 {
-            ui_logger.log("Peer name too long (max 50 characters)".to_string());
-            return;
-        }
-
         // Try to find current peer ID, but don't require it
         let (target_peer_id, is_placeholder) = peer_names
             .iter()
-            .find(|(_, name)| name == &&to_name)
+            .find(|(_, name)| name == &&validated_to_name)
             .map(|(peer_id, _)| (*peer_id, false))
             .unwrap_or_else(|| {
                 // Generate a placeholder PeerId for queueing - this will be resolved when peer connects
@@ -724,7 +771,7 @@ pub async fn handle_direct_message(
                 use std::collections::hash_map::DefaultHasher;
                 use std::hash::{Hash, Hasher};
                 let mut hasher = DefaultHasher::new();
-                to_name.hash(&mut hasher);
+                validated_to_name.hash(&mut hasher);
                 let placeholder_id =
                     PeerId::from_bytes(&hasher.finish().to_be_bytes()).unwrap_or(PeerId::random());
                 (placeholder_id, true)
@@ -734,8 +781,8 @@ pub async fn handle_direct_message(
         let direct_msg_request = DirectMessageRequest {
             from_peer_id: PEER_ID.to_string(),
             from_name: from_name.clone(),
-            to_name: to_name.clone(),
-            message: message.clone(),
+            to_name: validated_to_name.clone(),
+            message: validated_message.clone(),
             timestamp: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -745,7 +792,7 @@ pub async fn handle_direct_message(
         // Add message to retry queue instead of sending immediately
         let pending_msg = PendingDirectMessage::new(
             target_peer_id,
-            to_name.clone(),
+            validated_to_name.clone(),
             direct_msg_request.clone(),
             dm_config.max_retry_attempts,
             is_placeholder,
@@ -762,8 +809,8 @@ pub async fn handle_direct_message(
             queue.push(pending_msg);
         }
 
-        ui_logger.log(format!("Direct message queued for {to_name}: {message}"));
-        debug!("Queued direct message to {to_name} from {from_name} (request_id: {request_id:?})");
+        ui_logger.log(format!("Direct message queued for {validated_to_name}: {validated_message}"));
+        debug!("Queued direct message to {validated_to_name} from {from_name} (request_id: {request_id:?})");
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
     }
@@ -1060,31 +1107,43 @@ pub async fn handle_create_channel(
         let name = elements[0].trim();
         let description = elements[1].trim();
 
-        if name.is_empty() || description.is_empty() {
-            ui_logger.log("Channel name and description cannot be empty".to_string());
-            return None;
-        }
+        // Validate and sanitize channel inputs
+        let validated_name = match ContentValidator::validate_channel_name(name) {
+            Ok(validated) => validated,
+            Err(e) => {
+                ui_logger.log(format!("Invalid channel name: {e}"));
+                return None;
+            }
+        };
+
+        let validated_description = match ContentValidator::validate_channel_description(description) {
+            Ok(validated) => validated,
+            Err(e) => {
+                ui_logger.log(format!("Invalid channel description: {e}"));
+                return None;
+            }
+        };
 
         let creator = match local_peer_name {
             Some(peer_name) => peer_name.clone(),
             None => PEER_ID.to_string(),
         };
 
-        if let Err(e) = create_channel(name, description, &creator).await {
+        if let Err(e) = create_channel(&validated_name, &validated_description, &creator).await {
             error_logger.log_error(&format!("Failed to create channel: {e}"));
         } else {
-            ui_logger.log(format!("Channel '{name}' created successfully"));
+            ui_logger.log(format!("Channel '{validated_name}' created successfully"));
 
             // Auto-subscribe to the channel we created
-            if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), name).await {
+            if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), &validated_name).await {
                 error_logger
                     .log_error(&format!("Failed to auto-subscribe to created channel: {e}"));
             }
 
             // Broadcast the channel to other peers
             let channel = crate::types::Channel::new(
-                name.to_string(),
-                description.to_string(),
+                validated_name.clone(),
+                validated_description,
                 creator.clone(),
             );
             let published_channel = crate::types::PublishedChannel::new(channel.clone(), creator);
@@ -1103,7 +1162,7 @@ pub async fn handle_create_channel(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), published_json_bytes);
-            debug!("Broadcasted published channel '{name}' to connected peers");
+            debug!("Broadcasted published channel '{validated_name}' to connected peers");
 
             // 2. Broadcast legacy Channel format for backward compatibility with older nodes
             let legacy_json = match serde_json::to_string(&channel) {
@@ -1118,9 +1177,9 @@ pub async fn handle_create_channel(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), legacy_json_bytes);
-            debug!("Broadcasted legacy channel '{name}' for backward compatibility");
+            debug!("Broadcasted legacy channel '{validated_name}' for backward compatibility");
 
-            ui_logger.log(format!("Channel '{name}' shared with network"));
+            ui_logger.log(format!("Channel '{validated_name}' shared with network"));
 
             return Some(ActionResult::RefreshStories);
         }
@@ -1421,16 +1480,20 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
 
     let description = parts[2].trim();
 
-    if description.is_empty() {
-        ui_logger.log("Usage: create desc <description>".to_string());
-        return;
-    }
+    // Validate and sanitize node description
+    let validated_description = match ContentValidator::validate_node_description(description) {
+        Ok(validated) => validated,
+        Err(e) => {
+            ui_logger.log(format!("Invalid node description: {e}"));
+            return;
+        }
+    };
 
-    match save_node_description(description).await {
+    match save_node_description(&validated_description).await {
         Ok(()) => {
             ui_logger.log(format!(
                 "Node description saved: {} bytes",
-                description.len()
+                validated_description.len()
             ));
         }
         Err(e) => {

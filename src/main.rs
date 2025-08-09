@@ -12,6 +12,7 @@ mod relay;
 mod storage;
 mod types;
 mod ui;
+mod validation;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
