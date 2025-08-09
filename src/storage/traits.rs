@@ -1,13 +1,13 @@
 /// Generic traits for database operations to reduce code duplication
+use crate::errors::{StorageError, StorageResult};
 use rusqlite::Connection;
-use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Trait for database operations that can be executed with a connection
 #[async_trait::async_trait]
 pub trait DatabaseOperation<T> {
-    type Error: Error + Send + Sync + 'static;
+    type Error: std::error::Error + Send + Sync + 'static;
 
     /// Execute the operation with a database connection
     async fn execute(&self, conn: &Arc<Mutex<Connection>>) -> Result<T, Self::Error>;
@@ -15,15 +15,15 @@ pub trait DatabaseOperation<T> {
 
 /// Generic function to execute a database operation
 pub async fn execute_db_operation<T, Op>(
-    get_connection: impl Fn() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> + Send,
+    get_connection: impl Fn() -> StorageResult<Arc<Mutex<Connection>>> + Send,
     operation: Op,
-) -> Result<T, Box<dyn Error>>
+) -> StorageResult<T>
 where
     Op: DatabaseOperation<T>,
-    Op::Error: 'static,
+    Op::Error: Into<StorageError> + 'static,
 {
     let conn = get_connection()?;
-    let result = operation.execute(&conn).await?;
+    let result = operation.execute(&conn).await.map_err(Into::into)?;
     Ok(result)
 }
 
@@ -33,14 +33,14 @@ where
     T: serde::Serialize + for<'de> serde::Deserialize<'de> + Default + Clone,
 {
     /// Validate the configuration
-    fn validate(&self) -> Result<(), Box<dyn Error>>;
+    fn validate(&self) -> StorageResult<()>;
 
     /// Get the default file path for this config type
     fn default_file_path() -> &'static str;
 }
 
 /// Generic configuration save operation
-pub async fn save_config_to_path<T>(config: &T, path: &str) -> Result<(), Box<dyn Error>>
+pub async fn save_config_to_path<T>(config: &T, path: &str) -> StorageResult<()>
 where
     T: serde::Serialize + for<'de> serde::Deserialize<'de> + ConfigStorage<T> + Default + Clone,
 {
@@ -51,7 +51,7 @@ where
 }
 
 /// Generic configuration load operation
-pub async fn load_config_from_path<T>(path: &str) -> Result<T, Box<dyn Error>>
+pub async fn load_config_from_path<T>(path: &str) -> StorageResult<T>
 where
     T: serde::Serialize + for<'de> serde::Deserialize<'de> + ConfigStorage<T> + Default + Clone,
 {
@@ -71,7 +71,7 @@ where
 }
 
 /// Generic function to ensure config file exists
-pub async fn ensure_config_exists<T>() -> Result<(), Box<dyn Error>>
+pub async fn ensure_config_exists<T>() -> StorageResult<()>
 where
     T: serde::Serialize + for<'de> serde::Deserialize<'de> + ConfigStorage<T> + Default + Clone,
 {

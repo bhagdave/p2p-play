@@ -1,6 +1,6 @@
 /// Common utility functions for storage operations
+use crate::errors::StorageResult;
 use rusqlite::{Connection, Row};
-use std::error::Error;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -16,7 +16,7 @@ pub fn get_current_timestamp() -> u64 {
 pub async fn get_next_id(
     conn: &Arc<Mutex<Connection>>,
     table: &str,
-) -> Result<i64, Box<dyn Error>> {
+) -> StorageResult<i64> {
     let conn = conn.lock().await;
     let query = format!("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM {table}");
     let mut stmt = conn.prepare(&query)?;

@@ -1,3 +1,4 @@
+use crate::errors::StorageResult;
 use crate::storage::{mappers, utils};
 use crate::types::{
     BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
@@ -6,7 +7,6 @@ use crate::types::{
 use log::debug;
 use rusqlite::Connection;
 use std::collections::HashMap;
-use std::error::Error;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::{Mutex, RwLock};
@@ -37,7 +37,7 @@ fn get_database_path() -> String {
 static DB_STATE: once_cell::sync::Lazy<RwLock<Option<(Arc<Mutex<Connection>>, String)>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
-pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error>> {
+pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     let current_path = get_database_path();
 
     // Check if we have an existing connection with the same path
@@ -70,7 +70,7 @@ pub async fn get_db_connection() -> Result<Arc<Mutex<Connection>>, Box<dyn Error
 }
 
 /// Reset database connection (useful for testing)
-pub async fn reset_db_connection_for_testing() -> Result<(), Box<dyn Error>> {
+pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
     let mut state = DB_STATE.write().await;
     *state = None;
     // Add a small delay to ensure any pending database operations complete
@@ -79,7 +79,7 @@ pub async fn reset_db_connection_for_testing() -> Result<(), Box<dyn Error>> {
 }
 
 /// Initialize a clean test database with proper isolation
-pub async fn init_test_database() -> Result<(), Box<dyn Error>> {
+pub async fn init_test_database() -> StorageResult<()> {
     reset_db_connection_for_testing().await?;
     ensure_stories_file_exists().await?;
 
@@ -91,7 +91,7 @@ pub async fn init_test_database() -> Result<(), Box<dyn Error>> {
     conn.execute("PRAGMA foreign_keys = OFF", [])?;
 
     // Check if tables exist and clear them
-    let table_exists = |table_name: &str| -> Result<bool, Box<dyn Error>> {
+    let table_exists = |table_name: &str| -> StorageResult<bool> {
         let mut stmt = conn.prepare(&format!(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
         ))?;
@@ -126,7 +126,7 @@ pub async fn init_test_database() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn create_tables() -> Result<(), Box<dyn Error>> {
+async fn create_tables() -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -134,7 +134,7 @@ async fn create_tables() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
+pub async fn ensure_stories_file_exists() -> StorageResult<()> {
     let db_path = get_database_path();
     debug!("Initializing SQLite database at: {db_path}");
 
@@ -152,7 +152,7 @@ pub async fn ensure_stories_file_exists() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
+pub async fn read_local_stories() -> StorageResult<Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -168,7 +168,7 @@ pub async fn read_local_stories() -> Result<Stories, Box<dyn Error>> {
     Ok(stories)
 }
 
-pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn Error>> {
+pub async fn read_local_stories_from_path(path: &str) -> StorageResult<Stories> {
     // For test compatibility, if path points to a JSON file, read it as JSON
     if path.ends_with(".json") {
         let content = fs::read(path).await?;
@@ -195,7 +195,7 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
 pub async fn read_local_stories_for_sync(
     last_sync_timestamp: u64,
     subscribed_channels: &[String],
-) -> Result<Stories, Box<dyn Error>> {
+) -> StorageResult<Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -228,7 +228,7 @@ pub async fn read_local_stories_for_sync(
     Ok(stories)
 }
 
-pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>> {
+pub async fn write_local_stories(stories: &Stories) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -260,7 +260,7 @@ pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>
 pub async fn write_local_stories_to_path(
     stories: &Stories,
     path: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     // For test compatibility, if path is a JSON file, write as JSON
     if path.ends_with(".json") {
         let json = serde_json::to_string(&stories)?;
@@ -299,7 +299,7 @@ pub async fn write_local_stories_to_path(
     }
 }
 
-pub async fn create_new_story(name: &str, header: &str, body: &str) -> Result<(), Box<dyn Error>> {
+pub async fn create_new_story(name: &str, header: &str, body: &str) -> StorageResult<()> {
     create_new_story_with_channel(name, header, body, "general").await
 }
 
@@ -308,7 +308,7 @@ pub async fn create_new_story_with_channel(
     header: &str,
     body: &str,
     channel: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
 
     // Get the next ID using utility function
@@ -351,7 +351,7 @@ pub async fn create_new_story_in_path(
     header: &str,
     body: &str,
     path: &str,
-) -> Result<usize, Box<dyn Error>> {
+) -> StorageResult<usize> {
     let mut local_stories = match read_local_stories_from_path(path).await {
         Ok(stories) => stories,
         Err(_) => Vec::new(),
@@ -380,7 +380,7 @@ pub async fn create_new_story_in_path(
 pub async fn publish_story(
     id: usize,
     sender: tokio::sync::mpsc::UnboundedSender<Story>,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -413,7 +413,7 @@ pub async fn publish_story(
     Ok(())
 }
 
-pub async fn delete_local_story(id: usize) -> Result<bool, Box<dyn Error>> {
+pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -429,7 +429,7 @@ pub async fn delete_local_story(id: usize) -> Result<bool, Box<dyn Error>> {
     }
 }
 
-pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story>, Box<dyn Error>> {
+pub async fn publish_story_in_path(id: usize, path: &str) -> StorageResult<Option<Story>> {
     let mut local_stories = read_local_stories_from_path(path).await?;
     let mut published_story = None;
 
@@ -445,7 +445,7 @@ pub async fn publish_story_in_path(id: usize, path: &str) -> Result<Option<Story
     Ok(published_story)
 }
 
-pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
+pub async fn save_received_story(story: Story) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
 
     // Check if story already exists (by name and content to avoid duplicates)
@@ -489,7 +489,7 @@ pub async fn save_received_story(story: Story) -> Result<(), Box<dyn Error>> {
 pub async fn save_received_story_to_path(
     mut story: Story,
     path: &str,
-) -> Result<usize, Box<dyn Error>> {
+) -> StorageResult<usize> {
     let mut local_stories = match read_local_stories_from_path(path).await {
         Ok(stories) => stories,
         Err(_) => Vec::new(),
@@ -528,7 +528,7 @@ pub async fn save_received_story_to_path(
     }
 }
 
-pub async fn save_local_peer_name(name: &str) -> Result<(), Box<dyn Error>> {
+pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -541,14 +541,14 @@ pub async fn save_local_peer_name(name: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> Result<(), Box<dyn Error>> {
+pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> StorageResult<()> {
     // For test compatibility, keep writing to JSON file
     let json = serde_json::to_string(name)?;
     fs::write(path, &json).await?;
     Ok(())
 }
 
-pub async fn load_local_peer_name() -> Result<Option<String>, Box<dyn Error>> {
+pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -558,11 +558,11 @@ pub async fn load_local_peer_name() -> Result<Option<String>, Box<dyn Error>> {
     match result {
         Ok(name) => Ok(Some(name)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(e) => Err(Box::new(e)),
+        Err(e) => Err(e.into()),
     }
 }
 
-pub async fn load_local_peer_name_from_path(path: &str) -> Result<Option<String>, Box<dyn Error>> {
+pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<String>> {
     // For test compatibility, keep reading from JSON file
     match fs::read(path).await {
         Ok(content) => {
@@ -578,7 +578,7 @@ pub async fn create_channel(
     name: &str,
     description: &str,
     created_by: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -593,7 +593,7 @@ pub async fn create_channel(
     Ok(())
 }
 
-pub async fn read_channels() -> Result<Channels, Box<dyn Error>> {
+pub async fn read_channels() -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -609,7 +609,7 @@ pub async fn read_channels() -> Result<Channels, Box<dyn Error>> {
     Ok(channels)
 }
 
-pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> Result<(), Box<dyn Error>> {
+pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -627,7 +627,7 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> Result<(
 pub async fn unsubscribe_from_channel(
     peer_id: &str,
     channel_name: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -640,7 +640,7 @@ pub async fn unsubscribe_from_channel(
     Ok(())
 }
 
-pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<dyn Error>> {
+pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -660,7 +660,7 @@ pub async fn read_subscribed_channels(peer_id: &str) -> Result<Vec<String>, Box<
 /// Get full channel details for channels that the user is subscribed to
 pub async fn read_subscribed_channels_with_details(
     peer_id: &str,
-) -> Result<Channels, Box<dyn Error>> {
+) -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -691,7 +691,7 @@ pub async fn read_subscribed_channels_with_details(
 }
 
 /// Get channels that are available but not subscribed to by the given peer
-pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<dyn Error>> {
+pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -723,14 +723,14 @@ pub async fn read_unsubscribed_channels(peer_id: &str) -> Result<Channels, Box<d
 }
 
 /// Get the count of current auto-subscriptions for a peer (to check against limits)
-pub async fn get_auto_subscription_count(peer_id: &str) -> Result<usize, Box<dyn Error>> {
+pub async fn get_auto_subscription_count(peer_id: &str) -> StorageResult<usize> {
     let subscribed = read_subscribed_channels(peer_id).await?;
     // For now, we'll count all subscriptions as auto-subscriptions
     // In the future, we could add a flag to track which were auto vs manual
     Ok(subscribed.len())
 }
 
-pub async fn read_channel_subscriptions() -> Result<ChannelSubscriptions, Box<dyn Error>> {
+pub async fn read_channel_subscriptions() -> StorageResult<ChannelSubscriptions> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -751,7 +751,7 @@ pub async fn read_channel_subscriptions() -> Result<ChannelSubscriptions, Box<dy
     Ok(subscriptions)
 }
 
-pub async fn get_stories_by_channel(channel_name: &str) -> Result<Stories, Box<dyn Error>> {
+pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -767,7 +767,7 @@ pub async fn get_stories_by_channel(channel_name: &str) -> Result<Stories, Box<d
 }
 
 /// Clears all data from the database and ensures fresh test database (useful for testing)
-pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
+pub async fn clear_database_for_testing() -> StorageResult<()> {
     // Reset the connection to ensure we're using the test database path
     reset_db_connection_for_testing().await?;
 
@@ -798,7 +798,7 @@ pub async fn clear_database_for_testing() -> Result<(), Box<dyn Error>> {
 }
 
 /// Save node description to file (limited to 1024 bytes)
-pub async fn save_node_description(description: &str) -> Result<(), Box<dyn Error>> {
+pub async fn save_node_description(description: &str) -> StorageResult<()> {
     if description.len() > 1024 {
         return Err("Description exceeds 1024 bytes limit".into());
     }
@@ -808,7 +808,7 @@ pub async fn save_node_description(description: &str) -> Result<(), Box<dyn Erro
 }
 
 /// Load local node description from file
-pub async fn load_node_description() -> Result<Option<String>, Box<dyn Error>> {
+pub async fn load_node_description() -> StorageResult<Option<String>> {
     match fs::read_to_string(NODE_DESCRIPTION_FILE_PATH).await {
         Ok(content) => {
             if content.is_empty() {
@@ -827,7 +827,7 @@ pub async fn load_node_description() -> Result<Option<String>, Box<dyn Error>> {
 }
 
 /// Save bootstrap configuration to file
-pub async fn save_bootstrap_config(config: &BootstrapConfig) -> Result<(), Box<dyn Error>> {
+pub async fn save_bootstrap_config(config: &BootstrapConfig) -> StorageResult<()> {
     save_bootstrap_config_to_path(config, "bootstrap_config.json").await
 }
 
@@ -835,7 +835,7 @@ pub async fn save_bootstrap_config(config: &BootstrapConfig) -> Result<(), Box<d
 pub async fn save_bootstrap_config_to_path(
     config: &BootstrapConfig,
     path: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     // Validate the config before saving
     config.validate()?;
 
@@ -849,14 +849,14 @@ pub async fn save_bootstrap_config_to_path(
 }
 
 /// Load bootstrap configuration from file, creating default if missing
-pub async fn load_bootstrap_config() -> Result<BootstrapConfig, Box<dyn Error>> {
+pub async fn load_bootstrap_config() -> StorageResult<BootstrapConfig> {
     load_bootstrap_config_from_path("bootstrap_config.json").await
 }
 
 /// Load bootstrap configuration from specific path, creating default if missing
 pub async fn load_bootstrap_config_from_path(
     path: &str,
-) -> Result<BootstrapConfig, Box<dyn Error>> {
+) -> StorageResult<BootstrapConfig> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: BootstrapConfig = serde_json::from_str(&content)?;
@@ -884,7 +884,7 @@ pub async fn load_bootstrap_config_from_path(
 }
 
 /// Ensure bootstrap config file exists with defaults
-pub async fn ensure_bootstrap_config_exists() -> Result<(), Box<dyn Error>> {
+pub async fn ensure_bootstrap_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("bootstrap_config.json").await.is_err() {
         let default_config = BootstrapConfig::default();
         save_bootstrap_config(&default_config).await?;
@@ -896,7 +896,7 @@ pub async fn ensure_bootstrap_config_exists() -> Result<(), Box<dyn Error>> {
 /// Save direct message configuration to file
 pub async fn save_direct_message_config(
     config: &DirectMessageConfig,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     save_direct_message_config_to_path(config, "direct_message_config.json").await
 }
 
@@ -904,7 +904,7 @@ pub async fn save_direct_message_config(
 pub async fn save_direct_message_config_to_path(
     config: &DirectMessageConfig,
     path: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
     debug!("Saved direct message config to {path}");
@@ -912,14 +912,14 @@ pub async fn save_direct_message_config_to_path(
 }
 
 /// Load direct message configuration from file, creating default if missing
-pub async fn load_direct_message_config() -> Result<DirectMessageConfig, Box<dyn Error>> {
+pub async fn load_direct_message_config() -> StorageResult<DirectMessageConfig> {
     load_direct_message_config_from_path("direct_message_config.json").await
 }
 
 /// Load direct message configuration from specific path, creating default if missing
 pub async fn load_direct_message_config_from_path(
     path: &str,
-) -> Result<DirectMessageConfig, Box<dyn Error>> {
+) -> StorageResult<DirectMessageConfig> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: DirectMessageConfig = serde_json::from_str(&content)?;
@@ -944,7 +944,7 @@ pub async fn load_direct_message_config_from_path(
 }
 
 /// Ensure direct message config file exists with defaults
-pub async fn ensure_direct_message_config_exists() -> Result<(), Box<dyn Error>> {
+pub async fn ensure_direct_message_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("direct_message_config.json")
         .await
         .is_err()
@@ -957,7 +957,7 @@ pub async fn ensure_direct_message_config_exists() -> Result<(), Box<dyn Error>>
 }
 
 /// Save network configuration to file
-pub async fn save_network_config(config: &NetworkConfig) -> Result<(), Box<dyn Error>> {
+pub async fn save_network_config(config: &NetworkConfig) -> StorageResult<()> {
     save_network_config_to_path(config, "network_config.json").await
 }
 
@@ -965,7 +965,7 @@ pub async fn save_network_config(config: &NetworkConfig) -> Result<(), Box<dyn E
 pub async fn save_network_config_to_path(
     config: &NetworkConfig,
     path: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
     debug!("Saved network config to {path}");
@@ -973,12 +973,12 @@ pub async fn save_network_config_to_path(
 }
 
 /// Load network configuration from file, creating default if missing
-pub async fn load_network_config() -> Result<NetworkConfig, Box<dyn Error>> {
+pub async fn load_network_config() -> StorageResult<NetworkConfig> {
     load_network_config_from_path("network_config.json").await
 }
 
 /// Load network configuration from specific path, creating default if missing
-pub async fn load_network_config_from_path(path: &str) -> Result<NetworkConfig, Box<dyn Error>> {
+pub async fn load_network_config_from_path(path: &str) -> StorageResult<NetworkConfig> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: NetworkConfig = serde_json::from_str(&content)?;
@@ -1003,7 +1003,7 @@ pub async fn load_network_config_from_path(path: &str) -> Result<NetworkConfig, 
 }
 
 /// Ensure network config file exists with defaults
-pub async fn ensure_network_config_exists() -> Result<(), Box<dyn Error>> {
+pub async fn ensure_network_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("network_config.json").await.is_err() {
         let default_config = NetworkConfig::default();
         save_network_config(&default_config).await?;
@@ -1015,7 +1015,7 @@ pub async fn ensure_network_config_exists() -> Result<(), Box<dyn Error>> {
 /// Save unified network configuration to file
 pub async fn save_unified_network_config(
     config: &UnifiedNetworkConfig,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     save_unified_network_config_to_path(config, "unified_network_config.json").await
 }
 
@@ -1023,7 +1023,7 @@ pub async fn save_unified_network_config(
 pub async fn save_unified_network_config_to_path(
     config: &UnifiedNetworkConfig,
     path: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     config
         .validate()
         .map_err(|e| format!("Configuration validation failed: {e}"))?;
@@ -1033,14 +1033,14 @@ pub async fn save_unified_network_config_to_path(
 }
 
 /// Load unified network configuration from file
-pub async fn load_unified_network_config() -> Result<UnifiedNetworkConfig, Box<dyn Error>> {
+pub async fn load_unified_network_config() -> StorageResult<UnifiedNetworkConfig> {
     load_unified_network_config_from_path("unified_network_config.json").await
 }
 
 /// Load unified network configuration from a specific path
 pub async fn load_unified_network_config_from_path(
     path: &str,
-) -> Result<UnifiedNetworkConfig, Box<dyn Error>> {
+) -> StorageResult<UnifiedNetworkConfig> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
@@ -1060,7 +1060,7 @@ pub async fn load_unified_network_config_from_path(
 }
 
 /// Ensure unified network config file exists with defaults
-pub async fn ensure_unified_network_config_exists() -> Result<(), Box<dyn Error>> {
+pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("unified_network_config.json")
         .await
         .is_err()
@@ -1077,7 +1077,7 @@ pub async fn mark_story_as_read(
     story_id: usize,
     peer_id: &str,
     channel_name: &str,
-) -> Result<(), Box<dyn Error>> {
+) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -1095,7 +1095,7 @@ pub async fn mark_story_as_read(
 /// Get unread story count for each channel for a specific peer
 pub async fn get_unread_counts_by_channel(
     peer_id: &str,
-) -> Result<HashMap<String, usize>, Box<dyn Error>> {
+) -> StorageResult<HashMap<String, usize>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -1121,7 +1121,7 @@ pub async fn get_unread_counts_by_channel(
 }
 
 /// Check if a specific story is read by a peer
-pub async fn is_story_read(story_id: usize, peer_id: &str) -> Result<bool, Box<dyn Error>> {
+pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -1137,7 +1137,7 @@ pub async fn is_story_read(story_id: usize, peer_id: &str) -> Result<bool, Box<d
 pub async fn get_unread_story_ids_for_channel(
     peer_id: &str,
     channel_name: &str,
-) -> Result<Vec<usize>, Box<dyn Error>> {
+) -> StorageResult<Vec<usize>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
