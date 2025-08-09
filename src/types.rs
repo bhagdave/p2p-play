@@ -248,7 +248,12 @@ pub enum EventType {
     PingEvent(ping::Event),
     RequestResponseEvent(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
     NodeDescriptionEvent(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
-    StorySyncEvent(request_response::Event<crate::network::StorySyncRequest, crate::network::StorySyncResponse>),
+    StorySyncEvent(
+        request_response::Event<
+            crate::network::StorySyncRequest,
+            crate::network::StorySyncResponse,
+        >,
+    ),
     KadEvent(kad::Event),
     PublishStory(Story),
     PeerName(PeerName),

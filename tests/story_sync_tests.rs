@@ -229,8 +229,14 @@ fn test_story_sync_serialization() {
 
     assert_eq!(request.from_peer_id, deserialized.from_peer_id);
     assert_eq!(request.from_name, deserialized.from_name);
-    assert_eq!(request.last_sync_timestamp, deserialized.last_sync_timestamp);
-    assert_eq!(request.subscribed_channels, deserialized.subscribed_channels);
+    assert_eq!(
+        request.last_sync_timestamp,
+        deserialized.last_sync_timestamp
+    );
+    assert_eq!(
+        request.subscribed_channels,
+        deserialized.subscribed_channels
+    );
     assert_eq!(request.timestamp, deserialized.timestamp);
 }
 
@@ -281,7 +287,7 @@ async fn test_story_deduplication() {
 
     // Second save should succeed (silent deduplication)
     assert!(result.is_ok());
-    
+
     // Verify only one copy exists
     let stories = read_local_stories().await.unwrap();
     let duplicate_count = stories

@@ -2,6 +2,19 @@
 
 All changes to this project will be documented in this file.
 
+## [0.9.0] 2025-01-20
+
+### Added
+- **Story Synchronization Protocol**: Implemented automatic peer-to-peer story synchronization when connections are established
+  - Added new `StorySyncRequest` and `StorySyncResponse` message types for efficient story exchange
+  - Bidirectional sync automatically triggers when peers connect without manual intervention
+  - Channel-aware filtering ensures peers only receive stories from subscribed channels
+  - Timestamp-based incremental sync using `last_sync_timestamp` prevents redundant data transfer
+  - Database-level filtering optimization reduces memory usage and improves sync performance
+  - Automatic deduplication prevents duplicate stories from being saved
+  - UI feedback with 🔄 sync and ✓ checkmark icons to show sync progress
+  - Fixes issue #158
+
 ## [0.8.5] 2025-08-09
 
 ### Fixed

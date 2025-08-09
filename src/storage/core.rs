@@ -191,6 +191,43 @@ pub async fn read_local_stories_from_path(path: &str) -> Result<Stories, Box<dyn
     }
 }
 
+/// Read local stories with filtering applied at the database level for efficient story synchronization
+pub async fn read_local_stories_for_sync(
+    last_sync_timestamp: u64,
+    subscribed_channels: &[String],
+) -> Result<Stories, Box<dyn Error>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Build dynamic query with proper filtering
+    let mut query = "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE public = 1 AND created_at > ?".to_string();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(last_sync_timestamp as i64)];
+
+    // Add channel filtering if channels are specified
+    if !subscribed_channels.is_empty() {
+        let placeholders = vec!["?"; subscribed_channels.len()].join(",");
+        query.push_str(&format!(" AND channel IN ({})", placeholders));
+        for channel in subscribed_channels {
+            params.push(Box::new(channel.clone()));
+        }
+    }
+
+    query.push_str(" ORDER BY created_at DESC");
+
+    let mut stmt = conn.prepare(&query)?;
+
+    // Convert params to the proper type for query_map
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let story_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_story)?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
 pub async fn write_local_stories(stories: &Stories) -> Result<(), Box<dyn Error>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;

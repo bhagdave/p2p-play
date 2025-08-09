@@ -114,8 +114,7 @@ pub struct StoryBehaviour {
         request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
     pub node_description:
         request_response::cbor::Behaviour<NodeDescriptionRequest, NodeDescriptionResponse>,
-    pub story_sync:
-        request_response::cbor::Behaviour<StorySyncRequest, StorySyncResponse>,
+    pub story_sync: request_response::cbor::Behaviour<StorySyncRequest, StorySyncResponse>,
     pub kad: kad::Behaviour<kad::store::MemoryStore>,
 }
 
@@ -166,12 +165,8 @@ impl From<request_response::Event<NodeDescriptionRequest, NodeDescriptionRespons
     }
 }
 
-impl From<request_response::Event<StorySyncRequest, StorySyncResponse>>
-    for StoryBehaviourEvent
-{
-    fn from(
-        event: request_response::Event<StorySyncRequest, StorySyncResponse>,
-    ) -> Self {
+impl From<request_response::Event<StorySyncRequest, StorySyncResponse>> for StoryBehaviourEvent {
+    fn from(event: request_response::Event<StorySyncRequest, StorySyncResponse>) -> Self {
         StoryBehaviourEvent::StorySync(event)
     }
 }
