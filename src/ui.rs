@@ -221,7 +221,7 @@ impl App {
                             // Reset scroll offset when re-enabling auto-scroll to go to bottom
                             self.scroll_offset = 0;
                         }
-                        
+
                         // Add visual feedback to the log
                         self.add_to_log(format!(
                             "{} Auto-scroll {} (Ctrl+S)",
@@ -241,7 +241,7 @@ impl App {
                             // Reset scroll offset when re-enabling auto-scroll to go to bottom
                             self.scroll_offset = 0;
                         }
-                        
+
                         // Add visual feedback to the log
                         self.add_to_log(format!(
                             "{} Auto-scroll {} ({})",
@@ -254,7 +254,7 @@ impl App {
                             match key.code {
                                 KeyCode::ScrollLock => "ScrollLock",
                                 KeyCode::F(12) => "F12",
-                                _ => "key"
+                                _ => "key",
                             }
                         ));
                     }

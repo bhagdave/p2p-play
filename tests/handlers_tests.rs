@@ -1211,8 +1211,7 @@ async fn test_handle_direct_message_with_relay_prefer_relay() {
     cache.update(&peer_names);
 
     let dm_config = DirectMessageConfig::new();
-    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> =
-        Arc::new(Mutex::new(Vec::new()));
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Create RelayService with prefer_direct=false
     let mut relay_config = RelayConfig::new();
