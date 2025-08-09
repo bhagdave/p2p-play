@@ -129,7 +129,7 @@ impl App {
                 ),
                 format!("{} Type 'help' for available commands", Icons::wrench()),
                 format!("{} Press 'c' to clear output", Icons::broom()),
-                format!("{} Press ScrollLock to toggle auto-scroll", Icons::check()),
+                format!("{} Press Ctrl+S to toggle auto-scroll", Icons::check()),
                 format!("{} Press 'q' to quit", Icons::cross()),
                 "".to_string(),
             ],
@@ -214,21 +214,47 @@ impl App {
                         // Reset scroll offset to ensure clean transition to auto-scroll
                         self.scroll_offset = 0;
                     }
-                    KeyCode::ScrollLock => {
+                    KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         // Toggle auto-scroll on/off
                         self.auto_scroll = !self.auto_scroll;
                         if self.auto_scroll {
                             // Reset scroll offset when re-enabling auto-scroll to go to bottom
                             self.scroll_offset = 0;
                         }
+                        
                         // Add visual feedback to the log
                         self.add_to_log(format!(
-                            "{} Auto-scroll {}",
+                            "{} Auto-scroll {} (Ctrl+S)",
                             Icons::check(),
                             if self.auto_scroll {
                                 "enabled"
                             } else {
                                 "disabled"
+                            }
+                        ));
+                    }
+                    KeyCode::ScrollLock | KeyCode::F(12) => {
+                        // Keep ScrollLock and F12 as fallback options for systems that support them
+                        // Toggle auto-scroll on/off
+                        self.auto_scroll = !self.auto_scroll;
+                        if self.auto_scroll {
+                            // Reset scroll offset when re-enabling auto-scroll to go to bottom
+                            self.scroll_offset = 0;
+                        }
+                        
+                        // Add visual feedback to the log
+                        self.add_to_log(format!(
+                            "{} Auto-scroll {} ({})",
+                            Icons::check(),
+                            if self.auto_scroll {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            },
+                            match key.code {
+                                KeyCode::ScrollLock => "ScrollLock",
+                                KeyCode::F(12) => "F12",
+                                _ => "key"
                             }
                         ));
                     }
@@ -913,8 +939,8 @@ impl App {
             let input_text = match &self.input_mode {
                 InputMode::Normal => {
                     match &self.view_mode {
-                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ←/→ to navigate, ↑/↓ to scroll, ScrollLock to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
-                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Enter to view story, Esc to return to channels, ←/→ to navigate, ↑/↓ to scroll, ScrollLock to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ←/→ to navigate, ↑/↓ to scroll, Ctrl+S to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Enter to view story, Esc to return to channels, ←/→ to navigate, ↑/↓ to scroll, Ctrl+S to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
                     }
                 }
                 InputMode::Editing => format!("Command: {}", self.input),
