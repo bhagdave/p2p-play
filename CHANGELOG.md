@@ -2,6 +2,18 @@
 
 All changes to this project will be documented in this file.
 
+## [0.8.4] 2025-08-09
+
+### Fixed
+- **Crypto/Relay Error Messaging**: Improved user messaging for crypto/relay errors when messaging offline peers
+  - Replaced confusing technical error messages with user-friendly explanations
+  - Old: "❌ Failed to create relay message: Crypto error in relay: Encryption failed: Public key not found for peer..."
+  - New: "🔐 Cannot send secure message to offline peer 'alice'" + helpful context about message queuing and secure messaging requirements
+  - Enhanced error classification in try_relay_delivery() to detect missing public key scenarios specifically
+  - Messages are still properly queued for retry when peers come online (no functional changes)
+  - Eliminates technical jargon while providing clear guidance and expectations to users
+  - Fixes issue #196
+
 ## [0.8.3] 2025-08-09
 
 ### Added
@@ -23,15 +35,6 @@ All changes to this project will be documented in this file.
   - Stories now properly update their read status and unread counts in real-time when viewed
   - Maintains existing event-driven architecture and reuses existing database functions
   - Fixes issue #189
-
-- **Crypto/Relay Error Messaging**: Improved user messaging for crypto/relay errors when messaging offline peers
-  - Replaced confusing technical error messages with user-friendly explanations
-  - Old: "❌ Failed to create relay message: Crypto error in relay: Encryption failed: Public key not found for peer..."
-  - New: "🔐 Cannot send secure message to offline peer 'alice'" + helpful context about message queuing and secure messaging requirements
-  - Enhanced error classification in try_relay_delivery() to detect missing public key scenarios specifically
-  - Messages are still properly queued for retry when peers come online (no functional changes)
-  - Eliminates technical jargon while providing clear guidance and expectations to users
-  - Fixes issue #196
 
 ## [0.8.2] 2025-08-08
 
