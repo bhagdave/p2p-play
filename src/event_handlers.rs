@@ -1128,6 +1128,302 @@ pub async fn handle_node_description_event(
     }
 }
 
+/// Handle story synchronization events
+pub async fn handle_story_sync_event(
+    event: request_response::Event<crate::network::StorySyncRequest, crate::network::StorySyncResponse>,
+    swarm: &mut Swarm<StoryBehaviour>,
+    local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
+    match event {
+        request_response::Event::Message { peer, message, .. } => {
+            match message {
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    // Handle incoming story sync request
+                    debug!(
+                        "Received story sync request from {} ({}) for channels: {:?}",
+                        request.from_name, request.from_peer_id, request.subscribed_channels
+                    );
+
+                    ui_logger.log(format!(
+                        "{} Story sync request from {} (last sync: {})",
+                        Icons::sync(),
+                        request.from_name,
+                        if request.last_sync_timestamp == 0 {
+                            "never".to_string()
+                        } else {
+                            format!("{} seconds ago", std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs().saturating_sub(request.last_sync_timestamp))
+                        }
+                    ));
+
+                    // Get local stories that match the peer's subscribed channels and are newer than last sync
+                    match crate::storage::read_local_stories().await {
+                        Ok(all_stories) => {
+                            let mut filtered_stories = Vec::new();
+                            
+                            for story in all_stories {
+                                // Only send public stories
+                                if !story.public {
+                                    continue;
+                                }
+                                
+                                // Only send stories newer than last sync timestamp
+                                if story.created_at <= request.last_sync_timestamp {
+                                    continue;
+                                }
+                                
+                                // Only send stories from channels the peer is subscribed to
+                                if request.subscribed_channels.is_empty() || request.subscribed_channels.contains(&story.channel) {
+                                    filtered_stories.push(story);
+                                }
+                            }
+                            
+                            debug!("Sending {} stories to peer {}", filtered_stories.len(), peer);
+                            
+                            let story_count = filtered_stories.len();
+                            let response = crate::network::StorySyncResponse {
+                                stories: filtered_stories,
+                                from_peer_id: PEER_ID.to_string(),
+                                from_name: local_peer_name
+                                    .as_deref()
+                                    .unwrap_or("Unknown")
+                                    .to_string(),
+                                sync_timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+
+                            // Send the response
+                            if let Err(e) = swarm
+                                .behaviour_mut()
+                                .story_sync
+                                .send_response(channel, response)
+                            {
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "story_sync",
+                                    "Failed to send story sync response to {}: {:?}",
+                                    peer,
+                                    e
+                                );
+                                ui_logger.log(format!(
+                                    "{} Failed to send story sync response to {}: {:?}",
+                                    Icons::cross(),
+                                    peer,
+                                    e
+                                ));
+                            } else {
+                                debug!("Sent story sync response to {peer}");
+                                ui_logger.log(format!(
+                                    "{} Sent {} stories to {}",
+                                    Icons::sync(),
+                                    story_count,
+                                    request.from_name
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            crate::log_network_error!(
+                                error_logger,
+                                "story_sync",
+                                "Failed to load stories for sync: {}",
+                                e
+                            );
+
+                            // Send empty response to indicate error
+                            let response = crate::network::StorySyncResponse {
+                                stories: Vec::new(),
+                                from_peer_id: PEER_ID.to_string(),
+                                from_name: local_peer_name
+                                    .as_deref()
+                                    .unwrap_or("Unknown")
+                                    .to_string(),
+                                sync_timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+
+                            if let Err(e) = swarm
+                                .behaviour_mut()
+                                .story_sync
+                                .send_response(channel, response)
+                            {
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "story_sync",
+                                    "Failed to send empty story sync response to {}: {:?}",
+                                    peer,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+                request_response::Message::Response { response, .. } => {
+                    // Handle incoming story sync response
+                    debug!(
+                        "Received story sync response from {} ({}) with {} stories",
+                        response.from_name, response.from_peer_id, response.stories.len()
+                    );
+
+                    if response.stories.is_empty() {
+                        ui_logger.log(format!(
+                            "{} No new stories from {}",
+                            Icons::sync(),
+                            response.from_name
+                        ));
+                        return;
+                    }
+
+                    ui_logger.log(format!(
+                        "{} Received {} stories from {}",
+                        Icons::sync(),
+                        response.stories.len(),
+                        response.from_name
+                    ));
+
+                    // Save received stories (with deduplication handled by save_received_story)
+                    let mut saved_count = 0;
+                    for story in response.stories {
+                        match crate::storage::save_received_story(story.clone()).await {
+                            Ok(_) => {
+                                saved_count += 1;
+                                debug!("Saved story: {}", story.name);
+                            }
+                            Err(e) => {
+                                debug!("Failed to save story '{}': {}", story.name, e);
+                                // Don't log to UI for duplicates - this is expected
+                                if !e.to_string().contains("already exists") {
+                                    crate::log_network_error!(
+                                        error_logger,
+                                        "story_sync",
+                                        "Failed to save story '{}': {}",
+                                        story.name,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    ui_logger.log(format!(
+                        "{} Saved {} new stories from {}",
+                        Icons::checkmark(),
+                        saved_count,
+                        response.from_name
+                    ));
+                }
+            }
+        }
+        request_response::Event::OutboundFailure { peer, error, .. } => {
+            crate::log_network_error!(
+                error_logger,
+                "story_sync",
+                "Failed to send story sync request to {}: {:?}",
+                peer,
+                error
+            );
+
+            let user_message = match error {
+                request_response::OutboundFailure::UnsupportedProtocols => {
+                    format!(
+                        "{} Peer {} doesn't support story sync (version mismatch)",
+                        Icons::cross(),
+                        peer
+                    )
+                }
+                _ => {
+                    format!(
+                        "{} Failed to sync stories with {}: {:?}",
+                        Icons::cross(),
+                        peer,
+                        error
+                    )
+                }
+            };
+
+            ui_logger.log(user_message);
+        }
+        request_response::Event::InboundFailure { peer, error, .. } => {
+            crate::log_network_error!(
+                error_logger,
+                "story_sync",
+                "Failed to receive story sync request from {}: {:?}",
+                peer,
+                error
+            );
+        }
+        request_response::Event::ResponseSent { peer, .. } => {
+            debug!("Story sync response sent to {peer}");
+        }
+    }
+}
+
+/// Initiate story synchronization with a newly connected peer
+pub async fn initiate_story_sync_with_peer(
+    peer_id: PeerId,
+    swarm: &mut Swarm<StoryBehaviour>,
+    local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
+    _error_logger: &ErrorLogger,
+) {
+    debug!("Initiating story sync with peer {}", peer_id);
+
+    // Get our subscribed channels to send in the sync request
+    let subscribed_channels = match crate::storage::read_subscribed_channels(&PEER_ID.to_string()).await {
+        Ok(channels) => channels,
+        Err(e) => {
+            debug!("Failed to read subscribed channels for sync: {}", e);
+            Vec::new() // Send empty list as fallback
+        }
+    };
+
+    // For initial sync, set last_sync_timestamp to 0 to get all stories
+    let request = crate::network::StorySyncRequest {
+        from_peer_id: PEER_ID.to_string(),
+        from_name: local_peer_name
+            .as_deref()
+            .unwrap_or("Unknown")
+            .to_string(),
+        last_sync_timestamp: 0, // Get all stories for initial sync
+        subscribed_channels,
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+
+    // Send the story sync request
+    let request_id = swarm
+        .behaviour_mut()
+        .story_sync
+        .send_request(&peer_id, request.clone());
+
+    match request_id {
+        request_id => {
+            debug!("Sent story sync request to peer {} (request ID: {:?})", peer_id, request_id);
+            ui_logger.log(format!(
+                "{} Requesting story sync from peer {} (channels: {})",
+                Icons::sync(),
+                peer_id,
+                if request.subscribed_channels.is_empty() {
+                    "all".to_string()
+                } else {
+                    request.subscribed_channels.join(", ")
+                }
+            ));
+        }
+    }
+}
+
 /// Main event dispatcher that routes events to appropriate handlers
 pub async fn handle_event(
     event: EventType,
@@ -1216,6 +1512,16 @@ pub async fn handle_event(
         EventType::NodeDescriptionEvent(node_desc_event) => {
             handle_node_description_event(
                 node_desc_event,
+                swarm,
+                local_peer_name,
+                ui_logger,
+                error_logger,
+            )
+            .await;
+        }
+        EventType::StorySyncEvent(story_sync_event) => {
+            handle_story_sync_event(
+                story_sync_event,
                 swarm,
                 local_peer_name,
                 ui_logger,
