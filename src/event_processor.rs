@@ -8,6 +8,7 @@ use crate::handlers::{
     SortedPeerNamesCache, UILogger, mark_story_as_read_for_peer, refresh_unread_counts_for_ui,
 };
 use crate::network::{PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC};
+use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
 use crate::types::{ActionResult, DirectMessageConfig, EventType, PeerName, PendingDirectMessage};
@@ -59,6 +60,9 @@ pub struct EventProcessor {
 
     // Relay service for secure message routing
     relay_service: Option<RelayService>,
+    
+    // Network circuit breakers for resilience
+    network_circuit_breakers: NetworkCircuitBreakers,
 }
 
 impl EventProcessor {
@@ -77,6 +81,7 @@ impl EventProcessor {
         error_logger: ErrorLogger,
         bootstrap_logger: BootstrapLogger,
         relay_service: Option<RelayService>,
+        network_circuit_breakers: NetworkCircuitBreakers,
     ) -> Self {
         Self {
             ui_rcv,
@@ -100,6 +105,7 @@ impl EventProcessor {
             error_logger,
             bootstrap_logger,
             relay_service,
+            network_circuit_breakers,
         }
     }
 

@@ -1,5 +1,6 @@
 mod bootstrap;
 mod bootstrap_logger;
+mod circuit_breaker;
 mod crypto;
 mod error_logger;
 mod errors;
@@ -8,6 +9,7 @@ mod event_processor;
 mod handlers;
 mod migrations;
 mod network;
+mod network_circuit_breakers;
 mod relay;
 mod storage;
 mod types;
@@ -21,6 +23,7 @@ use errors::{AppError, AppResult};
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
 use network::{KEYS, PEER_ID, create_swarm};
+use network_circuit_breakers::NetworkCircuitBreakers;
 use relay::RelayService;
 use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
@@ -230,6 +233,9 @@ async fn run_app() -> AppResult<()> {
     // Initialize crypto service with shared keypair
     let crypto_service = CryptoService::new(KEYS.clone());
 
+    // Initialize network circuit breakers for resilience
+    let network_circuit_breakers = NetworkCircuitBreakers::new(&unified_config.circuit_breaker);
+
     // Initialize relay service with crypto and configuration
     let relay_service = if unified_config.relay.enable_relay {
         Some(RelayService::new(
@@ -255,6 +261,7 @@ async fn run_app() -> AppResult<()> {
         error_logger,
         bootstrap_logger,
         relay_service,
+        network_circuit_breakers,
     );
 
     // Run the main event loop
