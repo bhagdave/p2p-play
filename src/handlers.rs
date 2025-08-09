@@ -311,6 +311,8 @@ pub async fn handle_delete_story(
             return None;
         }
 
+        let is_batch_operation = valid_id_strings.len() > 1;
+
         for id_str in valid_id_strings {
             match id_str.parse::<usize>() {
                 Ok(id) => match delete_local_story(id).await {
@@ -339,21 +341,17 @@ pub async fn handle_delete_story(
             }
         }
 
-        // Report batch operation summary if multiple operations were attempted
-        if successful_deletions + failed_deletions.len() > 1 {
+        // Report batch operation summary only if there were failures and multiple operations
+        if is_batch_operation && !failed_deletions.is_empty() {
             let total_failed = failed_deletions.len();
-            if total_failed > 0 {
-                use crate::errors::StorageError;
-                let batch_error = StorageError::batch_operation_failed(
-                    successful_deletions,
-                    total_failed,
-                    failed_deletions,
-                );
-                ui_logger.log(format!("📊 Batch deletion summary: {batch_error}"));
-                error_logger.log_error(&format!("Batch delete operation completed with errors: {batch_error}"));
-            } else {
-                ui_logger.log(format!("✅ Batch deletion completed: {successful_deletions} stories deleted successfully"));
-            }
+            use crate::errors::StorageError;
+            let batch_error = StorageError::batch_operation_failed(
+                successful_deletions,
+                total_failed,
+                failed_deletions,
+            );
+            ui_logger.log(format!("📊 Batch deletion summary: {batch_error}"));
+            error_logger.log_error(&format!("Batch delete operation completed with errors: {batch_error}"));
         }
 
         // Return RefreshStories if any story was successfully deleted
