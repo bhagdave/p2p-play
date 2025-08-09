@@ -40,6 +40,24 @@ pub struct NodeDescriptionResponse {
     pub timestamp: u64,
 }
 
+/// Story sync request/response types for peer-to-peer story synchronization
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StorySyncRequest {
+    pub from_peer_id: String,
+    pub from_name: String,
+    pub last_sync_timestamp: u64,
+    pub subscribed_channels: Vec<String>,
+    pub timestamp: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StorySyncResponse {
+    pub stories: Vec<crate::types::Story>,
+    pub from_peer_id: String,
+    pub from_name: String,
+    pub sync_timestamp: u64,
+}
+
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
         debug!("Found existing peer key file, attempting to load");
@@ -96,6 +114,7 @@ pub struct StoryBehaviour {
         request_response::cbor::Behaviour<DirectMessageRequest, DirectMessageResponse>,
     pub node_description:
         request_response::cbor::Behaviour<NodeDescriptionRequest, NodeDescriptionResponse>,
+    pub story_sync: request_response::cbor::Behaviour<StorySyncRequest, StorySyncResponse>,
     pub kad: kad::Behaviour<kad::store::MemoryStore>,
 }
 
@@ -106,6 +125,7 @@ pub enum StoryBehaviourEvent {
     Ping(ping::Event),
     RequestResponse(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
     NodeDescription(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
+    StorySync(request_response::Event<StorySyncRequest, StorySyncResponse>),
     Kad(kad::Event),
 }
 
@@ -142,6 +162,12 @@ impl From<request_response::Event<NodeDescriptionRequest, NodeDescriptionRespons
         event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>,
     ) -> Self {
         StoryBehaviourEvent::NodeDescription(event)
+    }
+}
+
+impl From<request_response::Event<StorySyncRequest, StorySyncResponse>> for StoryBehaviourEvent {
+    fn from(event: request_response::Event<StorySyncRequest, StorySyncResponse>) -> Self {
+        StoryBehaviourEvent::StorySync(event)
     }
 }
 
@@ -217,7 +243,14 @@ pub fn create_swarm(
     let desc_protocol = StreamProtocol::new("/node-desc/1.0.0");
     let desc_protocols = iter::once((desc_protocol, desc_protocol_support));
 
-    let node_description = request_response::cbor::Behaviour::new(desc_protocols, cfg);
+    let node_description = request_response::cbor::Behaviour::new(desc_protocols, cfg.clone());
+
+    // Create request-response protocol for story synchronization
+    let story_sync_protocol_support = request_response::ProtocolSupport::Full;
+    let story_sync_protocol = StreamProtocol::new("/story-sync/1.0.0");
+    let story_sync_protocols = iter::once((story_sync_protocol, story_sync_protocol_support));
+
+    let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg);
 
     // Create Kademlia DHT
     let store = kad::store::MemoryStore::new(*PEER_ID);
@@ -242,6 +275,7 @@ pub fn create_swarm(
         ),
         request_response,
         node_description,
+        story_sync,
         kad,
     };
 

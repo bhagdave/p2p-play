@@ -286,6 +286,9 @@ impl EventProcessor {
             SwarmEvent::Behaviour(StoryBehaviourEvent::NodeDescription(event)) => {
                 Some(EventType::NodeDescriptionEvent(event))
             }
+            SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(event)) => {
+                Some(EventType::StorySyncEvent(event))
+            }
             SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => {
                 // Update bootstrap status based on DHT events
                 update_bootstrap_status(&event, auto_bootstrap, swarm);
@@ -415,6 +418,16 @@ impl EventProcessor {
             &self.dm_config,
             &self.pending_messages,
             peer_names,
+        )
+        .await;
+
+        // Initiate story synchronization with the newly connected peer
+        event_handlers::initiate_story_sync_with_peer(
+            peer_id,
+            swarm,
+            local_peer_name,
+            &self.ui_logger,
+            &self.error_logger,
         )
         .await;
     }

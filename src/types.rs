@@ -248,6 +248,12 @@ pub enum EventType {
     PingEvent(ping::Event),
     RequestResponseEvent(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
     NodeDescriptionEvent(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
+    StorySyncEvent(
+        request_response::Event<
+            crate::network::StorySyncRequest,
+            crate::network::StorySyncResponse,
+        >,
+    ),
     KadEvent(kad::Event),
     PublishStory(Story),
     PeerName(PeerName),
@@ -1065,6 +1071,22 @@ impl Icons {
         return "[RELAY]";
         #[cfg(not(windows))]
         return "📡";
+    }
+
+    /// Synchronization/refresh indicator
+    pub fn sync() -> &'static str {
+        #[cfg(windows)]
+        return "[SYNC]";
+        #[cfg(not(windows))]
+        return "🔄";
+    }
+
+    /// Checkmark/success indicator (alternative to check)
+    pub fn checkmark() -> &'static str {
+        #[cfg(windows)]
+        return "[✓]";
+        #[cfg(not(windows))]
+        return "✓";
     }
 }
 
