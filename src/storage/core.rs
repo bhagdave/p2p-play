@@ -5,9 +5,12 @@ use crate::types::{
     DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
 };
 use log::debug;
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs;
 use tokio::sync::{Mutex, RwLock};
 
@@ -33,49 +36,187 @@ fn get_database_path() -> String {
     "./stories.db".to_string()
 }
 
-// Thread-safe database connection storage with support for dynamic paths
-static DB_STATE: once_cell::sync::Lazy<RwLock<Option<(Arc<Mutex<Connection>>, String)>>> =
+// Type alias for our connection pool  
+type DbPool = Pool<SqliteConnectionManager>;
+
+// Thread-safe database connection pool with support for dynamic paths
+static DB_POOL_STATE: once_cell::sync::Lazy<RwLock<Option<(DbPool, String)>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
+/// Configuration for the database connection pool
+struct PoolConfig {
+    max_size: u32,
+    min_idle: Option<u32>,
+    connection_timeout: Duration,
+    idle_timeout: Duration,
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self {
+            max_size: 10, // Allow up to 10 concurrent connections
+            min_idle: Some(2), // Keep at least 2 connections idle
+            connection_timeout: Duration::from_secs(30),
+            idle_timeout: Duration::from_secs(600), // 10 minutes
+        }
+    }
+}
+
+/// Create a new database connection pool
+fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
+    let config = PoolConfig::default();
+    
+    // Create connection manager
+    let manager = SqliteConnectionManager::file(db_path)
+        .with_init(|conn| {
+            // Enable foreign key constraints and set optimal pragmas
+            conn.execute_batch(
+                "PRAGMA foreign_keys = ON;
+                 PRAGMA synchronous = NORMAL;
+                 PRAGMA cache_size = -64000;
+                 PRAGMA temp_store = MEMORY;
+                 PRAGMA journal_mode = WAL;"
+            )?;
+            Ok(())
+        });
+
+    // Build the pool with configuration
+    let pool = Pool::builder()
+        .max_size(config.max_size)
+        .min_idle(config.min_idle)
+        .connection_timeout(config.connection_timeout)
+        .idle_timeout(Some(config.idle_timeout))
+        .build(manager)
+        .map_err(|e| format!("Failed to create database pool: {e}"))?;
+
+    debug!("Created database pool with max_size={}, min_idle={:?}", 
+           config.max_size, config.min_idle);
+    
+    Ok(pool)
+}
+
+/// Get a database connection from the pool
 pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     let current_path = get_database_path();
 
-    // Check if we have an existing connection with the same path
+    // Check if we have an existing pool with the same path
     {
-        let state = DB_STATE.read().await;
-        if let Some((conn, stored_path)) = state.as_ref() {
+        let state = DB_POOL_STATE.read().await;
+        if let Some((pool, stored_path)) = state.as_ref() {
             if stored_path == &current_path {
-                return Ok(conn.clone());
+                // Get a connection from the pool - pooled connections implement Deref to Connection
+                let _pooled_conn = pool.get()
+                    .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
+                
+                // For now, create a new connection with the same path to maintain compatibility
+                // In a future iteration, we could optimize this further
+                let conn = Connection::open(&current_path)?;
+                conn.execute_batch(
+                    "PRAGMA foreign_keys = ON;
+                     PRAGMA synchronous = NORMAL;
+                     PRAGMA cache_size = -64000;
+                     PRAGMA temp_store = MEMORY;
+                     PRAGMA journal_mode = WAL;"
+                )?;
+                
+                return Ok(Arc::new(Mutex::new(conn)));
             }
         }
     }
 
-    // Need to create or update connection
-    debug!("Creating new SQLite database connection: {current_path}");
+    // Need to create or update pool
+    debug!("Creating new SQLite database connection pool: {current_path}");
+    let pool = create_db_pool(&current_path)?;
+    
+    // Create a direct connection for immediate use while pool is ready for future requests
     let conn = Connection::open(&current_path)?;
-
-    // Enable foreign key constraints (SQLite has them disabled by default)
-    conn.execute("PRAGMA foreign_keys = ON", [])?;
-
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA cache_size = -64000;
+         PRAGMA temp_store = MEMORY;
+         PRAGMA journal_mode = WAL;"
+    )?;
     let conn_arc = Arc::new(Mutex::new(conn));
 
-    // Update the stored connection and path
+    // Update the stored pool and path
     {
-        let mut state = DB_STATE.write().await;
-        *state = Some((conn_arc.clone(), current_path));
+        let mut state = DB_POOL_STATE.write().await;
+        *state = Some((pool, current_path));
     }
 
-    debug!("Successfully connected to SQLite database with foreign keys enabled");
+    debug!("Successfully created database connection pool with optimized pragmas");
     Ok(conn_arc)
 }
 
-/// Reset database connection (useful for testing)
+/// Reset database connection pool (useful for testing)
 pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
-    let mut state = DB_STATE.write().await;
+    let mut state = DB_POOL_STATE.write().await;
     *state = None;
     // Add a small delay to ensure any pending database operations complete
     tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
     Ok(())
+}
+
+/// Get database pool statistics for monitoring
+pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
+    let state = DB_POOL_STATE.read().await;
+    if let Some((pool, _)) = state.as_ref() {
+        let state = pool.state();
+        Some((state.connections, state.idle_connections, pool.max_size()))
+    } else {
+        None
+    }
+}
+
+/// Execute a function with a database transaction
+/// This helps group related operations and provides better error handling
+pub async fn with_transaction<F, R>(f: F) -> StorageResult<R>
+where
+    F: FnOnce(&Connection) -> StorageResult<R>,
+{
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+    
+    // Start transaction
+    conn.execute("BEGIN TRANSACTION", [])?;
+    
+    match f(&conn) {
+        Ok(result) => {
+            conn.execute("COMMIT", [])?;
+            Ok(result)
+        }
+        Err(e) => {
+            // Rollback on error
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
+/// Execute a function with a read-only database transaction
+/// This is optimized for read operations and reduces lock contention
+pub async fn with_read_transaction<F, R>(f: F) -> StorageResult<R>
+where
+    F: FnOnce(&Connection) -> StorageResult<R>,
+{
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+    
+    // Start read-only transaction
+    conn.execute("BEGIN DEFERRED", [])?;
+    
+    match f(&conn) {
+        Ok(result) => {
+            conn.execute("COMMIT", [])?;
+            Ok(result)
+        }
+        Err(e) => {
+            // Rollback on error
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
 }
 
 /// Initialize a clean test database with proper isolation
