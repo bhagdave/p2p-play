@@ -299,7 +299,8 @@ pub async fn handle_delete_story(
     if let Some(rest) = cmd.strip_prefix("delete s ") {
         // Split by comma and process each ID
         let id_strings: Vec<&str> = rest.split(',').map(|s| s.trim()).collect();
-        let mut any_deleted = false;
+        let mut successful_deletions = 0;
+        let mut failed_deletions = Vec::new();
 
         // Skip empty strings that might result from trailing commas or double commas
         let valid_id_strings: Vec<&str> =
@@ -315,25 +316,48 @@ pub async fn handle_delete_story(
                 Ok(id) => match delete_local_story(id).await {
                     Ok(deleted) => {
                         if deleted {
-                            ui_logger.log(format!("Story with id {id} deleted successfully"));
-                            any_deleted = true;
+                            ui_logger.log(format!("✅ Story {id} deleted successfully"));
+                            successful_deletions += 1;
                         } else {
-                            ui_logger.log(format!("Story with id {id} not found"));
+                            let failure_msg = format!("Story {id} not found");
+                            ui_logger.log(format!("❌ {failure_msg}"));
+                            failed_deletions.push(failure_msg);
                         }
                     }
                     Err(e) => {
-                        error_logger
-                            .log_error(&format!("Failed to delete story with id {id}: {e}"));
+                        let failure_msg = format!("Failed to delete story {id}: {e}");
+                        ui_logger.log(format!("❌ {failure_msg}"));
+                        error_logger.log_error(&failure_msg);
+                        failed_deletions.push(failure_msg);
                     }
                 },
                 Err(e) => {
-                    ui_logger.log(format!("Invalid story id '{id_str}': {e}"));
+                    let failure_msg = format!("Invalid story id '{id_str}': {e}");
+                    ui_logger.log(format!("❌ {failure_msg}"));
+                    failed_deletions.push(failure_msg);
                 }
             }
         }
 
+        // Report batch operation summary if multiple operations were attempted
+        if successful_deletions + failed_deletions.len() > 1 {
+            let total_failed = failed_deletions.len();
+            if total_failed > 0 {
+                use crate::errors::StorageError;
+                let batch_error = StorageError::batch_operation_failed(
+                    successful_deletions,
+                    total_failed,
+                    failed_deletions,
+                );
+                ui_logger.log(format!("📊 Batch deletion summary: {batch_error}"));
+                error_logger.log_error(&format!("Batch delete operation completed with errors: {batch_error}"));
+            } else {
+                ui_logger.log(format!("✅ Batch deletion completed: {successful_deletions} stories deleted successfully"));
+            }
+        }
+
         // Return RefreshStories if any story was successfully deleted
-        if any_deleted {
+        if successful_deletions > 0 {
             return Some(ActionResult::RefreshStories);
         }
     } else {

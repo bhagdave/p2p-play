@@ -62,15 +62,18 @@ pub enum StorageError {
     
     #[error("Migration failed: {reason}")]
     Migration { reason: String },
+    
+    #[error("Batch operation failed: {successful} succeeded, {failed} failed")]
+    BatchOperationFailed { successful: usize, failed: usize, failures: Vec<String> },
 }
 
 /// Network-related errors for libp2p and P2P operations
 #[derive(Error, Debug)]
 pub enum NetworkError {
-    #[error("Failed to create swarm: {reason}")]
+    #[error("Swarm creation failed: {reason}")]
     SwarmCreation { reason: String },
     
-    #[error("Failed to listen on address: {address}")]
+    #[error("Listen failed on address: {address}")]
     ListenFailed { address: String },
     
     #[error("Peer connection failed: {peer_id}")]
@@ -152,6 +155,37 @@ pub type NetworkResult<T> = Result<T, NetworkError>;
 pub type UIResult<T> = Result<T, UIError>;
 pub type ConfigResult<T> = Result<T, ConfigError>;
 
+/// Detects the network protocol from an error message
+/// 
+/// Analyzes error text to identify which libp2p protocol is likely involved
+/// based on common protocol-specific terms and patterns.
+fn detect_protocol_from_error(error_message: &str) -> String {
+    let lower_msg = error_message.to_lowercase();
+    
+    // Check for specific protocol indicators in order of specificity
+    if lower_msg.contains("floodsub") || lower_msg.contains("pubsub") || lower_msg.contains("topic") {
+        "floodsub".to_string()
+    } else if lower_msg.contains("mdns") || lower_msg.contains("multicast") {
+        "mdns".to_string()
+    } else if lower_msg.contains("ping") || lower_msg.contains("pong") {
+        "ping".to_string()
+    } else if lower_msg.contains("kad") || lower_msg.contains("kademlia") || lower_msg.contains("dht") {
+        "kad".to_string()
+    } else if lower_msg.contains("request_response") || lower_msg.contains("request-response") {
+        "request_response".to_string()
+    } else if lower_msg.contains("transport") || lower_msg.contains("tcp") || lower_msg.contains("quic") {
+        "transport".to_string()
+    } else if lower_msg.contains("identify") {
+        "identify".to_string()
+    } else if lower_msg.contains("noise") || lower_msg.contains("encryption") {
+        "noise".to_string()
+    } else if lower_msg.contains("yamux") || lower_msg.contains("multiplex") {
+        "yamux".to_string()
+    } else {
+        "unknown".to_string()
+    }
+}
+
 impl From<Box<dyn std::error::Error + Send + Sync>> for AppError {
     fn from(err: Box<dyn std::error::Error + Send + Sync>) -> Self {
         AppError::Application(err.to_string())
@@ -190,8 +224,9 @@ impl From<Box<dyn std::error::Error + Send + Sync>> for StorageError {
 
 impl From<String> for NetworkError {
     fn from(err: String) -> Self {
+        let protocol = detect_protocol_from_error(&err);
         NetworkError::ProtocolError {
-            protocol: "unknown".to_string(),
+            protocol,
             reason: err,
         }
     }
@@ -199,8 +234,9 @@ impl From<String> for NetworkError {
 
 impl From<&str> for NetworkError {
     fn from(err: &str) -> Self {
+        let protocol = detect_protocol_from_error(err);
         NetworkError::ProtocolError {
-            protocol: "unknown".to_string(),
+            protocol,
             reason: err.to_string(),
         }
     }
@@ -257,14 +293,29 @@ impl StorageError {
             reason: reason.into(),
         }
     }
+    
+    /// Create a batch operation error with summary
+    pub fn batch_operation_failed(
+        successful: usize, 
+        failed: usize, 
+        failures: Vec<String>
+    ) -> Self {
+        StorageError::BatchOperationFailed {
+            successful,
+            failed,
+            failures,
+        }
+    }
 }
 
 impl NetworkError {
     /// Create a NetworkError from any error type with context
     pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
+        let error_msg = format!("{context}: {error}");
+        let protocol = detect_protocol_from_error(&error_msg);
         NetworkError::ProtocolError {
-            protocol: "unknown".to_string(),
-            reason: format!("{context}: {error}"),
+            protocol,
+            reason: error_msg,
         }
     }
     
@@ -349,5 +400,74 @@ mod tests {
     fn test_config_error_helpers() {
         let error = ConfigError::validation_error("invalid port");
         assert!(matches!(error, ConfigError::Validation { .. }));
+    }
+    
+    #[test]
+    fn test_protocol_detection() {
+        // Test floodsub detection
+        assert_eq!(detect_protocol_from_error("floodsub connection failed"), "floodsub");
+        assert_eq!(detect_protocol_from_error("topic subscription error"), "floodsub");
+        assert_eq!(detect_protocol_from_error("pubsub timeout"), "floodsub");
+        
+        // Test mdns detection
+        assert_eq!(detect_protocol_from_error("mdns discovery failed"), "mdns");
+        assert_eq!(detect_protocol_from_error("multicast error"), "mdns");
+        
+        // Test ping detection
+        assert_eq!(detect_protocol_from_error("ping timeout"), "ping");
+        assert_eq!(detect_protocol_from_error("pong not received"), "ping");
+        
+        // Test kad detection
+        assert_eq!(detect_protocol_from_error("kad bootstrap failed"), "kad");
+        assert_eq!(detect_protocol_from_error("kademlia lookup timeout"), "kad");
+        assert_eq!(detect_protocol_from_error("dht operation failed"), "kad");
+        
+        // Test transport detection
+        assert_eq!(detect_protocol_from_error("tcp connection refused"), "transport");
+        assert_eq!(detect_protocol_from_error("quic handshake failed"), "transport");
+        assert_eq!(detect_protocol_from_error("transport error"), "transport");
+        
+        // Test unknown
+        assert_eq!(detect_protocol_from_error("generic error message"), "unknown");
+    }
+    
+    #[test]
+    fn test_batch_operation_error() {
+        let failures = vec!["Story 1 not found".to_string(), "Story 3 invalid".to_string()];
+        let error = StorageError::batch_operation_failed(2, 2, failures.clone());
+        
+        // Test display message includes counts first
+        let display = format!("{}", error);
+        assert!(display.contains("2 succeeded"));
+        assert!(display.contains("2 failed"));
+        
+        match error {
+            StorageError::BatchOperationFailed { successful, failed, failures: f } => {
+                assert_eq!(successful, 2);
+                assert_eq!(failed, 2);
+                assert_eq!(f, failures);
+            }
+            _ => panic!("Expected BatchOperationFailed variant"),
+        }
+    }
+    
+    #[test]
+    fn test_network_error_protocol_detection() {
+        let error: NetworkError = "floodsub timeout occurred".into();
+        match error {
+            NetworkError::ProtocolError { protocol, reason } => {
+                assert_eq!(protocol, "floodsub");
+                assert_eq!(reason, "floodsub timeout occurred");
+            }
+            _ => panic!("Expected ProtocolError variant"),
+        }
+        
+        let error: NetworkError = "unknown connection issue".into();
+        match error {
+            NetworkError::ProtocolError { protocol, .. } => {
+                assert_eq!(protocol, "unknown");
+            }
+            _ => panic!("Expected ProtocolError variant"),
+        }
     }
 }
