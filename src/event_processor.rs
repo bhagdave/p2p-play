@@ -4,7 +4,9 @@ use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
-use crate::handlers::{SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui, mark_story_as_read_for_peer};
+use crate::handlers::{
+    SortedPeerNamesCache, UILogger, mark_story_as_read_for_peer, refresh_unread_counts_for_ui,
+};
 use crate::network::{PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC};
 use crate::relay::RelayService;
 use crate::storage;

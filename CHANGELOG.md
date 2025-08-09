@@ -2,6 +2,17 @@
 
 All changes to this project will be documented in this file.
 
+## [0.8.5] 2025-08-09
+
+### Fixed
+- **Test Coverage Script Failures**: Fixed foreign key constraint violations in database testing
+  - Fixed `clear_database_for_testing()` function to delete tables in correct order respecting foreign key constraints
+  - Added `story_read_status` table cleanup before deleting referenced `stories` and `channels` tables
+  - Fixed FOREIGN KEY constraint errors: channel_subscriptions→channels, story_read_status→stories, story_read_status→channels
+  - Updated GitHub workflow to use proper test runner scripts instead of direct cargo test commands
+  - All integration tests now pass when run via test runner and coverage scripts
+  - Fixes issue #199
+
 ## [0.8.4] 2025-08-09
 
 ### Fixed
