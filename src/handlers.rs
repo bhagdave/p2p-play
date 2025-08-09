@@ -791,13 +791,16 @@ async fn try_relay_delivery(
                 if msg.contains("Public key not found") {
                     // User-friendly message for offline peer without public key
                     ui_logger.log(format!(
-                        "🔐 Cannot send secure message to offline peer '{to_name}'"
+                        "{} Cannot send secure message to offline peer '{to_name}'",
+                        Icons::warning()
                     ));
                     ui_logger.log(format!(
-                        "📥 Message queued - will be delivered when {to_name} comes online and security keys are exchanged"
+                        "{} Message queued - will be delivered when {to_name} comes online and security keys are exchanged",
+                        Icons::envelope()
                     ));
                     ui_logger.log(format!(
-                        "ℹ️  Tip: Both peers must be online simultaneously for secure messaging setup"
+                        "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
+                        Icons::memo()
                     ));
                     debug!(
                         "Relay message creation failed due to missing public key for {to_name}: {e}"
