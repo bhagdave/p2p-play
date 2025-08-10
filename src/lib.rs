@@ -14,6 +14,7 @@ pub mod relay;
 pub mod storage;
 pub mod types;
 pub mod ui;
+pub mod validation;
 
 pub use crypto::*;
 pub use errors::*;

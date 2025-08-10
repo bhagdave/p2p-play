@@ -14,6 +14,7 @@ mod relay;
 mod storage;
 mod types;
 mod ui;
+mod validation;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
@@ -77,7 +78,7 @@ async fn run_app() -> AppResult<()> {
             // Set the peer ID in the UI
             app.update_local_peer_id(PEER_ID.to_string());
             app
-        },
+        }
         Err(e) => {
             error!("Failed to initialize UI: {e}");
             process::exit(1);
@@ -278,12 +279,10 @@ async fn run_app() -> AppResult<()> {
         .await;
 
     // Cleanup
-    app.cleanup()
-        .map_err(AppError::from)
-        .map_err(|e| {
-            error!("Error during cleanup: {e}");
-            e
-        })?;
+    app.cleanup().map_err(AppError::from).map_err(|e| {
+        error!("Error during cleanup: {e}");
+        e
+    })?;
 
     Ok(())
 }
