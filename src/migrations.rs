@@ -107,6 +107,35 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         [],
     )?;
 
+    // Create search indexes for better performance on story searches
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_stories_name ON stories(name)
+        "#,
+        [],
+    )?;
+
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_stories_channel ON stories(channel)
+        "#,
+        [],
+    )?;
+
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_stories_created_at ON stories(created_at)
+        "#,
+        [],
+    )?;
+
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_stories_public ON stories(public)
+        "#,
+        [],
+    )?;
+
     Ok(())
 }
 

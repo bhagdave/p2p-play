@@ -1276,6 +1276,203 @@ pub async fn get_unread_story_ids_for_channel(
     Ok(story_ids)
 }
 
+/// Search stories using SQL LIKE queries with optional filters
+pub async fn search_stories(query: &crate::types::SearchQuery) -> StorageResult<crate::types::SearchResults> {
+    use crate::types::{SearchResult, SearchResults};
+
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Build the search query using LIKE for text search
+    let has_text_search = !query.text.trim().is_empty();
+    let search_pattern = if has_text_search {
+        Some(format!("%{}%", query.text.trim()))
+    } else {
+        None
+    };
+
+    // Base SQL query
+    let mut sql = r#"
+        SELECT s.id, s.name, s.header, s.body, s.public, s.channel, s.created_at
+        FROM stories s
+        WHERE 1=1
+    "#.to_string();
+
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    // Add text search conditions (search in name, header, and body)
+    if let Some(pattern) = &search_pattern {
+        sql.push_str(" AND (s.name LIKE ? OR s.header LIKE ? OR s.body LIKE ?)");
+        params.push(Box::new(pattern.clone()));
+        params.push(Box::new(pattern.clone()));
+        params.push(Box::new(pattern.clone()));
+    }
+
+    // Add channel filter
+    if let Some(channel) = &query.channel_filter {
+        sql.push_str(" AND s.channel = ?");
+        params.push(Box::new(channel.clone()));
+    }
+
+    // Add visibility filter
+    if let Some(public_only) = query.visibility_filter {
+        if public_only {
+            sql.push_str(" AND s.public = 1");
+        } else {
+            sql.push_str(" AND s.public = 0");
+        }
+    }
+
+    // Add date range filter
+    if let Some(days) = query.date_range_days {
+        let cutoff_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .saturating_sub((days as u64) * 24 * 60 * 60); // Subtract N days in seconds
+
+        sql.push_str(" AND s.created_at >= ?");
+        params.push(Box::new(cutoff_timestamp));
+    }
+
+    // Order by created_at (most recent first)
+    sql.push_str(" ORDER BY s.created_at DESC");
+
+    let mut stmt = conn.prepare(&sql)?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let story_iter = stmt.query_map(param_refs.as_slice(), |row| {
+        let id: usize = row.get(0)?;
+        let name: String = row.get(1)?;
+        let header: String = row.get(2)?;
+        let body: String = row.get(3)?;
+        let public: bool = utils::db_bool_to_rust(row.get::<_, i64>(4)?);
+        let channel: String = row.get(5)?;
+        let created_at: u64 = row.get(6)?;
+
+        let story = crate::types::Story {
+            id,
+            name,
+            header,
+            body,
+            public,
+            channel,
+            created_at,
+            auto_share: None,
+        };
+
+        // For LIKE queries, we don't have relevance scores like FTS5
+        // But we could calculate a simple relevance based on where the match occurs
+        let relevance_score = if has_text_search {
+            calculate_simple_relevance(&story, &query.text)
+        } else {
+            None
+        };
+
+        let mut search_result = SearchResult::new(story);
+        if let Some(score) = relevance_score {
+            search_result = search_result.with_relevance_score(score);
+        }
+
+        Ok(search_result)
+    })?;
+
+    let mut results = SearchResults::new();
+    for result in story_iter {
+        results.push(result?);
+    }
+
+    Ok(results)
+}
+
+/// Calculate a simple relevance score for LIKE-based search
+fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) -> Option<f64> {
+    if search_term.trim().is_empty() {
+        return None;
+    }
+
+    let term_lower = search_term.trim().to_lowercase();
+    let mut score = 0.0;
+
+    // Check title match (highest weight)
+    if story.name.to_lowercase().contains(&term_lower) {
+        score += 3.0;
+        if story.name.to_lowercase() == term_lower {
+            score += 2.0; // Exact match bonus
+        }
+    }
+
+    // Check header match (medium weight)
+    if story.header.to_lowercase().contains(&term_lower) {
+        score += 2.0;
+    }
+
+    // Check body match (lower weight)
+    if story.body.to_lowercase().contains(&term_lower) {
+        score += 1.0;
+    }
+
+    if score > 0.0 {
+        Some(score)
+    } else {
+        None
+    }
+}
+
+/// Filter stories by channel
+pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::types::Stories> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, header, body, public, channel, created_at 
+         FROM stories 
+         WHERE channel = ? 
+         ORDER BY created_at DESC"
+    )?;
+
+    let story_iter = stmt.query_map([channel], |row| {
+        Ok(mappers::map_row_to_story(row)?)
+    })?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
+/// Get recently created stories (within N days)
+pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::types::Stories> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let cutoff_timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .saturating_sub((days as u64) * 24 * 60 * 60);
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, header, body, public, channel, created_at 
+         FROM stories 
+         WHERE created_at >= ? 
+         ORDER BY created_at DESC"
+    )?;
+
+    let story_iter = stmt.query_map([cutoff_timestamp], |row| {
+        Ok(mappers::map_row_to_story(row)?)
+    })?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
 #[cfg(test)]
 mod read_status_tests {
     use super::*;

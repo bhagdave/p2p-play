@@ -3,9 +3,9 @@ use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
     handle_config_sync_days, handle_create_channel, handle_create_description,
     handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
-    handle_get_description, handle_help, handle_list_channels, handle_list_stories,
+    handle_filter_stories, handle_get_description, handle_help, handle_list_channels, handle_list_stories,
     handle_list_subscriptions, handle_peer_id, handle_publish_story, handle_reload_config,
-    handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
+    handle_search_stories, handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
     handle_subscribe_channel, handle_unsubscribe_channel,
 };
 use crate::network::{
@@ -176,6 +176,12 @@ pub async fn handle_input_event(
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("search ") => {
+            handle_search_stories(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("filter ") => {
+            handle_filter_stories(cmd, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("create s") => {
             return handle_create_stories_with_sender(
