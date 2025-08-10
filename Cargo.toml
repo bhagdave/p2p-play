@@ -17,6 +17,8 @@ env_logger = "0.10"
 futures = "0.3.15"
 bytes = "1.0"
 rusqlite = { version = "0.29", features = ["bundled"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.22"
 ratatui = "0.27"
 crossterm = "0.27"
 chrono = { version = "0.4", features = ["serde"] }
