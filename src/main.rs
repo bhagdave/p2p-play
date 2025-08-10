@@ -130,7 +130,7 @@ async fn run_app() -> AppResult<()> {
     };
 
     // Extract individual configs for convenience
-    let _network_config = &unified_config.network;
+    let network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
 
     let mut swarm = create_swarm(&unified_config.ping).expect("Failed to create swarm");
@@ -255,6 +255,7 @@ async fn run_app() -> AppResult<()> {
         response_sender,
         story_sender,
         ui_sender,
+        network_config,
         dm_config.clone(),
         pending_messages,
         ui_logger,

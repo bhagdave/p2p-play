@@ -11,7 +11,7 @@ use crate::network::{PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC};
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
-use crate::types::{ActionResult, DirectMessageConfig, EventType, PeerName, PendingDirectMessage};
+use crate::types::{ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage};
 use crate::ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -27,7 +27,6 @@ const CONNECTION_MAINTENANCE_INTERVAL_SECS: u64 = 30;
 const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
 const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
-const NETWORK_HEALTH_UPDATE_INTERVAL_SECS: u64 = 15; // Update network health every 15 seconds
 
 /// Event processor that handles the main application event loop
 pub struct EventProcessor {
@@ -77,6 +76,7 @@ impl EventProcessor {
         response_sender: mpsc::UnboundedSender<crate::types::ListResponse>,
         story_sender: mpsc::UnboundedSender<crate::types::Story>,
         ui_sender: mpsc::UnboundedSender<AppEvent>,
+        network_config: &NetworkConfig,
         dm_config: DirectMessageConfig,
         pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>>,
         ui_logger: UILogger,
@@ -101,7 +101,7 @@ impl EventProcessor {
                 BOOTSTRAP_STATUS_LOG_INTERVAL_SECS,
             )),
             dm_retry_interval: interval(Duration::from_secs(DM_RETRY_INTERVAL_SECS)),
-            network_health_update_interval: interval(Duration::from_secs(NETWORK_HEALTH_UPDATE_INTERVAL_SECS)),
+            network_health_update_interval: interval(Duration::from_secs(network_config.network_health_update_interval_seconds)),
             dm_config,
             pending_messages,
             ui_logger,

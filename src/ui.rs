@@ -816,12 +816,12 @@ impl App {
             // Add network health to status
             let network_health_text = if let Some(ref health) = self.network_health {
                 if health.overall_healthy {
-                    "🟢 Network OK".to_string()
+                    format!("{} Network OK", Icons::network_healthy())
                 } else {
-                    format!("🔴 Network Issues ({}/{})", health.failed_operations, health.total_operations)
+                    format!("{} Network Issues ({}/{})", Icons::network_issues(), health.failed_operations, health.total_operations)
                 }
             } else {
-                "⚪ Network Status Unknown".to_string()
+                format!("{} Network Status Unknown", Icons::network_unknown())
             };
             
             let status_text = if let Some(ref name) = self.local_peer_name {

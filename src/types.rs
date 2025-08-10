@@ -164,6 +164,9 @@ pub struct NetworkConfig {
     /// Connection establishment timeout in seconds (default: 30)
     #[serde(default = "default_connection_establishment_timeout_seconds")]
     pub connection_establishment_timeout_seconds: u64,
+    /// Network health update interval in seconds (default: 15)
+    #[serde(default = "default_network_health_update_interval_seconds")]
+    pub network_health_update_interval_seconds: u64,
 }
 
 fn default_max_connections_per_peer() -> u32 {
@@ -180,6 +183,9 @@ fn default_max_established_total() -> u32 {
 }
 fn default_connection_establishment_timeout_seconds() -> u64 {
     30
+}
+fn default_network_health_update_interval_seconds() -> u64 {
+    15
 }
 
 /// Configuration for ping keep-alive settings
@@ -651,6 +657,7 @@ impl NetworkConfig {
             max_pending_outgoing: 10,    // Balance connectivity with resource usage
             max_established_total: 100,  // Total connection pool size
             connection_establishment_timeout_seconds: 30, // 30 second connection timeout
+            network_health_update_interval_seconds: 15, // Update network health every 15 seconds
         }
     }
 
@@ -1243,6 +1250,30 @@ impl Icons {
         #[cfg(not(windows))]
         return "✓";
     }
+
+    /// Network healthy indicator
+    pub fn network_healthy() -> &'static str {
+        #[cfg(windows)]
+        return "[NET-OK]";
+        #[cfg(not(windows))]
+        return "🟢";
+    }
+
+    /// Network issues indicator
+    pub fn network_issues() -> &'static str {
+        #[cfg(windows)]
+        return "[NET-ERR]";
+        #[cfg(not(windows))]
+        return "🔴";
+    }
+
+    /// Network status unknown indicator
+    pub fn network_unknown() -> &'static str {
+        #[cfg(windows)]
+        return "[NET-?]";
+        #[cfg(not(windows))]
+        return "⚪";
+    }
 }
 
 #[cfg(test)]
@@ -1273,6 +1304,9 @@ mod tests {
         assert!(!Icons::ping().is_empty());
         assert!(!Icons::warning().is_empty());
         assert!(!Icons::antenna().is_empty());
+        assert!(!Icons::network_healthy().is_empty());
+        assert!(!Icons::network_issues().is_empty());
+        assert!(!Icons::network_unknown().is_empty());
     }
 
     #[test]
@@ -1286,6 +1320,9 @@ mod tests {
             assert!(Icons::folder().chars().all(|c| c.is_ascii()));
             assert!(Icons::book().chars().all(|c| c.is_ascii()));
             assert!(Icons::check().chars().all(|c| c.is_ascii())); // This should now be [OK] instead of [✓]
+            assert!(Icons::network_healthy().chars().all(|c| c.is_ascii()));
+            assert!(Icons::network_issues().chars().all(|c| c.is_ascii()));
+            assert!(Icons::network_unknown().chars().all(|c| c.is_ascii()));
         }
     }
 
