@@ -5,6 +5,17 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Story Search and Filtering System**: Comprehensive search functionality for finding stories efficiently
+  - Added `search <query> [channel:<ch>] [recent:<days>] [public|private]` command for full-text search across story names, headers, and body content
+  - Added `filter channel <name>` command to filter stories by specific channel
+  - Added `filter recent <days>` command to show stories from the last N days
+  - Implemented relevance scoring with weighted matches (title: 3x, header: 2x, body: 1x)
+  - Added case-insensitive search using SQL LIKE queries for maximum database compatibility
+  - Added database performance indexes on name, channel, created_at, and public columns
+  - Added SearchQuery and SearchResult types for structured search operations
+  - Integrated search functionality into existing command processing architecture
+  - Fixes issue #176
+
 - **Comprehensive Content Validation and Sanitization System**: Major security enhancement to protect against malicious content injection and resource exhaustion
   - Added new `src/validation.rs` module with comprehensive input validation and sanitization functions
   - Implemented content length limits for all input types:

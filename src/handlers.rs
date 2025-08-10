@@ -416,7 +416,7 @@ pub async fn handle_peer_id(_cmd: &str, ui_logger: &UILogger) {
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
-    ui_logger.log("search <query> [channel:<ch>] [author:<peer>] [recent:<days>] [public|private] to search stories".to_string());
+    ui_logger.log("search <query> [channel:<ch>] [recent:<days>] [public|private] to search stories".to_string());
     ui_logger.log("filter channel <name> | filter recent <days> to filter stories".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
     ui_logger.log("ls sub to list your subscriptions".to_string());
@@ -1843,12 +1843,12 @@ pub async fn handle_dht_get_peers(
 }
 
 /// Handle search command - supports text search with optional filters
-/// Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]
+/// Usage: search <query> [channel:<channel>] [recent:<days>] [public|private]
 pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if let Some(rest) = cmd.strip_prefix("search ") {
         let parts: Vec<&str> = rest.split_whitespace().collect();
         if parts.is_empty() {
-            ui_logger.log("Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]".to_string());
+            ui_logger.log("Usage: search <query> [channel:<channel>] [recent:<days>] [public|private]".to_string());
             return;
         }
 
@@ -1859,8 +1859,6 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
         for part in parts {
             if let Some(channel) = part.strip_prefix("channel:") {
                 query = query.with_channel(channel.to_string());
-            } else if let Some(author) = part.strip_prefix("author:") {
-                query = query.with_author(author.to_string());
             } else if let Some(days_str) = part.strip_prefix("recent:") {
                 if let Ok(days) = days_str.parse::<u32>() {
                     query = query.with_date_range_days(days);
@@ -1921,7 +1919,7 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
             }
         }
     } else {
-        ui_logger.log("Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]".to_string());
+        ui_logger.log("Usage: search <query> [channel:<channel>] [recent:<days>] [public|private]".to_string());
     }
 }
 

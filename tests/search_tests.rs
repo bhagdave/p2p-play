@@ -77,6 +77,9 @@ async fn test_search_functionality() {
         assert!(result.relevance_score.unwrap() > 0.0, "Relevance score should be positive");
     }
 
+    // Clean up test database
+    std::fs::remove_file(&db_path).ok();
+    
     println!("✅ All search functionality tests passed!");
 }
 
@@ -118,4 +121,7 @@ async fn test_search_edge_cases() {
     assert_eq!(results.len(), 1, "Should find story with case insensitive search");
 
     println!("✅ All edge case tests passed!");
+    
+    // Clean up test database
+    std::fs::remove_file(&db_path).ok();
 }

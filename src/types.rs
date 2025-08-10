@@ -56,7 +56,6 @@ pub struct PublishedStory {
 pub struct SearchQuery {
     pub text: String,
     pub channel_filter: Option<String>,
-    pub author_filter: Option<String>,
     pub date_range_days: Option<u32>,
     pub visibility_filter: Option<bool>, // None = all, Some(true) = public only, Some(false) = private only
 }
@@ -432,7 +431,6 @@ impl SearchQuery {
         Self {
             text,
             channel_filter: None,
-            author_filter: None,
             date_range_days: None,
             visibility_filter: None,
         }
@@ -440,11 +438,6 @@ impl SearchQuery {
 
     pub fn with_channel(mut self, channel: String) -> Self {
         self.channel_filter = Some(channel);
-        self
-    }
-
-    pub fn with_author(mut self, author: String) -> Self {
-        self.author_filter = Some(author);
         self
     }
 
