@@ -257,10 +257,7 @@ pub async fn write_local_stories(stories: &Stories) -> StorageResult<()> {
     Ok(())
 }
 
-pub async fn write_local_stories_to_path(
-    stories: &Stories,
-    path: &str,
-) -> StorageResult<()> {
+pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
     // For test compatibility, if path is a JSON file, write as JSON
     if path.ends_with(".json") {
         let json = serde_json::to_string(&stories)?;
@@ -486,10 +483,7 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
     Ok(())
 }
 
-pub async fn save_received_story_to_path(
-    mut story: Story,
-    path: &str,
-) -> StorageResult<usize> {
+pub async fn save_received_story_to_path(mut story: Story, path: &str) -> StorageResult<usize> {
     let mut local_stories = match read_local_stories_from_path(path).await {
         Ok(stories) => stories,
         Err(_) => Vec::new(),
@@ -574,11 +568,7 @@ pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<
 }
 
 // Channel management functions
-pub async fn create_channel(
-    name: &str,
-    description: &str,
-    created_by: &str,
-) -> StorageResult<()> {
+pub async fn create_channel(name: &str, description: &str, created_by: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -624,10 +614,7 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageR
     Ok(())
 }
 
-pub async fn unsubscribe_from_channel(
-    peer_id: &str,
-    channel_name: &str,
-) -> StorageResult<()> {
+pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -658,9 +645,7 @@ pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String
 }
 
 /// Get full channel details for channels that the user is subscribed to
-pub async fn read_subscribed_channels_with_details(
-    peer_id: &str,
-) -> StorageResult<Channels> {
+pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -854,9 +839,7 @@ pub async fn load_bootstrap_config() -> StorageResult<BootstrapConfig> {
 }
 
 /// Load bootstrap configuration from specific path, creating default if missing
-pub async fn load_bootstrap_config_from_path(
-    path: &str,
-) -> StorageResult<BootstrapConfig> {
+pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<BootstrapConfig> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: BootstrapConfig = serde_json::from_str(&content)?;
@@ -894,9 +877,7 @@ pub async fn ensure_bootstrap_config_exists() -> StorageResult<()> {
 }
 
 /// Save direct message configuration to file
-pub async fn save_direct_message_config(
-    config: &DirectMessageConfig,
-) -> StorageResult<()> {
+pub async fn save_direct_message_config(config: &DirectMessageConfig) -> StorageResult<()> {
     save_direct_message_config_to_path(config, "direct_message_config.json").await
 }
 
@@ -962,10 +943,7 @@ pub async fn save_network_config(config: &NetworkConfig) -> StorageResult<()> {
 }
 
 /// Save network configuration to specific path
-pub async fn save_network_config_to_path(
-    config: &NetworkConfig,
-    path: &str,
-) -> StorageResult<()> {
+pub async fn save_network_config_to_path(config: &NetworkConfig, path: &str) -> StorageResult<()> {
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
     debug!("Saved network config to {path}");
@@ -1013,9 +991,7 @@ pub async fn ensure_network_config_exists() -> StorageResult<()> {
 }
 
 /// Save unified network configuration to file
-pub async fn save_unified_network_config(
-    config: &UnifiedNetworkConfig,
-) -> StorageResult<()> {
+pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
     save_unified_network_config_to_path(config, "unified_network_config.json").await
 }
 
@@ -1093,9 +1069,7 @@ pub async fn mark_story_as_read(
 }
 
 /// Get unread story count for each channel for a specific peer
-pub async fn get_unread_counts_by_channel(
-    peer_id: &str,
-) -> StorageResult<HashMap<String, usize>> {
+pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMap<String, usize>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 

@@ -14,7 +14,7 @@ use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
     PendingDirectMessage, Story,
 };
-use crate::validation::{ContentValidator};
+use crate::validation::ContentValidator;
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -220,11 +220,13 @@ pub async fn handle_create_stories_with_sender(
                 };
 
                 if let Err(e) = create_new_story_with_channel(
-                    &validated_name, 
-                    &validated_header, 
-                    &validated_body, 
-                    &validated_channel
-                ).await {
+                    &validated_name,
+                    &validated_header,
+                    &validated_body,
+                    &validated_channel,
+                )
+                .await
+                {
                     error_logger.log_error(&format!("Failed to create story: {e}"));
                 } else {
                     ui_logger.log(format!(
@@ -238,7 +240,9 @@ pub async fn handle_create_stories_with_sender(
                             Ok(stories) => {
                                 // Find the most recently created story by name
                                 if let Some(created_story) = stories.iter().find(|s| {
-                                    s.name == validated_name && s.header == validated_header && s.body == validated_body
+                                    s.name == validated_name
+                                        && s.header == validated_header
+                                        && s.body == validated_body
                                 }) {
                                     if let Err(e) = sender.send(created_story.clone()) {
                                         error_logger.log_error(&format!(
@@ -390,7 +394,9 @@ pub async fn handle_delete_story(
                 failed_deletions,
             );
             ui_logger.log(format!("📊 Batch deletion summary: {batch_error}"));
-            error_logger.log_error(&format!("Batch delete operation completed with errors: {batch_error}"));
+            error_logger.log_error(&format!(
+                "Batch delete operation completed with errors: {batch_error}"
+            ));
         }
 
         // Return RefreshStories if any story was successfully deleted
@@ -641,7 +647,7 @@ pub async fn handle_set_name(
 ) -> Option<PeerName> {
     if let Some(name) = cmd.strip_prefix("name ") {
         let name = name.trim();
-        
+
         // Validate and sanitize peer name
         let validated_name = match ContentValidator::validate_peer_name(name) {
             Ok(validated) => validated,
@@ -809,8 +815,12 @@ pub async fn handle_direct_message(
             queue.push(pending_msg);
         }
 
-        ui_logger.log(format!("Direct message queued for {validated_to_name}: {validated_message}"));
-        debug!("Queued direct message to {validated_to_name} from {from_name} (request_id: {request_id:?})");
+        ui_logger.log(format!(
+            "Direct message queued for {validated_to_name}: {validated_message}"
+        ));
+        debug!(
+            "Queued direct message to {validated_to_name} from {from_name} (request_id: {request_id:?})"
+        );
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
     }
@@ -1116,13 +1126,14 @@ pub async fn handle_create_channel(
             }
         };
 
-        let validated_description = match ContentValidator::validate_channel_description(description) {
-            Ok(validated) => validated,
-            Err(e) => {
-                ui_logger.log(format!("Invalid channel description: {e}"));
-                return None;
-            }
-        };
+        let validated_description =
+            match ContentValidator::validate_channel_description(description) {
+                Ok(validated) => validated,
+                Err(e) => {
+                    ui_logger.log(format!("Invalid channel description: {e}"));
+                    return None;
+                }
+            };
 
         let creator = match local_peer_name {
             Some(peer_name) => peer_name.clone(),

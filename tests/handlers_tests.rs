@@ -566,7 +566,11 @@ async fn test_handle_create_description_empty() {
 
     assert!(!messages.is_empty());
     // Should now show validation error instead of usage message
-    assert!(messages.iter().any(|m| m.contains("Invalid node description") || m.contains("Usage:")));
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Invalid node description") || m.contains("Usage:"))
+    );
 }
 
 #[tokio::test]

@@ -13,10 +13,7 @@ pub fn get_current_timestamp() -> u64 {
 }
 
 /// Get the next available ID for a table
-pub async fn get_next_id(
-    conn: &Arc<Mutex<Connection>>,
-    table: &str,
-) -> StorageResult<i64> {
+pub async fn get_next_id(conn: &Arc<Mutex<Connection>>, table: &str) -> StorageResult<i64> {
     let conn = conn.lock().await;
     let query = format!("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM {table}");
     let mut stmt = conn.prepare(&query)?;

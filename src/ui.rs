@@ -601,7 +601,11 @@ impl App {
         ));
         self.add_to_log(format!("{} Title: {}", Icons::memo(), sanitized_name));
         self.add_to_log(format!("{}ID: {}", Icons::label(), story.id));
-        self.add_to_log(format!("{} Channel: {}", Icons::folder(), sanitized_channel));
+        self.add_to_log(format!(
+            "{} Channel: {}",
+            Icons::folder(),
+            sanitized_channel
+        ));
         self.add_to_log(format!(
             "{}Visibility: {}",
             Icons::eye(),
@@ -650,7 +654,7 @@ impl App {
     /// Display a user-friendly error message in the UI log
     pub fn display_error(&mut self, error: &crate::errors::AppError) {
         use crate::errors::{AppError, ConfigError, NetworkError, StorageError, UIError};
-        
+
         let user_message = match error {
             AppError::Storage(StorageError::StoryNotFound { id }) => {
                 format!("{} Story #{id} not found", Icons::cross())
@@ -662,7 +666,10 @@ impl App {
                 format!("{} Database connection failed: {}", Icons::cross(), reason)
             }
             AppError::Storage(StorageError::FileIO(_)) => {
-                format!("{} File operation failed - check permissions", Icons::cross())
+                format!(
+                    "{} File operation failed - check permissions",
+                    Icons::cross()
+                )
             }
             AppError::Network(NetworkError::SwarmCreation { reason }) => {
                 format!("{} Network setup failed: {}", Icons::cross(), reason)
@@ -674,7 +681,10 @@ impl App {
                 format!("{} Message broadcast failed: {}", Icons::cross(), reason)
             }
             AppError::UI(UIError::TerminalInit(_)) => {
-                format!("{} Terminal initialization failed - check terminal compatibility", Icons::cross())
+                format!(
+                    "{} Terminal initialization failed - check terminal compatibility",
+                    Icons::cross()
+                )
             }
             AppError::Config(ConfigError::FileNotFound { path }) => {
                 format!("{} Configuration file not found: {}", Icons::cross(), path)
@@ -693,9 +703,9 @@ impl App {
                 format!("{} Error: {}", Icons::cross(), error)
             }
         };
-        
+
         self.add_to_log(user_message);
-        
+
         // Also log detailed error information for debugging
         debug!("Detailed error: {:#}", error);
     }
