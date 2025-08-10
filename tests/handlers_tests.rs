@@ -57,11 +57,11 @@ async fn test_handle_set_name_with_spaces() {
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
-    // Test name with spaces
+    // Test name with spaces (should now be rejected due to security policy)
     let result = handle_set_name("name Alice Smith", &mut local_peer_name, &ui_logger).await;
 
-    assert!(result.is_some());
-    assert_eq!(local_peer_name, Some("Alice Smith".to_string()));
+    assert!(result.is_none()); // Should be rejected due to spaces
+    assert_eq!(local_peer_name, None); // Should remain None
 }
 
 #[tokio::test]
@@ -132,7 +132,7 @@ async fn test_handle_show_story() {
     while let Ok(msg) = receiver.try_recv() {
         messages.push(msg);
     }
-    assert!(messages.iter().any(|m| m.contains("Invalid story id")));
+    assert!(messages.iter().any(|m| m.contains("Invalid story ID")));
 
     // Test non-existent story ID
     handle_show_story("show story 999", &ui_logger, "test_peer").await;
@@ -565,7 +565,12 @@ async fn test_handle_create_description_empty() {
     }
 
     assert!(!messages.is_empty());
-    assert!(messages.iter().any(|m| m.contains("Usage:")));
+    // Should now show validation error instead of usage message
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Invalid node description") || m.contains("Usage:"))
+    );
 }
 
 #[tokio::test]
@@ -821,7 +826,7 @@ async fn test_handle_delete_story_invalid_id() {
         messages.push(msg);
     }
 
-    assert!(messages.iter().any(|m| m.contains("Invalid story id")));
+    assert!(messages.iter().any(|m| m.contains("Invalid story ID")));
 }
 
 #[tokio::test]
@@ -957,7 +962,7 @@ async fn test_handle_delete_story_with_spaces_and_invalid_entries() {
 
     let error_messages: Vec<_> = messages
         .iter()
-        .filter(|m| m.contains("Invalid story id"))
+        .filter(|m| m.contains("Invalid story ID"))
         .collect();
     assert!(!error_messages.is_empty()); // At least one error for "abc"
 }

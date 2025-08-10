@@ -4,6 +4,34 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Comprehensive Content Validation and Sanitization System**: Major security enhancement to protect against malicious content injection and resource exhaustion
+  - Added new `src/validation.rs` module with comprehensive input validation and sanitization functions
+  - Implemented content length limits for all input types:
+    - Story names: max 100 characters
+    - Story headers: max 200 characters  
+    - Story bodies: max 10,000 characters
+    - Channel names: max 50 characters
+    - Peer names: max 30 characters
+    - Direct messages: max 1,000 characters
+    - Node descriptions: max 2,000 characters
+  - Added content sanitization to prevent security vulnerabilities:
+    - ANSI escape sequence stripping to prevent terminal manipulation attacks
+    - Terminal control character removal (preserving common whitespace)
+    - Binary data and null byte filtering
+    - UTF-8 validation and encoding safety
+  - Implemented character set restrictions for different content types:
+    - Peer names: Most restrictive (alphanumeric + hyphens/underscores/dots only, no spaces)
+    - Channel names: Moderately restrictive (alphanumeric + basic symbols, no spaces)
+    - Story content: Least restrictive (natural language + common punctuation)
+  - Added path sanitization and directory traversal protection
+  - Integrated validation into all input handlers (story creation, channel creation, peer names, direct messages, node descriptions)
+  - Added display sanitization for safe terminal output in UI
+  - Added comprehensive test suite with 9 new validation tests
+  - Added detailed security policy documentation in `CONTENT_VALIDATION_POLICY.md`
+  - Updated existing tests to match new security requirements
+  - Fixes issue #171
+
 ## [0.9.0] 2025-01-20
 
 ### Added
