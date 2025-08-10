@@ -1,16 +1,14 @@
 use p2p_play::network::*;
 use p2p_play::types::*;
-use libp2p::floodsub::{Topic, Event as FloodsubEvent, FloodsubEvent::Message};
+use libp2p::floodsub::{Event as FloodsubEvent};
 use libp2p::kad::{Event as KadEvent, QueryResult};
-use libp2p::mdns::{Event as MdnsEvent};
 use libp2p::ping::{Event as PingEvent};
-use libp2p::request_response::{Event as RequestResponseEvent, ResponseChannel};
-use libp2p::swarm::{SwarmEvent, ToSwarm};
-use libp2p::{PeerId, Multiaddr, StreamProtocol};
-use std::collections::HashMap;
+use libp2p::request_response::{Event as RequestResponseEvent};
+use libp2p::swarm::{SwarmEvent};
+use libp2p::{PeerId, Multiaddr};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
-use tokio::sync::mpsc;
+use futures::StreamExt;
 
 /// Test helper to create test swarms with unique peer IDs
 async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {

@@ -1,13 +1,14 @@
 use p2p_play::network::*;
 use p2p_play::types::*;
-use libp2p::floodsub::{FloodsubEvent, Topic};
-use libp2p::swarm::{SwarmEvent, ToSwarm};
+use libp2p::floodsub::{FloodsubEvent};
+use libp2p::swarm::{SwarmEvent};
 use libp2p::request_response::{Event as RequestResponseEvent, Message};
 use libp2p::{PeerId, Multiaddr};
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 use futures::future::join_all;
+use futures::StreamExt;
 
 /// Test helper for creating multiple test swarms
 async fn create_test_swarms(count: usize) -> Result<Vec<libp2p::Swarm<StoryBehaviour>>, Box<dyn std::error::Error>> {

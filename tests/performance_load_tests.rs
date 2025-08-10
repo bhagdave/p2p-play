@@ -1,7 +1,7 @@
 use p2p_play::network::*;
 use p2p_play::types::*;
-use libp2p::floodsub::{FloodsubEvent, Topic};
-use libp2p::swarm::{SwarmEvent, ToSwarm};
+use libp2p::floodsub::{FloodsubEvent};
+use libp2p::swarm::{SwarmEvent};
 use libp2p::request_response::{Event as RequestResponseEvent, Message};
 use libp2p::{PeerId, Multiaddr};
 use std::collections::{HashMap, HashSet};
@@ -9,7 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH, Instant};
 use tokio::time;
 use futures::future::join_all;
 use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
+use futures::StreamExt;
 
 /// Helper to create test swarms
 async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
