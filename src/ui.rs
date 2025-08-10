@@ -484,7 +484,10 @@ impl App {
         self.unread_counts = unread_counts;
     }
 
-    pub fn update_network_health(&mut self, network_health: crate::network_circuit_breakers::NetworkHealthSummary) {
+    pub fn update_network_health(
+        &mut self,
+        network_health: crate::network_circuit_breakers::NetworkHealthSummary,
+    ) {
         self.network_health = Some(network_health);
     }
 
@@ -624,7 +627,7 @@ impl App {
         ));
         self.add_to_log("".to_string());
         self.add_to_log(format!("{} Header:", Icons::document()));
-        self.add_to_log(format!("   {}", sanitized_header));
+        self.add_to_log(format!("   {sanitized_header}"));
         self.add_to_log("".to_string());
         self.add_to_log(format!("{} Body:", Icons::book()));
         // Split the body into lines for better readability
@@ -713,7 +716,7 @@ impl App {
         self.add_to_log(user_message);
 
         // Also log detailed error information for debugging
-        debug!("Detailed error: {:#}", error);
+        debug!("Detailed error: {error:#}");
     }
 
     pub fn start_story_creation(&mut self) {
@@ -833,7 +836,6 @@ impl App {
 
             // Status bar
             let version = env!("CARGO_PKG_VERSION");
-            
             // Add network health to status
             let network_health_text = if let Some(ref health) = self.network_health {
                 if health.overall_healthy {
@@ -844,7 +846,6 @@ impl App {
             } else {
                 format!("{} Network Status Unknown", Icons::network_unknown())
             };
-            
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
                     "P2P-Play v{} | Peer: {} ({}) | Connected: {} | {} | Mode: {} | AUTO: {}",

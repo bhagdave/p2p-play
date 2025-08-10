@@ -1,7 +1,7 @@
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerInfo};
 use crate::types::NetworkCircuitBreakerConfig;
-use std::collections::HashMap;
 use log::debug;
+use std::collections::HashMap;
 
 /// Manages circuit breakers for different network operations
 #[derive(Debug)]
@@ -13,28 +13,31 @@ pub struct NetworkCircuitBreakers {
 impl NetworkCircuitBreakers {
     /// Create a new network circuit breakers manager
     pub fn new(config: &NetworkCircuitBreakerConfig) -> Self {
-        debug!("Creating network circuit breakers (enabled: {})", config.enabled);
-        
+        debug!(
+            "Creating network circuit breakers (enabled: {})",
+            config.enabled
+        );
+
         let mut breakers = HashMap::new();
-        
+
         if config.enabled {
             // Create circuit breakers for different network operations
             let operations = vec![
                 "peer_connection",
-                "dht_bootstrap", 
+                "dht_bootstrap",
                 "message_broadcast",
                 "direct_message",
                 "story_publish",
                 "story_sync",
             ];
-            
+
             for operation in operations {
                 let cb_config = config.to_circuit_breaker_config(operation.to_string());
                 let circuit_breaker = CircuitBreaker::new(cb_config);
                 breakers.insert(operation.to_string(), circuit_breaker);
             }
         }
-        
+
         Self {
             breakers,
             enabled: config.enabled,
@@ -67,7 +70,9 @@ impl NetworkCircuitBreakers {
             // Circuit breakers disabled, execute directly
             match func().await {
                 Ok(result) => Ok(result),
-                Err(error) => Err(crate::circuit_breaker::CircuitBreakerError::OperationFailed(error)),
+                Err(error) => {
+                    Err(crate::circuit_breaker::CircuitBreakerError::OperationFailed(error))
+                }
             }
         }
     }
@@ -98,12 +103,12 @@ impl NetworkCircuitBreakers {
     /// Get status information for all circuit breakers
     pub async fn get_all_status(&self) -> HashMap<String, CircuitBreakerInfo> {
         let mut status = HashMap::new();
-        
+
         for (operation, circuit_breaker) in &self.breakers {
             let info = circuit_breaker.get_state().await;
             status.insert(operation.clone(), info);
         }
-        
+
         status
     }
 
@@ -112,7 +117,7 @@ impl NetworkCircuitBreakers {
         if !self.enabled {
             return false;
         }
-        
+
         for circuit_breaker in self.breakers.values() {
             let info = circuit_breaker.get_state().await;
             if !info.is_healthy() {
@@ -142,13 +147,13 @@ impl NetworkCircuitBreakers {
         for (operation, circuit_breaker) in &self.breakers {
             let info = circuit_breaker.get_state().await;
             total_operations += 1;
-            
+
             if info.is_healthy() {
                 healthy_operations += 1;
             } else {
                 failed_operations += 1;
             }
-            
+
             details.insert(operation.clone(), info.status_string());
         }
 
@@ -176,21 +181,26 @@ impl NetworkHealthSummary {
     /// Get a human-readable health status
     pub fn status_string(&self) -> String {
         if self.overall_healthy {
-            format!("Network Healthy ({}/{} operations)", self.healthy_operations, self.total_operations)
+            format!(
+                "Network Healthy ({}/{} operations)",
+                self.healthy_operations, self.total_operations
+            )
         } else {
-            format!("Network Issues ({}/{} operations failing)", self.failed_operations, self.total_operations)
+            format!(
+                "Network Issues ({}/{} operations failing)",
+                self.failed_operations, self.total_operations
+            )
         }
     }
 
     /// Get detailed status for UI display
     pub fn detailed_status(&self) -> Vec<String> {
         let mut status = vec![self.status_string()];
-        
+
         for (operation, detail) in &self.details {
-            status.push(format!("  {}: {}", operation, detail));
+            status.push(format!("  {operation}: {detail}"));
         }
-        
+
         status
     }
 }
-

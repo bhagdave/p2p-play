@@ -1,7 +1,7 @@
-use std::time::{Duration, Instant};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use log::{debug, warn};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 /// Circuit breaker states
 #[derive(Debug, Clone, PartialEq)]
@@ -86,12 +86,18 @@ impl CircuitBreaker {
             CircuitState::Closed => true,
             CircuitState::Open { opened_at } => {
                 if opened_at.elapsed() >= self.config.timeout {
-                    debug!("Circuit breaker {} transitioning from Open to HalfOpen", self.config.name);
+                    debug!(
+                        "Circuit breaker {} transitioning from Open to HalfOpen",
+                        self.config.name
+                    );
                     state.state = CircuitState::HalfOpen;
                     state.success_count = 0;
                     true
                 } else {
-                    debug!("Circuit breaker {} is open, blocking request", self.config.name);
+                    debug!(
+                        "Circuit breaker {} is open, blocking request",
+                        self.config.name
+                    );
                     false
                 }
             }
@@ -112,7 +118,10 @@ impl CircuitBreaker {
             CircuitState::HalfOpen => {
                 state.success_count += 1;
                 if state.success_count >= self.config.success_threshold {
-                    debug!("Circuit breaker {} transitioning from HalfOpen to Closed", self.config.name);
+                    debug!(
+                        "Circuit breaker {} transitioning from HalfOpen to Closed",
+                        self.config.name
+                    );
                     state.state = CircuitState::Closed;
                     state.failure_count = 0;
                     state.success_count = 0;
@@ -120,7 +129,10 @@ impl CircuitBreaker {
             }
             CircuitState::Open { .. } => {
                 // Should not happen, but handle gracefully
-                warn!("Unexpected success in Open state for circuit breaker {}", self.config.name);
+                warn!(
+                    "Unexpected success in Open state for circuit breaker {}",
+                    self.config.name
+                );
             }
         }
     }
@@ -135,13 +147,23 @@ impl CircuitBreaker {
             CircuitState::Closed => {
                 state.failure_count += 1;
                 if state.failure_count >= self.config.failure_threshold {
-                    warn!("Circuit breaker {} opening due to failures ({})", self.config.name, state.failure_count);
-                    state.state = CircuitState::Open { opened_at: Instant::now() };
+                    warn!(
+                        "Circuit breaker {} opening due to failures ({})",
+                        self.config.name, state.failure_count
+                    );
+                    state.state = CircuitState::Open {
+                        opened_at: Instant::now(),
+                    };
                 }
             }
             CircuitState::HalfOpen => {
-                warn!("Circuit breaker {} failed in HalfOpen state, returning to Open", self.config.name);
-                state.state = CircuitState::Open { opened_at: Instant::now() };
+                warn!(
+                    "Circuit breaker {} failed in HalfOpen state, returning to Open",
+                    self.config.name
+                );
+                state.state = CircuitState::Open {
+                    opened_at: Instant::now(),
+                };
                 state.failure_count += 1;
                 state.success_count = 0;
             }
@@ -151,7 +173,10 @@ impl CircuitBreaker {
             }
         }
 
-        debug!("Circuit breaker {} recorded failure: {}", self.config.name, error);
+        debug!(
+            "Circuit breaker {} recorded failure: {}",
+            self.config.name, error
+        );
     }
 
     /// Get current circuit breaker state information
@@ -196,11 +221,14 @@ impl CircuitBreaker {
                 Ok(success)
             }
             Ok(Err(error)) => {
-                self.on_failure(&format!("{}", error)).await;
+                self.on_failure(&format!("{error}")).await;
                 Err(CircuitBreakerError::OperationFailed(error))
             }
             Err(_timeout) => {
-                let timeout_msg = format!("Operation timed out after {:?}", self.config.operation_timeout);
+                let timeout_msg = format!(
+                    "Operation timed out after {:?}",
+                    self.config.operation_timeout
+                );
                 self.on_failure(&timeout_msg).await;
                 Err(CircuitBreakerError::OperationTimeout {
                     circuit_name: self.config.name.clone(),
@@ -236,19 +264,26 @@ impl CircuitBreakerInfo {
         match &self.state {
             CircuitState::Closed => {
                 if self.total_requests > 0 {
-                    format!("Healthy ({:.1}% success rate)", (1.0 - self.failure_rate) * 100.0)
+                    format!(
+                        "Healthy ({:.1}% success rate)",
+                        (1.0 - self.failure_rate) * 100.0
+                    )
                 } else {
                     "Healthy (no requests yet)".to_string()
                 }
             }
             CircuitState::Open { opened_at } => {
-                format!("Failed ({} failures, open for {:?})", 
-                    self.failure_count, 
-                    opened_at.elapsed())
+                format!(
+                    "Failed ({} failures, open for {:?})",
+                    self.failure_count,
+                    opened_at.elapsed()
+                )
             }
             CircuitState::HalfOpen => {
-                format!("Testing recovery ({} successes needed)", 
-                    3_u32.saturating_sub(self.success_count))
+                format!(
+                    "Testing recovery ({} successes needed)",
+                    3_u32.saturating_sub(self.success_count)
+                )
             }
         }
     }
@@ -259,11 +294,13 @@ impl CircuitBreakerInfo {
 pub enum CircuitBreakerError<E> {
     #[error("Circuit breaker '{circuit_name}' is open")]
     CircuitOpen { circuit_name: String },
-    
+
     #[error("Operation failed: {0}")]
     OperationFailed(E),
-    
-    #[error("Operation timed out after {timeout:?} in circuit '{circuit_name}'")]
-    OperationTimeout { circuit_name: String, timeout: Duration },
-}
 
+    #[error("Operation timed out after {timeout:?} in circuit '{circuit_name}'")]
+    OperationTimeout {
+        circuit_name: String,
+        timeout: Duration,
+    },
+}

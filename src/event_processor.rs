@@ -11,7 +11,9 @@ use crate::network::{PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC};
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
-use crate::types::{ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage};
+use crate::types::{
+    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage,
+};
 use crate::ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -61,7 +63,7 @@ pub struct EventProcessor {
 
     // Relay service for secure message routing
     relay_service: Option<RelayService>,
-    
+
     // Network circuit breakers for resilience
     network_circuit_breakers: NetworkCircuitBreakers,
 }
@@ -101,7 +103,9 @@ impl EventProcessor {
                 BOOTSTRAP_STATUS_LOG_INTERVAL_SECS,
             )),
             dm_retry_interval: interval(Duration::from_secs(DM_RETRY_INTERVAL_SECS)),
-            network_health_update_interval: interval(Duration::from_secs(network_config.network_health_update_interval_seconds)),
+            network_health_update_interval: interval(Duration::from_secs(
+                network_config.network_health_update_interval_seconds,
+            )),
             dm_config,
             pending_messages,
             ui_logger,
@@ -693,8 +697,9 @@ mod tests {
             enabled: false,
             ..Default::default()
         };
-        let network_circuit_breakers = crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
-        
+        let network_circuit_breakers =
+            crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+
         // Create default network config for testing
         let network_config = crate::types::NetworkConfig::default();
 

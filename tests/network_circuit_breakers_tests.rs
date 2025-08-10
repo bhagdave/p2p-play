@@ -7,14 +7,14 @@ async fn test_network_circuit_breakers_disabled() {
         enabled: false,
         ..Default::default()
     };
-    
+
     let breakers = NetworkCircuitBreakers::new(&config);
     assert!(breakers.can_execute("peer_connection").await);
-    
+
     // Should not have any circuit breakers when disabled
     let status = breakers.get_all_status().await;
     assert!(status.is_empty());
-    
+
     // Health summary should show disabled state
     let health = breakers.health_summary().await;
     assert!(health.overall_healthy);
@@ -29,10 +29,10 @@ async fn test_network_circuit_breakers_enabled() {
         timeout_secs: 1,
         ..Default::default()
     };
-    
+
     let breakers = NetworkCircuitBreakers::new(&config);
     assert!(breakers.can_execute("peer_connection").await);
-    
+
     // Should have circuit breakers when enabled
     let status = breakers.get_all_status().await;
     assert!(!status.is_empty());
@@ -48,16 +48,16 @@ async fn test_network_circuit_breakers_failure_handling() {
         timeout_secs: 1,
         ..Default::default()
     };
-    
+
     let breakers = NetworkCircuitBreakers::new(&config);
-    
+
     // Record a failure
     breakers.on_failure("peer_connection", "test error").await;
-    
+
     // Circuit should now be open
     assert!(!breakers.can_execute("peer_connection").await);
     assert!(breakers.has_failures().await);
-    
+
     let health = breakers.health_summary().await;
     assert!(!health.overall_healthy);
     assert_eq!(health.failed_operations, 1);
@@ -70,22 +70,24 @@ async fn test_network_circuit_breakers_execute() {
         operation_timeout_secs: 1,
         ..Default::default()
     };
-    
+
     let breakers = NetworkCircuitBreakers::new(&config);
-    
+
     // Test successful execution
-    let result = breakers.execute("peer_connection", || async {
-        Ok::<i32, &str>(42)
-    }).await;
-    
+    let result = breakers
+        .execute("peer_connection", || async { Ok::<i32, &str>(42) })
+        .await;
+
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), 42);
-    
+
     // Test failed execution
-    let result = breakers.execute("peer_connection", || async {
-        Err::<i32, &str>("test error")
-    }).await;
-    
+    let result = breakers
+        .execute("peer_connection", || async {
+            Err::<i32, &str>("test error")
+        })
+        .await;
+
     assert!(result.is_err());
 }
 
@@ -95,15 +97,15 @@ async fn test_health_summary() {
         enabled: true,
         ..Default::default()
     };
-    
+
     let breakers = NetworkCircuitBreakers::new(&config);
-    
+
     let health = breakers.health_summary().await;
     assert!(health.overall_healthy);
     assert!(health.total_operations > 0);
     assert_eq!(health.healthy_operations, health.total_operations);
     assert_eq!(health.failed_operations, 0);
-    
+
     let status = health.status_string();
     assert!(status.contains("Network Healthy"));
 }

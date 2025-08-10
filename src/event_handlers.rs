@@ -3,10 +3,11 @@ use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
     handle_config_sync_days, handle_create_channel, handle_create_description,
     handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
-    handle_get_description, handle_help, handle_list_channels, handle_list_stories,
-    handle_list_subscriptions, handle_peer_id, handle_publish_story, handle_reload_config,
-    handle_set_auto_subscription, handle_set_name, handle_show_description, handle_show_story,
-    handle_subscribe_channel, handle_unsubscribe_channel,
+    handle_filter_stories, handle_get_description, handle_help, handle_list_channels,
+    handle_list_stories, handle_list_subscriptions, handle_peer_id, handle_publish_story,
+    handle_reload_config, handle_search_stories, handle_set_auto_subscription, handle_set_name,
+    handle_show_description, handle_show_story, handle_subscribe_channel,
+    handle_unsubscribe_channel,
 };
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
@@ -117,19 +118,19 @@ pub async fn handle_publish_story_event(
             let json = serde_json::to_string(&published_story)
                 .map_err(|e| format!("Failed to serialize story: {e}"))?;
             let json_bytes = Bytes::from(json.into_bytes());
-            
+
             debug!(
                 "Publishing {} bytes to topic {:?}",
                 json_bytes.len(),
                 TOPIC.clone()
             );
-            
+
             // Perform the actual publishing
             swarm
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
-            
+
             Ok::<(), String>(())
         })
         .await;
@@ -139,17 +140,25 @@ pub async fn handle_publish_story_event(
             debug!("Story broadcast completed successfully");
         }
         Err(e) => {
-            error_logger.log_error(&format!("Story publishing failed: {:?}", e));
+            error_logger.log_error(&format!("Story publishing failed: {e:?}"));
             // Log the specific type of error for better debugging
             match e {
                 crate::circuit_breaker::CircuitBreakerError::CircuitOpen { circuit_name } => {
-                    error_logger.log_error(&format!("Story publishing blocked - {} circuit breaker is open", circuit_name));
+                    error_logger.log_error(&format!(
+                        "Story publishing blocked - {circuit_name} circuit breaker is open"
+                    ));
                 }
-                crate::circuit_breaker::CircuitBreakerError::OperationTimeout { circuit_name, timeout } => {
-                    error_logger.log_error(&format!("Story publishing timed out after {:?} in {}", timeout, circuit_name));
+                crate::circuit_breaker::CircuitBreakerError::OperationTimeout {
+                    circuit_name,
+                    timeout,
+                } => {
+                    error_logger.log_error(&format!(
+                        "Story publishing timed out after {timeout:?} in {circuit_name}"
+                    ));
                 }
                 crate::circuit_breaker::CircuitBreakerError::OperationFailed(inner_error) => {
-                    error_logger.log_error(&format!("Story publishing operation failed: {}", inner_error));
+                    error_logger
+                        .log_error(&format!("Story publishing operation failed: {inner_error}"));
                 }
             }
         }
@@ -176,6 +185,12 @@ pub async fn handle_input_event(
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("search ") => {
+            handle_search_stories(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("filter ") => {
+            handle_filter_stories(cmd, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("create s") => {
             return handle_create_stories_with_sender(
@@ -631,7 +646,7 @@ pub async fn handle_floodsub_event(
                                 forward_msg.max_hops
                             ));
                             return Some(crate::types::ActionResult::RebroadcastRelayMessage(
-                                forward_msg,
+                                Box::new(forward_msg),
                             ));
                         }
                         Ok(crate::relay::RelayAction::DropMessage(reason)) => {
@@ -1415,7 +1430,7 @@ pub async fn initiate_story_sync_with_peer(
     ui_logger: &UILogger,
     _error_logger: &ErrorLogger,
 ) {
-    debug!("Initiating story sync with peer {}", peer_id);
+    debug!("Initiating story sync with peer {peer_id}");
 
     // Load auto-share configuration to determine sync timeframe
     let sync_days = match crate::storage::load_unified_network_config().await {
@@ -1436,7 +1451,7 @@ pub async fn initiate_story_sync_with_peer(
         match crate::storage::read_subscribed_channels(&PEER_ID.to_string()).await {
             Ok(channels) => channels,
             Err(e) => {
-                debug!("Failed to read subscribed channels for sync: {}", e);
+                debug!("Failed to read subscribed channels for sync: {e}");
                 Vec::new() // Send empty list as fallback
             }
         };
@@ -1456,19 +1471,16 @@ pub async fn initiate_story_sync_with_peer(
         .story_sync
         .send_request(&peer_id, request.clone());
 
-    match request_id {
-        request_id => {
-            debug!(
-                "Sent story sync request to peer {} (request ID: {:?}, sync days: {})",
-                peer_id, request_id, sync_days
-            );
-            ui_logger.log(format!(
-                "{} Requesting stories from {} (syncing {} days)",
-                Icons::sync(),
-                peer_id,
-                sync_days
-            ));
-        }
+    {
+        debug!(
+            "Sent story sync request to peer {peer_id} (request ID: {request_id:?}, sync days: {sync_days})"
+        );
+        ui_logger.log(format!(
+            "{} Requesting stories from {} (syncing {} days)",
+            Icons::sync(),
+            peer_id,
+            sync_days
+        ));
     }
 }
 
@@ -2289,15 +2301,17 @@ mod tests {
         // Measure time taken for story publishing (should be very fast now)
         let start = Instant::now();
         let error_logger = ErrorLogger::new("test_errors.log");
-        
+
         // Create disabled circuit breakers for testing
         let cb_config = crate::types::NetworkCircuitBreakerConfig {
             enabled: false,
             ..Default::default()
         };
-        let network_circuit_breakers = crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
-        
-        handle_publish_story_event(story, &mut swarm, &error_logger, &network_circuit_breakers).await;
+        let network_circuit_breakers =
+            crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+
+        handle_publish_story_event(story, &mut swarm, &error_logger, &network_circuit_breakers)
+            .await;
         let duration = start.elapsed();
 
         // Story publishing should complete in well under 500ms (previously took 1+ seconds)

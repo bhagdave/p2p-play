@@ -1,8 +1,8 @@
+use crate::circuit_breaker;
 use crate::errors::ConfigResult;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
 };
-use crate::circuit_breaker;
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
@@ -50,6 +50,24 @@ pub struct PublishedStory {
     pub story: Story,
     pub publisher: String,
 }
+
+/// Search query types and filters
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchQuery {
+    pub text: String,
+    pub channel_filter: Option<String>,
+    pub date_range_days: Option<u32>,
+    pub visibility_filter: Option<bool>, // None = all, Some(true) = public only, Some(false) = private only
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SearchResult {
+    pub story: Story,
+    pub publisher: Option<String>, // Some for stories from other peers, None for local stories
+    pub relevance_score: Option<f64>, // FTS5 ranking score
+}
+
+pub type SearchResults = Vec<SearchResult>;
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct PublishedChannel {
@@ -274,7 +292,7 @@ pub enum ActionResult {
     RefreshStories,
     StartStoryCreation,
     RefreshChannels,
-    RebroadcastRelayMessage(crate::types::RelayMessage),
+    RebroadcastRelayMessage(Box<crate::types::RelayMessage>),
 }
 
 pub enum EventType {
@@ -405,6 +423,59 @@ impl ListResponse {
 impl PublishedStory {
     pub fn new(story: Story, publisher: String) -> Self {
         Self { story, publisher }
+    }
+}
+
+impl SearchQuery {
+    pub fn new(text: String) -> Self {
+        Self {
+            text,
+            channel_filter: None,
+            date_range_days: None,
+            visibility_filter: None,
+        }
+    }
+
+    pub fn with_channel(mut self, channel: String) -> Self {
+        self.channel_filter = Some(channel);
+        self
+    }
+
+    pub fn with_date_range_days(mut self, days: u32) -> Self {
+        self.date_range_days = Some(days);
+        self
+    }
+
+    pub fn with_visibility_filter(mut self, public_only: bool) -> Self {
+        self.visibility_filter = Some(public_only);
+        self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.text.trim().is_empty()
+            && self.channel_filter.is_none()
+            && self.date_range_days.is_none()
+            && self.visibility_filter.is_none()
+    }
+}
+
+impl SearchResult {
+    pub fn new(story: Story) -> Self {
+        Self {
+            story,
+            publisher: None,
+            relevance_score: None,
+        }
+    }
+
+    pub fn with_publisher(mut self, publisher: String) -> Self {
+        self.publisher = Some(publisher);
+        self
+    }
+
+    pub fn with_relevance_score(mut self, score: f64) -> Self {
+        self.relevance_score = Some(score);
+        self
     }
 }
 
@@ -867,7 +938,9 @@ impl NetworkCircuitBreakerConfig {
             return Err("operation_timeout_secs must be greater than 0".to_string());
         }
         if self.timeout_secs > 300 {
-            return Err("timeout_secs should not exceed 300 seconds to avoid long wait times".to_string());
+            return Err(
+                "timeout_secs should not exceed 300 seconds to avoid long wait times".to_string(),
+            );
         }
         if self.operation_timeout_secs > 120 {
             return Err("operation_timeout_secs should not exceed 120 seconds".to_string());

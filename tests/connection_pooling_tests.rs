@@ -33,10 +33,15 @@ async fn test_pool_stats_functionality() {
     let (connections, idle_connections, max_size) = stats.unwrap();
     assert!(connections > 0, "Should have active connections");
     assert!(max_size == 10, "Max size should be 10 as configured");
-    assert!(idle_connections <= connections, "Idle connections should not exceed total connections");
+    assert!(
+        idle_connections <= connections,
+        "Idle connections should not exceed total connections"
+    );
 
-    println!("✅ Pool stats: connections={}, idle={}, max={}", 
-             connections, idle_connections, max_size);
+    println!(
+        "✅ Pool stats: connections={}, idle={}, max={}",
+        connections, idle_connections, max_size
+    );
 }
 
 #[tokio::test]
@@ -78,7 +83,10 @@ async fn test_transaction_functionality() {
 
     // Verify the story was inserted
     let stories = read_local_stories().await.expect("Failed to read stories");
-    assert!(stories.iter().any(|s| s.name == "Transaction Test"), "Story should be inserted by transaction");
+    assert!(
+        stories.iter().any(|s| s.name == "Transaction Test"),
+        "Story should be inserted by transaction"
+    );
 
     // Test failed transaction (should rollback)
     let result: Result<&str, _> = with_transaction(|conn| {
@@ -102,7 +110,10 @@ async fn test_transaction_functionality() {
 
     // Verify the story was NOT inserted (rollback worked)
     let stories = read_local_stories().await.expect("Failed to read stories");
-    assert!(!stories.iter().any(|s| s.name == "Failed Transaction Test"), "Story should be rolled back");
+    assert!(
+        !stories.iter().any(|s| s.name == "Failed Transaction Test"),
+        "Story should be rolled back"
+    );
 
     println!("✅ Transaction functionality test passed!");
 }
@@ -126,7 +137,8 @@ async fn test_read_transaction_functionality() {
         .expect("Failed to initialize storage");
 
     // Insert test data first
-    create_new_story("Read Test Story", "Header", "Body").await
+    create_new_story("Read Test Story", "Header", "Body")
+        .await
         .expect("Failed to create story");
 
     // Test read transaction
@@ -134,13 +146,17 @@ async fn test_read_transaction_functionality() {
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories")?;
         let count: i64 = stmt.query_row([], |row| row.get(0))?;
         Ok(count)
-    }).await;
+    })
+    .await;
 
     assert!(result.is_ok(), "Read transaction should succeed");
     let count = result.unwrap();
     assert!(count > 0, "Should have at least one story");
 
-    println!("✅ Read transaction functionality test passed! Found {} stories", count);
+    println!(
+        "✅ Read transaction functionality test passed! Found {} stories",
+        count
+    );
 }
 
 #[tokio::test]
@@ -174,8 +190,9 @@ async fn test_concurrent_database_operations() {
                     &format!("Concurrent Story {}", i),
                     "Header",
                     "Body",
-                    "concurrent_test"
-                ).await
+                    "concurrent_test",
+                )
+                .await
             } else {
                 // Read operation
                 read_local_stories().await.map(|_| ())
@@ -207,10 +224,11 @@ async fn test_concurrent_database_operations() {
     if success_count >= 10 {
         // Check that stories were actually created
         let stories = read_local_stories().await.expect("Failed to read stories");
-        let concurrent_stories = stories.iter()
+        let concurrent_stories = stories
+            .iter()
             .filter(|s| s.name.starts_with("Concurrent Story"))
             .count();
-        
+
         println!("   - Concurrent stories created: {}", concurrent_stories);
     }
 }
@@ -248,11 +266,14 @@ async fn test_connection_pool_resilience() {
     }
 
     // Test that we can reset the connection pool and it still works
-    reset_db_connection_for_testing().await
+    reset_db_connection_for_testing()
+        .await
         .expect("Failed to reset connection pool");
 
     // Should be able to get new connection after reset
-    let new_conn = get_db_connection().await.expect("Failed to get connection after reset");
+    let new_conn = get_db_connection()
+        .await
+        .expect("Failed to get connection after reset");
     let conn = new_conn.lock().await;
     let result = conn.prepare("SELECT 1");
     assert!(result.is_ok(), "Connection should work after pool reset");
@@ -282,23 +303,43 @@ async fn test_optimized_database_pragmas() {
     let conn = conn_arc.lock().await;
 
     // Check that foreign keys are enabled
-    let mut stmt = conn.prepare("PRAGMA foreign_keys").expect("Failed to prepare pragma statement");
-    let foreign_keys: i32 = stmt.query_row([], |row| row.get(0)).expect("Failed to query foreign_keys");
+    let mut stmt = conn
+        .prepare("PRAGMA foreign_keys")
+        .expect("Failed to prepare pragma statement");
+    let foreign_keys: i32 = stmt
+        .query_row([], |row| row.get(0))
+        .expect("Failed to query foreign_keys");
     assert_eq!(foreign_keys, 1, "Foreign keys should be enabled");
 
     // Check journal mode is WAL
-    let mut stmt = conn.prepare("PRAGMA journal_mode").expect("Failed to prepare pragma statement");
-    let journal_mode: String = stmt.query_row([], |row| row.get(0)).expect("Failed to query journal_mode");
-    assert_eq!(journal_mode.to_lowercase(), "wal", "Journal mode should be WAL");
+    let mut stmt = conn
+        .prepare("PRAGMA journal_mode")
+        .expect("Failed to prepare pragma statement");
+    let journal_mode: String = stmt
+        .query_row([], |row| row.get(0))
+        .expect("Failed to query journal_mode");
+    assert_eq!(
+        journal_mode.to_lowercase(),
+        "wal",
+        "Journal mode should be WAL"
+    );
 
     // Check synchronous mode is NORMAL
-    let mut stmt = conn.prepare("PRAGMA synchronous").expect("Failed to prepare pragma statement");
-    let synchronous: i32 = stmt.query_row([], |row| row.get(0)).expect("Failed to query synchronous");
+    let mut stmt = conn
+        .prepare("PRAGMA synchronous")
+        .expect("Failed to prepare pragma statement");
+    let synchronous: i32 = stmt
+        .query_row([], |row| row.get(0))
+        .expect("Failed to query synchronous");
     assert_eq!(synchronous, 1, "Synchronous mode should be NORMAL (1)");
 
     // Check temp_store is MEMORY
-    let mut stmt = conn.prepare("PRAGMA temp_store").expect("Failed to prepare pragma statement");
-    let temp_store: i32 = stmt.query_row([], |row| row.get(0)).expect("Failed to query temp_store");
+    let mut stmt = conn
+        .prepare("PRAGMA temp_store")
+        .expect("Failed to prepare pragma statement");
+    let temp_store: i32 = stmt
+        .query_row([], |row| row.get(0))
+        .expect("Failed to query temp_store");
     assert_eq!(temp_store, 2, "Temp store should be MEMORY (2)");
 
     println!("✅ Database pragmas optimization test passed!");
