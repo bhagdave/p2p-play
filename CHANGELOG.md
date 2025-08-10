@@ -2,9 +2,18 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.9.0] 2025-01-20
 
 ### Added
+- **Database Connection Pooling**: Optimized database performance with connection pooling
+  - Replaced singleton database connection with connection pool using `r2d2` and `r2d2_sqlite`
+  - Configured pool with up to 10 concurrent connections and 2 idle connections minimum
+  - Added optimized SQLite pragmas: WAL journal mode, NORMAL synchronous, memory temp storage
+  - Implemented transaction management utilities for better data consistency
+  - Added connection health checks, retry logic, and pool utilization monitoring
+  - Maintains backward compatibility with existing API while improving concurrent performance
+  - Added comprehensive test suite for connection pooling functionality
+  - Fixes issue #173
 - **Comprehensive Story Search and Filtering**: Implemented powerful search capabilities to efficiently find and organize stories as collections grow large
   - Added `search <query> [channel:<ch>] [recent:<days>] [public|private]` command for full-text search across story names, headers, and body content
   - Added `filter channel <name>` and `filter recent <days>` commands for targeted story filtering
@@ -15,8 +24,31 @@ All changes to this project will be documented in this file.
   - Maintains backward compatibility with existing SQLite storage without requiring FTS5 extensions
   - Comprehensive test suite with 11 new tests covering search functionality, edge cases, and performance
   - Fixes issue #176
-
-### Added
+- **Standardized Error Handling**: Replaced generic `Box<dyn Error>` with domain-specific error types
+  - Added central `errors.rs` module with `StorageError`, `NetworkError`, `UIError`, `ConfigError`, and `AppError`
+  - Enhanced error debugging with structured error chains and context preservation
+  - Improved user-friendly error messages in the TUI with appropriate icons
+  - Added comprehensive error conversion traits using `thiserror` crate
+  - All 101+ generic error usages replaced with specific error types
+  - Better error logging in main.rs with complete error chain display
+  - Fixes issue #170
+- **Auto-Share Configuration**: Added configuration options to control automatic story sharing behavior
+  - Added `config auto-share [on|off|status]` command to control global automatic story sharing
+  - Added `config sync-days <N>` command to set story sync timeframe (how many days back to sync)
+  - New stories now respect the global auto-share setting when determining if they should be public/shared
+  - Story synchronization now uses the configured sync timeframe instead of syncing all stories
+  - Settings are persisted in `unified_network_config.json` and restored on application restart
+  - Default configuration enables auto-share with 30-day sync window for optimal user experience
+  - Fixes issue #159
+- **Story Synchronization Protocol**: Implemented automatic peer-to-peer story synchronization when connections are established
+  - Added new `StorySyncRequest` and `StorySyncResponse` message types for efficient story exchange
+  - Bidirectional sync automatically triggers when peers connect without manual intervention
+  - Channel-aware filtering ensures peers only receive stories from subscribed channels
+  - Timestamp-based incremental sync using `last_sync_timestamp` prevents redundant data transfer
+  - Database-level filtering optimization reduces memory usage and improves sync performance
+  - Automatic deduplication prevents duplicate stories from being saved
+  - UI feedback with 🔄 sync and ✓ checkmark icons to show sync progress
+  - Fixes issue #158
 - **Comprehensive Content Validation and Sanitization System**: Major security enhancement to protect against malicious content injection and resource exhaustion
   - Added new `src/validation.rs` module with comprehensive input validation and sanitization functions
   - Implemented content length limits for all input types:
@@ -43,46 +75,6 @@ All changes to this project will be documented in this file.
   - Added detailed security policy documentation in `CONTENT_VALIDATION_POLICY.md`
   - Updated existing tests to match new security requirements
   - Fixes issue #171
-
-## [0.9.0] 2025-01-20
-
-### Added
-- **Database Connection Pooling**: Optimized database performance with connection pooling
-  - Replaced singleton database connection with connection pool using `r2d2` and `r2d2_sqlite`
-  - Configured pool with up to 10 concurrent connections and 2 idle connections minimum
-  - Added optimized SQLite pragmas: WAL journal mode, NORMAL synchronous, memory temp storage
-  - Implemented transaction management utilities for better data consistency
-  - Added connection health checks, retry logic, and pool utilization monitoring
-  - Maintains backward compatibility with existing API while improving concurrent performance
-  - Added comprehensive test suite for connection pooling functionality
-  - Fixes issue #173
-
-### Added
-- **Standardized Error Handling**: Replaced generic `Box<dyn Error>` with domain-specific error types
-  - Added central `errors.rs` module with `StorageError`, `NetworkError`, `UIError`, `ConfigError`, and `AppError`
-  - Enhanced error debugging with structured error chains and context preservation
-  - Improved user-friendly error messages in the TUI with appropriate icons
-  - Added comprehensive error conversion traits using `thiserror` crate
-  - All 101+ generic error usages replaced with specific error types
-  - Better error logging in main.rs with complete error chain display
-  - Fixes issue #170
-- **Auto-Share Configuration**: Added configuration options to control automatic story sharing behavior
-  - Added `config auto-share [on|off|status]` command to control global automatic story sharing
-  - Added `config sync-days <N>` command to set story sync timeframe (how many days back to sync)
-  - New stories now respect the global auto-share setting when determining if they should be public/shared
-  - Story synchronization now uses the configured sync timeframe instead of syncing all stories
-  - Settings are persisted in `unified_network_config.json` and restored on application restart
-  - Default configuration enables auto-share with 30-day sync window for optimal user experience
-  - Fixes issue #159
-- **Story Synchronization Protocol**: Implemented automatic peer-to-peer story synchronization when connections are established
-  - Added new `StorySyncRequest` and `StorySyncResponse` message types for efficient story exchange
-  - Bidirectional sync automatically triggers when peers connect without manual intervention
-  - Channel-aware filtering ensures peers only receive stories from subscribed channels
-  - Timestamp-based incremental sync using `last_sync_timestamp` prevents redundant data transfer
-  - Database-level filtering optimization reduces memory usage and improves sync performance
-  - Automatic deduplication prevents duplicate stories from being saved
-  - UI feedback with 🔄 sync and ✓ checkmark icons to show sync progress
-  - Fixes issue #158
 
 ## [0.8.5] 2025-08-09
 
