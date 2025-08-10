@@ -85,6 +85,7 @@ async fn test_network_config_load_and_save_with_connection_limits() {
         max_pending_outgoing: 20,
         max_established_total: 150,
         connection_establishment_timeout_seconds: 45,
+        network_health_update_interval_seconds: 15,
     };
 
     // Save the config
