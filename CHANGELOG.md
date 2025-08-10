@@ -5,6 +5,18 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Comprehensive Story Search and Filtering**: Implemented powerful search capabilities to efficiently find and organize stories as collections grow large
+  - Added `search <query> [channel:<ch>] [recent:<days>] [public|private]` command for full-text search across story names, headers, and body content
+  - Added `filter channel <name>` and `filter recent <days>` commands for targeted story filtering
+  - Full-text search using SQL LIKE queries with relevance scoring (title: 3x, header: 2x, body: 1x weights)
+  - Advanced filtering by channel, date range, and visibility (public/private stories) with combined filter support
+  - Case-insensitive search for improved user experience and better content discovery
+  - Database performance optimization with indexes on name, channel, created_at, and public columns
+  - Maintains backward compatibility with existing SQLite storage without requiring FTS5 extensions
+  - Comprehensive test suite with 11 new tests covering search functionality, edge cases, and performance
+  - Fixes issue #176
+
+### Added
 - **Comprehensive Content Validation and Sanitization System**: Major security enhancement to protect against malicious content injection and resource exhaustion
   - Added new `src/validation.rs` module with comprehensive input validation and sanitization functions
   - Implemented content length limits for all input types:

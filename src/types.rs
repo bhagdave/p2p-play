@@ -1,8 +1,8 @@
+use crate::circuit_breaker;
 use crate::errors::ConfigResult;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
 };
-use crate::circuit_breaker;
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
@@ -56,7 +56,6 @@ pub struct PublishedStory {
 pub struct SearchQuery {
     pub text: String,
     pub channel_filter: Option<String>,
-    pub author_filter: Option<String>,
     pub date_range_days: Option<u32>,
     pub visibility_filter: Option<bool>, // None = all, Some(true) = public only, Some(false) = private only
 }
@@ -293,7 +292,7 @@ pub enum ActionResult {
     RefreshStories,
     StartStoryCreation,
     RefreshChannels,
-    RebroadcastRelayMessage(crate::types::RelayMessage),
+    RebroadcastRelayMessage(Box<crate::types::RelayMessage>),
 }
 
 pub enum EventType {
@@ -432,7 +431,6 @@ impl SearchQuery {
         Self {
             text,
             channel_filter: None,
-            author_filter: None,
             date_range_days: None,
             visibility_filter: None,
         }
@@ -440,11 +438,6 @@ impl SearchQuery {
 
     pub fn with_channel(mut self, channel: String) -> Self {
         self.channel_filter = Some(channel);
-        self
-    }
-
-    pub fn with_author(mut self, author: String) -> Self {
-        self.author_filter = Some(author);
         self
     }
 
@@ -459,10 +452,9 @@ impl SearchQuery {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.text.trim().is_empty() 
-            && self.channel_filter.is_none() 
-            && self.author_filter.is_none() 
-            && self.date_range_days.is_none() 
+        self.text.trim().is_empty()
+            && self.channel_filter.is_none()
+            && self.date_range_days.is_none()
             && self.visibility_filter.is_none()
     }
 }
@@ -946,7 +938,9 @@ impl NetworkCircuitBreakerConfig {
             return Err("operation_timeout_secs must be greater than 0".to_string());
         }
         if self.timeout_secs > 300 {
-            return Err("timeout_secs should not exceed 300 seconds to avoid long wait times".to_string());
+            return Err(
+                "timeout_secs should not exceed 300 seconds to avoid long wait times".to_string(),
+            );
         }
         if self.operation_timeout_secs > 120 {
             return Err("operation_timeout_secs should not exceed 120 seconds".to_string());

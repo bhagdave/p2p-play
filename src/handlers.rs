@@ -6,8 +6,8 @@ use crate::network::{
 use crate::relay::{RelayError, RelayService};
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, filter_stories_by_channel,
-    filter_stories_by_recent_days, load_bootstrap_config, load_node_description, mark_story_as_read,
-    publish_story, read_channels, read_local_stories, read_subscribed_channels,
+    filter_stories_by_recent_days, load_bootstrap_config, load_node_description,
+    mark_story_as_read, publish_story, read_channels, read_local_stories, read_subscribed_channels,
     read_unsubscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
     search_stories, subscribe_to_channel, unsubscribe_from_channel,
 };
@@ -65,7 +65,7 @@ impl SortedPeerNamesCache {
     /// Update the cache with new peer names
     pub fn update(&mut self, peer_names: &HashMap<PeerId, String>) {
         let mut names: Vec<String> = peer_names.values().cloned().collect();
-        names.sort_by(|a, b| b.len().cmp(&a.len()));
+        names.sort_by_key(|b| std::cmp::Reverse(b.len()));
         self.sorted_names = names;
         self.version += 1;
     }
@@ -411,12 +411,15 @@ pub async fn handle_delete_story(
 }
 
 pub async fn handle_peer_id(_cmd: &str, ui_logger: &UILogger) {
-    ui_logger.log(format!("Local Peer ID: {}", PEER_ID.to_string()));
+    ui_logger.log(format!("Local Peer ID: {}", *PEER_ID));
 }
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
-    ui_logger.log("search <query> [channel:<ch>] [author:<peer>] [recent:<days>] [public|private] to search stories".to_string());
+    ui_logger.log(
+        "search <query> [channel:<ch>] [recent:<days>] [public|private] to search stories"
+            .to_string(),
+    );
     ui_logger.log("filter channel <name> | filter recent <days> to filter stories".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
     ui_logger.log("ls sub to list your subscriptions".to_string());
@@ -693,8 +696,8 @@ pub fn parse_direct_message_command(
             }
 
             // If the peer name is followed by a space
-            if remaining.starts_with(' ') {
-                let message = remaining[1..].trim();
+            if let Some(stripped) = remaining.strip_prefix(' ') {
+                let message = stripped.trim();
                 if !message.is_empty() {
                     return Some((peer_name.clone(), message.to_string()));
                 } else {
@@ -1859,8 +1862,9 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
         for part in parts {
             if let Some(channel) = part.strip_prefix("channel:") {
                 query = query.with_channel(channel.to_string());
-            } else if let Some(author) = part.strip_prefix("author:") {
-                query = query.with_author(author.to_string());
+            } else if part.starts_with("author:") {
+                ui_logger.log("Author filtering is not yet implemented".to_string());
+                return;
             } else if let Some(days_str) = part.strip_prefix("recent:") {
                 if let Ok(days) = days_str.parse::<u32>() {
                     query = query.with_date_range_days(days);
@@ -1901,15 +1905,15 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
                         } else {
                             format!("{} Private", Icons::closed_book())
                         };
-                        
+
                         let relevance = if let Some(score) = result.relevance_score {
-                            format!(" (relevance: {:.1})", score)
+                            format!(" (relevance: {score:.1})")
                         } else {
                             String::new()
                         };
 
                         ui_logger.log(format!(
-                            "{} | Channel: {} | {}: {}{}", 
+                            "{} | Channel: {} | {}: {}{}",
                             status, story.channel, story.id, story.name, relevance
                         ));
                     }
@@ -1941,7 +1945,11 @@ pub async fn handle_filter_stories(cmd: &str, ui_logger: &UILogger, error_logger
                     if stories.is_empty() {
                         ui_logger.log(format!("No stories found in channel '{channel_name}'"));
                     } else {
-                        ui_logger.log(format!("Stories in channel '{}' ({}):", channel_name, stories.len()));
+                        ui_logger.log(format!(
+                            "Stories in channel '{}' ({}):",
+                            channel_name,
+                            stories.len()
+                        ));
                         for story in stories {
                             let status = if story.public {
                                 format!("{} Public", Icons::book())
@@ -1959,39 +1967,43 @@ pub async fn handle_filter_stories(cmd: &str, ui_logger: &UILogger, error_logger
             }
         } else if let Some(days_str) = rest.strip_prefix("recent ") {
             match days_str.trim().parse::<u32>() {
-                Ok(days) => {
-                    match filter_stories_by_recent_days(days).await {
-                        Ok(stories) => {
-                            if stories.is_empty() {
-                                ui_logger.log(format!("No stories found from the last {days} days"));
-                            } else {
-                                ui_logger.log(format!("Stories from the last {} days ({}):", days, stories.len()));
-                                for story in stories {
-                                    let status = if story.public {
-                                        format!("{} Public", Icons::book())
-                                    } else {
-                                        format!("{} Private", Icons::closed_book())
-                                    };
-                                    ui_logger.log(format!(
-                                        "{} | Channel: {} | {}: {}", 
-                                        status, story.channel, story.id, story.name
-                                    ));
-                                }
+                Ok(days) => match filter_stories_by_recent_days(days).await {
+                    Ok(stories) => {
+                        if stories.is_empty() {
+                            ui_logger.log(format!("No stories found from the last {days} days"));
+                        } else {
+                            ui_logger.log(format!(
+                                "Stories from the last {} days ({}):",
+                                days,
+                                stories.len()
+                            ));
+                            for story in stories {
+                                let status = if story.public {
+                                    format!("{} Public", Icons::book())
+                                } else {
+                                    format!("{} Private", Icons::closed_book())
+                                };
+                                ui_logger.log(format!(
+                                    "{} | Channel: {} | {}: {}",
+                                    status, story.channel, story.id, story.name
+                                ));
                             }
                         }
-                        Err(e) => {
-                            error_logger.log_error(&format!("Recent filter failed: {e}"));
-                            ui_logger.log("Recent filter failed - check error logs for details".to_string());
-                        }
                     }
-                }
+                    Err(e) => {
+                        error_logger.log_error(&format!("Recent filter failed: {e}"));
+                        ui_logger
+                            .log("Recent filter failed - check error logs for details".to_string());
+                    }
+                },
                 Err(_) => {
                     ui_logger.log(format!("Invalid number of days: '{days_str}'"));
                     ui_logger.log("Usage: filter recent <days>".to_string());
                 }
             }
         } else {
-            ui_logger.log("Usage: filter channel <channel_name> | filter recent <days>".to_string());
+            ui_logger
+                .log("Usage: filter channel <channel_name> | filter recent <days>".to_string());
         }
     } else {
         ui_logger.log("Usage: filter channel <channel_name> | filter recent <days>".to_string());

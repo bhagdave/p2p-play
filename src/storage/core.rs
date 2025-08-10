@@ -36,7 +36,7 @@ fn get_database_path() -> String {
     "./stories.db".to_string()
 }
 
-// Type alias for our connection pool  
+// Type alias for our connection pool
 type DbPool = Pool<SqliteConnectionManager>;
 
 // Thread-safe database connection pool with support for dynamic paths
@@ -54,7 +54,7 @@ struct PoolConfig {
 impl Default for PoolConfig {
     fn default() -> Self {
         Self {
-            max_size: 10, // Allow up to 10 concurrent connections
+            max_size: 10,      // Allow up to 10 concurrent connections
             min_idle: Some(2), // Keep at least 2 connections idle
             connection_timeout: Duration::from_secs(30),
             idle_timeout: Duration::from_secs(600), // 10 minutes
@@ -65,20 +65,19 @@ impl Default for PoolConfig {
 /// Create a new database connection pool
 fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
     let config = PoolConfig::default();
-    
+
     // Create connection manager
-    let manager = SqliteConnectionManager::file(db_path)
-        .with_init(|conn| {
-            // Enable foreign key constraints and set optimal pragmas
-            conn.execute_batch(
-                "PRAGMA foreign_keys = ON;
+    let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
+        // Enable foreign key constraints and set optimal pragmas
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
                  PRAGMA synchronous = NORMAL;
                  PRAGMA cache_size = -64000;
                  PRAGMA temp_store = MEMORY;
-                 PRAGMA journal_mode = WAL;"
-            )?;
-            Ok(())
-        });
+                 PRAGMA journal_mode = WAL;",
+        )?;
+        Ok(())
+    });
 
     // Build the pool with configuration
     let pool = Pool::builder()
@@ -89,9 +88,11 @@ fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
         .build(manager)
         .map_err(|e| format!("Failed to create database pool: {e}"))?;
 
-    debug!("Created database pool with max_size={}, min_idle={:?}", 
-           config.max_size, config.min_idle);
-    
+    debug!(
+        "Created database pool with max_size={}, min_idle={:?}",
+        config.max_size, config.min_idle
+    );
+
     Ok(pool)
 }
 
@@ -105,9 +106,10 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
         if let Some((pool, stored_path)) = state.as_ref() {
             if stored_path == &current_path {
                 // Get a connection from the pool - pooled connections implement Deref to Connection
-                let _pooled_conn = pool.get()
+                let _pooled_conn = pool
+                    .get()
                     .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
-                
+
                 // For now, create a new connection with the same path to maintain compatibility
                 // In a future iteration, we could optimize this further
                 let conn = Connection::open(&current_path)?;
@@ -116,9 +118,9 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
                      PRAGMA synchronous = NORMAL;
                      PRAGMA cache_size = -64000;
                      PRAGMA temp_store = MEMORY;
-                     PRAGMA journal_mode = WAL;"
+                     PRAGMA journal_mode = WAL;",
                 )?;
-                
+
                 return Ok(Arc::new(Mutex::new(conn)));
             }
         }
@@ -127,7 +129,7 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     // Need to create or update pool
     debug!("Creating new SQLite database connection pool: {current_path}");
     let pool = create_db_pool(&current_path)?;
-    
+
     // Create a direct connection for immediate use while pool is ready for future requests
     let conn = Connection::open(&current_path)?;
     conn.execute_batch(
@@ -135,7 +137,7 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
          PRAGMA synchronous = NORMAL;
          PRAGMA cache_size = -64000;
          PRAGMA temp_store = MEMORY;
-         PRAGMA journal_mode = WAL;"
+         PRAGMA journal_mode = WAL;",
     )?;
     let conn_arc = Arc::new(Mutex::new(conn));
 
@@ -177,10 +179,10 @@ where
 {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Start transaction
     conn.execute("BEGIN TRANSACTION", [])?;
-    
+
     match f(&conn) {
         Ok(result) => {
             conn.execute("COMMIT", [])?;
@@ -202,10 +204,10 @@ where
 {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
-    
+
     // Start read-only transaction
     conn.execute("BEGIN DEFERRED", [])?;
-    
+
     match f(&conn) {
         Ok(result) => {
             conn.execute("COMMIT", [])?;
@@ -490,10 +492,8 @@ pub async fn create_new_story_in_path(
     body: &str,
     path: &str,
 ) -> StorageResult<usize> {
-    let mut local_stories = match read_local_stories_from_path(path).await {
-        Ok(stories) => stories,
-        Err(_) => Vec::new(),
-    };
+    let mut local_stories: Vec<Story> =
+        read_local_stories_from_path(path).await.unwrap_or_default();
     let new_id = match local_stories.iter().max_by_key(|r| r.id) {
         Some(v) => v.id + 1,
         None => 0,
@@ -625,10 +625,8 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
 }
 
 pub async fn save_received_story_to_path(mut story: Story, path: &str) -> StorageResult<usize> {
-    let mut local_stories = match read_local_stories_from_path(path).await {
-        Ok(stories) => stories,
-        Err(_) => Vec::new(),
-    };
+    let mut local_stories: Vec<Story> =
+        read_local_stories_from_path(path).await.unwrap_or_default();
 
     // Check if story already exists
     let already_exists = local_stories
@@ -1277,7 +1275,9 @@ pub async fn get_unread_story_ids_for_channel(
 }
 
 /// Search stories using SQL LIKE queries with optional filters
-pub async fn search_stories(query: &crate::types::SearchQuery) -> StorageResult<crate::types::SearchResults> {
+pub async fn search_stories(
+    query: &crate::types::SearchQuery,
+) -> StorageResult<crate::types::SearchResults> {
     use crate::types::{SearchResult, SearchResults};
 
     let conn_arc = get_db_connection().await?;
@@ -1296,7 +1296,8 @@ pub async fn search_stories(query: &crate::types::SearchQuery) -> StorageResult<
         SELECT s.id, s.name, s.header, s.body, s.public, s.channel, s.created_at
         FROM stories s
         WHERE 1=1
-    "#.to_string();
+    "#
+    .to_string();
 
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
@@ -1412,11 +1413,7 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
         score += 1.0;
     }
 
-    if score > 0.0 {
-        Some(score)
-    } else {
-        None
-    }
+    if score > 0.0 { Some(score) } else { None }
 }
 
 /// Filter stories by channel
@@ -1428,12 +1425,10 @@ pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::ty
         "SELECT id, name, header, body, public, channel, created_at 
          FROM stories 
          WHERE channel = ? 
-         ORDER BY created_at DESC"
+         ORDER BY created_at DESC",
     )?;
 
-    let story_iter = stmt.query_map([channel], |row| {
-        Ok(mappers::map_row_to_story(row)?)
-    })?;
+    let story_iter = stmt.query_map([channel], mappers::map_row_to_story)?;
 
     let mut stories = Vec::new();
     for story in story_iter {
@@ -1458,12 +1453,10 @@ pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::ty
         "SELECT id, name, header, body, public, channel, created_at 
          FROM stories 
          WHERE created_at >= ? 
-         ORDER BY created_at DESC"
+         ORDER BY created_at DESC",
     )?;
 
-    let story_iter = stmt.query_map([cutoff_timestamp], |row| {
-        Ok(mappers::map_row_to_story(row)?)
-    })?;
+    let story_iter = stmt.query_map([cutoff_timestamp], mappers::map_row_to_story)?;
 
     let mut stories = Vec::new();
     for story in story_iter {

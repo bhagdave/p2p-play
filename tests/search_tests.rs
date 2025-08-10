@@ -1,7 +1,7 @@
 /// Integration tests for search functionality
 use p2p_play::storage::{
     create_new_story_with_channel, filter_stories_by_channel, filter_stories_by_recent_days,
-    search_stories, init_test_database,
+    init_test_database, search_stories,
 };
 use p2p_play::types::SearchQuery;
 use std::env;
@@ -17,7 +17,9 @@ async fn test_search_functionality() {
     }
 
     // Initialize test database
-    init_test_database().await.expect("Failed to init test database");
+    init_test_database()
+        .await
+        .expect("Failed to init test database");
 
     // Create test stories
     create_new_story_with_channel(
@@ -53,28 +55,52 @@ async fn test_search_functionality() {
 
     // Test 3: Combined text and channel search
     let query = SearchQuery::new("rust".to_string()).with_channel("tech".to_string());
-    let results = search_stories(&query).await.expect("Combined search failed");
-    assert_eq!(results.len(), 1, "Should find 1 story with 'rust' in 'tech' channel");
+    let results = search_stories(&query)
+        .await
+        .expect("Combined search failed");
+    assert_eq!(
+        results.len(),
+        1,
+        "Should find 1 story with 'rust' in 'tech' channel"
+    );
 
     // Test 4: Filter by channel function
-    let stories = filter_stories_by_channel("lifestyle").await.expect("Channel filter failed");
-    assert_eq!(stories.len(), 1, "Should find 1 story in 'lifestyle' channel");
+    let stories = filter_stories_by_channel("lifestyle")
+        .await
+        .expect("Channel filter failed");
+    assert_eq!(
+        stories.len(),
+        1,
+        "Should find 1 story in 'lifestyle' channel"
+    );
 
     // Test 5: Filter by recent days (all stories should be recent)
-    let stories = filter_stories_by_recent_days(1).await.expect("Recent filter failed");
+    let stories = filter_stories_by_recent_days(1)
+        .await
+        .expect("Recent filter failed");
     assert_eq!(stories.len(), 3, "Should find all 3 stories from today");
 
     // Test 6: No results case
     let query = SearchQuery::new("nonexistent".to_string());
     let results = search_stories(&query).await.expect("Search failed");
-    assert_eq!(results.len(), 0, "Should find no stories with 'nonexistent'");
+    assert_eq!(
+        results.len(),
+        0,
+        "Should find no stories with 'nonexistent'"
+    );
 
     // Test 7: Relevance scoring
     let query = SearchQuery::new("programming".to_string());
     let results = search_stories(&query).await.expect("Search failed");
     for result in &results {
-        assert!(result.relevance_score.is_some(), "Should have relevance score for text search");
-        assert!(result.relevance_score.unwrap() > 0.0, "Relevance score should be positive");
+        assert!(
+            result.relevance_score.is_some(),
+            "Should have relevance score for text search"
+        );
+        assert!(
+            result.relevance_score.unwrap() > 0.0,
+            "Relevance score should be positive"
+        );
     }
 
     println!("✅ All search functionality tests passed!");
@@ -90,7 +116,9 @@ async fn test_search_edge_cases() {
     }
 
     // Initialize test database
-    init_test_database().await.expect("Failed to init test database");
+    init_test_database()
+        .await
+        .expect("Failed to init test database");
 
     // Test empty query
     let query = SearchQuery::new("".to_string());
@@ -105,17 +133,27 @@ async fn test_search_edge_cases() {
         "Test Story",
         "Test Header",
         "This is a test story with UPPERCASE and lowercase words.",
-        "general"
-    ).await.expect("Failed to create test story");
+        "general",
+    )
+    .await
+    .expect("Failed to create test story");
 
     // Test case insensitive search
     let query = SearchQuery::new("UPPERCASE".to_string());
     let results = search_stories(&query).await.expect("Search failed");
-    assert_eq!(results.len(), 1, "Should find story with case insensitive search");
+    assert_eq!(
+        results.len(),
+        1,
+        "Should find story with case insensitive search"
+    );
 
     let query = SearchQuery::new("uppercase".to_string());
     let results = search_stories(&query).await.expect("Search failed");
-    assert_eq!(results.len(), 1, "Should find story with case insensitive search");
+    assert_eq!(
+        results.len(),
+        1,
+        "Should find story with case insensitive search"
+    );
 
     println!("✅ All edge case tests passed!");
 }
