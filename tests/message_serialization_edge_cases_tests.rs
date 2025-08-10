@@ -2,7 +2,6 @@ use p2p_play::network::*;
 use p2p_play::types::*;
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::collections::HashMap;
 
 /// Helper to get current timestamp
 fn current_timestamp() -> u64 {
@@ -71,7 +70,7 @@ async fn test_story_serialization_edge_cases() {
     let control_story = Story {
         id: 1,
         name: "Story\x00with\x01control\x1Fchars".to_string(),
-        header: "Header\x7F\x80\x9F".to_string(),
+        header: "Header\x7F".to_string(),
         body: "Body\x00\x01\x02".to_string(),
         public: false,
         channel: "general".to_string(),
