@@ -4,6 +4,8 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.9.0] 2025-01-20
+
 ### Added
 - **Database Connection Pooling**: Optimized database performance with connection pooling
   - Replaced singleton database connection with connection pool using `r2d2` and `r2d2_sqlite`
@@ -14,8 +16,6 @@ All changes to this project will be documented in this file.
   - Maintains backward compatibility with existing API while improving concurrent performance
   - Added comprehensive test suite for connection pooling functionality
   - Fixes issue #173
-
-## [0.9.0] 2025-01-20
 
 ### Added
 - **Standardized Error Handling**: Replaced generic `Box<dyn Error>` with domain-specific error types

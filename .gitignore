@@ -11,6 +11,7 @@ peer_name.json
 tags.lock
 tags.temp
 test_errors.log
+test_error.log
 errors.log
 node_description.txt
 bootstrap.log
