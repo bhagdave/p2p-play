@@ -694,6 +694,9 @@ mod tests {
             ..Default::default()
         };
         let network_circuit_breakers = crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+        
+        // Create default network config for testing
+        let network_config = crate::types::NetworkConfig::default();
 
         EventProcessor::new(
             ui_rcv,
@@ -703,6 +706,7 @@ mod tests {
             response_sender,
             story_sender,
             ui_sender,
+            &network_config,
             dm_config,
             pending_messages,
             ui_logger,

@@ -1,7 +1,7 @@
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerInfo};
 use crate::types::NetworkCircuitBreakerConfig;
 use std::collections::HashMap;
-use log::{debug, warn};
+use log::debug;
 
 /// Manages circuit breakers for different network operations
 #[derive(Debug)]

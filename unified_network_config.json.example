@@ -1,8 +1,8 @@
 {
   "bootstrap": {
     "bootstrap_peers": [
-      "/ip4/127.0.0.1/tcp/4001/p2p/12D3KooWExamplePeerID1ExampleExampleExampleExample1",
-      "/ip4/127.0.0.1/tcp/4002/p2p/12D3KooWExamplePeerID2ExampleExampleExampleExample2"
+      "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+      "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
     ],
     "retry_interval_ms": 5000,
     "max_retry_attempts": 5,
@@ -45,5 +45,12 @@
   "auto_share": {
     "global_auto_share": true,
     "sync_days": 30
+  },
+  "circuit_breaker": {
+    "failure_threshold": 5,
+    "success_threshold": 3,
+    "timeout_secs": 60,
+    "operation_timeout_secs": 30,
+    "enabled": true
   }
 }
