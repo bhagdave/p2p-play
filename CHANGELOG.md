@@ -35,6 +35,17 @@ All changes to this project will be documented in this file.
 ## [0.9.0] 2025-01-20
 
 ### Added
+- **Database Connection Pooling**: Optimized database performance with connection pooling
+  - Replaced singleton database connection with connection pool using `r2d2` and `r2d2_sqlite`
+  - Configured pool with up to 10 concurrent connections and 2 idle connections minimum
+  - Added optimized SQLite pragmas: WAL journal mode, NORMAL synchronous, memory temp storage
+  - Implemented transaction management utilities for better data consistency
+  - Added connection health checks, retry logic, and pool utilization monitoring
+  - Maintains backward compatibility with existing API while improving concurrent performance
+  - Added comprehensive test suite for connection pooling functionality
+  - Fixes issue #173
+
+### Added
 - **Standardized Error Handling**: Replaced generic `Box<dyn Error>` with domain-specific error types
   - Added central `errors.rs` module with `StorageError`, `NetworkError`, `UIError`, `ConfigError`, and `AppError`
   - Enhanced error debugging with structured error chains and context preservation
