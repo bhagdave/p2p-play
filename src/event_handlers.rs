@@ -84,6 +84,7 @@ pub async fn handle_publish_story_event(
     story: crate::types::Story,
     swarm: &mut Swarm<StoryBehaviour>,
     error_logger: &ErrorLogger,
+    network_circuit_breakers: &crate::network_circuit_breakers::NetworkCircuitBreakers,
 ) {
     debug!("Broadcasting published story: {}", story.name);
 
@@ -109,18 +110,50 @@ pub async fn handle_publish_story_event(
         story,
         publisher: PEER_ID.to_string(),
     };
-    let json = serde_json::to_string(&published_story).expect("can jsonify published story");
-    let json_bytes = Bytes::from(json.into_bytes());
-    debug!(
-        "Publishing {} bytes to topic {:?}",
-        json_bytes.len(),
-        TOPIC.clone()
-    );
-    swarm
-        .behaviour_mut()
-        .floodsub
-        .publish(TOPIC.clone(), json_bytes);
-    debug!("Story broadcast completed");
+
+    // Use circuit breaker for story publishing
+    let publish_result = network_circuit_breakers
+        .execute("story_publish", || async {
+            let json = serde_json::to_string(&published_story)
+                .map_err(|e| format!("Failed to serialize story: {e}"))?;
+            let json_bytes = Bytes::from(json.into_bytes());
+            
+            debug!(
+                "Publishing {} bytes to topic {:?}",
+                json_bytes.len(),
+                TOPIC.clone()
+            );
+            
+            // Perform the actual publishing
+            swarm
+                .behaviour_mut()
+                .floodsub
+                .publish(TOPIC.clone(), json_bytes);
+            
+            Ok::<(), String>(())
+        })
+        .await;
+
+    match publish_result {
+        Ok(_) => {
+            debug!("Story broadcast completed successfully");
+        }
+        Err(e) => {
+            error_logger.log_error(&format!("Story publishing failed: {:?}", e));
+            // Log the specific type of error for better debugging
+            match e {
+                crate::circuit_breaker::CircuitBreakerError::CircuitOpen { circuit_name } => {
+                    error_logger.log_error(&format!("Story publishing blocked - {} circuit breaker is open", circuit_name));
+                }
+                crate::circuit_breaker::CircuitBreakerError::OperationTimeout { circuit_name, timeout } => {
+                    error_logger.log_error(&format!("Story publishing timed out after {:?} in {}", timeout, circuit_name));
+                }
+                crate::circuit_breaker::CircuitBreakerError::OperationFailed(inner_error) => {
+                    error_logger.log_error(&format!("Story publishing operation failed: {}", inner_error));
+                }
+            }
+        }
+    }
 }
 
 /// Handle user input events
@@ -1454,6 +1487,7 @@ pub async fn handle_event(
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
     relay_service: &mut Option<crate::relay::RelayService>,
+    network_circuit_breakers: &crate::network_circuit_breakers::NetworkCircuitBreakers,
 ) -> Option<ActionResult> {
     debug!("Event Received");
     match event {
@@ -1461,7 +1495,7 @@ pub async fn handle_event(
             handle_response_event(resp, swarm).await;
         }
         EventType::PublishStory(story) => {
-            handle_publish_story_event(story, swarm, error_logger).await;
+            handle_publish_story_event(story, swarm, error_logger, network_circuit_breakers).await;
         }
         EventType::Input(line) => {
             return handle_input_event(
@@ -2255,7 +2289,15 @@ mod tests {
         // Measure time taken for story publishing (should be very fast now)
         let start = Instant::now();
         let error_logger = ErrorLogger::new("test_errors.log");
-        handle_publish_story_event(story, &mut swarm, &error_logger).await;
+        
+        // Create disabled circuit breakers for testing
+        let cb_config = crate::types::NetworkCircuitBreakerConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let network_circuit_breakers = crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+        
+        handle_publish_story_event(story, &mut swarm, &error_logger, &network_circuit_breakers).await;
         let duration = start.elapsed();
 
         // Story publishing should complete in well under 500ms (previously took 1+ seconds)

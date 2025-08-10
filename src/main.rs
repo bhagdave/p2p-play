@@ -1,5 +1,6 @@
 mod bootstrap;
 mod bootstrap_logger;
+mod circuit_breaker;
 mod crypto;
 mod error_logger;
 mod errors;
@@ -8,6 +9,7 @@ mod event_processor;
 mod handlers;
 mod migrations;
 mod network;
+mod network_circuit_breakers;
 mod relay;
 mod storage;
 mod types;
@@ -22,6 +24,7 @@ use errors::{AppError, AppResult};
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
 use network::{KEYS, PEER_ID, create_swarm};
+use network_circuit_breakers::NetworkCircuitBreakers;
 use relay::RelayService;
 use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
@@ -128,7 +131,7 @@ async fn run_app() -> AppResult<()> {
     };
 
     // Extract individual configs for convenience
-    let _network_config = &unified_config.network;
+    let network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
 
     let mut swarm = create_swarm(&unified_config.ping).expect("Failed to create swarm");
@@ -231,6 +234,9 @@ async fn run_app() -> AppResult<()> {
     // Initialize crypto service with shared keypair
     let crypto_service = CryptoService::new(KEYS.clone());
 
+    // Initialize network circuit breakers for resilience
+    let network_circuit_breakers = NetworkCircuitBreakers::new(&unified_config.circuit_breaker);
+
     // Initialize relay service with crypto and configuration
     let relay_service = if unified_config.relay.enable_relay {
         Some(RelayService::new(
@@ -250,12 +256,14 @@ async fn run_app() -> AppResult<()> {
         response_sender,
         story_sender,
         ui_sender,
+        network_config,
         dm_config.clone(),
         pending_messages,
         ui_logger,
         error_logger,
         bootstrap_logger,
         relay_service,
+        network_circuit_breakers,
     );
 
     // Run the main event loop

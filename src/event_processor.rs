@@ -8,9 +8,10 @@ use crate::handlers::{
     SortedPeerNamesCache, UILogger, mark_story_as_read_for_peer, refresh_unread_counts_for_ui,
 };
 use crate::network::{PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC};
+use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
-use crate::types::{ActionResult, DirectMessageConfig, EventType, PeerName, PendingDirectMessage};
+use crate::types::{ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage};
 use crate::ui::{App, AppEvent, handle_ui_events};
 
 use bytes::Bytes;
@@ -47,6 +48,7 @@ pub struct EventProcessor {
     bootstrap_retry_interval: tokio::time::Interval,
     bootstrap_status_log_interval: tokio::time::Interval,
     dm_retry_interval: tokio::time::Interval,
+    network_health_update_interval: tokio::time::Interval,
 
     // Configuration and state
     dm_config: DirectMessageConfig,
@@ -59,6 +61,9 @@ pub struct EventProcessor {
 
     // Relay service for secure message routing
     relay_service: Option<RelayService>,
+    
+    // Network circuit breakers for resilience
+    network_circuit_breakers: NetworkCircuitBreakers,
 }
 
 impl EventProcessor {
@@ -71,12 +76,14 @@ impl EventProcessor {
         response_sender: mpsc::UnboundedSender<crate::types::ListResponse>,
         story_sender: mpsc::UnboundedSender<crate::types::Story>,
         ui_sender: mpsc::UnboundedSender<AppEvent>,
+        network_config: &NetworkConfig,
         dm_config: DirectMessageConfig,
         pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>>,
         ui_logger: UILogger,
         error_logger: ErrorLogger,
         bootstrap_logger: BootstrapLogger,
         relay_service: Option<RelayService>,
+        network_circuit_breakers: NetworkCircuitBreakers,
     ) -> Self {
         Self {
             ui_rcv,
@@ -94,12 +101,14 @@ impl EventProcessor {
                 BOOTSTRAP_STATUS_LOG_INTERVAL_SECS,
             )),
             dm_retry_interval: interval(Duration::from_secs(DM_RETRY_INTERVAL_SECS)),
+            network_health_update_interval: interval(Duration::from_secs(network_config.network_health_update_interval_seconds)),
             dm_config,
             pending_messages,
             ui_logger,
             error_logger,
             bootstrap_logger,
             relay_service,
+            network_circuit_breakers,
         }
     }
 
@@ -249,6 +258,12 @@ impl EventProcessor {
                     peer_names,
                     &self.ui_logger,
                 ).await;
+                None
+            },
+            _ = self.network_health_update_interval.tick() => {
+                // Update network health status in UI
+                let health_summary = self.network_circuit_breakers.health_summary().await;
+                app.update_network_health(health_summary);
                 None
             },
             // Network events are processed but heavy operations are spawned to background
@@ -552,6 +567,7 @@ impl EventProcessor {
             &self.dm_config,
             &self.pending_messages,
             &mut self.relay_service,
+            &self.network_circuit_breakers,
         )
         .await;
 
@@ -672,6 +688,16 @@ mod tests {
         let error_logger = ErrorLogger::new("test_errors.log");
         let bootstrap_logger = BootstrapLogger::new("test_bootstrap.log");
 
+        // Create disabled circuit breakers for testing
+        let cb_config = crate::types::NetworkCircuitBreakerConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let network_circuit_breakers = crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+        
+        // Create default network config for testing
+        let network_config = crate::types::NetworkConfig::default();
+
         EventProcessor::new(
             ui_rcv,
             ui_log_rcv,
@@ -680,12 +706,14 @@ mod tests {
             response_sender,
             story_sender,
             ui_sender,
+            &network_config,
             dm_config,
             pending_messages,
             ui_logger,
             error_logger,
             bootstrap_logger,
             None, // No relay service in tests
+            network_circuit_breakers,
         )
     }
 

@@ -2,6 +2,7 @@ use crate::errors::ConfigResult;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
 };
+use crate::circuit_breaker;
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
@@ -163,6 +164,9 @@ pub struct NetworkConfig {
     /// Connection establishment timeout in seconds (default: 30)
     #[serde(default = "default_connection_establishment_timeout_seconds")]
     pub connection_establishment_timeout_seconds: u64,
+    /// Network health update interval in seconds (default: 15)
+    #[serde(default = "default_network_health_update_interval_seconds")]
+    pub network_health_update_interval_seconds: u64,
 }
 
 fn default_max_connections_per_peer() -> u32 {
@@ -179,6 +183,9 @@ fn default_max_established_total() -> u32 {
 }
 fn default_connection_establishment_timeout_seconds() -> u64 {
     30
+}
+fn default_network_health_update_interval_seconds() -> u64 {
+    15
 }
 
 /// Configuration for ping keep-alive settings
@@ -219,6 +226,21 @@ pub struct AutoShareConfig {
     pub sync_days: u32,
 }
 
+/// Circuit breaker configuration for network resilience
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct NetworkCircuitBreakerConfig {
+    /// Number of failures before opening the circuit
+    pub failure_threshold: u32,
+    /// Number of successes needed to close from half-open state  
+    pub success_threshold: u32,
+    /// Time to wait before transitioning from open to half-open (in seconds)
+    pub timeout_secs: u32,
+    /// Maximum time to wait for an operation (in seconds)
+    pub operation_timeout_secs: u32,
+    /// Enable circuit breaker protection
+    pub enabled: bool,
+}
+
 /// Unified network configuration that consolidates all network-related settings
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnifiedNetworkConfig {
@@ -229,6 +251,7 @@ pub struct UnifiedNetworkConfig {
     pub channel_auto_subscription: ChannelAutoSubscriptionConfig,
     pub relay: RelayConfig,
     pub auto_share: AutoShareConfig,
+    pub circuit_breaker: NetworkCircuitBreakerConfig,
 }
 
 /// Pending direct message for retry logic
@@ -634,6 +657,7 @@ impl NetworkConfig {
             max_pending_outgoing: 10,    // Balance connectivity with resource usage
             max_established_total: 100,  // Total connection pool size
             connection_establishment_timeout_seconds: 30, // 30 second connection timeout
+            network_health_update_interval_seconds: 15, // Update network health every 15 seconds
         }
     }
 
@@ -816,6 +840,69 @@ impl Default for AutoShareConfig {
     }
 }
 
+impl NetworkCircuitBreakerConfig {
+    /// Create a new NetworkCircuitBreakerConfig with sensible defaults
+    pub fn new() -> Self {
+        Self {
+            failure_threshold: 5,
+            success_threshold: 3,
+            timeout_secs: 60,
+            operation_timeout_secs: 30,
+            enabled: true,
+        }
+    }
+
+    /// Validate the circuit breaker configuration
+    pub fn validate(&self) -> Result<(), String> {
+        if self.failure_threshold == 0 {
+            return Err("failure_threshold must be greater than 0".to_string());
+        }
+        if self.success_threshold == 0 {
+            return Err("success_threshold must be greater than 0".to_string());
+        }
+        if self.timeout_secs == 0 {
+            return Err("timeout_secs must be greater than 0".to_string());
+        }
+        if self.operation_timeout_secs == 0 {
+            return Err("operation_timeout_secs must be greater than 0".to_string());
+        }
+        if self.timeout_secs > 300 {
+            return Err("timeout_secs should not exceed 300 seconds to avoid long wait times".to_string());
+        }
+        if self.operation_timeout_secs > 120 {
+            return Err("operation_timeout_secs should not exceed 120 seconds".to_string());
+        }
+        Ok(())
+    }
+
+    /// Convert timeout to Duration
+    pub fn timeout_duration(&self) -> Duration {
+        Duration::from_secs(self.timeout_secs as u64)
+    }
+
+    /// Convert operation timeout to Duration  
+    pub fn operation_timeout_duration(&self) -> Duration {
+        Duration::from_secs(self.operation_timeout_secs as u64)
+    }
+
+    /// Create a circuit breaker configuration for use with the circuit_breaker module
+    pub fn to_circuit_breaker_config(&self, name: String) -> circuit_breaker::CircuitBreakerConfig {
+        circuit_breaker::CircuitBreakerConfig {
+            failure_threshold: self.failure_threshold,
+            success_threshold: self.success_threshold,
+            timeout: self.timeout_duration(),
+            operation_timeout: self.operation_timeout_duration(),
+            name,
+        }
+    }
+}
+
+impl Default for NetworkCircuitBreakerConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PingConfig {
     /// Create a new PingConfig with lenient default values
     pub fn new() -> Self {
@@ -882,6 +969,7 @@ impl UnifiedNetworkConfig {
             channel_auto_subscription: ChannelAutoSubscriptionConfig::new(),
             relay: RelayConfig::new(),
             auto_share: AutoShareConfig::new(),
+            circuit_breaker: NetworkCircuitBreakerConfig::new(),
         }
     }
 
@@ -894,6 +982,7 @@ impl UnifiedNetworkConfig {
         self.channel_auto_subscription.validate()?;
         self.relay.validate()?;
         self.auto_share.validate()?;
+        self.circuit_breaker.validate()?;
         Ok(())
     }
 
@@ -1161,6 +1250,30 @@ impl Icons {
         #[cfg(not(windows))]
         return "✓";
     }
+
+    /// Network healthy indicator
+    pub fn network_healthy() -> &'static str {
+        #[cfg(windows)]
+        return "[NET-OK]";
+        #[cfg(not(windows))]
+        return "🟢";
+    }
+
+    /// Network issues indicator
+    pub fn network_issues() -> &'static str {
+        #[cfg(windows)]
+        return "[NET-ERR]";
+        #[cfg(not(windows))]
+        return "🔴";
+    }
+
+    /// Network status unknown indicator
+    pub fn network_unknown() -> &'static str {
+        #[cfg(windows)]
+        return "[NET-?]";
+        #[cfg(not(windows))]
+        return "⚪";
+    }
 }
 
 #[cfg(test)]
@@ -1191,6 +1304,9 @@ mod tests {
         assert!(!Icons::ping().is_empty());
         assert!(!Icons::warning().is_empty());
         assert!(!Icons::antenna().is_empty());
+        assert!(!Icons::network_healthy().is_empty());
+        assert!(!Icons::network_issues().is_empty());
+        assert!(!Icons::network_unknown().is_empty());
     }
 
     #[test]
@@ -1204,6 +1320,9 @@ mod tests {
             assert!(Icons::folder().chars().all(|c| c.is_ascii()));
             assert!(Icons::book().chars().all(|c| c.is_ascii()));
             assert!(Icons::check().chars().all(|c| c.is_ascii())); // This should now be [OK] instead of [✓]
+            assert!(Icons::network_healthy().chars().all(|c| c.is_ascii()));
+            assert!(Icons::network_issues().chars().all(|c| c.is_ascii()));
+            assert!(Icons::network_unknown().chars().all(|c| c.is_ascii()));
         }
     }
 

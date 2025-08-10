@@ -84,6 +84,7 @@ async fn test_network_config_file_integration() {
         max_pending_outgoing: 15,
         max_established_total: 80,
         connection_establishment_timeout_seconds: 45,
+        network_health_update_interval_seconds: 15,
     };
 
     let temp_file = NamedTempFile::new().unwrap();
