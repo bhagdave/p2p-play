@@ -89,10 +89,10 @@ async fn test_floodsub_message_broadcasting() {
         true,
     );
     let published_story = PublishedStory::new(test_story, peer1_id.to_string());
-    let message_data = serde_json::to_string(&published_story).unwrap();
+    let message_json = serde_json::to_string(&published_story).unwrap();
     
     // Publish message from swarm1
-    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_data.as_bytes());
+    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_json.as_bytes());
     
     // Wait for message reception on swarm2
     let mut message_received = false;
@@ -148,7 +148,7 @@ async fn test_ping_protocol_connectivity() {
             event1 = swarm1.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(ping_event)) = event1 {
                     match ping_event {
-                        PingEvent::Pong { peer, result } => {
+                        PingEvent { peer, result } => {
                             if peer == peer2_id && result.is_ok() {
                                 pong_received = true;
                             }
@@ -160,7 +160,7 @@ async fn test_ping_protocol_connectivity() {
             event2 = swarm2.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(ping_event)) = event2 {
                     match ping_event {
-                        PingEvent::Pong { peer, result } => {
+                        PingEvent { peer, result } => {
                             if peer == peer1_id && result.is_ok() {
                                 ping_received = true;
                             }
@@ -723,8 +723,8 @@ async fn test_concurrent_protocol_operations() {
         Story::new(1, "Concurrent Test".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer1_id.to_string(),
     );
-    let story_data = serde_json::to_string(&story).unwrap();
-    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), story_data.as_bytes());
+    let story_json = serde_json::to_string(&story).unwrap();
+    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), story_json.as_bytes());
     
     // Direct message request
     let dm_request = DirectMessageRequest {
