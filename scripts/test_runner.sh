@@ -19,27 +19,27 @@ TEST_DATABASE_PATH="./test_stories.db" cargo test --test integration_tests --qui
 
 echo "🌐 Running Network Protocol Integration Tests..."
 # Network protocol tests - comprehensive P2P protocol testing
-cargo test --test network_protocol_integration_tests --quiet -- --test-threads=1
+cargo test --test network_protocol_integration_tests --quiet -- --test-threads=2
 
 echo "👥 Running Multi-Peer Integration Tests..."
 # Multi-peer interaction scenarios
-cargo test --test multi_peer_integration_tests --quiet -- --test-threads=1
+cargo test --test multi_peer_integration_tests --quiet -- --test-threads=2
 
 echo "📦 Running Message Serialization Edge Case Tests..."
 # Message serialization robustness tests
-cargo test --test message_serialization_edge_cases_tests --quiet -- --test-threads=1
+cargo test --test message_serialization_edge_cases_tests --quiet -- --test-threads=2
 
 echo "🔄 Running Network Failure Recovery Tests..."
 # Network failure and recovery scenarios
-cargo test --test network_failure_recovery_tests --quiet -- --test-threads=1
+cargo test --test network_failure_recovery_tests --quiet -- --test-threads=2
 
 echo "⚡ Running Performance and Load Tests..."
 # Performance testing under various load conditions
-cargo test --test performance_load_tests --quiet -- --test-threads=1
+cargo test --test performance_load_tests --quiet -- --test-threads=2
 
 echo "📡 Running Network Reconnection Tests..."
 # Network tests don't need database isolation but use single thread for consistency
-cargo test --test network_reconnection_tests --quiet -- --test-threads=1
+cargo test --test network_reconnection_tests --quiet -- --test-threads=2
 
 echo "🔄 Running Auto-Subscription Tests..."
 # Auto-subscription tests need database isolation

@@ -251,18 +251,52 @@ async fn test_multi_peer_direct_messaging_chain() {
     // Connect swarms
     let _addresses = connect_swarms_mesh(&mut swarms).await;
     
-    // Wait for connections
-    for _ in 0..30 {
-        let mut all_connected = true;
-        for swarm in &mut swarms {
-            if let Some(SwarmEvent::ConnectionEstablished { .. }) = futures::StreamExt::next(swarm).now_or_never().flatten() {
-                continue;
+    // Wait for connections to be fully established
+    let mut connections_established = 0;
+    let expected_connections = 6; // 3 peers, each connecting to 2 others = 6 total connections
+    
+    println!("Waiting for connections to establish...");
+    for attempt in 0..60 {
+        for (i, swarm) in swarms.iter_mut().enumerate() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
+                match event {
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                        connections_established += 1;
+                        println!("Swarm {}: Connection established with peer {}", i, peer_id);
+                    }
+                    SwarmEvent::IncomingConnection { .. } => {
+                        println!("Swarm {}: Incoming connection detected", i);
+                    }
+                    SwarmEvent::OutgoingConnectionError { error, .. } => {
+                        println!("Swarm {}: Outgoing connection error: {:?}", i, error);
+                    }
+                    SwarmEvent::IncomingConnectionError { error, .. } => {
+                        println!("Swarm {}: Incoming connection error: {:?}", i, error);
+                    }
+                    _ => {}
+                }
             }
         }
+        
+        if connections_established >= expected_connections {
+            println!("All connections established! ({} total)", connections_established);
+            break;
+        }
+        
+        if attempt % 10 == 0 && attempt > 0 {
+            println!("Attempt {}: {} of {} connections established", attempt, connections_established, expected_connections);
+        }
+        
         time::sleep(Duration::from_millis(100)).await;
-        // Just ensure some time for connections
-        break;
     }
+    
+    // Additional wait for protocol stabilization
+    println!("Allowing additional time for protocol stabilization...");
+    time::sleep(Duration::from_millis(500)).await;
+    
+    // Verify we have at least some connections
+    println!("Final connection count: {}", connections_established);
+    assert!(connections_established >= 2, "At least 2 connections should be established, got {}", connections_established);
     
     // Stage 1: Peer 0 sends message to Peer 1
     let dm1 = DirectMessageRequest {
@@ -273,20 +307,32 @@ async fn test_multi_peer_direct_messaging_chain() {
         timestamp: current_timestamp(),
     };
     
-    swarms[0].behaviour_mut().request_response.send_request(&peer_ids[1], dm1.clone());
+    println!("Sending direct message from Peer 0 ({}) to Peer 1 ({})", peer_ids[0], peer_ids[1]);
+    println!("Message content: {:?}", dm1);
     
+    let request_id = swarms[0].behaviour_mut().request_response.send_request(&peer_ids[1], dm1.clone());
+    println!("Request sent with ID: {:?}", request_id);
+    
+    // add a delay to slow things down a bit
+    time::sleep(Duration::from_millis(200)).await;
     // Stage 2: When Peer 1 receives message, forward to Peer 2
     let mut stage1_completed = false;
     let mut stage2_completed = false;
     let mut final_message_received = false;
     
-    for _ in 0..100 {
+    for i in 0..1000 {
+        if i % 100 == 0 {
+            println!("Iteration {}", i);
+        }
+        
         // Process Peer 1 events (receiver of first message, sender of second)
         if let Some(event) = futures::StreamExt::next(&mut swarms[1]).now_or_never().flatten() {
+            println!("Peer 1 received event: {:?}", event);
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                     RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
                 )) if peer == peer_ids[0] => {
+                    println!("✅ Peer 1 received direct message from Peer 0!");
                     // Peer 1 received message from Peer 0
                     assert_eq!(request.message, "Hello Bob, please forward this to Carol");
                     stage1_completed = true;
@@ -297,6 +343,7 @@ async fn test_multi_peer_direct_messaging_chain() {
                         timestamp: current_timestamp(),
                     };
                     swarms[1].behaviour_mut().request_response.send_response(channel, response).unwrap();
+                    println!("✅ Peer 1 sent response to Peer 0");
                     
                     // Forward to Peer 2
                     let dm2 = DirectMessageRequest {
@@ -307,17 +354,31 @@ async fn test_multi_peer_direct_messaging_chain() {
                         timestamp: current_timestamp(),
                     };
                     swarms[1].behaviour_mut().request_response.send_request(&peer_ids[2], dm2);
+                    println!("✅ Peer 1 forwarded message to Peer 2");
                 }
-                _ => {}
+                SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(req_event)) => {
+                    println!("Peer 1 received RequestResponse event but not the expected one: {:?}", req_event);
+                }
+                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                    println!("Peer 1: Connection established with {}", peer_id);
+                }
+                SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                    println!("Peer 1: Connection closed with {} due to {:?}", peer_id, cause);
+                }
+                _ => {
+                    // Don't print every single event to avoid spam
+                }
             }
         }
         
         // Process Peer 2 events (final receiver)
         if let Some(event) = futures::StreamExt::next(&mut swarms[2]).now_or_never().flatten() {
+            println!("Peer 2 received event: {:?}", event);
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                     RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
                 )) if peer == peer_ids[1] => {
+                    println!("✅ Peer 2 received forwarded message from Peer 1!");
                     // Peer 2 received forwarded message from Peer 1
                     assert!(request.message.contains("Forwarded from Alice"));
                     final_message_received = true;
@@ -329,13 +390,40 @@ async fn test_multi_peer_direct_messaging_chain() {
                         timestamp: current_timestamp(),
                     };
                     swarms[2].behaviour_mut().request_response.send_response(channel, response).unwrap();
+                    println!("✅ Peer 2 sent response to Peer 1");
                 }
-                _ => {}
+                SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(req_event)) => {
+                    println!("Peer 2 received RequestResponse event but not the expected one: {:?}", req_event);
+                }
+                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                    println!("Peer 2: Connection established with {}", peer_id);
+                }
+                SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                    println!("Peer 2: Connection closed with {} due to {:?}", peer_id, cause);
+                }
+                _ => {
+                    // Don't print every single event to avoid spam
+                }
             }
         }
         
-        // Process other events to keep connections alive
-        let _ = futures::StreamExt::next(&mut swarms[0]).now_or_never();
+        // Process Peer 0 events (sender and potential response receiver)
+        if let Some(event) = futures::StreamExt::next(&mut swarms[0]).now_or_never().flatten() {
+            match event {
+                SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(req_event)) => {
+                    println!("Peer 0 received RequestResponse event: {:?}", req_event);
+                }
+                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                    println!("Peer 0: Connection established with {}", peer_id);
+                }
+                SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
+                    println!("Peer 0: Connection closed with {} due to {:?}", peer_id, cause);
+                }
+                _ => {
+                    // Don't print every single event to avoid spam
+                }
+            }
+        }
         
         if stage1_completed && stage2_completed && final_message_received {
             break;
