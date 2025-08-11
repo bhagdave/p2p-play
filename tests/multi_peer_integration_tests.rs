@@ -9,6 +9,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 use futures::future::join_all;
 use futures::StreamExt;
+use futures::future::FutureExt;
 
 /// Test helper for creating multiple test swarms
 async fn create_test_swarms(count: usize) -> Result<Vec<libp2p::Swarm<StoryBehaviour>>, Box<dyn std::error::Error>> {
@@ -83,7 +84,7 @@ async fn test_three_peer_story_broadcasting() {
     
     for _ in 0..30 {
         for swarm in &mut swarms {
-            if let SwarmEvent::ConnectionEstablished { .. } = swarm.try_next().unwrap().unwrap() {
+            if let Some(SwarmEvent::ConnectionEstablished { .. }) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 connections_established += 1;
                 if connections_established >= expected_connections {
                     break;
@@ -182,7 +183,7 @@ async fn test_multi_peer_direct_messaging_chain() {
         if let Ok(Some(event)) = swarms[1].try_next() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
-                    RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. } }
+                    RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
                 )) if peer == peer_ids[0] => {
                     // Peer 1 received message from Peer 0
                     assert_eq!(request.message, "Hello Bob, please forward this to Carol");
@@ -213,7 +214,7 @@ async fn test_multi_peer_direct_messaging_chain() {
         if let Ok(Some(event)) = swarms[2].try_next() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
-                    RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. } }
+                    RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
                 )) if peer == peer_ids[1] => {
                     // Peer 2 received forwarded message from Peer 1
                     assert!(request.message.contains("Forwarded from Alice"));
@@ -452,7 +453,7 @@ async fn test_multi_peer_story_sync_workflow() {
         if let Ok(Some(event)) = swarms[0].try_next() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(
-                    RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. } }
+                    RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
                 )) if peer == peer_ids[1] => {
                     sync_request_received = true;
                     
@@ -494,7 +495,7 @@ async fn test_multi_peer_story_sync_workflow() {
         if let Ok(Some(event)) = swarms[1].try_next() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(
-                    RequestResponseEvent::Message { peer, message: Message::Response { response, .. } }
+                    RequestResponseEvent::Message { peer, message: Message::Response { response, .. }, .. }
                 )) if peer == peer_ids[0] => {
                     sync_response_received = true;
                     stories_synced = response.stories;

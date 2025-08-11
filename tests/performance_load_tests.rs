@@ -103,7 +103,7 @@ async fn test_high_frequency_message_broadcasting() {
         );
         
         let message_data = serde_json::to_string(&story).unwrap().into_bytes();
-        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), &message_data[..]);
+        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_data);
         messages_sent += 1;
         
         // Small delay to prevent overwhelming the system
@@ -337,10 +337,10 @@ async fn test_concurrent_connection_performance() {
     );
     
     let broadcast_start = Instant::now();
-    let broadcast_message_json = serde_json::to_string(&broadcast_message).unwrap();
+    let broadcast_data = serde_json::to_string(&broadcast_message).unwrap().into_bytes();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        broadcast_message_json.as_bytes()
+        broadcast_data
     );
     
     let mut messages_received = 0;
@@ -531,7 +531,7 @@ async fn test_memory_usage_under_load() {
         );
         
         let message_data = serde_json::to_string(&story).unwrap().into_bytes();
-        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), &message_data[..]);
+        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_data);
         messages_sent.fetch_add(1, Ordering::Relaxed);
         
         // Periodic small delay
@@ -752,10 +752,10 @@ async fn test_network_resilience_under_load() {
                 peer1_id.to_string(),
             );
             
-            let story_json = serde_json::to_string(&story).unwrap();
+            let story_data = serde_json::to_string(&story).unwrap().into_bytes();
             swarm1.behaviour_mut().floodsub.publish(
                 TOPIC.clone(),
-                story_json.as_bytes()
+                story_data
             );
             messages_sent += 1;
             last_message_time = Instant::now();

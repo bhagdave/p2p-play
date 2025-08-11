@@ -89,10 +89,10 @@ async fn test_floodsub_message_broadcasting() {
         true,
     );
     let published_story = PublishedStory::new(test_story, peer1_id.to_string());
-    let message_json = serde_json::to_string(&published_story).unwrap();
+    let message_data = serde_json::to_string(&published_story).unwrap().into_bytes();
     
     // Publish message from swarm1
-    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_json.as_bytes());
+    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_data);
     
     // Wait for message reception on swarm2
     let mut message_received = false;
@@ -148,7 +148,7 @@ async fn test_ping_protocol_connectivity() {
             event1 = swarm1.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(ping_event)) = event1 {
                     match ping_event {
-                        PingEvent { peer, result } => {
+                        PingEvent { peer, result, .. } => {
                             if peer == peer2_id && result.is_ok() {
                                 pong_received = true;
                             }
@@ -160,7 +160,7 @@ async fn test_ping_protocol_connectivity() {
             event2 = swarm2.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(ping_event)) = event2 {
                     match ping_event {
-                        PingEvent { peer, result } => {
+                        PingEvent { peer, result, .. } => {
                             if peer == peer1_id && result.is_ok() {
                                 ping_received = true;
                             }
@@ -249,7 +249,7 @@ async fn test_direct_message_request_response() {
             event1 = swarm1.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(req_resp_event)) = event1 {
                     match req_resp_event {
-                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Request { request, channel, .. } } => {
+                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Request { request, channel, .. }, .. } => {
                             if peer == peer2_id {
                                 assert_eq!(request.message, "Hello from integration test!");
                                 request_received = true;
@@ -270,7 +270,7 @@ async fn test_direct_message_request_response() {
             event2 = swarm2.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(req_resp_event)) = event2 {
                     match req_resp_event {
-                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Response { response, .. } } => {
+                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Response { response, .. }, .. } => {
                             if peer == peer1_id {
                                 assert!(response.received);
                                 response_received = true;
@@ -349,7 +349,7 @@ async fn test_node_description_request_response() {
             event1 = swarm1.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::NodeDescription(desc_event)) = event1 {
                     match desc_event {
-                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Request { channel, .. } } => {
+                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Request { channel, .. }, .. } => {
                             if peer == peer2_id {
                                 // Send response with test description
                                 let response = NodeDescriptionResponse {
@@ -369,7 +369,7 @@ async fn test_node_description_request_response() {
             event2 = swarm2.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::NodeDescription(desc_event)) = event2 {
                     match desc_event {
-                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Response { response, .. } } => {
+                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Response { response, .. }, .. } => {
                             if peer == peer1_id {
                                 assert_eq!(response.description, Some("Test Node Description".to_string()));
                                 response_received = true;
@@ -438,7 +438,7 @@ async fn test_story_sync_request_response() {
             event1 = swarm1.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(sync_event)) = event1 {
                     match sync_event {
-                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Request { request, channel, .. } } => {
+                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Request { request, channel, .. }, .. } => {
                             if peer == peer2_id {
                                 // Create test stories to sync
                                 let test_stories = vec![
@@ -478,7 +478,7 @@ async fn test_story_sync_request_response() {
             event2 = swarm2.select_next_some() => {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(sync_event)) = event2 {
                     match sync_event {
-                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Response { response, .. } } => {
+                        RequestResponseEvent::Message { peer, message: libp2p::request_response::Message::Response { response, .. }, .. } => {
                             if peer == peer1_id {
                                 assert_eq!(response.stories.len(), 2);
                                 assert_eq!(response.stories[0].name, "Synced Story 1");
@@ -723,8 +723,8 @@ async fn test_concurrent_protocol_operations() {
         Story::new(1, "Concurrent Test".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer1_id.to_string(),
     );
-    let story_json = serde_json::to_string(&story).unwrap();
-    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), story_json.as_bytes());
+    let story_data = serde_json::to_string(&story).unwrap().into_bytes();
+    swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), story_data);
     
     // Direct message request
     let dm_request = DirectMessageRequest {
