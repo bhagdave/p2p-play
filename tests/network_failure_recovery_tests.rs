@@ -239,7 +239,7 @@ async fn test_connection_failure_recovery() {
 async fn test_partial_network_partition() {
     // Test behavior during partial network partitions
     let mut swarms = Vec::new();
-    let peer_ids = Vec::new();
+    let peer_ids: Vec<PeerId> = Vec::new();
     
     // Create 4 swarms
     for _ in 0..4 {
@@ -314,7 +314,7 @@ async fn test_partial_network_partition() {
     // Process events to test partition isolation
     for _ in 0..50 {
         for (i, swarm) in swarms.iter_mut().enumerate() {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(FloodsubEvent::Message(msg))) = event {
                     if let Ok(story) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                         match story.story.name.as_str() {

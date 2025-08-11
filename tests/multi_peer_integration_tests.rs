@@ -119,7 +119,7 @@ async fn test_three_peer_story_broadcasting() {
     // Process events for a reasonable time
     for _ in 0..50 {
         for (i, swarm) in swarms.iter_mut().enumerate() {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(FloodsubEvent::Message(msg))) = event {
                     if let Ok(received_story) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                         if received_story.story.name == "Multi-Peer Test Story" {
@@ -153,7 +153,7 @@ async fn test_multi_peer_direct_messaging_chain() {
     for _ in 0..30 {
         let mut all_connected = true;
         for swarm in &mut swarms {
-            if let Ok(Some(SwarmEvent::ConnectionEstablished { .. })) = swarm.try_next() {
+            if let Some(SwarmEvent::ConnectionEstablished { .. }) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 continue;
             }
         }
@@ -180,7 +180,7 @@ async fn test_multi_peer_direct_messaging_chain() {
     
     for _ in 0..100 {
         // Process Peer 1 events (receiver of first message, sender of second)
-        if let Ok(Some(event)) = swarms[1].try_next() {
+        if let Some(event) = futures::StreamExt::next(&mut swarms[1]).now_or_never().flatten() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                     RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
@@ -211,7 +211,7 @@ async fn test_multi_peer_direct_messaging_chain() {
         }
         
         // Process Peer 2 events (final receiver)
-        if let Ok(Some(event)) = swarms[2].try_next() {
+        if let Some(event) = futures::StreamExt::next(&mut swarms[2]).now_or_never().flatten() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                     RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
@@ -233,7 +233,7 @@ async fn test_multi_peer_direct_messaging_chain() {
         }
         
         // Process other events to keep connections alive
-        let _ = swarms[0].try_next();
+        let _ = futures::StreamExt::next(&mut swarms[0]).now_or_never();
         
         if stage1_completed && stage2_completed && final_message_received {
             break;
@@ -327,7 +327,7 @@ async fn test_multi_peer_channel_subscription_workflow() {
     // Process events
     for _ in 0..100 {
         for (peer_idx, swarm) in swarms.iter_mut().enumerate() {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(FloodsubEvent::Message(msg))) = event {
                     if let Ok(story) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                         received_stories.entry(peer_idx).or_insert_with(Vec::new).push(story.story.channel.clone());
@@ -388,7 +388,7 @@ async fn test_peer_discovery_and_connection_workflow() {
     
     for _ in 0..50 {
         for (i, swarm) in swarms.iter_mut().enumerate() {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 match event {
                     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                         connections.entry(i).or_insert_with(HashSet::new).insert(peer_id);
@@ -450,7 +450,7 @@ async fn test_multi_peer_story_sync_workflow() {
     
     for _ in 0..50 {
         // Process Peer 0 events (sync responder)
-        if let Ok(Some(event)) = swarms[0].try_next() {
+        if let Some(event) = futures::StreamExt::next(&mut swarms[0]).now_or_never().flatten() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(
                     RequestResponseEvent::Message { peer, message: Message::Request { request, channel, .. }, .. }
@@ -492,7 +492,7 @@ async fn test_multi_peer_story_sync_workflow() {
         }
         
         // Process Peer 1 events (sync requester)
-        if let Ok(Some(event)) = swarms[1].try_next() {
+        if let Some(event) = futures::StreamExt::next(&mut swarms[1]).now_or_never().flatten() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(
                     RequestResponseEvent::Message { peer, message: Message::Response { response, .. }, .. }
@@ -505,7 +505,7 @@ async fn test_multi_peer_story_sync_workflow() {
         }
         
         // Process Peer 2 events to keep connections alive
-        let _ = swarms[2].try_next();
+        let _ = futures::StreamExt::next(&mut swarms[2]).now_or_never();
         
         if sync_request_received && sync_response_sent && sync_response_received {
             break;
@@ -596,7 +596,7 @@ async fn test_multi_peer_mixed_protocol_usage() {
     
     for _ in 0..100 {
         for (i, swarm) in swarms.iter_mut().enumerate() {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 match event {
                     // Floodsub message received
                     SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(FloodsubEvent::Message(msg))) => {
@@ -712,7 +712,7 @@ async fn test_peer_disconnection_and_reconnection() {
     // Process events to verify initial connectivity
     for _ in 0..30 {
         for (i, swarm) in swarms.iter_mut().enumerate() {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(FloodsubEvent::Message(msg))) = event {
                     if i != 0 { // Not the sender
                         if let Ok(story) = serde_json::from_slice::<PublishedStory>(&msg.data) {
@@ -767,7 +767,7 @@ async fn test_peer_disconnection_and_reconnection() {
     // Process some events to ensure system stability
     for _ in 0..20 {
         for swarm in &mut swarms {
-            let _ = swarm.try_next();
+            let _ = futures::StreamExt::next(swarm).now_or_never();
         }
         time::sleep(Duration::from_millis(20)).await;
     }
