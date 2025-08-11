@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # P2P Story Sharing - Test Runner Script
+#
+export RUSTFLAGS="-A warnings"
 
 echo "🧪 Running P2P PLAY tests"
 echo "=================================="
