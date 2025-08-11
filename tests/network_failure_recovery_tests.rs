@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 use futures::StreamExt;
+use futures::future::FutureExt;
 
 /// Helper to create test swarms
 async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
@@ -159,9 +160,10 @@ async fn test_connection_failure_recovery() {
         Story::new(1, "Pre-disconnect test".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer1_id.to_string(),
     );
+    let initial_story_data = serde_json::to_string(&initial_story).unwrap();
     swarm1.behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&initial_story).unwrap().as_bytes()
+        initial_story_data.as_bytes()
     );
     
     let mut initial_message_received = false;
@@ -198,11 +200,12 @@ async fn test_connection_failure_recovery() {
         // Test post-reconnection communication
         let recovery_story = PublishedStory::new(
             Story::new(2, "Post-reconnect test".to_string(), "Header".to_string(), "Body".to_string(), true),
-            *new_swarm1.local_peer_id(),
+            new_swarm1.local_peer_id().to_string(),
         );
+        let recovery_story_data = serde_json::to_string(&recovery_story).unwrap();
         new_swarm1.behaviour_mut().floodsub.publish(
             TOPIC.clone(),
-            serde_json::to_string(&recovery_story).unwrap().as_bytes()
+            recovery_story_data.as_bytes()
         );
         
         // Verify recovery communication works
@@ -285,21 +288,23 @@ async fn test_partial_network_partition() {
     // Partition 1: Swarm 0 broadcasts to Swarm 1
     let partition1_story = PublishedStory::new(
         Story::new(1, "Partition 1 Message".to_string(), "Header".to_string(), "Body".to_string(), true),
-        peer_ids[0],
+        peer_ids[0].to_string(),
     );
+    let partition1_data = serde_json::to_string(&partition1_story).unwrap();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&partition1_story).unwrap().as_bytes()
+        partition1_data.as_bytes()
     );
     
     // Partition 2: Swarm 2 broadcasts to Swarm 3
     let partition2_story = PublishedStory::new(
         Story::new(2, "Partition 2 Message".to_string(), "Header".to_string(), "Body".to_string(), true),
-        peer_ids[2],
+        peer_ids[2].to_string(),
     );
+    let partition2_data = serde_json::to_string(&partition2_story).unwrap();
     swarms[2].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&partition2_story).unwrap().as_bytes()
+        partition2_data.as_bytes()
     );
     
     let mut partition1_received_by_1 = false;
@@ -374,7 +379,7 @@ async fn test_message_delivery_failure_scenarios() {
     
     // Process events to detect connection failures
     for _ in 0..30 {
-        if let Ok(Some(event)) = swarm1.try_next() {
+        if let Some(event) = futures::StreamExt::next(&mut swarm1).now_or_never().flatten() {
             match event {
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                     RequestResponseEvent::OutboundFailure { error, .. }
@@ -384,6 +389,7 @@ async fn test_message_delivery_failure_scenarios() {
                         OutboundFailure::Timeout => connection_failure_detected = true,
                         OutboundFailure::ConnectionClosed => connection_failure_detected = true,
                         OutboundFailure::UnsupportedProtocols => connection_failure_detected = true,
+                        OutboundFailure::Io(_) => connection_failure_detected = true,
                     }
                     break;
                 }
@@ -424,7 +430,7 @@ async fn test_message_delivery_failure_scenarios() {
     
     // Process events to detect disconnect-related failures
     for _ in 0..30 {
-        if let Ok(Some(event)) = swarm1.try_next() {
+        if let Some(event) = futures::StreamExt::next(&mut swarm1).now_or_never().flatten() {
             match event {
                 SwarmEvent::ConnectionClosed { .. } => {
                     disconnect_failure_detected = true;
@@ -632,7 +638,7 @@ async fn test_resource_exhaustion_scenarios() {
             event2 = swarm2.select_next_some() => {
                 match event2 {
                     SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
-                        RequestResponseEvent::Message { message: Message::Request { channel, request }, .. }
+                        RequestResponseEvent::Message { message: Message::Request { channel, request, request_id: _ }, .. }
                     )) => {
                         if request.message.len() > 500_000 {
                             // Received large message
@@ -670,7 +676,7 @@ async fn test_bootstrap_failure_recovery() {
         let mut bootstrap_failed = false;
         
         for _ in 0..50 {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(&mut swarm).now_or_never().flatten() {
                 match event {
                     SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(
                         libp2p::kad::Event::OutboundQueryProgressed { 

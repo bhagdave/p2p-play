@@ -10,6 +10,7 @@ use tokio::time;
 use futures::future::join_all;
 use std::sync::{Arc, Mutex};
 use futures::StreamExt;
+use futures::future::FutureExt;
 
 /// Helper to create test swarms
 async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
@@ -101,8 +102,8 @@ async fn test_high_frequency_message_broadcasting() {
             peer1_id.to_string(),
         );
         
-        let message_data = serde_json::to_string(&story).unwrap();
-        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_data.as_bytes());
+        let message_data = serde_json::to_string(&story).unwrap().into_bytes();
+        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), &message_data[..]);
         messages_sent += 1;
         
         // Small delay to prevent overwhelming the system
@@ -311,7 +312,7 @@ async fn test_concurrent_connection_performance() {
     
     while connection_start.elapsed() < connection_timeout && connections_established < connection_count - 1 {
         for swarm in &mut swarms {
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 if let SwarmEvent::ConnectionEstablished { .. } = event {
                     connections_established += 1;
                 }
@@ -332,13 +333,14 @@ async fn test_concurrent_connection_performance() {
     // Test message broadcasting to all connections
     let broadcast_message = PublishedStory::new(
         Story::new(1, "Concurrent Broadcast Test".to_string(), "Header".to_string(), "Body".to_string(), true),
-        peer_ids[0],
+        peer_ids[0].to_string(),
     );
     
     let broadcast_start = Instant::now();
+    let broadcast_message_json = serde_json::to_string(&broadcast_message).unwrap();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&broadcast_message).unwrap().as_bytes()
+        broadcast_message_json.as_bytes()
     );
     
     let mut messages_received = 0;
@@ -348,7 +350,7 @@ async fn test_concurrent_connection_performance() {
         for (i, swarm) in swarms.iter_mut().enumerate() {
             if i == 0 { continue; } // Skip sender
             
-            if let Ok(Some(event)) = swarm.try_next() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
                 if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(FloodsubEvent::Message(msg))) = event {
                     if let Ok(story) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                         if story.story.name == "Concurrent Broadcast Test" {
@@ -528,8 +530,8 @@ async fn test_memory_usage_under_load() {
             peer1_id.to_string(),
         );
         
-        let message_data = serde_json::to_string(&story).unwrap();
-        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), message_data.as_bytes());
+        let message_data = serde_json::to_string(&story).unwrap().into_bytes();
+        swarm1.behaviour_mut().floodsub.publish(TOPIC.clone(), &message_data[..]);
         messages_sent.fetch_add(1, Ordering::Relaxed);
         
         // Periodic small delay
@@ -750,9 +752,10 @@ async fn test_network_resilience_under_load() {
                 peer1_id.to_string(),
             );
             
+            let story_json = serde_json::to_string(&story).unwrap();
             swarm1.behaviour_mut().floodsub.publish(
                 TOPIC.clone(),
-                serde_json::to_string(&story).unwrap().as_bytes()
+                story_json.as_bytes()
             );
             messages_sent += 1;
             last_message_time = Instant::now();

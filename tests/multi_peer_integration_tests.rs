@@ -302,19 +302,22 @@ async fn test_multi_peer_channel_subscription_workflow() {
     let published_general = PublishedStory::new(general_story, peer_ids[3].to_string());
     
     // Publish stories
+    let tech_data = serde_json::to_string(&published_tech).unwrap();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&published_tech).unwrap().as_bytes()
+        tech_data.as_bytes()
     );
     
+    let news_data = serde_json::to_string(&published_news).unwrap();
     swarms[1].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&published_news).unwrap().as_bytes()
+        news_data.as_bytes()
     );
     
+    let general_data = serde_json::to_string(&published_general).unwrap();
     swarms[3].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&published_general).unwrap().as_bytes()
+        general_data.as_bytes()
     );
     
     // Track received messages by channel
@@ -548,9 +551,10 @@ async fn test_multi_peer_mixed_protocol_usage() {
         Story::new(1, "Broadcast Story".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer_ids[0].to_string(),
     );
+    let broadcast_data = serde_json::to_string(&broadcast_story).unwrap();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&broadcast_story).unwrap().as_bytes()
+        broadcast_data.as_bytes()
     );
     
     // Operation 2: Direct message
@@ -696,9 +700,10 @@ async fn test_peer_disconnection_and_reconnection() {
         Story::new(1, "Initial Message".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer_ids[0].to_string(),
     );
+    let initial_data = serde_json::to_string(&initial_story).unwrap();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&initial_story).unwrap().as_bytes()
+        initial_data.as_bytes()
     );
     
     let mut initial_message_received = false;
@@ -749,9 +754,10 @@ async fn test_peer_disconnection_and_reconnection() {
         Story::new(2, "Post-Reconnect Message".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer_ids[0].to_string(),
     );
+    let reconnect_data = serde_json::to_string(&reconnect_story).unwrap();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        serde_json::to_string(&reconnect_story).unwrap().as_bytes()
+        reconnect_data.as_bytes()
     );
     
     // This test primarily validates that the system can handle disconnection/reconnection scenarios
