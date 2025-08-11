@@ -160,10 +160,10 @@ async fn test_connection_failure_recovery() {
         Story::new(1, "Pre-disconnect test".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer1_id.to_string(),
     );
-    let initial_story_data = serde_json::to_string(&initial_story).unwrap();
+    let initial_story_data = serde_json::to_string(&initial_story).unwrap().into_bytes();
     swarm1.behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        initial_story_data.as_bytes()
+        initial_story_data
     );
     
     let mut initial_message_received = false;
@@ -202,10 +202,10 @@ async fn test_connection_failure_recovery() {
             Story::new(2, "Post-reconnect test".to_string(), "Header".to_string(), "Body".to_string(), true),
             new_swarm1.local_peer_id().to_string(),
         );
-        let recovery_story_data = serde_json::to_string(&recovery_story).unwrap();
+        let recovery_story_data = serde_json::to_string(&recovery_story).unwrap().into_bytes();
         new_swarm1.behaviour_mut().floodsub.publish(
             TOPIC.clone(),
-            recovery_story_data.as_bytes()
+            recovery_story_data
         );
         
         // Verify recovery communication works
@@ -290,10 +290,10 @@ async fn test_partial_network_partition() {
         Story::new(1, "Partition 1 Message".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer_ids[0].to_string(),
     );
-    let partition1_data = serde_json::to_string(&partition1_story).unwrap();
+    let partition1_data = serde_json::to_string(&partition1_story).unwrap().into_bytes();
     swarms[0].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        partition1_data.as_bytes()
+        partition1_data
     );
     
     // Partition 2: Swarm 2 broadcasts to Swarm 3
@@ -301,10 +301,10 @@ async fn test_partial_network_partition() {
         Story::new(2, "Partition 2 Message".to_string(), "Header".to_string(), "Body".to_string(), true),
         peer_ids[2].to_string(),
     );
-    let partition2_data = serde_json::to_string(&partition2_story).unwrap();
+    let partition2_data = serde_json::to_string(&partition2_story).unwrap().into_bytes();
     swarms[2].behaviour_mut().floodsub.publish(
         TOPIC.clone(),
-        partition2_data.as_bytes()
+        partition2_data
     );
     
     let mut partition1_received_by_1 = false;
