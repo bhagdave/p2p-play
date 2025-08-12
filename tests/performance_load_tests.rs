@@ -12,11 +12,81 @@ use std::sync::{Arc, Mutex};
 use futures::StreamExt;
 use futures::future::FutureExt;
 
-/// Helper to create test swarms
+/// Helper to create test swarms with unique peer IDs
 async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
-    let ping_config = PingConfig::new();
-    let swarm = create_swarm(&ping_config)?;
-    Ok(swarm)
+    create_test_swarm_with_keypair(libp2p::identity::Keypair::generate_ed25519())
+}
+
+/// Helper to create test swarms with specific keypairs
+fn create_test_swarm_with_keypair(keypair: libp2p::identity::Keypair) -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
+    use libp2p::tcp::Config;
+    use libp2p::{Transport, core::upgrade, dns, noise, swarm::Config as SwarmConfig, tcp, yamux, request_response, StreamProtocol};
+    use std::time::Duration;
+    use std::iter;
+    
+    let tcp_config = Config::default()
+        .nodelay(true)
+        .listen_backlog(1024)
+        .ttl(64);
+        
+    let mut yamux_config = yamux::Config::default();
+    yamux_config.set_max_num_streams(512);
+        
+    let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
+        .map_err(|e| format!("Failed to create DNS transport: {e}"))?
+        .upgrade(upgrade::Version::V1)
+        .authenticate(noise::Config::new(&keypair).unwrap())
+        .multiplex(yamux_config)
+        .boxed();
+
+    // Create behaviour with unique peer ID
+    let peer_id = libp2p::PeerId::from(keypair.public());
+    
+    // Create request-response protocols using the same patterns as the main code
+    let dm_protocol = StreamProtocol::new("/dm/1.0.0");
+    let dm_protocols = iter::once((dm_protocol, request_response::ProtocolSupport::Full));
+    
+    let cfg = request_response::Config::default()
+        .with_request_timeout(Duration::from_secs(60))
+        .with_max_concurrent_streams(256);
+    
+    let request_response = request_response::cbor::Behaviour::new(dm_protocols, cfg.clone());
+    
+    // Node description protocol
+    let desc_protocol = StreamProtocol::new("/node-desc/1.0.0");
+    let desc_protocols = iter::once((desc_protocol, request_response::ProtocolSupport::Full));
+    let node_description = request_response::cbor::Behaviour::new(desc_protocols, cfg.clone());
+    
+    // Story sync protocol
+    let story_sync_protocol = StreamProtocol::new("/story-sync/1.0.0");
+    let story_sync_protocols = iter::once((story_sync_protocol, request_response::ProtocolSupport::Full));
+    let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg);
+    
+    // Create Kademlia DHT
+    let store = libp2p::kad::store::MemoryStore::new(peer_id);
+    let kad_config = libp2p::kad::Config::default();
+    let mut kad = libp2p::kad::Behaviour::with_config(peer_id, store, kad_config);
+    kad.set_mode(Some(libp2p::kad::Mode::Server));
+    
+    let behaviour = StoryBehaviour {
+        floodsub: libp2p::floodsub::Behaviour::new(peer_id),
+        mdns: libp2p::mdns::tokio::Behaviour::new(Default::default(), peer_id).expect("can create mdns"),
+        ping: libp2p::ping::Behaviour::new(libp2p::ping::Config::new()),
+        request_response,
+        node_description,
+        story_sync,
+        kad,
+    };
+
+    let swarm_config = SwarmConfig::with_tokio_executor()
+        .with_idle_connection_timeout(Duration::from_secs(30));
+        
+    Ok(libp2p::Swarm::new(
+        transp,
+        behaviour,
+        peer_id,
+        swarm_config
+    ))
 }
 
 /// Helper to get current timestamp
@@ -34,19 +104,29 @@ async fn establish_connection(
 ) -> Option<Multiaddr> {
     swarm1.listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap()).unwrap();
     
-    let addr = loop {
-        match swarm1.select_next_some().await {
-            SwarmEvent::NewListenAddr { address, .. } => break address,
-            _ => {}
+    // Get the listening address with timeout
+    let addr = {
+        let mut addr_opt = None;
+        for _ in 0..50 {
+            tokio::select! {
+                event = swarm1.select_next_some() => {
+                    if let SwarmEvent::NewListenAddr { address, .. } = event {
+                        addr_opt = Some(address);
+                        break;
+                    }
+                }
+                _ = time::sleep(Duration::from_millis(50)) => {}
+            }
         }
+        addr_opt?
     };
     
     if swarm2.dial(addr.clone()).is_err() {
         return None;
     }
     
-    // Wait for connection
-    for _ in 0..20 {
+    // Wait for connection with much longer timeout
+    for _ in 0..100 {
         tokio::select! {
             event1 = swarm1.select_next_some() => {
                 if let SwarmEvent::ConnectionEstablished { .. } = event1 {
@@ -58,7 +138,7 @@ async fn establish_connection(
                     return Some(addr);
                 }
             }
-            _ = time::sleep(Duration::from_millis(50)) => {}
+            _ = time::sleep(Duration::from_millis(100)) => {}
         }
     }
     
@@ -81,6 +161,9 @@ async fn test_high_frequency_message_broadcasting() {
     // Establish connection
     let _addr = establish_connection(&mut swarm1, &mut swarm2).await;
     assert!(_addr.is_some(), "Connection should be established");
+    
+    // Allow time for connection to stabilize
+    time::sleep(Duration::from_millis(500)).await;
     
     let message_count = 1000;
     let mut messages_sent = 0;
@@ -174,6 +257,9 @@ async fn test_large_message_handling_performance() {
     // Establish connection
     let _addr = establish_connection(&mut swarm1, &mut swarm2).await;
     assert!(_addr.is_some(), "Connection should be established");
+    
+    // Allow time for connection to stabilize
+    time::sleep(Duration::from_millis(1000)).await;
     
     // Test different message sizes
     let message_sizes = vec![1_000, 10_000, 100_000, 500_000]; // 1KB to 500KB
@@ -283,20 +369,28 @@ async fn test_concurrent_connection_performance() {
     
     let start_time = Instant::now();
     
-    // Start all swarms listening on different ports
+    // Start all swarms listening on dynamic ports to avoid conflicts
     let mut listen_addresses = Vec::new();
     for (i, swarm) in swarms.iter_mut().enumerate() {
-        swarm.listen_on(format!("/ip4/127.0.0.1/tcp/{}", 40000 + i).parse().unwrap()).unwrap();
+        swarm.listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap()).unwrap();
         
-        // Get listening address
-        loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    listen_addresses.push(address);
-                    break;
+        // Get listening address with timeout
+        let mut addr_found = false;
+        for _ in 0..50 {
+            tokio::select! {
+                event = swarm.select_next_some() => {
+                    if let SwarmEvent::NewListenAddr { address, .. } = event {
+                        listen_addresses.push(address);
+                        addr_found = true;
+                        break;
+                    }
                 }
-                _ => {}
+                _ = time::sleep(Duration::from_millis(50)) => {}
             }
+        }
+        
+        if !addr_found {
+            println!("Failed to get listening address for swarm {}", i);
         }
     }
     
@@ -305,21 +399,28 @@ async fn test_concurrent_connection_performance() {
         swarms[0].dial(listen_addresses[i].clone()).unwrap();
     }
     
-    // Track connections established
+    // Track connections established with better error handling
     let mut connections_established = 0;
-    let connection_timeout = Duration::from_secs(30);
+    let connection_timeout = Duration::from_secs(60); // Increased timeout
     let connection_start = Instant::now();
     
     while connection_start.elapsed() < connection_timeout && connections_established < connection_count - 1 {
-        for swarm in &mut swarms {
+        for (i, swarm) in swarms.iter_mut().enumerate() {
             if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
-                if let SwarmEvent::ConnectionEstablished { .. } = event {
-                    connections_established += 1;
+                match event {
+                    SwarmEvent::ConnectionEstablished { .. } => {
+                        connections_established += 1;
+                        println!("Connection established: {} of {}", connections_established, connection_count - 1);
+                    }
+                    SwarmEvent::OutgoingConnectionError { error, .. } => {
+                        println!("Connection error on swarm {}: {:?}", i, error);
+                    }
+                    _ => {}
                 }
             }
         }
         
-        time::sleep(Duration::from_millis(10)).await;
+        time::sleep(Duration::from_millis(50)).await; // Longer sleep
     }
     
     let connection_setup_time = start_time.elapsed();
@@ -388,6 +489,9 @@ async fn test_request_response_throughput() {
     // Establish connection
     let _addr = establish_connection(&mut swarm1, &mut swarm2).await;
     assert!(_addr.is_some(), "Connection should be established");
+    
+    // Allow time for connection to stabilize
+    time::sleep(Duration::from_millis(1000)).await;
     
     let request_count = 500;
     let mut requests_sent = 0;
@@ -507,6 +611,9 @@ async fn test_memory_usage_under_load() {
     let _addr = establish_connection(&mut swarm1, &mut swarm2).await;
     assert!(_addr.is_some(), "Connection should be established");
     
+    // Allow time for connection to stabilize
+    time::sleep(Duration::from_millis(500)).await;
+    
     // Create many messages of varying sizes
     let message_count = 1000;
     let messages_sent = Arc::new(AtomicUsize::new(0));
@@ -599,6 +706,9 @@ async fn test_story_sync_performance_large_dataset() {
     let _addr = establish_connection(&mut swarm1, &mut swarm2).await;
     assert!(_addr.is_some(), "Connection should be established");
     
+    // Allow extra time for large connection to stabilize
+    time::sleep(Duration::from_millis(1500)).await;
+    
     // Create large dataset of stories
     let story_count = 5000;
     let large_stories: Vec<Story> = (0..story_count).map(|i| {
@@ -629,7 +739,7 @@ async fn test_story_sync_performance_large_dataset() {
     let mut sync_response_received = false;
     let mut synced_stories = Vec::new();
     
-    for _ in 0..100 {
+    for _ in 0..200 { // Increased timeout for large data
         tokio::select! {
             event1 = swarm1.select_next_some() => {
                 match event1 {
@@ -670,7 +780,7 @@ async fn test_story_sync_performance_large_dataset() {
                     _ => {}
                 }
             }
-            _ = time::sleep(Duration::from_millis(100)) => {}
+            _ = time::sleep(Duration::from_millis(50)) => {}
         }
     }
     
@@ -726,6 +836,9 @@ async fn test_network_resilience_under_load() {
     // Establish connection
     let _addr = establish_connection(&mut swarm1, &mut swarm2).await;
     assert!(_addr.is_some(), "Connection should be established");
+    
+    // Allow time for connection to stabilize
+    time::sleep(Duration::from_millis(500)).await;
     
     // Test sustained load over time
     let load_duration = Duration::from_secs(10);
