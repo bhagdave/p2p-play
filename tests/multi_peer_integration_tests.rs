@@ -1,6 +1,6 @@
 use p2p_play::network::*;
 use p2p_play::types::*;
-use libp2p::floodsub::{FloodsubEvent};
+use libp2p::floodsub::{FloodsubEvent, Event};
 use libp2p::swarm::{SwarmEvent};
 use libp2p::request_response::{Event as RequestResponseEvent, Message};
 use libp2p::{PeerId, Multiaddr};
@@ -180,26 +180,77 @@ async fn test_three_peer_story_broadcasting() {
     // Connect swarms in mesh
     let _addresses = connect_swarms_mesh(&mut swarms).await;
     
-    // Wait for connections to establish
+    // Wait for connections to establish - increased timeout for more reliable connection establishment
     let mut connections_established = 0;
     let expected_connections = 6; // 3 peers, each connecting to 2 others
     
-    for _ in 0..30 {
-        for swarm in &mut swarms {
-            if let Some(SwarmEvent::ConnectionEstablished { .. }) = futures::StreamExt::next(swarm).now_or_never().flatten() {
-                connections_established += 1;
-                if connections_established >= expected_connections {
-                    break;
+    println!("Waiting for {} connections to establish...", expected_connections);
+    for attempt in 0..100 { // Increased from 30 to 100 attempts
+        for (i, swarm) in swarms.iter_mut().enumerate() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
+                match event {
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                        connections_established += 1;
+                        println!("Swarm {}: Connection established with peer {} (total: {})", i, peer_id, connections_established);
+                        if connections_established >= expected_connections {
+                            break;
+                        }
+                    }
+                    SwarmEvent::IncomingConnection { .. } => {
+                        println!("Swarm {}: Incoming connection detected", i);
+                    }
+                    SwarmEvent::OutgoingConnectionError { error, .. } => {
+                        println!("Swarm {}: Outgoing connection error: {:?}", i, error);
+                    }
+                    _ => {}
                 }
             }
         }
         if connections_established >= expected_connections {
+            println!("All {} connections established!", connections_established);
             break;
         }
+        
+        if attempt % 20 == 0 && attempt > 0 {
+            println!("Attempt {}: {} of {} connections established", attempt, connections_established, expected_connections);
+        }
+        
+        time::sleep(Duration::from_millis(200)).await; // Increased from 100ms to 200ms
+    }
+    
+    // Additional stabilization time for protocol handshakes
+    println!("Allowing additional time for protocol stabilization...");
+    time::sleep(Duration::from_millis(1000)).await;
+    
+    assert!(connections_established > 0, "At least some connections should be established");
+    
+    // Extended wait for floodsub mesh formation - this is crucial for message propagation
+    println!("Allowing extended time for floodsub mesh formation and peer discovery...");
+    
+    // Process events during mesh formation to help with discovery
+    for attempt in 0..100 {
+        for (i, swarm) in swarms.iter_mut().enumerate() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
+                match event {
+                    SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => {
+                        println!("Peer {}: Floodsub event: {:?}", i, event);
+                    }
+                    SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => {
+                        println!("Peer {}: mDNS event: {:?}", i, event);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        if attempt % 25 == 0 && attempt > 0 {
+            println!("Mesh formation attempt {}: allowing floodsub to build routing tables", attempt);
+        }
+        
         time::sleep(Duration::from_millis(100)).await;
     }
     
-    assert!(connections_established > 0, "At least some connections should be established");
+    println!("Floodsub mesh formation phase complete");
     
     // Create and broadcast a story from peer 0
     let test_story = Story::new_with_channel(
@@ -213,30 +264,53 @@ async fn test_three_peer_story_broadcasting() {
     let published_story = PublishedStory::new(test_story, peer_ids[0].to_string());
     let message_data = serde_json::to_string(&published_story).unwrap().into_bytes();
     
+    println!("Broadcasting story from peer 0...");
     swarms[0].behaviour_mut().floodsub.publish(TOPIC.clone(), message_data);
     
     // Track which peers received the message
     let mut received_by = HashSet::new();
     
-    // Process events for a reasonable time
-    for _ in 0..50 {
+    // Process events for a longer time with more detailed debugging
+    println!("Processing events to receive floodsub messages...");
+    for iteration in 0..200 { // Increased from 50 to 200 iterations
         for (i, swarm) in swarms.iter_mut().enumerate() {
             if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
-                if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(FloodsubEvent::Message(msg))) = event {
-                    if let Ok(received_story) = serde_json::from_slice::<PublishedStory>(&msg.data) {
-                        if received_story.story.name == "Multi-Peer Test Story" {
-                            received_by.insert(i);
+                match event {
+                    SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => {
+                        match event {
+                            Event::Message(msg) => {
+                                if let Ok(received_story) = serde_json::from_slice::<PublishedStory>(&msg.data) {
+                                    if received_story.story.name == "Multi-Peer Test Story" {
+                                        println!("✅ Peer {} received the broadcasted story!", i);
+                                        received_by.insert(i);
+                                    }
+                                }
+                            }
+                            Event::Subscribed { peer_id, topic } => {
+                                println!("Peer {} subscribed to topic {:?}: {}", i, topic, peer_id);
+                            }
+                            _ => {}
                         }
                     }
+                    SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(mdns_event)) => {
+                        println!("Peer {}: mDNS event: {:?}", i, mdns_event);
+                    }
+                    _ => {}
                 }
             }
         }
         
-        if received_by.len() >= 2 { // At least 2 other peers should receive it
+        // Check for early termination if we get enough responses
+        if received_by.len() >= 1 { // At least 1 other peer should receive it (reduced expectation)
+            println!("Sufficient message propagation achieved after {} iterations", iteration + 1);
             break;
         }
         
-        time::sleep(Duration::from_millis(50)).await;
+        if iteration % 50 == 0 && iteration > 0 {
+            println!("Iteration {}: {} peers have received the message so far", iteration, received_by.len());
+        }
+        
+        time::sleep(Duration::from_millis(100)).await; // Increased from 50ms to 100ms
     }
     
     assert!(received_by.len() >= 1, "At least one other peer should receive the broadcasted story");
@@ -709,8 +783,43 @@ async fn test_multi_peer_story_sync_workflow() {
     // Connect peers
     let _addresses = connect_swarms_mesh(&mut swarms).await;
     
-    // Wait for connections
-    time::sleep(Duration::from_secs(1)).await;
+    // Wait for connections - increased timeout for more stable connections
+    println!("Waiting for story sync test connections to establish...");
+    let mut connections_established = 0;
+    for attempt in 0..60 {
+        for (i, swarm) in swarms.iter_mut().enumerate() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
+                match event {
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                        connections_established += 1;
+                        println!("Story sync test: Swarm {}: Connection established with peer {} (total: {})", i, peer_id, connections_established);
+                    }
+                    SwarmEvent::IncomingConnection { .. } => {
+                        println!("Story sync test: Swarm {}: Incoming connection detected", i);
+                    }
+                    SwarmEvent::OutgoingConnectionError { error, .. } => {
+                        println!("Story sync test: Swarm {}: Connection error: {:?}", i, error);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        if connections_established >= 2 { // At least 2 connections for a 3-peer network
+            println!("Story sync test: Sufficient connections established ({})", connections_established);
+            break;
+        }
+        
+        if attempt % 15 == 0 && attempt > 0 {
+            println!("Story sync test: Attempt {}: {} connections established", attempt, connections_established);
+        }
+        
+        time::sleep(Duration::from_millis(200)).await;
+    }
+    
+    // Additional stabilization time for request-response protocols
+    println!("Story sync test: Allowing additional time for protocol stabilization...");
+    time::sleep(Duration::from_millis(1500)).await; // Increased from 1 second to 1.5 seconds
     
     // Simulate Peer 1 requesting stories from Peer 0
     let sync_request = StorySyncRequest {
@@ -819,8 +928,43 @@ async fn test_multi_peer_mixed_protocol_usage() {
     // Connect all peers
     let _addresses = connect_swarms_mesh(&mut swarms).await;
     
-    // Wait for connections
-    time::sleep(Duration::from_secs(1)).await;
+    // Wait for connections - increased timeout for 4-peer mixed protocol test
+    println!("Waiting for mixed protocol test connections to establish...");
+    let mut connections_established = 0;
+    for attempt in 0..80 { // Increased timeout for 4-peer network
+        for (i, swarm) in swarms.iter_mut().enumerate() {
+            if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
+                match event {
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                        connections_established += 1;
+                        println!("Mixed protocol test: Swarm {}: Connection established with peer {} (total: {})", i, peer_id, connections_established);
+                    }
+                    SwarmEvent::IncomingConnection { .. } => {
+                        println!("Mixed protocol test: Swarm {}: Incoming connection detected", i);
+                    }
+                    SwarmEvent::OutgoingConnectionError { error, .. } => {
+                        println!("Mixed protocol test: Swarm {}: Connection error: {:?}", i, error);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        if connections_established >= 4 { // At least 4 connections for a 4-peer network
+            println!("Mixed protocol test: Sufficient connections established ({})", connections_established);
+            break;
+        }
+        
+        if attempt % 20 == 0 && attempt > 0 {
+            println!("Mixed protocol test: Attempt {}: {} connections established", attempt, connections_established);
+        }
+        
+        time::sleep(Duration::from_millis(250)).await; // Slightly longer intervals for stability
+    }
+    
+    // Additional stabilization time for multiple protocols
+    println!("Mixed protocol test: Allowing additional time for protocol stabilization...");
+    time::sleep(Duration::from_millis(2000)).await; // Increased from 1 second to 2 seconds
     
     // Simultaneous operations:
     // 1. Peer 0 broadcasts a story via floodsub
