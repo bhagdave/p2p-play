@@ -152,18 +152,21 @@ async fn test_high_frequency_message_broadcasting() {
     let mut swarm2 = create_test_swarm().await.unwrap();
     
     let peer1_id = *swarm1.local_peer_id();
-    let peer2_id = *swarm2.local_peer_id();
+    let _peer2_id = *swarm2.local_peer_id();
     
-    // Subscribe to floodsub
-    swarm1.behaviour_mut().floodsub.subscribe(TOPIC.clone());
-    swarm2.behaviour_mut().floodsub.subscribe(TOPIC.clone());
-    
-    // Establish connection
+    // Establish connection first
     let _addr = establish_connection(&mut swarm1, &mut swarm2).await;
     assert!(_addr.is_some(), "Connection should be established");
     
     // Allow time for connection to stabilize
-    time::sleep(Duration::from_millis(500)).await;
+    time::sleep(Duration::from_millis(1000)).await;
+    
+    // Subscribe to floodsub after connection is established
+    swarm1.behaviour_mut().floodsub.subscribe(TOPIC.clone());
+    swarm2.behaviour_mut().floodsub.subscribe(TOPIC.clone());
+    
+    // Allow time for subscriptions to propagate
+    time::sleep(Duration::from_millis(1000)).await;
     
     let message_count = 1000;
     let mut messages_sent = 0;
