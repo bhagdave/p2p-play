@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [0.9.0] 2025-01-20
+## [0.9.0] 2025-08-13
 
 ### Added
 - **Database Connection Pooling**: Optimized database performance with connection pooling
