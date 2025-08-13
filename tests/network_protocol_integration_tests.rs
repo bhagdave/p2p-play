@@ -15,7 +15,7 @@ use common::{create_test_swarm_with_ping_config, current_timestamp};
 
 /// Test helper to create test swarms with unique peer IDs
 async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
-    common::create_test_swarm().await
+    common::create_test_swarm()
 }
 
 /// Helper to attempt connection with timeout
