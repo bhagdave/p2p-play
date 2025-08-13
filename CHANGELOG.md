@@ -75,6 +75,20 @@ All changes to this project will be documented in this file.
   - Added detailed security policy documentation in `CONTENT_VALIDATION_POLICY.md`
   - Updated existing tests to match new security requirements
   - Fixes issue #171
+- **Comprehensive Network Protocol Integration Test Coverage**: Major enhancement to prevent regressions in core P2P functionality with extensive integration testing
+  - Added 5 new comprehensive test modules with 45+ integration tests covering all network protocols and peer interaction scenarios
+  - **Network Protocol Integration Tests** (`network_protocol_integration_tests.rs`): 11 tests covering floodsub message broadcasting, ping connectivity, direct messaging, node descriptions, story sync, Kademlia DHT operations, and concurrent protocol usage
+  - **Multi-Peer Integration Tests** (`multi_peer_integration_tests.rs`): 7 tests covering 3-10 peer scenarios including story broadcasting chains, direct messaging workflows, channel-based distribution, peer discovery, and disconnection/reconnection resilience
+  - **Message Serialization Edge Cases** (`message_serialization_edge_cases_tests.rs`): 11 tests covering robustness with empty strings, maximum values, Unicode characters, large payloads (up to 1MB), malformed JSON handling, backwards compatibility, and performance benchmarking
+  - **Network Failure Recovery Tests** (`network_failure_recovery_tests.rs`): 8 tests covering timeout handling, connection failures, network partitions, delivery failures, protocol mismatches, resource exhaustion, and bootstrap recovery scenarios
+  - **Performance and Load Tests** (`performance_load_tests.rs`): 8 tests covering high-frequency broadcasting (>10 msgs/sec), large message handling (1KB-500KB), concurrent connections (10+), sustained load resilience, and memory usage validation
+  - Added comprehensive performance benchmarking with throughput metrics, latency measurements, and memory usage tracking
+  - Updated `scripts/test_runner.sh` to include all new integration test modules with proper isolation and cleanup
+  - Added detailed documentation in `docs/NETWORK_INTEGRATION_TESTING.md` with troubleshooting, CI integration, and maintenance guidelines
+  - All tests designed with proper isolation, dynamic port allocation, timeout handling, and deterministic behavior for CI environments
+  - Achieves >80% integration test coverage for all libp2p protocols (floodsub, mDNS, Kademlia, ping, request-response)
+  - Prevents regressions in peer discovery, connection management, message serialization, failure recovery, and performance characteristics
+  - Fixes issue #172
 
 ## [0.8.5] 2025-08-09
 
