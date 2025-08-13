@@ -5,9 +5,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::iter;
 
 /// Creates a test swarm with a unique generated keypair
-pub async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
+pub fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     let keypair = libp2p::identity::Keypair::generate_ed25519();
-    Ok(create_test_swarm_with_keypair(keypair)?)
+    create_test_swarm_with_keypair(keypair)
 }
 
 /// Creates a test swarm with a specific keypair for testing
@@ -66,16 +66,18 @@ pub fn create_test_swarm_with_keypair(keypair: libp2p::identity::Keypair) -> Res
     let mut kad = libp2p::kad::Behaviour::with_config(peer_id, store, kad_config);
     kad.set_mode(Some(libp2p::kad::Mode::Server));
     
-    let behaviour = StoryBehaviour {
+    let mut behaviour = StoryBehaviour {
         floodsub: libp2p::floodsub::Behaviour::new(peer_id),
-        mdns: libp2p::mdns::tokio::Behaviour::new(Default::default(), peer_id)
-            .map_err(|e| format!("Failed to create mDNS: {e}"))?,
+        mdns: libp2p::mdns::tokio::Behaviour::new(Default::default(), peer_id).expect("can create mdns"),
         ping: libp2p::ping::Behaviour::new(libp2p::ping::Config::new()),
         request_response,
         node_description,
         story_sync,
         kad,
     };
+
+    // Subscribe to topics immediately like the main create_swarm function does
+    behaviour.floodsub.subscribe(TOPIC.clone());
 
     let swarm_config = SwarmConfig::with_tokio_executor()
         .with_idle_connection_timeout(Duration::from_secs(30));
