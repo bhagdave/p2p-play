@@ -1,15 +1,11 @@
+mod common;
+
 use p2p_play::network::*;
 use p2p_play::types::*;
 use serde_json;
 use std::time::{SystemTime, UNIX_EPOCH};
+use common::current_timestamp;
 
-/// Helper to get current timestamp
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
 
 #[tokio::test]
 async fn test_story_serialization_edge_cases() {
