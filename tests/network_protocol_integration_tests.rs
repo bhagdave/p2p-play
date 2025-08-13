@@ -1,3 +1,5 @@
+mod common;
+
 use p2p_play::network::*;
 use p2p_play::types::*;
 use libp2p::floodsub::{Event as FloodsubEvent};
@@ -9,20 +11,11 @@ use libp2p::{PeerId, Multiaddr};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time;
 use futures::StreamExt;
+use common::{create_test_swarm_with_ping_config, current_timestamp};
 
 /// Test helper to create test swarms with unique peer IDs
 async fn create_test_swarm() -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
-    let ping_config = PingConfig::new();
-    let swarm = create_swarm(&ping_config)?;
-    Ok(swarm)
-}
-
-/// Test helper to get current timestamp
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
+    common::create_test_swarm().await
 }
 
 /// Helper to attempt connection with timeout

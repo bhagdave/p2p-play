@@ -1,3 +1,5 @@
+mod common;
+
 use p2p_play::network::*;
 use p2p_play::types::*;
 use libp2p::floodsub::{FloodsubEvent, Event};
@@ -10,127 +12,9 @@ use tokio::time;
 use futures::future::join_all;
 use futures::StreamExt;
 use futures::future::FutureExt;
+use common::{create_test_swarms, current_timestamp};
 
-/// Test helper for creating multiple test swarms with unique peer IDs
-async fn create_test_swarms(count: usize) -> Result<Vec<libp2p::Swarm<StoryBehaviour>>, Box<dyn std::error::Error>> {
-    let mut swarms = Vec::new();
-    for i in 0..count {
-        // Create unique keypair for each swarm (don't use the global one)
-        let keypair = libp2p::identity::Keypair::generate_ed25519();
-        let peer_id = PeerId::from(keypair.public());
-        println!("Creating test swarm {} with unique PeerId: {}", i, peer_id);
-        
-        // Create swarm with unique keypair - we'll need to duplicate some of the create_swarm logic
-        let ping_config = PingConfig::new();
-        let swarm = create_swarm_with_keypair(keypair, &ping_config)?;
-        swarms.push(swarm);
-    }
-    Ok(swarms)
-}
 
-/// Create a swarm with a specific keypair (for testing)
-fn create_swarm_with_keypair(
-    keypair: libp2p::identity::Keypair,
-    ping_config: &PingConfig
-) -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
-    use libp2p::tcp::Config;
-    use libp2p::{Transport, core::upgrade, dns, noise, swarm::Config as SwarmConfig, tcp, yamux};
-    use std::num::NonZeroU8;
-    use std::time::Duration;
-    use std::iter;
-    use libp2p::{floodsub, mdns, ping, request_response, kad, StreamProtocol};
-
-    // Use the provided keypair instead of the global one
-    let local_peer_id = PeerId::from(keypair.public());
-    
-    // Enhanced TCP configuration (copied from create_swarm)
-    #[cfg(windows)]
-    let tcp_config = Config::default()
-        .nodelay(true)
-        .listen_backlog(1024)
-        .ttl(64);
-
-    #[cfg(not(windows))]
-    let tcp_config = Config::default()
-        .nodelay(true)
-        .listen_backlog(1024)
-        .ttl(64);
-
-    // Enhanced yamux configuration
-    let mut yamux_config = yamux::Config::default();
-    yamux_config.set_max_num_streams(512);
-
-    let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
-        .map_err(|e| format!("Failed to create DNS transport: {e}"))?
-        .upgrade(upgrade::Version::V1)
-        .authenticate(noise::Config::new(&keypair).unwrap())
-        .multiplex(yamux_config)
-        .boxed();
-
-    // Create request-response protocol for direct messaging (copied from create_swarm)
-    let protocol = request_response::ProtocolSupport::Full;
-    let dm_protocol = StreamProtocol::new("/dm/1.0.0");
-    let dm_protocols = iter::once((dm_protocol, protocol));
-
-    let cfg = request_response::Config::default()
-        .with_request_timeout(Duration::from_secs(30))
-        .with_max_concurrent_streams(256);
-
-    let request_response = request_response::cbor::Behaviour::new(dm_protocols, cfg.clone());
-
-    // Create request-response protocol for node descriptions
-    let desc_protocol_support = request_response::ProtocolSupport::Full;
-    let desc_protocol = StreamProtocol::new("/node-desc/1.0.0");
-    let desc_protocols = iter::once((desc_protocol, desc_protocol_support));
-    let node_description = request_response::cbor::Behaviour::new(desc_protocols, cfg.clone());
-
-    // Create request-response protocol for story synchronization
-    let story_sync_protocol_support = request_response::ProtocolSupport::Full;
-    let story_sync_protocol = StreamProtocol::new("/story-sync/1.0.0");
-    let story_sync_protocols = iter::once((story_sync_protocol, story_sync_protocol_support));
-    let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg);
-
-    // Create Kademlia DHT
-    let store = kad::store::MemoryStore::new(local_peer_id);
-    let kad_config = kad::Config::default();
-    let mut kad = kad::Behaviour::with_config(local_peer_id, store, kad_config);
-    kad.set_mode(Some(kad::Mode::Server));
-
-    // Create behaviour struct manually (like in create_swarm)
-    let mut behaviour = StoryBehaviour {
-        floodsub: floodsub::Behaviour::new(local_peer_id),
-        mdns: mdns::tokio::Behaviour::new(Default::default(), local_peer_id)
-            .expect("can create mdns"),
-        ping: ping::Behaviour::new(
-            ping::Config::new()
-                .with_interval(ping_config.interval_duration())
-                .with_timeout(ping_config.timeout_duration()),
-        ),
-        request_response,
-        node_description,
-        story_sync,
-        kad,
-    };
-
-    // Subscribe to topics like the original
-    behaviour.floodsub.subscribe(TOPIC.clone());
-    behaviour.floodsub.subscribe(RELAY_TOPIC.clone());
-
-    // Create swarm with enhanced configuration
-    let swarm_config = SwarmConfig::with_tokio_executor()
-        .with_idle_connection_timeout(Duration::from_secs(60));
-
-    let swarm = libp2p::Swarm::<StoryBehaviour>::new(transp, behaviour, local_peer_id, swarm_config);
-    Ok(swarm)
-}
-
-/// Helper to get current timestamp
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs()
-}
 
 /// Helper to connect all swarms in a mesh network
 async fn connect_swarms_mesh(swarms: &mut Vec<libp2p::Swarm<StoryBehaviour>>) -> Vec<Multiaddr> {
