@@ -58,7 +58,12 @@ pub fn create_test_swarm_with_keypair(keypair: libp2p::identity::Keypair) -> Res
     // Story sync protocol
     let story_sync_protocol = StreamProtocol::new("/story-sync/1.0.0");
     let story_sync_protocols = iter::once((story_sync_protocol, request_response::ProtocolSupport::Full));
-    let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg);
+    let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg.clone());
+    
+    // Handshake protocol for peer validation
+    let handshake_protocol = StreamProtocol::new("/p2p-play/handshake/1.0.0");
+    let handshake_protocols = iter::once((handshake_protocol, request_response::ProtocolSupport::Full));
+    let handshake = request_response::cbor::Behaviour::new(handshake_protocols, cfg);
     
     // Create Kademlia DHT
     let store = libp2p::kad::store::MemoryStore::new(peer_id);
@@ -73,6 +78,7 @@ pub fn create_test_swarm_with_keypair(keypair: libp2p::identity::Keypair) -> Res
         request_response,
         node_description,
         story_sync,
+        handshake,
         kad,
     };
 
