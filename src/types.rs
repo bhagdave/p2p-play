@@ -2,6 +2,7 @@ use crate::circuit_breaker;
 use crate::errors::ConfigResult;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
+    HandshakeRequest, HandshakeResponse,
 };
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
@@ -309,6 +310,7 @@ pub enum EventType {
             crate::network::StorySyncResponse,
         >,
     ),
+    HandshakeEvent(request_response::Event<HandshakeRequest, HandshakeResponse>),
     KadEvent(kad::Event),
     PublishStory(Story),
     PeerName(PeerName),

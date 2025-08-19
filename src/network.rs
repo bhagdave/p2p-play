@@ -59,6 +59,26 @@ pub struct StorySyncResponse {
     pub sync_timestamp: u64,
 }
 
+/// Application handshake protocol constants
+pub const APP_PROTOCOL: &str = "/p2p-play/handshake/1.0.0";
+pub const APP_VERSION: &str = "1.0.0";
+pub const APP_NAME: &str = "p2p-play";
+
+/// Handshake request/response types for peer validation
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HandshakeRequest {
+    pub app_name: String,
+    pub app_version: String,
+    pub peer_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HandshakeResponse {
+    pub accepted: bool,
+    pub app_name: String,
+    pub app_version: String,
+}
+
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
         debug!("Found existing peer key file, attempting to load");
@@ -116,6 +136,7 @@ pub struct StoryBehaviour {
     pub node_description:
         request_response::cbor::Behaviour<NodeDescriptionRequest, NodeDescriptionResponse>,
     pub story_sync: request_response::cbor::Behaviour<StorySyncRequest, StorySyncResponse>,
+    pub handshake: request_response::cbor::Behaviour<HandshakeRequest, HandshakeResponse>,
     pub kad: kad::Behaviour<kad::store::MemoryStore>,
 }
 
@@ -127,6 +148,7 @@ pub enum StoryBehaviourEvent {
     RequestResponse(request_response::Event<DirectMessageRequest, DirectMessageResponse>),
     NodeDescription(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
     StorySync(request_response::Event<StorySyncRequest, StorySyncResponse>),
+    Handshake(request_response::Event<HandshakeRequest, HandshakeResponse>),
     Kad(kad::Event),
 }
 
@@ -169,6 +191,12 @@ impl From<request_response::Event<NodeDescriptionRequest, NodeDescriptionRespons
 impl From<request_response::Event<StorySyncRequest, StorySyncResponse>> for StoryBehaviourEvent {
     fn from(event: request_response::Event<StorySyncRequest, StorySyncResponse>) -> Self {
         StoryBehaviourEvent::StorySync(event)
+    }
+}
+
+impl From<request_response::Event<HandshakeRequest, HandshakeResponse>> for StoryBehaviourEvent {
+    fn from(event: request_response::Event<HandshakeRequest, HandshakeResponse>) -> Self {
+        StoryBehaviourEvent::Handshake(event)
     }
 }
 
@@ -249,11 +277,20 @@ pub fn create_swarm(ping_config: &PingConfig) -> NetworkResult<Swarm<StoryBehavi
     let story_sync_protocol = StreamProtocol::new("/story-sync/1.0.0");
     let story_sync_protocols = iter::once((story_sync_protocol, story_sync_protocol_support));
 
-    let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg);
+    let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg.clone());
 
-    // Create Kademlia DHT
+    // Create request-response protocol for handshake validation
+    let handshake_protocol_support = request_response::ProtocolSupport::Full;
+    let handshake_protocol = StreamProtocol::new(APP_PROTOCOL);
+    let handshake_protocols = iter::once((handshake_protocol, handshake_protocol_support));
+
+    let handshake = request_response::cbor::Behaviour::new(handshake_protocols, cfg);
+
+    // Create Kademlia DHT with custom protocol for P2P-Play
     let store = kad::store::MemoryStore::new(*PEER_ID);
     let kad_config = kad::Config::default();
+    // TODO: Use custom protocol name to only connect to other P2P-Play nodes
+    // kad_config.set_protocol_names(vec!["/p2p-play/kad/1.0.0".into()]);
     let mut kad = kad::Behaviour::with_config(*PEER_ID, store, kad_config);
 
     // Set Kademlia mode to server to accept queries and provide records
@@ -275,6 +312,7 @@ pub fn create_swarm(ping_config: &PingConfig) -> NetworkResult<Swarm<StoryBehavi
         request_response,
         node_description,
         story_sync,
+        handshake,
         kad,
     };
 
