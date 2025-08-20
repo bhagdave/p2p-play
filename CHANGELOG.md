@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [0.10.0] 2025-01-14
+## [0.10.0] 2025-08-20
 
 ### Added
 - **Application-Specific Peer Filtering**: Implemented handshake protocol to prevent connections to non-P2P-Play nodes
