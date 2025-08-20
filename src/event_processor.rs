@@ -7,7 +7,9 @@ use crate::event_handlers::{
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, mark_story_as_read_for_peer, refresh_unread_counts_for_ui,
 };
-use crate::network::{PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC};
+use crate::network::{
+    APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC,
+};
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
@@ -308,6 +310,9 @@ impl EventProcessor {
             SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(event)) => {
                 Some(EventType::StorySyncEvent(event))
             }
+            SwarmEvent::Behaviour(StoryBehaviourEvent::Handshake(event)) => {
+                Some(EventType::HandshakeEvent(event))
+            }
             SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => {
                 // Update bootstrap status based on DHT events
                 update_bootstrap_status(&event, auto_bootstrap, swarm);
@@ -398,11 +403,26 @@ impl EventProcessor {
         local_peer_name: &Option<String>,
     ) {
         debug!("Connection established to {peer_id} via {endpoint:?}");
-        debug!("Adding peer {peer_id} to floodsub partial view");
-        swarm
+
+        // Initiate handshake to verify this is a P2P-Play peer before adding to floodsub
+        debug!(
+            "Initiating handshake with newly connected peer: {}",
+            peer_id
+        );
+        let handshake_request = HandshakeRequest {
+            app_name: APP_NAME.to_string(),
+            app_version: APP_VERSION.to_string(),
+            peer_id: PEER_ID.to_string(),
+        };
+
+        let request_id = swarm
             .behaviour_mut()
-            .floodsub
-            .add_node_to_partial_view(peer_id);
+            .handshake
+            .send_request(&peer_id, handshake_request);
+        debug!(
+            "Handshake request sent to {} (request_id: {:?})",
+            peer_id, request_id
+        );
 
         // Track successful connection for improved reconnect timing
         track_successful_connection(peer_id);

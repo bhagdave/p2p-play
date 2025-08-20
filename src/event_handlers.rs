@@ -10,8 +10,9 @@ use crate::handlers::{
     handle_unsubscribe_channel,
 };
 use crate::network::{
-    DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
-    PEER_ID, StoryBehaviour, TOPIC,
+    APP_NAME, APP_VERSION, DirectMessageRequest, DirectMessageResponse, HandshakeRequest,
+    HandshakeResponse, NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour,
+    TOPIC,
 };
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
@@ -290,10 +291,11 @@ pub async fn handle_input_event(
     None
 }
 
-/// Handle mDNS discovery events
+/// Handle mDNS discovery events with peer validation
 pub async fn handle_mdns_event(
     mdns_event: libp2p::mdns::Event,
     swarm: &mut Swarm<StoryBehaviour>,
+    _ui_logger: &UILogger,
     error_logger: &ErrorLogger,
 ) {
     match mdns_event {
@@ -311,6 +313,8 @@ pub async fn handle_mdns_event(
                             peer,
                             e
                         );
+                    } else {
+                        debug!("Dial initiated successfully for peer: {}", peer);
                     }
                 } else {
                     debug!("Already connected to peer: {peer}");
@@ -1484,6 +1488,112 @@ pub async fn initiate_story_sync_with_peer(
     }
 }
 
+/// Handle handshake protocol events for peer validation
+pub async fn handle_handshake_event(
+    event: request_response::Event<HandshakeRequest, HandshakeResponse>,
+    swarm: &mut Swarm<StoryBehaviour>,
+    _ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
+    match event {
+        request_response::Event::Message { peer, message, .. } => {
+            match message {
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    // Handle incoming handshake request
+                    debug!(
+                        "Received handshake request from {}: app={}, version={}",
+                        request.peer_id, request.app_name, request.app_version
+                    );
+
+                    // Validate the handshake request (only check app name)
+                    let accepted = request.app_name == APP_NAME;
+
+                    if accepted {
+                        debug!(
+                            "✅ Verified P2P-Play peer: {} (v{})",
+                            request.peer_id, request.app_version
+                        );
+                    } else {
+                        debug!(
+                            "❌ Rejected non-P2P-Play peer: {} (app: {}, version: {})",
+                            request.peer_id, request.app_name, request.app_version
+                        );
+                    }
+
+                    // Send handshake response
+                    let response = HandshakeResponse {
+                        accepted,
+                        app_name: APP_NAME.to_string(),
+                        app_version: APP_VERSION.to_string(),
+                    };
+
+                    if let Err(e) = swarm
+                        .behaviour_mut()
+                        .handshake
+                        .send_response(channel, response)
+                    {
+                        crate::log_network_error!(
+                            error_logger,
+                            "handshake",
+                            "Failed to send handshake response to {}: {:?}",
+                            peer,
+                            e
+                        );
+                    }
+
+                    // If peer is not compatible, disconnect from them
+                    if !accepted {
+                        debug!("Disconnecting from incompatible peer: {}", peer);
+                        let _ = swarm.disconnect_peer_id(peer);
+                    }
+                }
+                request_response::Message::Response { response, .. } => {
+                    // Handle handshake response
+                    debug!(
+                        "Received handshake response from {}: accepted={}, app={}, version={}",
+                        peer, response.accepted, response.app_name, response.app_version
+                    );
+
+                    if response.accepted && response.app_name == APP_NAME {
+                        debug!(
+                            "✅ Handshake successful with P2P-Play peer: {} (v{})",
+                            peer, response.app_version
+                        );
+
+                        // Add peer to floodsub for story sharing
+                        swarm
+                            .behaviour_mut()
+                            .floodsub
+                            .add_node_to_partial_view(peer);
+                        debug!("Added verified peer {} to floodsub partial view", peer);
+                    } else {
+                        debug!(
+                            "❌ Handshake failed with peer {}: not a compatible P2P-Play node",
+                            peer
+                        );
+
+                        // Disconnect from incompatible peer
+                        debug!("Disconnecting from incompatible peer: {}", peer);
+                        let _ = swarm.disconnect_peer_id(peer);
+                    }
+                }
+            }
+        }
+        request_response::Event::OutboundFailure { peer, error, .. } => {
+            debug!("Handshake outbound failure with peer {}: {:?}", peer, error);
+            // If handshake fails, assume peer is not compatible and disconnect
+            debug!("Disconnecting from unresponsive peer: {}", peer);
+            let _ = swarm.disconnect_peer_id(peer);
+        }
+        request_response::Event::InboundFailure { peer, error, .. } => {
+            debug!("Handshake inbound failure with peer {}: {:?}", peer, error);
+        }
+        _ => {}
+    }
+}
+
 /// Main event dispatcher that routes events to appropriate handlers
 pub async fn handle_event(
     event: EventType,
@@ -1526,7 +1636,7 @@ pub async fn handle_event(
             .await;
         }
         EventType::MdnsEvent(mdns_event) => {
-            handle_mdns_event(mdns_event, swarm, error_logger).await;
+            handle_mdns_event(mdns_event, swarm, ui_logger, error_logger).await;
         }
         EventType::FloodsubEvent(floodsub_event) => {
             if let Some(action_result) = handle_floodsub_event(
@@ -1589,6 +1699,10 @@ pub async fn handle_event(
                 error_logger,
             )
             .await;
+        }
+        EventType::HandshakeEvent(handshake_event) => {
+            // Handle handshake events with peer validation
+            handle_handshake_event(handshake_event, swarm, ui_logger, error_logger).await;
         }
         EventType::KadEvent(kad_event) => {
             handle_kad_event(kad_event, swarm, ui_logger, error_logger, bootstrap_logger).await;
