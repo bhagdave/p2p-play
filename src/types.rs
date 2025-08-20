@@ -1,8 +1,8 @@
 use crate::circuit_breaker;
 use crate::errors::ConfigResult;
 use crate::network::{
-    DirectMessageRequest, DirectMessageResponse, NodeDescriptionRequest, NodeDescriptionResponse,
-    HandshakeRequest, HandshakeResponse,
+    DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
+    NodeDescriptionRequest, NodeDescriptionResponse,
 };
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};

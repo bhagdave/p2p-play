@@ -2,6 +2,18 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.0] 2025-01-14
+
+### Added
+- **Application-Specific Peer Filtering**: Implemented handshake protocol to prevent connections to non-P2P-Play nodes
+  - Added custom handshake protocol `/p2p-play/handshake/1.0.0` for peer validation
+  - `HandshakeRequest` and `HandshakeResponse` structures validate application compatibility
+  - Automatic peer validation during connection establishment using application name matching
+  - Non-compatible peers are automatically disconnected to reduce network noise
+  - Application name and version extracted from `Cargo.toml` for maintainability
+  - Peer rejection and handshake failures logged at debug level to prevent UI spam
+  - Fixes issue #211
+
 ## [0.9.0] 2025-08-13
 
 ### Added

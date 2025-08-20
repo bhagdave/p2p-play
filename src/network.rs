@@ -61,8 +61,8 @@ pub struct StorySyncResponse {
 
 /// Application handshake protocol constants
 pub const APP_PROTOCOL: &str = "/p2p-play/handshake/1.0.0";
-pub const APP_VERSION: &str = "1.0.0";
-pub const APP_NAME: &str = "p2p-play";
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
 /// Handshake request/response types for peer validation
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
