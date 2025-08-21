@@ -8,18 +8,17 @@ use crate::handlers::{
     SortedPeerNamesCache, UILogger, mark_story_as_read_for_peer, refresh_unread_counts_for_ui,
 };
 use crate::network::{
-    APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC,
+    APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
 };
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
 use crate::types::{
-    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage,
+    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PendingDirectMessage,
     PendingHandshakePeer,
 };
 use crate::ui::{App, AppEvent, handle_ui_events};
 
-use bytes::Bytes;
 use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
 use log::debug;
 use std::collections::HashMap;
@@ -630,12 +629,12 @@ impl EventProcessor {
             debug!("Handshake with peer {} timed out after {}s, disconnecting", peer_id, HANDSHAKE_TIMEOUT_SECS);
             
             // Disconnect the peer
-            let _ = swarm.disconnect_peer_id(peer_id);
+            let _ = swarm.disconnect_peer_id(*peer_id);
             
             // Remove from pending list
             {
                 let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
-                pending_peers.remove(&peer_id);
+                pending_peers.remove(peer_id);
             }
             
             self.error_logger.log_error(&format!(
@@ -644,8 +643,8 @@ impl EventProcessor {
             ));
         }
 
-        if !timed_out_peers.is_empty() {
-            debug!("Cleaned up {} timed-out handshakes", timed_out_peers.len());
+        if timed_out_count > 0 {
+            debug!("Cleaned up {} timed-out handshakes", timed_out_count);
         }
     }
 
