@@ -425,7 +425,10 @@ impl EventProcessor {
         debug!("Connection established to {peer_id} via {endpoint:?}");
 
         // Add connection success logging to help debug network issues
-        debug!("Successful connection to peer {} - initiating handshake verification", peer_id);
+        debug!(
+            "Successful connection to peer {} - initiating handshake verification",
+            peer_id
+        );
 
         // Store peer in pending handshake state - all P2P-Play specific operations
         // will be deferred until handshake completion
@@ -466,7 +469,10 @@ impl EventProcessor {
 
         // NOTE: Do NOT add peers to peer_names until handshake verification
         // This prevents unverified peers from appearing in the UI
-        debug!("Peer {} awaiting handshake verification before UI display", peer_id);
+        debug!(
+            "Peer {} awaiting handshake verification before UI display",
+            peer_id
+        );
 
         // NOTE: All other P2P-Play specific operations (peer name broadcast,
         // story sync, message retry) are deferred until handshake completion
@@ -485,7 +491,7 @@ impl EventProcessor {
         app: &mut App,
     ) {
         debug!("Connection closed to {peer_id}: {cause:?}");
-        
+
         // Check if this is a "Connection refused" error which is common during startup
         let error_msg = format!("{:?}", cause);
         if error_msg.contains("Connection refused") || error_msg.contains("os error 111") {
@@ -504,7 +510,10 @@ impl EventProcessor {
         {
             let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
             if pending_peers.remove(&peer_id).is_some() {
-                debug!("Removed peer {} from pending handshake list due to disconnection", peer_id);
+                debug!(
+                    "Removed peer {} from pending handshake list due to disconnection",
+                    peer_id
+                );
             }
         }
 
@@ -520,7 +529,10 @@ impl EventProcessor {
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
         } else if was_verified {
-            debug!("Verified peer {} disconnected but already removed from UI", peer_id);
+            debug!(
+                "Verified peer {} disconnected but already removed from UI",
+                peer_id
+            );
         } else {
             debug!("Unverified peer {} disconnected (was not in UI)", peer_id);
         }
@@ -647,42 +659,51 @@ impl EventProcessor {
         }
 
         let timed_out_count = timed_out_peers.len();
-        
+
         // Handle timed-out peers
         for peer_id in &timed_out_peers {
             // Check if this is a bootstrap peer - be more lenient for bootstrap connections
             let is_bootstrap_peer = {
                 let pending_peers = self.pending_handshake_peers.lock().unwrap();
                 if let Some(pending_peer) = pending_peers.get(peer_id) {
-                    matches!(pending_peer.endpoint, libp2p::core::ConnectedPoint::Dialer { .. })
+                    matches!(
+                        pending_peer.endpoint,
+                        libp2p::core::ConnectedPoint::Dialer { .. }
+                    )
                 } else {
                     false
                 }
             };
 
             if is_bootstrap_peer {
-                debug!("Bootstrap peer {} handshake timeout after {}s, allowing extra time", peer_id, HANDSHAKE_TIMEOUT_SECS);
+                debug!(
+                    "Bootstrap peer {} handshake timeout after {}s, allowing extra time",
+                    peer_id, HANDSHAKE_TIMEOUT_SECS
+                );
                 // For bootstrap peers, give extra time but log the delay
                 self.error_logger.log_error(&format!(
-                    "Bootstrap handshake slow with peer {}: {}s elapsed, monitoring...", 
+                    "Bootstrap handshake slow with peer {}: {}s elapsed, monitoring...",
                     peer_id, HANDSHAKE_TIMEOUT_SECS
                 ));
                 continue; // Don't disconnect bootstrap peers on first timeout
             }
 
-            debug!("Handshake with peer {} timed out after {}s, disconnecting", peer_id, HANDSHAKE_TIMEOUT_SECS);
-            
+            debug!(
+                "Handshake with peer {} timed out after {}s, disconnecting",
+                peer_id, HANDSHAKE_TIMEOUT_SECS
+            );
+
             // Disconnect the peer
             let _ = swarm.disconnect_peer_id(*peer_id);
-            
+
             // Remove from pending list
             {
                 let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
                 pending_peers.remove(peer_id);
             }
-            
+
             self.error_logger.log_error(&format!(
-                "Handshake timeout with peer {}: no response received within {}s", 
+                "Handshake timeout with peer {}: no response received within {}s",
                 peer_id, HANDSHAKE_TIMEOUT_SECS
             ));
         }
