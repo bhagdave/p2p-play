@@ -787,12 +787,9 @@ pub async fn handle_kad_event(
         } => {
             if is_new_peer {
                 debug!("New peer added to DHT routing table: {peer}");
-                ui_logger.log(format!("New peer added to DHT: {peer}"));
-
-                // NOTE: DHT peers are no longer automatically added to floodsub
-                // They must complete handshake verification first to prevent
-                // interaction with non-P2P-Play peers
-                debug!("DHT peer {peer} requires handshake verification before floodsub access");
+                // NOTE: No longer showing all DHT peers in UI to reduce noise
+                // Only verified P2P-Play peers will be displayed after handshake
+                debug!("DHT peer {peer} requires handshake verification before UI display");
             }
         }
         libp2p::kad::Event::InboundRequest { request } => match request {
