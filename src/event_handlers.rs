@@ -17,7 +17,7 @@ use crate::network::{
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
-    ListResponse, PeerName, PendingDirectMessage, PublishedChannel, PublishedStory,
+    ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel, PublishedStory,
 };
 
 use bytes::Bytes;
@@ -1488,12 +1488,65 @@ pub async fn initiate_story_sync_with_peer(
     }
 }
 
+/// Execute deferred operations for a peer after successful handshake
+pub async fn execute_deferred_peer_operations(
+    peer_id: PeerId,
+    swarm: &mut Swarm<StoryBehaviour>,
+    peer_names: &mut HashMap<PeerId, String>,
+    local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+) {
+    debug!("Executing deferred operations for verified P2P-Play peer: {}", peer_id);
+
+    // Broadcast local peer name to the newly verified peer
+    if let Some(name) = local_peer_name {
+        let peer_name = PeerName::new(PEER_ID.to_string(), name.clone());
+        let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
+        let json_bytes = Bytes::from(json.into_bytes());
+        swarm
+            .behaviour_mut()
+            .floodsub
+            .publish(TOPIC.clone(), json_bytes);
+        debug!("Sent local peer name '{}' to verified peer {}", name, peer_id);
+    }
+
+    // Retry any pending direct messages for this peer
+    retry_messages_for_peer(
+        peer_id,
+        swarm,
+        dm_config,
+        pending_messages,
+        peer_names,
+    )
+    .await;
+
+    // Initiate story synchronization with the verified peer
+    initiate_story_sync_with_peer(
+        peer_id,
+        swarm,
+        local_peer_name,
+        ui_logger,
+        error_logger,
+    )
+    .await;
+
+    debug!("Completed deferred operations for verified peer {}", peer_id);
+}
+
 /// Handle handshake protocol events for peer validation
 pub async fn handle_handshake_event(
     event: request_response::Event<HandshakeRequest, HandshakeResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
-    _ui_logger: &UILogger,
+    peer_names: &mut HashMap<PeerId, String>,
+    local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
     error_logger: &ErrorLogger,
+    dm_config: &DirectMessageConfig,
+    pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
+    pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
 ) {
     match event {
         request_response::Event::Message { peer, message, .. } => {
@@ -1568,6 +1621,26 @@ pub async fn handle_handshake_event(
                             .floodsub
                             .add_node_to_partial_view(peer);
                         debug!("Added verified peer {} to floodsub partial view", peer);
+
+                        // Execute all deferred operations now that handshake is successful
+                        execute_deferred_peer_operations(
+                            peer,
+                            swarm,
+                            peer_names,
+                            local_peer_name,
+                            ui_logger,
+                            error_logger,
+                            dm_config,
+                            pending_messages,
+                        ).await;
+
+                        // Remove peer from pending handshake list
+                        {
+                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
+                            if pending_peers.remove(&peer).is_some() {
+                                debug!("Removed peer {} from pending handshake list after successful handshake", peer);
+                            }
+                        }
                     } else {
                         debug!(
                             "❌ Handshake failed with peer {}: not a compatible P2P-Play node",
@@ -1577,6 +1650,14 @@ pub async fn handle_handshake_event(
                         // Disconnect from incompatible peer
                         debug!("Disconnecting from incompatible peer: {}", peer);
                         let _ = swarm.disconnect_peer_id(peer);
+
+                        // Remove peer from pending handshake list
+                        {
+                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
+                            if pending_peers.remove(&peer).is_some() {
+                                debug!("Removed incompatible peer {} from pending handshake list", peer);
+                            }
+                        }
                     }
                 }
             }
@@ -1586,15 +1667,32 @@ pub async fn handle_handshake_event(
             // If handshake fails, assume peer is not compatible and disconnect
             debug!("Disconnecting from unresponsive peer: {}", peer);
             let _ = swarm.disconnect_peer_id(peer);
+
+            // Remove peer from pending handshake list
+            {
+                let mut pending_peers = pending_handshake_peers.lock().unwrap();
+                if pending_peers.remove(&peer).is_some() {
+                    debug!("Removed unresponsive peer {} from pending handshake list", peer);
+                }
+            }
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
             debug!("Handshake inbound failure with peer {}: {:?}", peer, error);
+
+            // Remove peer from pending handshake list
+            {
+                let mut pending_peers = pending_handshake_peers.lock().unwrap();
+                if pending_peers.remove(&peer).is_some() {
+                    debug!("Removed failed peer {} from pending handshake list", peer);
+                }
+            }
         }
         _ => {}
     }
 }
 
 /// Main event dispatcher that routes events to appropriate handlers
+#[allow(clippy::too_many_arguments)]
 pub async fn handle_event(
     event: EventType,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1610,6 +1708,7 @@ pub async fn handle_event(
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
     relay_service: &mut Option<crate::relay::RelayService>,
     network_circuit_breakers: &crate::network_circuit_breakers::NetworkCircuitBreakers,
+    pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
 ) -> Option<ActionResult> {
     debug!("Event Received");
     match event {
@@ -1702,7 +1801,17 @@ pub async fn handle_event(
         }
         EventType::HandshakeEvent(handshake_event) => {
             // Handle handshake events with peer validation
-            handle_handshake_event(handshake_event, swarm, ui_logger, error_logger).await;
+            handle_handshake_event(
+                handshake_event,
+                swarm,
+                peer_names,
+                local_peer_name,
+                ui_logger,
+                error_logger,
+                dm_config,
+                pending_messages,
+                pending_handshake_peers,
+            ).await;
         }
         EventType::KadEvent(kad_event) => {
             handle_kad_event(kad_event, swarm, ui_logger, error_logger, bootstrap_logger).await;
