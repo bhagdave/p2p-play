@@ -34,7 +34,8 @@ const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
 
 // Handshake timeout - if no response received within this time, disconnect peer
-const HANDSHAKE_TIMEOUT_SECS: u64 = 30;
+// Increased timeout for slower internal networks and connection establishment
+const HANDSHAKE_TIMEOUT_SECS: u64 = 60;
 
 /// Event processor that handles the main application event loop
 pub struct EventProcessor {
@@ -119,7 +120,7 @@ impl EventProcessor {
             network_health_update_interval: interval(Duration::from_secs(
                 network_config.network_health_update_interval_seconds,
             )),
-            handshake_timeout_interval: interval(Duration::from_secs(HANDSHAKE_TIMEOUT_SECS)),
+            handshake_timeout_interval: interval(Duration::from_secs(HANDSHAKE_TIMEOUT_SECS / 2)), // Check every 30s for 60s timeout
             dm_config,
             pending_messages,
             ui_logger,
@@ -423,6 +424,9 @@ impl EventProcessor {
     ) {
         debug!("Connection established to {peer_id} via {endpoint:?}");
 
+        // Add connection success logging to help debug network issues
+        debug!("Successful connection to peer {} - initiating handshake verification", peer_id);
+
         // Store peer in pending handshake state - all P2P-Play specific operations
         // will be deferred until handshake completion
         let pending_peer = PendingHandshakePeer {
@@ -448,14 +452,31 @@ impl EventProcessor {
             peer_id: PEER_ID.to_string(),
         };
 
-        let request_id = swarm
+        match swarm
             .behaviour_mut()
             .handshake
-            .send_request(&peer_id, handshake_request);
-        debug!(
-            "Handshake request sent to {} (request_id: {:?})",
-            peer_id, request_id
-        );
+            .send_request(&peer_id, handshake_request)
+        {
+            Ok(request_id) => {
+                debug!(
+                    "Handshake request sent to {} (request_id: {:?})",
+                    peer_id, request_id
+                );
+            }
+            Err(e) => {
+                debug!("Failed to send handshake request to {}: {:?}", peer_id, e);
+                // Remove from pending list if handshake request fails
+                {
+                    let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
+                    pending_peers.remove(&peer_id);
+                }
+                self.error_logger.log_error(&format!(
+                    "Handshake request failed for peer {}: {:?}", 
+                    peer_id, e
+                ));
+                return;
+            }
+        }
 
         // Track successful connection for improved reconnect timing
         track_successful_connection(peer_id);
@@ -637,6 +658,26 @@ impl EventProcessor {
         
         // Handle timed-out peers
         for peer_id in &timed_out_peers {
+            // Check if this is a bootstrap peer - be more lenient for bootstrap connections
+            let is_bootstrap_peer = {
+                let pending_peers = self.pending_handshake_peers.lock().unwrap();
+                if let Some(pending_peer) = pending_peers.get(peer_id) {
+                    matches!(pending_peer.endpoint, libp2p::core::ConnectedPoint::Dialer { .. })
+                } else {
+                    false
+                }
+            };
+
+            if is_bootstrap_peer {
+                debug!("Bootstrap peer {} handshake timeout after {}s, allowing extra time", peer_id, HANDSHAKE_TIMEOUT_SECS);
+                // For bootstrap peers, give extra time but log the delay
+                self.error_logger.log_error(&format!(
+                    "Bootstrap handshake slow with peer {}: {}s elapsed, monitoring...", 
+                    peer_id, HANDSHAKE_TIMEOUT_SECS
+                ));
+                continue; // Don't disconnect bootstrap peers on first timeout
+            }
+
             debug!("Handshake with peer {} timed out after {}s, disconnecting", peer_id, HANDSHAKE_TIMEOUT_SECS);
             
             // Disconnect the peer
