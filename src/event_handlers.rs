@@ -789,14 +789,10 @@ pub async fn handle_kad_event(
                 debug!("New peer added to DHT routing table: {peer}");
                 ui_logger.log(format!("New peer added to DHT: {peer}"));
 
-                // Add the peer to floodsub partial view if connected
-                if swarm.is_connected(&peer) {
-                    swarm
-                        .behaviour_mut()
-                        .floodsub
-                        .add_node_to_partial_view(peer);
-                    debug!("Added DHT peer {peer} to floodsub partial view");
-                }
+                // NOTE: DHT peers are no longer automatically added to floodsub
+                // They must complete handshake verification first to prevent
+                // interaction with non-P2P-Play peers
+                debug!("DHT peer {peer} requires handshake verification before floodsub access");
             }
         }
         libp2p::kad::Event::InboundRequest { request } => match request {
