@@ -14,6 +14,14 @@ use crate::crypto::{EncryptedPayload, MessageSignature};
 
 pub type Stories = Vec<Story>;
 
+/// Information about a peer awaiting handshake completion
+#[derive(Debug, Clone)]
+pub struct PendingHandshakePeer {
+    pub peer_id: PeerId,
+    pub connection_time: Instant,
+    pub endpoint: libp2p::core::ConnectedPoint,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Story {
     pub id: usize,
