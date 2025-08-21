@@ -417,8 +417,8 @@ impl EventProcessor {
         peer_id: PeerId,
         endpoint: &libp2p::core::ConnectedPoint,
         swarm: &mut Swarm<StoryBehaviour>,
-        peer_names: &mut HashMap<PeerId, String>,
-        sorted_peer_names_cache: &mut SortedPeerNamesCache,
+        _peer_names: &mut HashMap<PeerId, String>,
+        _sorted_peer_names_cache: &mut SortedPeerNamesCache,
         _local_peer_name: &Option<String>,
     ) {
         debug!("Connection established to {peer_id} via {endpoint:?}");

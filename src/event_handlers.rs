@@ -356,18 +356,14 @@ pub async fn handle_floodsub_event(
             debug!("Message data length: {} bytes", msg.data.len());
 
             // Verify that message is from a verified P2P-Play peer
-            if let Some(source_peer) = msg.source {
-                let is_verified = {
-                    let verified_peers = verified_p2p_play_peers.lock().unwrap();
-                    verified_peers.contains_key(&source_peer)
-                };
+            let source_peer = msg.source;
+            let is_verified = {
+                let verified_peers = verified_p2p_play_peers.lock().unwrap();
+                verified_peers.contains_key(&source_peer)
+            };
 
-                if !is_verified {
-                    debug!("Ignoring floodsub message from unverified peer: {}", source_peer);
-                    return None;
-                }
-            } else {
-                debug!("Ignoring floodsub message with no source peer ID");
+            if !is_verified {
+                debug!("Ignoring floodsub message from unverified peer: {}", source_peer);
                 return None;
             }
             if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
@@ -1773,6 +1769,7 @@ pub async fn handle_event(
                 ui_logger,
                 error_logger,
                 relay_service,
+                verified_p2p_play_peers,
             )
             .await
             {
