@@ -1535,11 +1535,13 @@ pub async fn handle_handshake_event(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
+    sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
     pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
+    verified_p2p_play_peers: &Arc<Mutex<HashMap<PeerId, String>>>,
 ) {
     match event {
         request_response::Event::Message { peer, message, .. } => {
@@ -1615,6 +1617,16 @@ pub async fn handle_handshake_event(
                             .add_node_to_partial_view(peer);
                         debug!("Added verified peer {} to floodsub partial view", peer);
 
+                        // Add verified P2P-Play peer to UI display
+                        let peer_name = format!("Peer_{peer}");
+                        {
+                            let mut verified_peers = verified_p2p_play_peers.lock().unwrap();
+                            verified_peers.insert(peer, peer_name.clone());
+                        }
+                        peer_names.insert(peer, peer_name);
+                        sorted_peer_names_cache.update(peer_names);
+                        debug!("Added verified P2P-Play peer {} to UI display", peer);
+
                         // Execute all deferred operations now that handshake is successful
                         execute_deferred_peer_operations(
                             peer,
@@ -1634,6 +1646,9 @@ pub async fn handle_handshake_event(
                                 debug!("Removed peer {} from pending handshake list after successful handshake", peer);
                             }
                         }
+
+                        // Log successful P2P-Play peer verification to UI
+                        ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
                     } else {
                         debug!(
                             "❌ Handshake failed with peer {}: not a compatible P2P-Play node",
@@ -1800,11 +1815,13 @@ pub async fn handle_event(
                 swarm,
                 peer_names,
                 local_peer_name,
+                sorted_peer_names_cache,
                 ui_logger,
                 error_logger,
                 dm_config,
                 pending_messages,
                 pending_handshake_peers,
+                verified_p2p_play_peers,
             ).await;
         }
         EventType::KadEvent(kad_event) => {
