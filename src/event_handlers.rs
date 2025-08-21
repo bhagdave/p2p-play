@@ -1702,6 +1702,7 @@ pub async fn handle_event(
     relay_service: &mut Option<crate::relay::RelayService>,
     network_circuit_breakers: &crate::network_circuit_breakers::NetworkCircuitBreakers,
     pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
+    verified_p2p_play_peers: &Arc<Mutex<HashMap<PeerId, String>>>,
 ) -> Option<ActionResult> {
     debug!("Event Received");
     match event {

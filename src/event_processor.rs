@@ -76,6 +76,9 @@ pub struct EventProcessor {
 
     // Peers awaiting handshake completion
     pending_handshake_peers: Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
+
+    // Verified P2P-Play peers (only these are shown in UI)
+    verified_p2p_play_peers: Arc<Mutex<HashMap<PeerId, String>>>,
 }
 
 impl EventProcessor {
@@ -125,6 +128,7 @@ impl EventProcessor {
             relay_service,
             network_circuit_breakers,
             pending_handshake_peers: Arc::new(Mutex::new(HashMap::new())),
+            verified_p2p_play_peers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -456,13 +460,9 @@ impl EventProcessor {
         // Track successful connection for improved reconnect timing
         track_successful_connection(peer_id);
 
-        // Add connected peer to peer_names if not already present
-        // This is safe as it only adds a default name for UI display
-        if let std::collections::hash_map::Entry::Vacant(e) = peer_names.entry(peer_id) {
-            e.insert(format!("Peer_{peer_id}"));
-            debug!("Added connected peer {peer_id} to peer_names with default name");
-            sorted_peer_names_cache.update(peer_names);
-        }
+        // NOTE: Do NOT add peers to peer_names until handshake verification
+        // This prevents unverified peers from appearing in the UI
+        debug!("Peer {} awaiting handshake verification before UI display", peer_id);
 
         // NOTE: All other P2P-Play specific operations (peer name broadcast,
         // story sync, message retry) are deferred until handshake completion
@@ -495,11 +495,21 @@ impl EventProcessor {
             }
         }
 
-        // Remove the peer name when connection is closed
+        // Remove peer from verified P2P-Play peers if present
+        let was_verified = {
+            let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
+            verified_peers.remove(&peer_id).is_some()
+        };
+
+        // Remove the peer name when connection is closed (only if it was verified)
         if let Some(name) = peer_names.remove(&peer_id) {
-            debug!("Removed peer name '{name}' for disconnected peer {peer_id}");
+            debug!("Removed verified peer name '{name}' for disconnected peer {peer_id}");
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
+        } else if was_verified {
+            debug!("Verified peer {} disconnected but already removed from UI", peer_id);
+        } else {
+            debug!("Unverified peer {} disconnected (was not in UI)", peer_id);
         }
 
         // Trigger immediate connection maintenance to try reconnecting quickly
@@ -599,6 +609,7 @@ impl EventProcessor {
             &mut self.relay_service,
             &self.network_circuit_breakers,
             &self.pending_handshake_peers,
+            &self.verified_p2p_play_peers,
         )
         .await;
 
