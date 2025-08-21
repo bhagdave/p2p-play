@@ -1,16 +1,15 @@
 mod common;
 
-use common::{create_test_swarm_with_ping_config, current_timestamp};
+use common::current_timestamp;
 use futures::StreamExt;
 use libp2p::floodsub::Event as FloodsubEvent;
 use libp2p::kad::{Event as KadEvent, QueryResult};
 use libp2p::ping::Event as PingEvent;
 use libp2p::request_response::Event as RequestResponseEvent;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{Multiaddr, PeerId};
 use p2p_play::network::*;
 use p2p_play::types::*;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::time;
 
 /// Test helper to create test swarms with unique peer IDs
@@ -272,22 +271,19 @@ async fn test_direct_message_request_response() {
                     }
                 }
                 event2 = swarm2.select_next_some() => {
-                    match event2 {
-                        SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
+                    if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                             RequestResponseEvent::Message { message: libp2p::request_response::Message::Request { request, channel, .. }, .. }
-                        )) => {
-                            assert_eq!(request.message, "Test direct message");
-                            request_handled = true;
-                            println!("✅ Request received and handled");
+                        )) = event2 {
+                        assert_eq!(request.message, "Test direct message");
+                        request_handled = true;
+                        println!("✅ Request received and handled");
 
-                            // Send response
-                            let response = DirectMessageResponse {
-                                received: true,
-                                timestamp: current_timestamp(),
-                            };
-                            let _ = swarm2.behaviour_mut().request_response.send_response(channel, response);
-                        }
-                        _ => {}
+                        // Send response
+                        let response = DirectMessageResponse {
+                            received: true,
+                            timestamp: current_timestamp(),
+                        };
+                        let _ = swarm2.behaviour_mut().request_response.send_response(channel, response);
                     }
                 }
                 _ = &mut rr_timeout => {
@@ -373,8 +369,8 @@ async fn test_node_description_request_response() {
 #[tokio::test]
 async fn test_story_sync_request_response() {
     // Test story synchronization protocol
-    let mut swarm1 = create_test_swarm().await.unwrap();
-    let mut swarm2 = create_test_swarm().await.unwrap();
+    let swarm1 = create_test_swarm().await.unwrap();
+    let swarm2 = create_test_swarm().await.unwrap();
 
     let peer1_id = *swarm1.local_peer_id();
     let peer2_id = *swarm2.local_peer_id();

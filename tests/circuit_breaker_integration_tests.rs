@@ -1,5 +1,5 @@
-use p2p_play::circuit_breaker::{CircuitBreaker, CircuitBreakerConfig, CircuitBreakerError};
-use p2p_play::network_circuit_breakers::{NetworkCircuitBreakers, NetworkHealthSummary};
+use p2p_play::circuit_breaker::CircuitBreakerError;
+use p2p_play::network_circuit_breakers::NetworkCircuitBreakers;
 use p2p_play::types::NetworkCircuitBreakerConfig;
 use std::time::Duration;
 use tokio::time::sleep;

@@ -3,7 +3,6 @@ mod common;
 use common::{create_test_swarms, current_timestamp};
 use futures::StreamExt;
 use futures::future::FutureExt;
-use futures::future::join_all;
 use libp2p::floodsub::{Event, FloodsubEvent};
 use libp2p::request_response::{Event as RequestResponseEvent, Message};
 use libp2p::swarm::SwarmEvent;
@@ -11,7 +10,7 @@ use libp2p::{Multiaddr, PeerId};
 use p2p_play::network::*;
 use p2p_play::types::*;
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::time;
 
 /// Helper to connect all swarms in a mesh network
@@ -28,12 +27,9 @@ async fn connect_swarms_mesh(swarms: &mut Vec<libp2p::Swarm<StoryBehaviour>>) ->
     // Collect listening addresses
     for swarm in swarms.iter_mut() {
         loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    addresses.push(address);
-                    break;
-                }
-                _ => {}
+            if let SwarmEvent::NewListenAddr { address, .. } = swarm.select_next_some().await {
+                addresses.push(address);
+                break;
             }
         }
     }
@@ -65,12 +61,9 @@ async fn test_three_peer_story_broadcasting() {
 
     // Get the listening address
     let listening_addr = loop {
-        match swarms[0].select_next_some().await {
-            SwarmEvent::NewListenAddr { address, .. } => {
-                println!("Swarm 0 listening on: {}", address);
-                break address;
-            }
-            _ => {}
+        if let SwarmEvent::NewListenAddr { address, .. } = swarms[0].select_next_some().await {
+            println!("Swarm 0 listening on: {}", address);
+            break address;
         }
     };
 
@@ -142,15 +135,12 @@ async fn test_three_peer_story_broadcasting() {
                 match event {
                     SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => {
                         println!("Peer {}: Floodsub event: {:?}", i, event);
-                        match event {
-                            Event::Subscribed { peer_id, topic } => {
-                                println!(
-                                    "✅ Peer {} discovered subscription from peer {} on topic {:?}",
-                                    i, peer_id, topic
-                                );
-                                subscription_events += 1;
-                            }
-                            _ => {}
+                        if let Event::Subscribed { peer_id, topic } = event {
+                            println!(
+                                "✅ Peer {} discovered subscription from peer {} on topic {:?}",
+                                i, peer_id, topic
+                            );
+                            subscription_events += 1;
                         }
                     }
                     SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => {
@@ -204,38 +194,35 @@ async fn test_three_peer_story_broadcasting() {
     for iteration in 0..150 {
         for (i, swarm) in swarms.iter_mut().enumerate() {
             if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
-                match event {
-                    SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => match event {
-                        Event::Message(msg) => {
-                            println!(
-                                "Peer {} received floodsub message from peer {}",
-                                i, msg.source
-                            );
-                            if let Ok(received_story) =
-                                serde_json::from_slice::<PublishedStory>(&msg.data)
-                            {
-                                if received_story.story.name == "Multi-Peer Test Story" {
-                                    println!("✅ Peer {} received the broadcasted story!", i);
-                                    received_by.insert(i);
-                                }
-                            } else {
-                                println!(
-                                    "Peer {} received message but could not deserialize story",
-                                    i
-                                );
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) = event { match event {
+                    Event::Message(msg) => {
+                        println!(
+                            "Peer {} received floodsub message from peer {}",
+                            i, msg.source
+                        );
+                        if let Ok(received_story) =
+                            serde_json::from_slice::<PublishedStory>(&msg.data)
+                        {
+                            if received_story.story.name == "Multi-Peer Test Story" {
+                                println!("✅ Peer {} received the broadcasted story!", i);
+                                received_by.insert(i);
                             }
+                        } else {
+                            println!(
+                                "Peer {} received message but could not deserialize story",
+                                i
+                            );
                         }
-                        _ => {
-                            println!("Peer {}: Other floodsub event: {:?}", i, event);
-                        }
-                    },
-                    _ => {}
-                }
+                    }
+                    _ => {
+                        println!("Peer {}: Other floodsub event: {:?}", i, event);
+                    }
+                } }
             }
         }
 
         // Check for early termination if we get a response
-        if received_by.len() >= 1 {
+        if !received_by.is_empty() {
             // At least 1 peer (peer 1) should receive it
             println!(
                 "✅ Message propagation successful after {} iterations!",
@@ -277,7 +264,7 @@ async fn test_three_peer_story_broadcasting() {
     }
 
     assert!(
-        received_by.len() >= 1 || connections_established > 0,
+        !received_by.is_empty() || connections_established > 0,
         "Either message propagation should work OR connections should be established"
     );
 }
@@ -573,12 +560,9 @@ async fn test_multi_peer_channel_subscription_workflow() {
 
     // Get the listening address
     let addr = loop {
-        match swarms[0].select_next_some().await {
-            SwarmEvent::NewListenAddr { address, .. } => {
-                println!("Swarm 0 listening on: {}", address);
-                break address;
-            }
-            _ => {}
+        if let SwarmEvent::NewListenAddr { address, .. } = swarms[0].select_next_some().await {
+            println!("Swarm 0 listening on: {}", address);
+            break address;
         }
     };
 
@@ -712,7 +696,7 @@ async fn test_multi_peer_channel_subscription_workflow() {
                         );
                         received_stories
                             .entry(peer_idx)
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(story.story.channel.clone());
                         total_messages_received += 1;
                     }
