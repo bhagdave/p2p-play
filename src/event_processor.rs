@@ -452,31 +452,14 @@ impl EventProcessor {
             peer_id: PEER_ID.to_string(),
         };
 
-        match swarm
+        let request_id = swarm
             .behaviour_mut()
             .handshake
-            .send_request(&peer_id, handshake_request)
-        {
-            Ok(request_id) => {
-                debug!(
-                    "Handshake request sent to {} (request_id: {:?})",
-                    peer_id, request_id
-                );
-            }
-            Err(e) => {
-                debug!("Failed to send handshake request to {}: {:?}", peer_id, e);
-                // Remove from pending list if handshake request fails
-                {
-                    let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
-                    pending_peers.remove(&peer_id);
-                }
-                self.error_logger.log_error(&format!(
-                    "Handshake request failed for peer {}: {:?}", 
-                    peer_id, e
-                ));
-                return;
-            }
-        }
+            .send_request(&peer_id, handshake_request);
+        debug!(
+            "Handshake request sent to {} (request_id: {:?})",
+            peer_id, request_id
+        );
 
         // Track successful connection for improved reconnect timing
         track_successful_connection(peer_id);
@@ -502,6 +485,15 @@ impl EventProcessor {
         app: &mut App,
     ) {
         debug!("Connection closed to {peer_id}: {cause:?}");
+        
+        // Check if this is a "Connection refused" error which is common during startup
+        let error_msg = format!("{:?}", cause);
+        if error_msg.contains("Connection refused") || error_msg.contains("os error 111") {
+            debug!("Connection refused to {peer_id} - peer may still be starting up, will retry");
+        } else {
+            debug!("Connection lost to {peer_id}: {cause:?}");
+        }
+
         debug!("Removing peer {peer_id} from floodsub partial view");
         swarm
             .behaviour_mut()
