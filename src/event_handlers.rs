@@ -735,7 +735,7 @@ pub async fn handle_dht_get_peers(
 /// Handle Kademlia DHT events for peer discovery
 pub async fn handle_kad_event(
     kad_event: libp2p::kad::Event,
-    swarm: &mut Swarm<StoryBehaviour>,
+    _swarm: &mut Swarm<StoryBehaviour>,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     bootstrap_logger: &crate::bootstrap_logger::BootstrapLogger,
