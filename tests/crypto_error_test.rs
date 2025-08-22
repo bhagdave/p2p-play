@@ -89,9 +89,7 @@ async fn test_user_friendly_message_formatting() {
     ui_logger.log(format!(
         "📥 Message queued - will be delivered when {to_name} comes online and security keys are exchanged"
     ));
-    ui_logger.log(format!(
-        "ℹ️  Tip: Both peers must be online simultaneously for secure messaging setup"
-    ));
+    ui_logger.log("ℹ️  Tip: Both peers must be online simultaneously for secure messaging setup".to_string());
 
     // Collect all messages
     let mut messages = Vec::new();

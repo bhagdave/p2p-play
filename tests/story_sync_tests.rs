@@ -186,7 +186,7 @@ async fn test_story_sync_filtering_by_channel() {
     let all_stories = read_local_stories().await.unwrap();
 
     // Test filtering: only public stories in subscribed channels
-    let subscribed_channels = vec!["general".to_string()];
+    let subscribed_channels : [String; 1] = ["general".to_string()];
     let filtered_stories: Vec<_> = all_stories
         .into_iter()
         .filter(|story| {

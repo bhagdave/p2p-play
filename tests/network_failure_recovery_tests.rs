@@ -1,6 +1,6 @@
 mod common;
 
-use common::{create_test_swarm_with_ping_config, current_timestamp};
+use common::current_timestamp;
 use futures::StreamExt;
 use futures::future::FutureExt;
 use libp2p::floodsub::FloodsubEvent;
@@ -9,8 +9,7 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId};
 use p2p_play::network::*;
 use p2p_play::types::*;
-use std::collections::{HashMap, HashSet};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tokio::time;
 
 /// Helper to create test swarms
@@ -117,15 +116,12 @@ async fn test_request_timeout_handling() {
         // Increased timeout iterations
         tokio::select! {
             event1 = swarm1.select_next_some() => {
-                match event1 {
-                    SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                         RequestResponseEvent::Message { message: Message::Request { .. }, .. }
-                    )) => {
-                        // Receive the request but intentionally don't respond to trigger timeout
-                        request_received_but_not_responded = true;
-                        println!("Request received by swarm1");
-                    }
-                    _ => {}
+                    )) = event1 {
+                    // Receive the request but intentionally don't respond to trigger timeout
+                    request_received_but_not_responded = true;
+                    println!("Request received by swarm1");
                 }
             }
             event2 = swarm2.select_next_some() => {
@@ -327,12 +323,9 @@ async fn test_partial_network_partition() {
 
         // Get listening address
         loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::NewListenAddr { address, .. } => {
-                    addresses.push(address);
-                    break;
-                }
-                _ => {}
+            if let SwarmEvent::NewListenAddr { address, .. } = swarm.select_next_some().await {
+                addresses.push(address);
+                break;
             }
         }
     }
@@ -623,21 +616,18 @@ async fn test_protocol_mismatch_handling() {
                 }
             }
             event2 = swarm2.select_next_some() => {
-                match event2 {
-                    SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                         RequestResponseEvent::Message { message: Message::Request { channel, .. }, .. }
-                    )) => {
-                        // Successfully received request - protocols are compatible
-                        let response = DirectMessageResponse {
-                            received: true,
-                            timestamp: current_timestamp(),
-                        };
-                        if swarm2.behaviour_mut().request_response.send_response(channel, response).is_ok() {
-                            successful_communication = true;
-                            println!("Request received and response sent successfully");
-                        }
+                    )) = event2 {
+                    // Successfully received request - protocols are compatible
+                    let response = DirectMessageResponse {
+                        received: true,
+                        timestamp: current_timestamp(),
+                    };
+                    if swarm2.behaviour_mut().request_response.send_response(channel, response).is_ok() {
+                        successful_communication = true;
+                        println!("Request received and response sent successfully");
                     }
-                    _ => {}
                 }
             }
             _ = time::sleep(Duration::from_millis(50)) => {}
@@ -708,23 +698,20 @@ async fn test_resource_exhaustion_scenarios() {
                 }
             }
             event2 = swarm2.select_next_some() => {
-                match event2 {
-                    SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                         RequestResponseEvent::Message { message: Message::Request { channel, .. }, .. }
-                    )) => {
-                        // Respond to some requests (simulating limited processing capacity)
-                        if requests_handled < 50 {
-                            let response = DirectMessageResponse {
-                                received: true,
-                                timestamp: current_timestamp(),
-                            };
-                            if swarm2.behaviour_mut().request_response.send_response(channel, response).is_ok() {
-                                // Successfully sent response
-                            }
+                    )) = event2 {
+                    // Respond to some requests (simulating limited processing capacity)
+                    if requests_handled < 50 {
+                        let response = DirectMessageResponse {
+                            received: true,
+                            timestamp: current_timestamp(),
+                        };
+                        if swarm2.behaviour_mut().request_response.send_response(channel, response).is_ok() {
+                            // Successfully sent response
                         }
-                        // Ignore other requests to simulate resource exhaustion
                     }
-                    _ => {}
+                    // Ignore other requests to simulate resource exhaustion
                 }
             }
             _ = time::sleep(Duration::from_millis(10)) => {}
@@ -772,21 +759,18 @@ async fn test_resource_exhaustion_scenarios() {
                 }
             }
             event2 = swarm2.select_next_some() => {
-                match event2 {
-                    SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                         RequestResponseEvent::Message { message: Message::Request { channel, request, request_id: _ }, .. }
-                    )) => {
-                        if request.message.len() > 500_000 {
-                            // Received large message
-                            let response = DirectMessageResponse {
-                                received: true,
-                                timestamp: current_timestamp(),
-                            };
-                            swarm2.behaviour_mut().request_response.send_response(channel, response).unwrap();
-                            large_message_handled = true;
-                        }
+                    )) = event2 {
+                    if request.message.len() > 500_000 {
+                        // Received large message
+                        let response = DirectMessageResponse {
+                            received: true,
+                            timestamp: current_timestamp(),
+                        };
+                        swarm2.behaviour_mut().request_response.send_response(channel, response).unwrap();
+                        large_message_handled = true;
                     }
-                    _ => {}
                 }
             }
             _ = time::sleep(Duration::from_millis(50)) => {}
@@ -810,7 +794,7 @@ async fn test_bootstrap_failure_recovery() {
     let mut swarm = create_test_swarm().await.unwrap();
 
     // Attempt to bootstrap with no available bootstrap peers
-    if let Ok(_) = swarm.behaviour_mut().kad.bootstrap() {
+    if swarm.behaviour_mut().kad.bootstrap().is_ok() {
         // Bootstrap initiated successfully (but may fail due to no peers)
         let mut bootstrap_completed = false;
         let mut bootstrap_failed = false;
@@ -863,10 +847,7 @@ async fn test_bootstrap_failure_recovery() {
         .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
         .unwrap();
     let bootstrap_addr = loop {
-        match bootstrap_peer.select_next_some().await {
-            SwarmEvent::NewListenAddr { address, .. } => break address,
-            _ => {}
-        }
+        if let SwarmEvent::NewListenAddr { address, .. } = bootstrap_peer.select_next_some().await { break address }
     };
 
     // Add bootstrap peer to swarm's Kademlia routing table
@@ -877,7 +858,7 @@ async fn test_bootstrap_failure_recovery() {
         .add_address(&bootstrap_peer_id, bootstrap_addr);
 
     // Attempt bootstrap with available peer
-    if let Ok(_) = swarm.behaviour_mut().kad.bootstrap() {
+    if swarm.behaviour_mut().kad.bootstrap().is_ok() {
         let mut recovery_bootstrap_result = false;
 
         for _ in 0..50 {

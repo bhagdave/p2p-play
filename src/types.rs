@@ -14,6 +14,14 @@ use crate::crypto::{EncryptedPayload, MessageSignature};
 
 pub type Stories = Vec<Story>;
 
+/// Information about a peer awaiting handshake completion
+#[derive(Debug, Clone)]
+pub struct PendingHandshakePeer {
+    pub peer_id: PeerId,
+    pub connection_time: Instant,
+    pub endpoint: libp2p::core::ConnectedPoint,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Story {
     pub id: usize,
@@ -674,8 +682,8 @@ impl BootstrapConfig {
                     .to_string(),
             ],
             retry_interval_ms: 5000,
-            max_retry_attempts: 5,
-            bootstrap_timeout_ms: 30000,
+            max_retry_attempts: 10, // Increased from 5 to 10 for internal network tolerance
+            bootstrap_timeout_ms: 60000, // Increased from 30s to 60s for slower connections
         }
     }
 
@@ -723,7 +731,7 @@ impl NetworkConfig {
     pub fn new() -> Self {
         Self {
             connection_maintenance_interval_seconds: 300, // 5 minutes default
-            request_timeout_seconds: 60,
+            request_timeout_seconds: 120, // Increased from 60s to 120s for slower internal networks
             max_concurrent_streams: 100,
             max_connections_per_peer: 1, // Single connection per peer to avoid resource waste
             max_pending_incoming: 10,    // Allow reasonable number of pending connections

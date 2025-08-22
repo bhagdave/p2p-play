@@ -2,6 +2,41 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.1] - 2025-08-21
+
+### Fixed
+- **Handshake Timing Issue**: Fixed critical issue where network operations (peer name broadcast, story synchronization, direct message retry) were executing before handshake completion, allowing interactions with non-P2P-Play peers
+- **External Peer Filtering**: Prevented random internet peers from appearing in connected peers list by implementing pending handshake state tracking
+- **UI Noise Reduction**: Eliminated excessive "New peer added to DHT" messages for external peers that aren't P2P-Play compatible
+- **Message Security**: Added verification to floodsub message handling to ignore messages from unverified peers
+- **Peer List Stability**: Resolved issue where peers would appear and disappear in UI due to premature connection operations
+
+### Added
+- `PendingHandshakePeer` tracking system to defer operations until handshake verification
+- `verified_p2p_play_peers` HashMap to track only successfully handshake-verified peers
+- Handshake timeout cleanup mechanism (30 seconds) to disconnect unresponsive peers
+- Comprehensive peer state management with proper cleanup on disconnection
+- Verified peer-only UI display system to show only compatible P2P-Play nodes
+
+### Changed
+- **Connection Flow**: Peers now remain invisible in UI until handshake verification succeeds
+- **DHT Integration**: DHT peers no longer automatically added to floodsub without handshake verification
+- **Message Processing**: Only verified P2P-Play peers can send/receive floodsub messages
+- **UI Feedback**: Replaced generic DHT messages with meaningful "✅ Verified P2P-Play peer" notifications
+- **Error Handling**: Enhanced cleanup procedures for failed handshakes and connection timeouts
+
+### Technical Details
+- Deferred peer name broadcasting, story sync, and message retry until handshake completion
+- Added pending handshake peer cleanup on connection failures and timeouts  
+- Implemented verified peer tracking separate from general peer discovery
+- Enhanced floodsub event handler with peer verification checks
+- Added comprehensive state management for handshake lifecycle
+
+### Security
+- Prevented story sharing attempts with non-P2P-Play peers discovered via DHT
+- Blocked peer name exchanges with unverified external peers
+- Eliminated potential data leakage to random internet peers through automatic operations
+
 ## [0.10.0] 2025-08-20
 
 ### Added

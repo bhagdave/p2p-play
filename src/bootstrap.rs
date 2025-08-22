@@ -400,7 +400,7 @@ mod tests {
         {
             let mut status = bootstrap.status.lock().unwrap();
             *status = BootstrapStatus::Failed {
-                attempts: 5,
+                attempts: 10,
                 last_error: "error".to_string(),
             };
         }

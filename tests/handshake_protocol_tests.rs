@@ -1,5 +1,4 @@
 use p2p_play::network::{APP_NAME, APP_VERSION, HandshakeRequest, HandshakeResponse};
-use serde_json;
 
 /// Test handshake request serialization and deserialization
 #[test]
@@ -46,7 +45,7 @@ fn test_handshake_response_serialization() {
     let deserialized: HandshakeResponse =
         serde_json::from_str(&serialized).expect("Failed to deserialize handshake response");
 
-    assert_eq!(deserialized.accepted, true);
+    assert!(deserialized.accepted);
     assert_eq!(deserialized.app_name, APP_NAME);
     assert_eq!(deserialized.app_version, APP_VERSION);
 }
@@ -65,7 +64,7 @@ fn test_handshake_response_rejection() {
     let deserialized: HandshakeResponse =
         serde_json::from_str(&serialized).expect("Failed to deserialize rejection response");
 
-    assert_eq!(deserialized.accepted, false);
+    assert!(!deserialized.accepted);
     assert_eq!(deserialized.app_name, "other-app");
     assert_eq!(deserialized.app_version, "2.0.0");
 }

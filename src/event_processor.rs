@@ -8,21 +8,22 @@ use crate::handlers::{
     SortedPeerNamesCache, UILogger, mark_story_as_read_for_peer, refresh_unread_counts_for_ui,
 };
 use crate::network::{
-    APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent, TOPIC,
+    APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
 };
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
 use crate::types::{
-    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PeerName, PendingDirectMessage,
+    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PendingDirectMessage,
+    PendingHandshakePeer,
 };
 use crate::ui::{App, AppEvent, handle_ui_events};
 
-use bytes::Bytes;
 use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
 use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
 
@@ -31,6 +32,10 @@ const CONNECTION_MAINTENANCE_INTERVAL_SECS: u64 = 30;
 const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
 const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
+
+// Handshake timeout - if no response received within this time, disconnect peer
+// Increased timeout for slower internal networks and connection establishment
+const HANDSHAKE_TIMEOUT_SECS: u64 = 60;
 
 /// Event processor that handles the main application event loop
 pub struct EventProcessor {
@@ -53,6 +58,7 @@ pub struct EventProcessor {
     bootstrap_status_log_interval: tokio::time::Interval,
     dm_retry_interval: tokio::time::Interval,
     network_health_update_interval: tokio::time::Interval,
+    handshake_timeout_interval: tokio::time::Interval,
 
     // Configuration and state
     dm_config: DirectMessageConfig,
@@ -68,6 +74,12 @@ pub struct EventProcessor {
 
     // Network circuit breakers for resilience
     network_circuit_breakers: NetworkCircuitBreakers,
+
+    // Peers awaiting handshake completion
+    pending_handshake_peers: Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
+
+    // Verified P2P-Play peers (only these are shown in UI)
+    verified_p2p_play_peers: Arc<Mutex<HashMap<PeerId, String>>>,
 }
 
 impl EventProcessor {
@@ -108,6 +120,7 @@ impl EventProcessor {
             network_health_update_interval: interval(Duration::from_secs(
                 network_config.network_health_update_interval_seconds,
             )),
+            handshake_timeout_interval: interval(Duration::from_secs(HANDSHAKE_TIMEOUT_SECS / 2)), // Check every 30s for 60s timeout
             dm_config,
             pending_messages,
             ui_logger,
@@ -115,6 +128,8 @@ impl EventProcessor {
             bootstrap_logger,
             relay_service,
             network_circuit_breakers,
+            pending_handshake_peers: Arc::new(Mutex::new(HashMap::new())),
+            verified_p2p_play_peers: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -272,6 +287,11 @@ impl EventProcessor {
                 app.update_network_health(health_summary);
                 None
             },
+            _ = self.handshake_timeout_interval.tick() => {
+                // Check for and cleanup timed-out handshakes
+                self.cleanup_timed_out_handshakes(swarm).await;
+                None
+            },
             // Network events are processed but heavy operations are spawned to background
             event = swarm.select_next_some() => {
                 self.handle_swarm_event(event, swarm, peer_names, sorted_peer_names_cache, local_peer_name, app, auto_bootstrap).await
@@ -398,13 +418,33 @@ impl EventProcessor {
         peer_id: PeerId,
         endpoint: &libp2p::core::ConnectedPoint,
         swarm: &mut Swarm<StoryBehaviour>,
-        peer_names: &mut HashMap<PeerId, String>,
-        sorted_peer_names_cache: &mut SortedPeerNamesCache,
-        local_peer_name: &Option<String>,
+        _peer_names: &mut HashMap<PeerId, String>,
+        _sorted_peer_names_cache: &mut SortedPeerNamesCache,
+        _local_peer_name: &Option<String>,
     ) {
         debug!("Connection established to {peer_id} via {endpoint:?}");
 
-        // Initiate handshake to verify this is a P2P-Play peer before adding to floodsub
+        // Add connection success logging to help debug network issues
+        debug!(
+            "Successful connection to peer {} - initiating handshake verification",
+            peer_id
+        );
+
+        // Store peer in pending handshake state - all P2P-Play specific operations
+        // will be deferred until handshake completion
+        let pending_peer = PendingHandshakePeer {
+            peer_id,
+            connection_time: Instant::now(),
+            endpoint: endpoint.clone(),
+        };
+
+        {
+            let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
+            pending_peers.insert(peer_id, pending_peer);
+            debug!("Added peer {} to pending handshake list", peer_id);
+        }
+
+        // Initiate handshake to verify this is a P2P-Play peer
         debug!(
             "Initiating handshake with newly connected peer: {}",
             peer_id
@@ -427,48 +467,16 @@ impl EventProcessor {
         // Track successful connection for improved reconnect timing
         track_successful_connection(peer_id);
 
-        // Add connected peer to peer_names if not already present
-        if let std::collections::hash_map::Entry::Vacant(e) = peer_names.entry(peer_id) {
-            e.insert(format!("Peer_{peer_id}"));
-            debug!("Added connected peer {peer_id} to peer_names with default name");
-            sorted_peer_names_cache.update(peer_names);
-        }
+        // NOTE: Do NOT add peers to peer_names until handshake verification
+        // This prevents unverified peers from appearing in the UI
+        debug!(
+            "Peer {} awaiting handshake verification before UI display",
+            peer_id
+        );
 
-        // If we have a local peer name set, broadcast it to the newly connected peer
-        if let Some(name) = local_peer_name {
-            let peer_name = PeerName::new(PEER_ID.to_string(), name.clone());
-            let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
-            let json_bytes = Bytes::from(json.into_bytes());
-            swarm
-                .behaviour_mut()
-                .floodsub
-                .publish(TOPIC.clone(), json_bytes);
-            debug!("Sent local peer name '{name}' to newly connected peer {peer_id}");
-        }
-
-        // Public keys will be exchanged when needed for encryption
-        // This avoids the circular dependency issue with extracting keys from PeerID
-        debug!("Connected to peer {peer_id} - public key exchange will occur when messaging");
-
-        // Retry any pending direct messages for this peer
-        event_handlers::retry_messages_for_peer(
-            peer_id,
-            swarm,
-            &self.dm_config,
-            &self.pending_messages,
-            peer_names,
-        )
-        .await;
-
-        // Initiate story synchronization with the newly connected peer
-        event_handlers::initiate_story_sync_with_peer(
-            peer_id,
-            swarm,
-            local_peer_name,
-            &self.ui_logger,
-            &self.error_logger,
-        )
-        .await;
+        // NOTE: All other P2P-Play specific operations (peer name broadcast,
+        // story sync, message retry) are deferred until handshake completion
+        // to prevent interaction with non-P2P-Play peers
     }
 
     /// Handle connection closed events
@@ -483,17 +491,50 @@ impl EventProcessor {
         app: &mut App,
     ) {
         debug!("Connection closed to {peer_id}: {cause:?}");
+
+        // Check if this is a "Connection refused" error which is common during startup
+        let error_msg = format!("{:?}", cause);
+        if error_msg.contains("Connection refused") || error_msg.contains("os error 111") {
+            debug!("Connection refused to {peer_id} - peer may still be starting up, will retry");
+        } else {
+            debug!("Connection lost to {peer_id}: {cause:?}");
+        }
+
         debug!("Removing peer {peer_id} from floodsub partial view");
         swarm
             .behaviour_mut()
             .floodsub
             .remove_node_from_partial_view(&peer_id);
 
-        // Remove the peer name when connection is closed
+        // Remove peer from pending handshake list if present
+        {
+            let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
+            if pending_peers.remove(&peer_id).is_some() {
+                debug!(
+                    "Removed peer {} from pending handshake list due to disconnection",
+                    peer_id
+                );
+            }
+        }
+
+        // Remove peer from verified P2P-Play peers if present
+        let was_verified = {
+            let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
+            verified_peers.remove(&peer_id).is_some()
+        };
+
+        // Remove the peer name when connection is closed (only if it was verified)
         if let Some(name) = peer_names.remove(&peer_id) {
-            debug!("Removed peer name '{name}' for disconnected peer {peer_id}");
+            debug!("Removed verified peer name '{name}' for disconnected peer {peer_id}");
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
+        } else if was_verified {
+            debug!(
+                "Verified peer {} disconnected but already removed from UI",
+                peer_id
+            );
+        } else {
+            debug!("Unverified peer {} disconnected (was not in UI)", peer_id);
         }
 
         // Trigger immediate connection maintenance to try reconnecting quickly
@@ -592,11 +633,83 @@ impl EventProcessor {
             &self.pending_messages,
             &mut self.relay_service,
             &self.network_circuit_breakers,
+            &self.pending_handshake_peers,
+            &self.verified_p2p_play_peers,
         )
         .await;
 
         if let Some(action_result) = action_result {
             self.handle_action_result(action_result, app).await;
+        }
+    }
+
+    /// Cleanup handshakes that have timed out
+    async fn cleanup_timed_out_handshakes(&self, swarm: &mut Swarm<StoryBehaviour>) {
+        let timeout_duration = Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
+        let mut timed_out_peers = Vec::new();
+
+        // Identify timed-out peers
+        {
+            let pending_peers = self.pending_handshake_peers.lock().unwrap();
+            for (peer_id, pending_peer) in pending_peers.iter() {
+                if pending_peer.connection_time.elapsed() > timeout_duration {
+                    timed_out_peers.push(*peer_id);
+                }
+            }
+        }
+
+        let timed_out_count = timed_out_peers.len();
+
+        // Handle timed-out peers
+        for peer_id in &timed_out_peers {
+            // Check if this is a bootstrap peer - be more lenient for bootstrap connections
+            let is_bootstrap_peer = {
+                let pending_peers = self.pending_handshake_peers.lock().unwrap();
+                if let Some(pending_peer) = pending_peers.get(peer_id) {
+                    matches!(
+                        pending_peer.endpoint,
+                        libp2p::core::ConnectedPoint::Dialer { .. }
+                    )
+                } else {
+                    false
+                }
+            };
+
+            if is_bootstrap_peer {
+                debug!(
+                    "Bootstrap peer {} handshake timeout after {}s, allowing extra time",
+                    peer_id, HANDSHAKE_TIMEOUT_SECS
+                );
+                // For bootstrap peers, give extra time but log the delay
+                self.error_logger.log_error(&format!(
+                    "Bootstrap handshake slow with peer {}: {}s elapsed, monitoring...",
+                    peer_id, HANDSHAKE_TIMEOUT_SECS
+                ));
+                continue; // Don't disconnect bootstrap peers on first timeout
+            }
+
+            debug!(
+                "Handshake with peer {} timed out after {}s, disconnecting",
+                peer_id, HANDSHAKE_TIMEOUT_SECS
+            );
+
+            // Disconnect the peer
+            let _ = swarm.disconnect_peer_id(*peer_id);
+
+            // Remove from pending list
+            {
+                let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
+                pending_peers.remove(peer_id);
+            }
+
+            self.error_logger.log_error(&format!(
+                "Handshake timeout with peer {}: no response received within {}s",
+                peer_id, HANDSHAKE_TIMEOUT_SECS
+            ));
+        }
+
+        if timed_out_count > 0 {
+            debug!("Cleaned up {} timed-out handshakes", timed_out_count);
         }
     }
 

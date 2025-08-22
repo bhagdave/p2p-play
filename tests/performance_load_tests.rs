@@ -1,18 +1,16 @@
 mod common;
 
-use common::{create_test_swarm, create_test_swarm_with_keypair, current_timestamp};
+use common::{create_test_swarm, current_timestamp};
 use futures::StreamExt;
 use futures::future::FutureExt;
-use futures::future::join_all;
 use libp2p::floodsub::FloodsubEvent;
 use libp2p::request_response::{Event as RequestResponseEvent, Message};
 use libp2p::swarm::SwarmEvent;
 use libp2p::{Multiaddr, PeerId};
 use p2p_play::network::*;
 use p2p_play::types::*;
-use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::collections::HashSet;
+use std::time::{Duration, Instant};
 use tokio::time;
 
 /// Helper to establish connection between swarms
@@ -210,7 +208,7 @@ async fn test_large_message_handling_performance() {
     time::sleep(Duration::from_millis(1000)).await;
 
     // Test different message sizes
-    let message_sizes = vec![1_000, 10_000, 100_000, 500_000]; // 1KB to 500KB
+    let message_sizes = [1_000, 10_000, 100_000, 500_000]; // 1KB to 500KB
 
     for (test_idx, size) in message_sizes.iter().enumerate() {
         println!("Testing message size: {} bytes", size);
@@ -256,22 +254,19 @@ async fn test_large_message_handling_performance() {
                     }
                 }
                 event2 = swarm2.select_next_some() => {
-                    match event2 {
-                        SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
+                    if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                             RequestResponseEvent::Message { message: Message::Request { request, channel, .. }, .. }
-                        )) => {
-                            // Verify message size
-                            assert_eq!(request.message.len(), *size);
-                            request_handled = true;
+                        )) = event2 {
+                        // Verify message size
+                        assert_eq!(request.message.len(), *size);
+                        request_handled = true;
 
-                            // Send response
-                            let response = DirectMessageResponse {
-                                received: true,
-                                timestamp: current_timestamp(),
-                            };
-                            swarm2.behaviour_mut().request_response.send_response(channel, response).unwrap();
-                        }
-                        _ => {}
+                        // Send response
+                        let response = DirectMessageResponse {
+                            received: true,
+                            timestamp: current_timestamp(),
+                        };
+                        swarm2.behaviour_mut().request_response.send_response(channel, response).unwrap();
                     }
                 }
                 _ = time::sleep(Duration::from_millis(50)) => {}
@@ -549,22 +544,19 @@ async fn test_request_response_throughput() {
                 }
             }
             event2 = swarm2.select_next_some() => {
-                match event2 {
-                    SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(
                         RequestResponseEvent::Message { message: Message::Request { channel, .. }, .. }
-                    )) => {
-                        requests_handled += 1;
+                    )) = event2 {
+                    requests_handled += 1;
 
-                        // Send response for most requests (simulate some processing capacity limits)
-                        if requests_handled <= request_count * 3 / 4 {
-                            let response = DirectMessageResponse {
-                                received: true,
-                                timestamp: current_timestamp(),
-                            };
-                            swarm2.behaviour_mut().request_response.send_response(channel, response).unwrap();
-                        }
+                    // Send response for most requests (simulate some processing capacity limits)
+                    if requests_handled <= request_count * 3 / 4 {
+                        let response = DirectMessageResponse {
+                            received: true,
+                            timestamp: current_timestamp(),
+                        };
+                        swarm2.behaviour_mut().request_response.send_response(channel, response).unwrap();
                     }
-                    _ => {}
                 }
             }
             _ = time::sleep(Duration::from_millis(5)) => {}
@@ -782,23 +774,20 @@ async fn test_story_sync_performance_large_dataset() {
         // Increased timeout for large data
         tokio::select! {
             event1 = swarm1.select_next_some() => {
-                match event1 {
-                    SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(
                         RequestResponseEvent::Message { message: Message::Request { channel, .. }, .. }
-                    )) => {
-                        sync_request_handled = true;
+                    )) = event1 {
+                    sync_request_handled = true;
 
-                        // Send large story dataset
-                        let sync_response = StorySyncResponse {
-                            stories: large_stories.clone(),
-                            from_peer_id: peer1_id.to_string(),
-                            from_name: "Performance Responder".to_string(),
-                            sync_timestamp: current_timestamp(),
-                        };
+                    // Send large story dataset
+                    let sync_response = StorySyncResponse {
+                        stories: large_stories.clone(),
+                        from_peer_id: peer1_id.to_string(),
+                        from_name: "Performance Responder".to_string(),
+                        sync_timestamp: current_timestamp(),
+                    };
 
-                        swarm1.behaviour_mut().story_sync.send_response(channel, sync_response).unwrap();
-                    }
-                    _ => {}
+                    swarm1.behaviour_mut().story_sync.send_response(channel, sync_response).unwrap();
                 }
             }
             event2 = swarm2.select_next_some() => {
