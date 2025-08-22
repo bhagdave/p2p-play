@@ -2,6 +2,15 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.2] - 2025-08-22
+
+### Fixed
+- **Connection Error UI Clutter**: Enhanced error filtering to prevent repetitive connection errors from cluttering the TUI interface
+  - Added comprehensive filtering for common dial errors (NoAddresses, LocalPeerId, WrongPeerId, Aborted, Denied)
+  - Enhanced pattern matching for error messages like "Multiple dial errors occurred", "Failed to negotiate transport protocol", and "Unsupported resolved address"
+  - Improved both outgoing and incoming connection error filtering to catch "Connection refused", "os error 111", and other network connectivity issues
+  - Errors are still logged to `errors.log` file for debugging purposes while keeping the UI clean
+
 ## [0.10.1] - 2025-08-21
 
 ### Fixed
