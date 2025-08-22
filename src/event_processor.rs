@@ -552,14 +552,30 @@ impl EventProcessor {
         // Filter out common connection timeout/refused errors to reduce noise
         let should_log_to_ui = match error {
             libp2p::swarm::DialError::Transport(transport_errors) => {
-                // Only log to UI for unexpected transport errors, not timeouts/refused
+                // Only log to UI for unexpected transport errors, not common connectivity issues
                 !transport_errors.iter().any(|(_, e)| {
-                    e.to_string().contains("Connection refused")
-                        || e.to_string().contains("timed out")
-                        || e.to_string().contains("No route to host")
+                    let error_str = e.to_string();
+                    error_str.contains("Connection refused")
+                        || error_str.contains("timed out")
+                        || error_str.contains("No route to host")
+                        || error_str.contains("os error 111")
+                        || error_str.contains("Network is unreachable")
+                        || error_str.contains("Connection reset")
                 })
             }
-            _ => false, // Don't spam UI with most dial errors
+            // Filter out other common dial errors that clutter the UI
+            libp2p::swarm::DialError::NoAddresses => false,
+            libp2p::swarm::DialError::LocalPeerId { address: _ } => false,
+            libp2p::swarm::DialError::WrongPeerId { .. } => false,
+            libp2p::swarm::DialError::Aborted => false,
+            libp2p::swarm::DialError::Denied { .. } => false,
+            _ => {
+                // For other dial errors, check if they contain common noisy patterns
+                let error_str = error.to_string();
+                !(error_str.contains("Multiple dial errors occurred")
+                    || error_str.contains("Failed to negotiate transport protocol")
+                    || error_str.contains("Unsupported resolved address"))
+            }
         };
 
         crate::log_network_error!(
@@ -590,7 +606,13 @@ impl EventProcessor {
             let error_str = error.to_string();
             !(error_str.contains("Connection reset")
                 || error_str.contains("Broken pipe")
-                || error_str.contains("timed out"))
+                || error_str.contains("timed out")
+                || error_str.contains("Connection refused")
+                || error_str.contains("os error 111")
+                || error_str.contains("Network is unreachable")
+                || error_str.contains("Connection aborted")
+                || error_str.contains("Multiple dial errors occurred")
+                || error_str.contains("Failed to negotiate transport protocol"))
         };
 
         crate::log_network_error!(
