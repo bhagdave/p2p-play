@@ -68,6 +68,8 @@ pub struct App {
     pub scroll_offset: usize,
     pub auto_scroll: bool, // Track if we should auto-scroll to bottom
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
+    pub direct_messages: Vec<DirectMessage>, // Store direct messages separately
+    pub unread_message_count: usize, // Track unread direct messages
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -149,6 +151,8 @@ impl App {
             scroll_offset: 0,
             auto_scroll: true, // Start with auto-scroll enabled
             network_health: None,
+            direct_messages: Vec::new(),
+            unread_message_count: 0,
         })
     }
 
@@ -642,22 +646,16 @@ impl App {
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        // Store the direct message in our dedicated storage
+        self.direct_messages.push(dm);
+        
+        // Increment unread count
+        self.unread_message_count += 1;
+    }
 
-        // Sanitize direct message content for safe display
-        let sanitized_from_name = ContentSanitizer::sanitize_for_display(&dm.from_name);
-        let sanitized_message = ContentSanitizer::sanitize_for_display(&dm.message);
-
-        self.add_to_log(format!(
-            "{} Direct message from {} ({}): {}",
-            Icons::envelope(),
-            sanitized_from_name,
-            timestamp,
-            sanitized_message
-        ));
+    pub fn mark_messages_as_read(&mut self) {
+        // Reset unread count when user views messages
+        self.unread_message_count = 0;
     }
 
     /// Display a user-friendly error message in the UI log
@@ -948,12 +946,13 @@ impl App {
                 .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(output, main_chunks[0]);
 
-            // Side panels - split into top and bottom
+            // Side panels - split into three sections: peers, messages, and channels/stories
             let side_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Percentage(50), // Peers
-                    Constraint::Percentage(50), // Stories
+                    Constraint::Percentage(33), // Peers
+                    Constraint::Percentage(33), // Direct Messages
+                    Constraint::Percentage(34), // Stories/Channels
                 ])
                 .split(main_chunks[1]);
 
@@ -987,6 +986,54 @@ impl App {
                 )
                 .highlight_style(Style::default().fg(Color::Yellow));
             f.render_widget(peers_list, side_chunks[0]);
+
+            // Direct Messages panel
+            let message_items: Vec<ListItem> = self
+                .direct_messages
+                .iter()
+                .rev() // Show newest messages first
+                .take(10) // Limit to last 10 messages for display
+                .map(|dm| {
+                    // Sanitize content for safe display
+                    let sanitized_from_name = ContentSanitizer::sanitize_for_display(&dm.from_name);
+                    let sanitized_message = ContentSanitizer::sanitize_for_display(&dm.message);
+                    
+                    // Use simple timestamp display (just the raw timestamp for now)
+                    let time_str = format!("{}", dm.timestamp % 86400); // Show seconds in day for brevity
+                    
+                    // Truncate message if too long
+                    let max_msg_len = 25; // Adjust based on panel width
+                    let display_message = if sanitized_message.len() > max_msg_len {
+                        format!("{}...", &sanitized_message[..max_msg_len])
+                    } else {
+                        sanitized_message
+                    };
+                    
+                    ListItem::new(format!(
+                        "{} {} [{}]: {}",
+                        Icons::envelope(),
+                        sanitized_from_name,
+                        time_str,
+                        display_message
+                    ))
+                })
+                .collect();
+
+            // Create title with unread indicator
+            let message_title = if self.unread_message_count > 0 {
+                format!("Messages [{}]", self.unread_message_count)
+            } else {
+                "Messages".to_string()
+            };
+
+            let messages_list = List::new(message_items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(message_title),
+                )
+                .highlight_style(Style::default().fg(Color::Yellow));
+            f.render_widget(messages_list, side_chunks[1]);
 
             // Channels/Stories list - display based on view mode
             let (list_items, list_title) = match &self.view_mode {
@@ -1041,7 +1088,7 @@ impl App {
             let list = List::new(list_items)
                 .block(Block::default().borders(Borders::ALL).title(list_title))
                 .highlight_style(Style::default().fg(Color::Yellow));
-            f.render_stateful_widget(list, side_chunks[1], &mut self.list_state);
+            f.render_stateful_widget(list, side_chunks[2], &mut self.list_state);
 
             // Input area
             let input_style = match self.input_mode {
