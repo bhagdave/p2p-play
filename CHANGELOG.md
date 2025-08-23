@@ -5,12 +5,9 @@ All changes to this project will be documented in this file.
 ## [0.10.2] - 2025-08-22
 
 ### Fixed
-- **Connection Error UI Clutter**: Enhanced error filtering to prevent repetitive connection errors from cluttering the TUI interface
-  - Added comprehensive filtering for common dial errors (NoAddresses, LocalPeerId, WrongPeerId, Aborted, Denied)
-  - Enhanced pattern matching for error messages like "Multiple dial errors occurred", "Failed to negotiate transport protocol", and "Unsupported resolved address"
-  - Improved both outgoing and incoming connection error filtering to catch "Connection refused", "os error 111", and other network connectivity issues
-  - Moved "DHT bootstrap failed" errors from UI display to error log only
-  - All connection and bootstrap errors are still logged to `errors.log` file for debugging purposes while keeping the UI clean
+- **Connection Error UI Clutter**: All connection and bootstrap errors are now suppressed from the TUI interface by default
+  - The UI no longer displays any connection or bootstrap errors, regardless of error type or message
+  - All such errors are still logged to the `errors.log` file for debugging purposes, keeping the UI clean
 
 ## [0.10.1] - 2025-08-21
 
