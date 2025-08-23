@@ -372,10 +372,14 @@ pub async fn read_local_stories_for_sync(
 }
 
 /// Extract unique channel metadata for stories being shared during sync
+/// Creates default metadata for channels that don't exist in the local database
 pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channels> {
     if stories.is_empty() {
+        debug!("No stories provided, returning empty channel list");
         return Ok(Vec::new());
     }
+
+    debug!("Getting channel metadata for {} stories", stories.len());
 
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -386,7 +390,11 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         unique_channels.insert(story.channel.clone());
     }
 
+    debug!("Found {} unique channel names in stories: {:?}", 
+        unique_channels.len(), unique_channels);
+
     if unique_channels.is_empty() {
+        debug!("No unique channels found in stories");
         return Ok(Vec::new());
     }
 
@@ -396,10 +404,12 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         "SELECT name, description, created_by, created_at FROM channels WHERE name IN ({placeholders}) ORDER BY name"
     );
 
+    debug!("Executing query: {} with params: {:?}", query, unique_channels);
+
     let mut stmt = conn.prepare(&query)?;
 
     // Convert channel names to query parameters
-    let channel_names: Vec<String> = unique_channels.into_iter().collect();
+    let channel_names: Vec<String> = unique_channels.clone().into_iter().collect();
     let param_refs: Vec<&dyn rusqlite::ToSql> = channel_names
         .iter()
         .map(|s| s as &dyn rusqlite::ToSql)
@@ -408,14 +418,34 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
     let channel_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_channel)?;
 
     let mut channels = Vec::new();
+    let mut found_channel_names = std::collections::HashSet::new();
+    
     for channel in channel_iter {
-        channels.push(channel?);
+        let channel = channel?;
+        found_channel_names.insert(channel.name.clone());
+        channels.push(channel);
+    }
+
+    // For any channels that don't exist in our database, create default metadata
+    // This ensures that peers can discover channels even if the original creator
+    // doesn't have the metadata stored locally
+    for channel_name in unique_channels {
+        if !found_channel_names.contains(&channel_name) {
+            debug!("Creating default metadata for unknown channel: {}", channel_name);
+            let default_channel = crate::types::Channel::new(
+                channel_name.clone(),
+                format!("Channel: {}", channel_name),
+                "unknown".to_string(),
+            );
+            channels.push(default_channel);
+        }
     }
 
     debug!(
-        "Found {} channel metadata entries for {} stories",
+        "Found/created {} channel metadata entries for {} stories: {:?}",
         channels.len(),
-        stories.len()
+        stories.len(),
+        channels.iter().map(|c| &c.name).collect::<Vec<_>>()
     );
     Ok(channels)
 }
@@ -426,14 +456,23 @@ pub async fn process_discovered_channels(
     peer_name: &str,
 ) -> StorageResult<usize> {
     if channels.is_empty() {
+        debug!("No channels to process from peer {}", peer_name);
         return Ok(0);
     }
 
+    debug!("Processing {} discovered channels from peer {}", channels.len(), peer_name);
+    
     let mut saved_count = 0;
     for channel in channels {
+        debug!(
+            "Processing channel: name='{}', description='{}', created_by='{}'",
+            channel.name, channel.description, channel.created_by
+        );
+        
         // Validate channel data before saving
         if channel.name.is_empty() || channel.description.is_empty() {
-            debug!("Skipping invalid channel with empty name or description");
+            debug!("Skipping invalid channel with empty name or description: name='{}', description='{}'", 
+                channel.name, channel.description);
             continue;
         }
 
@@ -441,7 +480,7 @@ pub async fn process_discovered_channels(
             Ok(_) => {
                 saved_count += 1;
                 debug!(
-                    "Saved discovered channel '{}' from peer {}",
+                    "Successfully saved discovered channel '{}' from peer {}",
                     channel.name, peer_name
                 );
             }
@@ -458,6 +497,8 @@ pub async fn process_discovered_channels(
         }
     }
 
+    debug!("Processed {} channels from peer {}, saved {} new channels", 
+        channels.len(), peer_name, saved_count);
     Ok(saved_count)
 }
 

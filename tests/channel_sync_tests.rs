@@ -7,13 +7,21 @@ use std::collections::HashSet;
 const TEST_DB_PATH: &str = "./test_channel_sync.db";
 
 async fn setup_test_environment() {
+    // Clean up any existing test database first
+    cleanup_test_db();
+    
     unsafe {
         std::env::set_var("TEST_DATABASE_PATH", TEST_DB_PATH);
     }
+    
+    // Reset any cached database connections since we changed the environment variable
+    p2p_play::storage::reset_db_connection_for_testing().await.unwrap();
+    
     // Initialize the database by ensuring we have a connection and creating tables
     let conn_arc = p2p_play::storage::get_db_connection().await.unwrap();
     let conn = conn_arc.lock().await;
     p2p_play::migrations::create_tables(&conn).unwrap();
+    drop(conn); // Ensure connection is released
 }
 
 fn cleanup_test_db() {
@@ -23,7 +31,6 @@ fn cleanup_test_db() {
 #[tokio::test]
 async fn test_get_channels_for_stories_empty_list() {
     setup_test_environment().await;
-    cleanup_test_db();
 
     let stories: Vec<Story> = vec![];
     let channels = get_channels_for_stories(&stories).await.unwrap();
@@ -35,7 +42,6 @@ async fn test_get_channels_for_stories_empty_list() {
 #[tokio::test]
 async fn test_get_channels_for_stories_with_existing_channels() {
     setup_test_environment().await;
-    cleanup_test_db();
 
     // Create some test channels first
     create_channel("tech", "Technology discussions", "creator1")
@@ -94,7 +100,6 @@ async fn test_get_channels_for_stories_with_existing_channels() {
 #[tokio::test]
 async fn test_get_channels_for_stories_with_non_existent_channels() {
     setup_test_environment().await;
-    cleanup_test_db();
 
     // Create stories that reference channels that don't exist in our database
     let stories = vec![Story {
@@ -119,7 +124,6 @@ async fn test_get_channels_for_stories_with_non_existent_channels() {
 #[tokio::test]
 async fn test_process_discovered_channels() {
     setup_test_environment().await;
-    cleanup_test_db();
 
     let discovered_channels = vec![
         Channel {
@@ -141,11 +145,12 @@ async fn test_process_discovered_channels() {
         .unwrap();
     assert_eq!(saved_count, 2);
 
-    // Verify channels were saved
+    // Verify channels were saved (plus the general channel that's automatically created)
     let all_channels = read_channels().await.unwrap();
     let channel_names: HashSet<String> = all_channels.iter().map(|c| c.name.clone()).collect();
     assert!(channel_names.contains("newchannel1"));
     assert!(channel_names.contains("newchannel2"));
+    assert!(channel_names.contains("general")); // The default channel should also exist
 
     cleanup_test_db();
 }
@@ -153,7 +158,6 @@ async fn test_process_discovered_channels() {
 #[tokio::test]
 async fn test_process_discovered_channels_with_duplicates() {
     setup_test_environment().await;
-    cleanup_test_db();
 
     // Create an existing channel
     create_channel("existing", "Existing Channel", "original_creator")
@@ -194,7 +198,6 @@ async fn test_process_discovered_channels_with_duplicates() {
 #[tokio::test]
 async fn test_process_discovered_channels_with_invalid_data() {
     setup_test_environment().await;
-    cleanup_test_db();
 
     let discovered_channels = vec![
         Channel {
@@ -224,10 +227,12 @@ async fn test_process_discovered_channels_with_invalid_data() {
     // Should only save 1 (the valid one)
     assert_eq!(saved_count, 1);
 
-    // Verify only the valid channel was saved
+    // Verify only the valid channel was saved (plus the general channel)
     let all_channels = read_channels().await.unwrap();
-    assert_eq!(all_channels.len(), 1);
-    assert_eq!(all_channels[0].name, "goodchannel");
+    assert_eq!(all_channels.len(), 2); // general + goodchannel
+    let channel_names: HashSet<String> = all_channels.iter().map(|c| c.name.clone()).collect();
+    assert!(channel_names.contains("goodchannel"));
+    assert!(channel_names.contains("general"));
 
     cleanup_test_db();
 }
@@ -235,7 +240,6 @@ async fn test_process_discovered_channels_with_invalid_data() {
 #[tokio::test]
 async fn test_process_discovered_channels_empty_list() {
     setup_test_environment().await;
-    cleanup_test_db();
 
     let discovered_channels: Vec<Channel> = vec![];
     let saved_count = process_discovered_channels(&discovered_channels, "testpeer")
