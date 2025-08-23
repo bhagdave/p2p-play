@@ -371,6 +371,83 @@ pub async fn read_local_stories_for_sync(
     Ok(stories)
 }
 
+/// Extract unique channel metadata for stories being shared during sync
+pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channels> {
+    if stories.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Get unique channel names from stories
+    let mut unique_channels: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for story in stories {
+        unique_channels.insert(story.channel.clone());
+    }
+
+    if unique_channels.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Build query to get channel metadata for these channels
+    let placeholders = vec!["?"; unique_channels.len()].join(",");
+    let query = format!(
+        "SELECT name, description, created_by, created_at FROM channels WHERE name IN ({placeholders}) ORDER BY name"
+    );
+
+    let mut stmt = conn.prepare(&query)?;
+    
+    // Convert channel names to query parameters
+    let channel_names: Vec<String> = unique_channels.into_iter().collect();
+    let param_refs: Vec<&dyn rusqlite::ToSql> = channel_names.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+    
+    let channel_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_channel)?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    debug!("Found {} channel metadata entries for {} stories", channels.len(), stories.len());
+    Ok(channels)
+}
+
+/// Process and save discovered channels from story sync
+pub async fn process_discovered_channels(
+    channels: &[Channel],
+    peer_name: &str,
+) -> StorageResult<usize> {
+    if channels.is_empty() {
+        return Ok(0);
+    }
+
+    let mut saved_count = 0;
+    for channel in channels {
+        // Validate channel data before saving
+        if channel.name.is_empty() || channel.description.is_empty() {
+            debug!("Skipping invalid channel with empty name or description");
+            continue;
+        }
+
+        match create_channel(&channel.name, &channel.description, &channel.created_by).await {
+            Ok(_) => {
+                saved_count += 1;
+                debug!("Saved discovered channel '{}' from peer {}", channel.name, peer_name);
+            }
+            Err(e) if e.to_string().contains("UNIQUE constraint") => {
+                debug!("Channel '{}' already exists in database", channel.name);
+                // Channel already exists, this is normal
+            }
+            Err(e) => {
+                debug!("Failed to save discovered channel '{}': {}", channel.name, e);
+            }
+        }
+    }
+
+    Ok(saved_count)
+}
+
 pub async fn write_local_stories(stories: &Stories) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;

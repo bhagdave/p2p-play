@@ -968,6 +968,7 @@ async fn test_multi_peer_story_sync_workflow() {
 
                     let sync_response = StorySyncResponse {
                         stories: stories_to_sync,
+                        channels: vec![],
                         from_peer_id: peer_ids[0].to_string(),
                         from_name: "SyncResponder".to_string(),
                         sync_timestamp: current_timestamp(),
@@ -1243,6 +1244,7 @@ async fn test_multi_peer_mixed_protocol_usage() {
 
                         let response = StorySyncResponse {
                             stories: vec![broadcast_story.story.clone()],
+                            channels: vec![],
                             from_peer_id: peer_ids[0].to_string(),
                             from_name: "Peer0".to_string(),
                             sync_timestamp: current_timestamp(),

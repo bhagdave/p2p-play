@@ -50,6 +50,7 @@ async fn test_story_sync_response_creation() {
 
     let response = StorySyncResponse {
         stories: vec![story1.clone(), story2.clone()],
+        channels: vec![],
         from_peer_id: "peer_123".to_string(),
         from_name: "Peer123".to_string(),
         sync_timestamp: SystemTime::now()

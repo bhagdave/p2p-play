@@ -782,6 +782,7 @@ async fn test_story_sync_performance_large_dataset() {
                     // Send large story dataset
                     let sync_response = StorySyncResponse {
                         stories: large_stories.clone(),
+                        channels: vec![],
                         from_peer_id: peer1_id.to_string(),
                         from_name: "Performance Responder".to_string(),
                         sync_timestamp: current_timestamp(),
