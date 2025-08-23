@@ -1248,14 +1248,43 @@ pub async fn handle_story_sync_event(
                     {
                         Ok(filtered_stories) => {
                             debug!(
-                                "Sending {} stories to peer {}",
+                                "Sync request from {} - sending {} stories (channels: {:?}) since timestamp {}",
+                                peer,
                                 filtered_stories.len(),
-                                peer
+                                filtered_stories.iter().map(|s| &s.channel).collect::<std::collections::HashSet<_>>(),
+                                request.last_sync_timestamp
                             );
 
                             let story_count = filtered_stories.len();
+
+                            // Get ALL available channels for discovery, not just channels associated with the stories
+                            let channels = match crate::storage::read_channels().await {
+                                Ok(all_channels) => {
+                                    debug!(
+                                        "Sending {} total channels for peer discovery during sync response",
+                                        all_channels.len()
+                                    );
+                                    all_channels
+                                }
+                                Err(e) => {
+                                    debug!("Failed to read all channels for sync: {}", e);
+                                    // Fallback to story-specific channels if reading all channels fails
+                                    match crate::storage::get_channels_for_stories(&filtered_stories).await {
+                                        Ok(story_channels) => {
+                                            debug!("Fallback: using {} story-specific channels", story_channels.len());
+                                            story_channels
+                                        }
+                                        Err(e2) => {
+                                            debug!("Failed fallback channel lookup: {}", e2);
+                                            Vec::new() // Final fallback to maintain functionality
+                                        }
+                                    }
+                                }
+                            };
+
                             let response = crate::network::StorySyncResponse {
                                 stories: filtered_stories,
+                                channels,
                                 from_peer_id: PEER_ID.to_string(),
                                 from_name: local_peer_name
                                     .as_deref()
@@ -1307,6 +1336,7 @@ pub async fn handle_story_sync_event(
                             // Send empty response to indicate error
                             let response = crate::network::StorySyncResponse {
                                 stories: Vec::new(),
+                                channels: Vec::new(), // No stories means no channels to share
                                 from_peer_id: PEER_ID.to_string(),
                                 from_name: local_peer_name
                                     .as_deref()
@@ -1359,6 +1389,47 @@ pub async fn handle_story_sync_event(
                         response.from_name
                     ));
 
+                    // Process discovered channels first (before stories for logical order)
+                    let mut discovered_channels_count = 0;
+                    debug!(
+                        "Received {} channels from {}: {:?}",
+                        response.channels.len(),
+                        response.from_name,
+                        response.channels.iter().map(|c| &c.name).collect::<Vec<_>>()
+                    );
+                    
+                    if !response.channels.is_empty() {
+                        match crate::storage::process_discovered_channels(
+                            &response.channels,
+                            &response.from_name,
+                        )
+                        .await
+                        {
+                            Ok(count) => {
+                                discovered_channels_count = count;
+                                debug!(
+                                    "Channel discovery result: {} new channels from {} (out of {} total channels received)",
+                                    count, response.from_name, response.channels.len()
+                                );
+                                if count > 0 {
+                                    ui_logger.log(format!(
+                                        "📺 Discovered {} new channels from {}",
+                                        count, response.from_name
+                                    ));
+                                }
+                            }
+                            Err(e) => {
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "story_sync",
+                                    "Failed to process discovered channels from {}: {}",
+                                    response.from_name,
+                                    e
+                                );
+                            }
+                        }
+                    }
+
                     // Save received stories (with deduplication handled by save_received_story)
                     let mut saved_count = 0;
                     for story in response.stories {
@@ -1383,12 +1454,30 @@ pub async fn handle_story_sync_event(
                         }
                     }
 
-                    ui_logger.log(format!(
-                        "{} Saved {} new stories from {}",
-                        Icons::checkmark(),
-                        saved_count,
-                        response.from_name
-                    ));
+                    // Provide comprehensive sync summary
+                    if discovered_channels_count > 0 && saved_count > 0 {
+                        ui_logger.log(format!(
+                            "{} Sync complete: {} stories, {} channels from {}",
+                            Icons::checkmark(),
+                            saved_count,
+                            discovered_channels_count,
+                            response.from_name
+                        ));
+                    } else if saved_count > 0 {
+                        ui_logger.log(format!(
+                            "{} Saved {} new stories from {}",
+                            Icons::checkmark(),
+                            saved_count,
+                            response.from_name
+                        ));
+                    } else if discovered_channels_count > 0 {
+                        ui_logger.log(format!(
+                            "{} Discovered {} channels from {} (no new stories)",
+                            Icons::checkmark(),
+                            discovered_channels_count,
+                            response.from_name
+                        ));
+                    }
                 }
             }
         }

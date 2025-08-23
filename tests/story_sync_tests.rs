@@ -50,6 +50,7 @@ async fn test_story_sync_response_creation() {
 
     let response = StorySyncResponse {
         stories: vec![story1.clone(), story2.clone()],
+        channels: vec![],
         from_peer_id: "peer_123".to_string(),
         from_name: "Peer123".to_string(),
         sync_timestamp: SystemTime::now()
@@ -186,7 +187,7 @@ async fn test_story_sync_filtering_by_channel() {
     let all_stories = read_local_stories().await.unwrap();
 
     // Test filtering: only public stories in subscribed channels
-    let subscribed_channels : [String; 1] = ["general".to_string()];
+    let subscribed_channels: [String; 1] = ["general".to_string()];
     let filtered_stories: Vec<_> = all_stories
         .into_iter()
         .filter(|story| {

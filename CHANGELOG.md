@@ -2,6 +2,22 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.3] - 2025-08-23
+
+### Added
+- **Channel Synchronization During Story Sync**: Implemented automatic channel discovery during story synchronization to resolve issue where nodes joining the network after channel creation cannot discover existing channels
+  - Enhanced `StorySyncResponse` with channels field using `#[serde(default)]` for backward compatibility with existing nodes
+  - Added `get_channels_for_stories()` storage function to efficiently extract unique channel metadata for shared stories
+  - Added `process_discovered_channels()` storage function to process and save discovered channels with validation and deduplication
+  - Enhanced story sync flow to include channel metadata when responding to sync requests and automatically process discovered channels when receiving responses
+  - Provides seamless user experience where running `ls s all` automatically discovers and saves available channels from other peers
+  - Users receive clear notifications about newly discovered channels: `📺 Discovered N new channels from PeerName`
+  - Newly discovered channels immediately appear in `ls ch available` and can be subscribed to with `sub <channel>`
+  - Backward compatible implementation that works with both old and new protocol versions
+  - Network efficient design that piggybacks on existing story sync protocol without additional network requests
+  - Comprehensive test coverage including unit tests for new storage functions and backward compatibility validation
+  - Fixes issue #217
+
 ## [0.10.2] - 2025-08-22
 
 ### Fixed
