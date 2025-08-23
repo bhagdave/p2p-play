@@ -1248,9 +1248,11 @@ pub async fn handle_story_sync_event(
                     {
                         Ok(filtered_stories) => {
                             debug!(
-                                "Sending {} stories to peer {}",
+                                "Sync request from {} - sending {} stories (channels: {:?}) since timestamp {}",
+                                peer,
                                 filtered_stories.len(),
-                                peer
+                                filtered_stories.iter().map(|s| &s.channel).collect::<std::collections::HashSet<_>>(),
+                                request.last_sync_timestamp
                             );
 
                             let story_count = filtered_stories.len();
@@ -1262,8 +1264,10 @@ pub async fn handle_story_sync_event(
                                 {
                                     Ok(channels) => {
                                         debug!(
-                                            "Found {} channel metadata entries for sync response",
-                                            channels.len()
+                                            "Found {} channel metadata entries for sync response to {}: {:?}",
+                                            channels.len(),
+                                            peer,
+                                            channels.iter().map(|c| &c.name).collect::<Vec<_>>()
                                         );
                                         channels
                                     }
@@ -1382,6 +1386,13 @@ pub async fn handle_story_sync_event(
 
                     // Process discovered channels first (before stories for logical order)
                     let mut discovered_channels_count = 0;
+                    debug!(
+                        "Received {} channels from {}: {:?}",
+                        response.channels.len(),
+                        response.from_name,
+                        response.channels.iter().map(|c| &c.name).collect::<Vec<_>>()
+                    );
+                    
                     if !response.channels.is_empty() {
                         match crate::storage::process_discovered_channels(
                             &response.channels,
@@ -1391,11 +1402,11 @@ pub async fn handle_story_sync_event(
                         {
                             Ok(count) => {
                                 discovered_channels_count = count;
+                                debug!(
+                                    "Channel discovery result: {} new channels from {} (out of {} total channels received)",
+                                    count, response.from_name, response.channels.len()
+                                );
                                 if count > 0 {
-                                    debug!(
-                                        "Discovered {} new channels from {}",
-                                        count, response.from_name
-                                    );
                                     ui_logger.log(format!(
                                         "📺 Discovered {} new channels from {}",
                                         count, response.from_name
