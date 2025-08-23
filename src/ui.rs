@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use std::io::{self, Stdout};
 use std::time::{Duration, UNIX_EPOCH};
 use tokio::sync::mpsc;
+use chrono::{DateTime, Local};
 
 #[cfg(windows)]
 use std::sync::{Arc, Mutex};
@@ -1000,13 +1001,11 @@ impl App {
                     let sanitized_from_name = ContentSanitizer::sanitize_for_display(&dm.from_name);
                     let sanitized_message = ContentSanitizer::sanitize_for_display(&dm.message);
 
-                    // Format timestamp as HH:MM
+                    // Format timestamp as HH:MM in local timezone
                     let time_str = {
                         let datetime = UNIX_EPOCH + Duration::from_secs(dm.timestamp);
-                        let local_time = datetime.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-                        let hours = (local_time / 3600) % 24;
-                        let minutes = (local_time / 60) % 60;
-                        format!("{:02}:{:02}", hours, minutes)
+                        let local_datetime = DateTime::<Local>::from(datetime);
+                        local_datetime.format("%H:%M").to_string()
                     };
 
                     // Truncate message if too long
