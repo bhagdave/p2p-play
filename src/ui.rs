@@ -21,6 +21,7 @@ use ratatui::{
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
+use std::time::{Duration, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 #[cfg(windows)]
@@ -69,7 +70,7 @@ pub struct App {
     pub auto_scroll: bool, // Track if we should auto-scroll to bottom
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub direct_messages: Vec<DirectMessage>, // Store direct messages separately
-    pub unread_message_count: usize, // Track unread direct messages
+    pub unread_message_count: usize,         // Track unread direct messages
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -649,7 +650,7 @@ impl App {
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
         // Store the direct message in our dedicated storage
         self.direct_messages.push(dm);
-        
+
         // Increment unread count
         self.unread_message_count += 1;
     }
@@ -998,10 +999,16 @@ impl App {
                     // Sanitize content for safe display
                     let sanitized_from_name = ContentSanitizer::sanitize_for_display(&dm.from_name);
                     let sanitized_message = ContentSanitizer::sanitize_for_display(&dm.message);
-                    
-                    // Use simple timestamp display (just the raw timestamp for now)
-                    let time_str = format!("{}", dm.timestamp % 86400); // Show seconds in day for brevity
-                    
+
+                    // Format timestamp as HH:MM
+                    let time_str = {
+                        let datetime = UNIX_EPOCH + Duration::from_secs(dm.timestamp);
+                        let local_time = datetime.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+                        let hours = (local_time / 3600) % 24;
+                        let minutes = (local_time / 60) % 60;
+                        format!("{:02}:{:02}", hours, minutes)
+                    };
+
                     // Truncate message if too long
                     let max_msg_len = 25; // Adjust based on panel width
                     let display_message = if sanitized_message.len() > max_msg_len {
@@ -1009,7 +1016,7 @@ impl App {
                     } else {
                         sanitized_message
                     };
-                    
+
                     ListItem::new(format!(
                         "{} {} [{}]: {}",
                         Icons::envelope(),

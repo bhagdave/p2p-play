@@ -2,6 +2,14 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.4] - 2025-08-23
+
+### Fixed
+- **Direct Message Time Format**: Fixed time display in the dedicated Messages panel where timestamps were showing as raw numbers instead of proper HH:MM format
+  - Updated time formatting to convert Unix timestamps to readable HH:MM format
+  - Messages now display time properly (e.g., [14:32] instead of [830609])
+  - Improved message readability in the Messages panel
+
 ## [0.10.3] - 2025-08-23
 
 ### Added

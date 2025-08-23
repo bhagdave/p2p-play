@@ -35,7 +35,7 @@ fn test_app_event_variants() {
         message: "Hello!".to_string(),
         timestamp: 1234567890,
     };
-    
+
     let events = [
         AppEvent::Input("test".to_string()),
         AppEvent::Quit,
@@ -148,7 +148,7 @@ fn test_direct_message_storage_and_unread_tracking() {
     }
 
     let mut app = MockApp::new();
-    
+
     // Initially no messages
     assert_eq!(app.direct_messages.len(), 0);
     assert_eq!(app.unread_message_count, 0);
@@ -162,7 +162,7 @@ fn test_direct_message_storage_and_unread_tracking() {
         timestamp: 1234567890,
     };
     app.handle_direct_message(dm1);
-    
+
     assert_eq!(app.direct_messages.len(), 1);
     assert_eq!(app.unread_message_count, 1);
 
@@ -175,7 +175,7 @@ fn test_direct_message_storage_and_unread_tracking() {
         timestamp: 1234567900,
     };
     app.handle_direct_message(dm2);
-    
+
     assert_eq!(app.direct_messages.len(), 2);
     assert_eq!(app.unread_message_count, 2);
 
