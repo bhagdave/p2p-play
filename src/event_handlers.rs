@@ -776,7 +776,7 @@ pub async fn handle_kad_event(
                     "Kademlia bootstrap failed: {:?}",
                     e
                 );
-                ui_logger.log(format!("DHT bootstrap failed: {e:?}"));
+                // DHT bootstrap errors are logged to error file only, not shown in UI
             }
             libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
                 debug!(

@@ -2,6 +2,13 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.2] - 2025-08-22
+
+### Fixed
+- **Connection Error UI Clutter**: All connection and bootstrap errors are now suppressed from the TUI interface by default
+  - The UI no longer displays any connection or bootstrap errors, regardless of error type or message
+  - All such errors are still logged to the `errors.log` file for debugging purposes, keeping the UI clean
+
 ## [0.10.1] - 2025-08-21
 
 ### Fixed

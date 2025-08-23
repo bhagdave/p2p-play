@@ -549,17 +549,20 @@ impl EventProcessor {
         connection_id: &libp2p::swarm::ConnectionId,
         app: &mut App,
     ) {
-        // Filter out common connection timeout/refused errors to reduce noise
+        // Filter out connection errors to reduce UI noise - default to NOT showing errors
         let should_log_to_ui = match error {
-            libp2p::swarm::DialError::Transport(transport_errors) => {
-                // Only log to UI for unexpected transport errors, not timeouts/refused
-                !transport_errors.iter().any(|(_, e)| {
-                    e.to_string().contains("Connection refused")
-                        || e.to_string().contains("timed out")
-                        || e.to_string().contains("No route to host")
-                })
+            // Never show these common dial errors in UI
+            libp2p::swarm::DialError::NoAddresses => false,
+            libp2p::swarm::DialError::LocalPeerId { address: _ } => false,
+            libp2p::swarm::DialError::WrongPeerId { .. } => false,
+            libp2p::swarm::DialError::Aborted => false,
+            libp2p::swarm::DialError::Denied { .. } => false,
+            libp2p::swarm::DialError::Transport(_) => false, // Never show transport errors in UI
+            _ => {
+                // For any other dial errors, also don't show them in UI by default
+                // All connection errors are logged to errors.log file for debugging
+                false
             }
-            _ => false, // Don't spam UI with most dial errors
         };
 
         crate::log_network_error!(
@@ -585,13 +588,9 @@ impl EventProcessor {
         connection_id: &libp2p::swarm::ConnectionId,
         app: &mut App,
     ) {
-        // Filter out common connection errors to reduce noise
-        let should_log_to_ui = {
-            let error_str = error.to_string();
-            !(error_str.contains("Connection reset")
-                || error_str.contains("Broken pipe")
-                || error_str.contains("timed out"))
-        };
+        // Don't show any incoming connection errors in UI - they're all noise
+        // All errors are still logged to errors.log file for debugging
+        let should_log_to_ui = false;
 
         crate::log_network_error!(
             self.error_logger,
