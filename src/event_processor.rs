@@ -240,6 +240,11 @@ impl EventProcessor {
                             refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                             None
                         }
+                        AppEvent::DirectMessage(direct_message) => {
+                            // Handle incoming direct message for UI
+                            app.handle_direct_message(direct_message);
+                            None
+                        }
                     }
                 } else {
                     None
@@ -751,6 +756,13 @@ impl EventProcessor {
                 // This should already be handled in handle_event where we have access to the swarm
                 // If we get here, it means there's a logic error
                 debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
+            }
+            ActionResult::DirectMessageReceived(direct_message) => {
+                // Send direct message to UI
+                if let Err(e) = self.ui_sender.send(AppEvent::DirectMessage(direct_message)) {
+                    self.error_logger
+                        .log_error(&format!("Failed to send direct message to UI: {e}"));
+                }
             }
         }
     }

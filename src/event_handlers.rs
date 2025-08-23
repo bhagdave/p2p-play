@@ -868,7 +868,7 @@ pub async fn handle_request_response_event(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
-) {
+) -> Option<DirectMessage> {
     match event {
         request_response::Event::Message { peer, message, .. } => {
             match message {
@@ -907,23 +907,31 @@ pub async fn handle_request_response_event(
                                 e
                             );
                         }
-                        return;
+                        return None;
                     }
 
                     // Handle incoming direct message request
-                    if let Some(local_name) = local_peer_name {
-                        if &request.to_name == local_name {
-                            // Regular direct message
-                            ui_logger.log(format!(
-                                "📨 Direct message from {}: {}",
-                                request.from_name, request.message
-                            ));
-                        }
-                    }
-
+                    let should_process = if let Some(local_name) = local_peer_name {
+                        &request.to_name == local_name
+                    } else {
+                        false
+                    };
+                    
+                    let direct_message = if should_process {
+                        Some(DirectMessage {
+                            from_peer_id: request.from_peer_id.clone(),
+                            from_name: request.from_name.clone(),
+                            to_name: request.to_name.clone(),
+                            message: request.message.clone(),
+                            timestamp: request.timestamp,
+                        })
+                    } else {
+                        None
+                    };
+                    
                     // Send response acknowledging receipt
                     let response = DirectMessageResponse {
-                        received: true,
+                        received: should_process,
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -940,6 +948,10 @@ pub async fn handle_request_response_event(
                             "direct_message",
                             &format!("Failed to send response to {peer}: {e:?}"),
                         );
+                    }
+                    
+                    if let Some(dm) = direct_message {
+                        return Some(dm);
                     }
                 }
                 request_response::Message::Response { response, .. } => {
@@ -995,6 +1007,7 @@ pub async fn handle_request_response_event(
             debug!("Response sent to {peer}");
         }
     }
+    None
 }
 
 /// Handle direct message events
@@ -1890,7 +1903,7 @@ pub async fn handle_event(
             handle_ping_event(ping_event, error_logger).await;
         }
         EventType::RequestResponseEvent(request_response_event) => {
-            handle_request_response_event(
+            if let Some(direct_message) = handle_request_response_event(
                 request_response_event,
                 swarm,
                 local_peer_name,
@@ -1898,7 +1911,9 @@ pub async fn handle_event(
                 error_logger,
                 pending_messages,
             )
-            .await;
+            .await {
+                return Some(ActionResult::DirectMessageReceived(direct_message));
+            }
         }
         EventType::NodeDescriptionEvent(node_desc_event) => {
             handle_node_description_event(

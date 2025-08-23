@@ -108,6 +108,7 @@ pub enum AppEvent {
     Input(String),
     Quit,
     StoryViewed { story_id: usize, channel: String },
+    DirectMessage(DirectMessage),
 }
 
 impl App {

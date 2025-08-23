@@ -28,6 +28,14 @@ fn test_input_mode() {
 
 #[test]
 fn test_app_event_variants() {
+    let dm = DirectMessage {
+        from_peer_id: "peer123".to_string(),
+        from_name: "Alice".to_string(),
+        to_name: "Bob".to_string(),
+        message: "Hello!".to_string(),
+        timestamp: 1234567890,
+    };
+    
     let events = [
         AppEvent::Input("test".to_string()),
         AppEvent::Quit,
@@ -35,10 +43,11 @@ fn test_app_event_variants() {
             story_id: 1,
             channel: "general".to_string(),
         },
+        AppEvent::DirectMessage(dm),
     ];
 
     // Test that we can create all event variants
-    assert_eq!(events.len(), 3);
+    assert_eq!(events.len(), 4);
 }
 
 #[test]
