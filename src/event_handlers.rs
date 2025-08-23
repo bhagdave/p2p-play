@@ -1256,16 +1256,22 @@ pub async fn handle_story_sync_event(
                             let story_count = filtered_stories.len();
 
                             // Get channel metadata for the stories being shared
-                            let channels = match crate::storage::get_channels_for_stories(&filtered_stories).await {
-                                Ok(channels) => {
-                                    debug!("Found {} channel metadata entries for sync response", channels.len());
-                                    channels
-                                }
-                                Err(e) => {
-                                    debug!("Failed to get channel metadata for sync: {}", e);
-                                    Vec::new() // Fallback to empty list to maintain functionality
-                                }
-                            };
+                            let channels =
+                                match crate::storage::get_channels_for_stories(&filtered_stories)
+                                    .await
+                                {
+                                    Ok(channels) => {
+                                        debug!(
+                                            "Found {} channel metadata entries for sync response",
+                                            channels.len()
+                                        );
+                                        channels
+                                    }
+                                    Err(e) => {
+                                        debug!("Failed to get channel metadata for sync: {}", e);
+                                        Vec::new() // Fallback to empty list to maintain functionality
+                                    }
+                                };
 
                             let response = crate::network::StorySyncResponse {
                                 stories: filtered_stories,
@@ -1377,15 +1383,22 @@ pub async fn handle_story_sync_event(
                     // Process discovered channels first (before stories for logical order)
                     let mut discovered_channels_count = 0;
                     if !response.channels.is_empty() {
-                        match crate::storage::process_discovered_channels(&response.channels, &response.from_name).await {
+                        match crate::storage::process_discovered_channels(
+                            &response.channels,
+                            &response.from_name,
+                        )
+                        .await
+                        {
                             Ok(count) => {
                                 discovered_channels_count = count;
                                 if count > 0 {
-                                    debug!("Discovered {} new channels from {}", count, response.from_name);
+                                    debug!(
+                                        "Discovered {} new channels from {}",
+                                        count, response.from_name
+                                    );
                                     ui_logger.log(format!(
                                         "📺 Discovered {} new channels from {}",
-                                        count,
-                                        response.from_name
+                                        count, response.from_name
                                     ));
                                 }
                             }

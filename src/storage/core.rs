@@ -397,11 +397,14 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
     );
 
     let mut stmt = conn.prepare(&query)?;
-    
+
     // Convert channel names to query parameters
     let channel_names: Vec<String> = unique_channels.into_iter().collect();
-    let param_refs: Vec<&dyn rusqlite::ToSql> = channel_names.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-    
+    let param_refs: Vec<&dyn rusqlite::ToSql> = channel_names
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+
     let channel_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_channel)?;
 
     let mut channels = Vec::new();
@@ -409,7 +412,11 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         channels.push(channel?);
     }
 
-    debug!("Found {} channel metadata entries for {} stories", channels.len(), stories.len());
+    debug!(
+        "Found {} channel metadata entries for {} stories",
+        channels.len(),
+        stories.len()
+    );
     Ok(channels)
 }
 
@@ -433,14 +440,20 @@ pub async fn process_discovered_channels(
         match create_channel(&channel.name, &channel.description, &channel.created_by).await {
             Ok(_) => {
                 saved_count += 1;
-                debug!("Saved discovered channel '{}' from peer {}", channel.name, peer_name);
+                debug!(
+                    "Saved discovered channel '{}' from peer {}",
+                    channel.name, peer_name
+                );
             }
             Err(e) if e.to_string().contains("UNIQUE constraint") => {
                 debug!("Channel '{}' already exists in database", channel.name);
                 // Channel already exists, this is normal
             }
             Err(e) => {
-                debug!("Failed to save discovered channel '{}': {}", channel.name, e);
+                debug!(
+                    "Failed to save discovered channel '{}': {}",
+                    channel.name, e
+                );
             }
         }
     }

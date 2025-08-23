@@ -194,30 +194,32 @@ async fn test_three_peer_story_broadcasting() {
     for iteration in 0..150 {
         for (i, swarm) in swarms.iter_mut().enumerate() {
             if let Some(event) = futures::StreamExt::next(swarm).now_or_never().flatten() {
-                if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) = event { match event {
-                    Event::Message(msg) => {
-                        println!(
-                            "Peer {} received floodsub message from peer {}",
-                            i, msg.source
-                        );
-                        if let Ok(received_story) =
-                            serde_json::from_slice::<PublishedStory>(&msg.data)
-                        {
-                            if received_story.story.name == "Multi-Peer Test Story" {
-                                println!("✅ Peer {} received the broadcasted story!", i);
-                                received_by.insert(i);
-                            }
-                        } else {
+                if let SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) = event {
+                    match event {
+                        Event::Message(msg) => {
                             println!(
-                                "Peer {} received message but could not deserialize story",
-                                i
+                                "Peer {} received floodsub message from peer {}",
+                                i, msg.source
                             );
+                            if let Ok(received_story) =
+                                serde_json::from_slice::<PublishedStory>(&msg.data)
+                            {
+                                if received_story.story.name == "Multi-Peer Test Story" {
+                                    println!("✅ Peer {} received the broadcasted story!", i);
+                                    received_by.insert(i);
+                                }
+                            } else {
+                                println!(
+                                    "Peer {} received message but could not deserialize story",
+                                    i
+                                );
+                            }
+                        }
+                        _ => {
+                            println!("Peer {}: Other floodsub event: {:?}", i, event);
                         }
                     }
-                    _ => {
-                        println!("Peer {}: Other floodsub event: {:?}", i, event);
-                    }
-                } }
+                }
             }
         }
 

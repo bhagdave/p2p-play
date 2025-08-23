@@ -655,7 +655,7 @@ async fn test_backwards_compatibility_serialization() {
 #[tokio::test]
 async fn test_story_sync_response_backward_compatibility() {
     // Test that the enhanced StorySyncResponse maintains backward compatibility
-    
+
     // Test old format StorySyncResponse (without channels field)
     let old_response_json = r#"{
         "stories": [
@@ -677,7 +677,7 @@ async fn test_story_sync_response_backward_compatibility() {
     // Should deserialize successfully with default empty channels field
     let response: Result<StorySyncResponse, _> = serde_json::from_str(old_response_json);
     assert!(response.is_ok());
-    
+
     let response = response.unwrap();
     assert_eq!(response.stories.len(), 1);
     assert_eq!(response.channels.len(), 0); // Should default to empty
@@ -712,7 +712,7 @@ async fn test_story_sync_response_backward_compatibility() {
 
     let new_response: Result<StorySyncResponse, _> = serde_json::from_str(new_response_json);
     assert!(new_response.is_ok());
-    
+
     let new_response = new_response.unwrap();
     assert_eq!(new_response.stories.len(), 1);
     assert_eq!(new_response.channels.len(), 1);

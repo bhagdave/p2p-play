@@ -1,4 +1,6 @@
-use p2p_play::storage::{get_channels_for_stories, process_discovered_channels, create_channel, read_channels};
+use p2p_play::storage::{
+    create_channel, get_channels_for_stories, process_discovered_channels, read_channels,
+};
 use p2p_play::types::{Channel, Story};
 use std::collections::HashSet;
 
@@ -36,8 +38,12 @@ async fn test_get_channels_for_stories_with_existing_channels() {
     cleanup_test_db();
 
     // Create some test channels first
-    create_channel("tech", "Technology discussions", "creator1").await.unwrap();
-    create_channel("science", "Science topics", "creator2").await.unwrap();
+    create_channel("tech", "Technology discussions", "creator1")
+        .await
+        .unwrap();
+    create_channel("science", "Science topics", "creator2")
+        .await
+        .unwrap();
 
     // Create stories that reference these channels
     let stories = vec![
@@ -77,7 +83,7 @@ async fn test_get_channels_for_stories_with_existing_channels() {
 
     // Should return 2 unique channels
     assert_eq!(channels.len(), 2);
-    
+
     let channel_names: HashSet<String> = channels.iter().map(|c| c.name.clone()).collect();
     assert!(channel_names.contains("tech"));
     assert!(channel_names.contains("science"));
@@ -91,18 +97,16 @@ async fn test_get_channels_for_stories_with_non_existent_channels() {
     cleanup_test_db();
 
     // Create stories that reference channels that don't exist in our database
-    let stories = vec![
-        Story {
-            id: 1,
-            name: "Story 1".to_string(),
-            header: "Header 1".to_string(),
-            body: "Body 1".to_string(),
-            public: true,
-            channel: "nonexistent".to_string(),
-            created_at: 1000,
-            auto_share: None,
-        },
-    ];
+    let stories = vec![Story {
+        id: 1,
+        name: "Story 1".to_string(),
+        header: "Header 1".to_string(),
+        body: "Body 1".to_string(),
+        public: true,
+        channel: "nonexistent".to_string(),
+        created_at: 1000,
+        auto_share: None,
+    }];
 
     let channels = get_channels_for_stories(&stories).await.unwrap();
 
@@ -132,7 +136,9 @@ async fn test_process_discovered_channels() {
         },
     ];
 
-    let saved_count = process_discovered_channels(&discovered_channels, "testpeer").await.unwrap();
+    let saved_count = process_discovered_channels(&discovered_channels, "testpeer")
+        .await
+        .unwrap();
     assert_eq!(saved_count, 2);
 
     // Verify channels were saved
@@ -150,7 +156,9 @@ async fn test_process_discovered_channels_with_duplicates() {
     cleanup_test_db();
 
     // Create an existing channel
-    create_channel("existing", "Existing Channel", "original_creator").await.unwrap();
+    create_channel("existing", "Existing Channel", "original_creator")
+        .await
+        .unwrap();
 
     let discovered_channels = vec![
         Channel {
@@ -167,8 +175,10 @@ async fn test_process_discovered_channels_with_duplicates() {
         },
     ];
 
-    let saved_count = process_discovered_channels(&discovered_channels, "testpeer").await.unwrap();
-    
+    let saved_count = process_discovered_channels(&discovered_channels, "testpeer")
+        .await
+        .unwrap();
+
     // Should only save 1 (the new one, existing should be skipped)
     assert_eq!(saved_count, 1);
 
@@ -207,8 +217,10 @@ async fn test_process_discovered_channels_with_invalid_data() {
         },
     ];
 
-    let saved_count = process_discovered_channels(&discovered_channels, "testpeer").await.unwrap();
-    
+    let saved_count = process_discovered_channels(&discovered_channels, "testpeer")
+        .await
+        .unwrap();
+
     // Should only save 1 (the valid one)
     assert_eq!(saved_count, 1);
 
@@ -226,7 +238,9 @@ async fn test_process_discovered_channels_empty_list() {
     cleanup_test_db();
 
     let discovered_channels: Vec<Channel> = vec![];
-    let saved_count = process_discovered_channels(&discovered_channels, "testpeer").await.unwrap();
+    let saved_count = process_discovered_channels(&discovered_channels, "testpeer")
+        .await
+        .unwrap();
     assert_eq!(saved_count, 0);
 
     cleanup_test_db();
