@@ -476,21 +476,33 @@ pub async fn process_discovered_channels(
             continue;
         }
 
-        match create_channel(&channel.name, &channel.description, &channel.created_by).await {
-            Ok(_) => {
-                saved_count += 1;
-                debug!(
-                    "Successfully saved discovered channel '{}' from peer {}",
-                    channel.name, peer_name
-                );
+        // Check if channel already exists before trying to create it
+        match channel_exists(&channel.name).await {
+            Ok(true) => {
+                debug!("Channel '{}' already exists in database, skipping", channel.name);
+                // Channel already exists, don't count as new discovery
             }
-            Err(e) if e.to_string().contains("UNIQUE constraint") => {
-                debug!("Channel '{}' already exists in database", channel.name);
-                // Channel already exists, this is normal
+            Ok(false) => {
+                // Channel doesn't exist, try to create it
+                match create_channel(&channel.name, &channel.description, &channel.created_by).await {
+                    Ok(_) => {
+                        saved_count += 1;
+                        debug!(
+                            "Successfully saved discovered channel '{}' from peer {}",
+                            channel.name, peer_name
+                        );
+                    }
+                    Err(e) => {
+                        debug!(
+                            "Failed to save discovered channel '{}': {}",
+                            channel.name, e
+                        );
+                    }
+                }
             }
             Err(e) => {
                 debug!(
-                    "Failed to save discovered channel '{}': {}",
+                    "Failed to check if channel '{}' exists: {}",
                     channel.name, e
                 );
             }
@@ -851,6 +863,16 @@ pub async fn create_channel(name: &str, description: &str, created_by: &str) -> 
 
     debug!("Created channel: {name} - {description}");
     Ok(())
+}
+
+/// Check if a channel exists in the database
+pub async fn channel_exists(name: &str) -> StorageResult<bool> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare("SELECT 1 FROM channels WHERE name = ? LIMIT 1")?;
+    let exists = stmt.exists([name])?;
+    Ok(exists)
 }
 
 pub async fn read_channels() -> StorageResult<Channels> {

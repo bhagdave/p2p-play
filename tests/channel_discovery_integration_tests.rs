@@ -9,34 +9,33 @@ use p2p_play::storage::{
 use p2p_play::types::{Channel, Story};
 use std::collections::HashSet;
 
-const TEST_DB_PATH: &str = "./test_integration_channel_sync.db";
-
-async fn setup_clean_test_environment() {
+async fn setup_clean_test_environment(test_name: &str) {
+    // Create unique database path for each test
+    let test_db_path = format!("./test_integration_channel_sync_{}.db", test_name);
+    
     // Clean up any existing test database first
-    let _ = std::fs::remove_file(TEST_DB_PATH);
+    let _ = std::fs::remove_file(&test_db_path);
     
     unsafe {
-        std::env::set_var("TEST_DATABASE_PATH", TEST_DB_PATH);
+        std::env::set_var("TEST_DATABASE_PATH", &test_db_path);
     }
     
     // Reset any cached database connections
     p2p_play::storage::reset_db_connection_for_testing().await.unwrap();
     
-    // Initialize the database by ensuring we have a connection and creating tables
-    let conn_arc = p2p_play::storage::get_db_connection().await.unwrap();
-    let conn = conn_arc.lock().await;
-    p2p_play::migrations::create_tables(&conn).unwrap();
-    drop(conn); // Ensure connection is released
+    // Initialize the database using the proper initialization function
+    p2p_play::storage::ensure_stories_file_exists().await.unwrap();
 }
 
-fn cleanup_test_db() {
-    let _ = std::fs::remove_file(TEST_DB_PATH);
+fn cleanup_test_db(test_name: &str) {
+    let test_db_path = format!("./test_integration_channel_sync_{}.db", test_name);
+    let _ = std::fs::remove_file(&test_db_path);
 }
 
 /// Test the complete channel discovery workflow that was failing
 #[tokio::test]
 async fn test_channel_discovery_integration_workflow() {
-    setup_clean_test_environment().await;
+    setup_clean_test_environment("workflow").await;
 
     println!("=== Testing Channel Discovery Integration Workflow ===");
 
@@ -89,7 +88,7 @@ async fn test_channel_discovery_integration_workflow() {
     println!("5. Simulating Node B (fresh node) receiving sync data");
     
     // Clear the database to simulate Node B having no prior knowledge
-    setup_clean_test_environment().await;
+    setup_clean_test_environment("workflow_node_b").await;
     
     // Verify Node B starts with only the general channel
     let initial_channels = read_channels().await.unwrap();
@@ -128,14 +127,14 @@ async fn test_channel_discovery_integration_workflow() {
     assert_eq!(tech_channel.created_by, "nodeA");
     
     println!("=== Integration test completed successfully! ===");
-    cleanup_test_db();
+    cleanup_test_db("workflow");
 }
 
 /// Test the scenario where stories exist but no channel metadata is available
 /// This tests the enhanced get_channels_for_stories function
 #[tokio::test]
 async fn test_channel_discovery_with_missing_metadata() {
-    setup_clean_test_environment().await;
+    setup_clean_test_environment("missing_metadata").await;
 
     println!("=== Testing Channel Discovery with Missing Metadata ===");
 
@@ -179,13 +178,13 @@ async fn test_channel_discovery_with_missing_metadata() {
     assert!(channel_names.contains("missing_channel"));
     
     println!("=== Missing metadata test completed successfully! ===");
-    cleanup_test_db();
+    cleanup_test_db("missing_metadata");
 }
 
 /// Test backward compatibility - ensure empty channel lists don't break anything
 #[tokio::test]
 async fn test_backward_compatibility() {
-    setup_clean_test_environment().await;
+    setup_clean_test_environment("backward_compat").await;
 
     println!("=== Testing Backward Compatibility ===");
 
@@ -200,5 +199,54 @@ async fn test_backward_compatibility() {
     assert_eq!(channel_metadata.len(), 0);
     
     println!("=== Backward compatibility test completed successfully! ===");
-    cleanup_test_db();
+    cleanup_test_db("backward_compat");
+}
+
+/// Test the specific bug where existing channels were incorrectly counted as "discovered"
+#[tokio::test]  
+async fn test_existing_channel_not_counted_as_discovered() {
+    setup_clean_test_environment("existing_channel_bug").await;
+
+    println!("=== Testing Existing Channel Bug Fix ===");
+
+    // === Step 1: Create a channel that already exists ===
+    println!("1. Creating existing channel 'technology' in database");
+    create_channel("technology", "Technology discussions", "original_creator").await.unwrap();
+
+    // Verify it exists
+    let initial_channels = read_channels().await.unwrap();
+    println!("Initial channels after creating 'technology': {:?}", 
+        initial_channels.iter().map(|c| &c.name).collect::<Vec<_>>());
+    
+    // Find the technology channel
+    let tech_channels: Vec<_> = initial_channels.iter().filter(|c| c.name == "technology").collect();
+    assert_eq!(tech_channels.len(), 1, "Should have exactly one technology channel");
+    assert_eq!(tech_channels[0].created_by, "original_creator");
+
+    // === Step 2: Simulate receiving the same channel during sync ===
+    println!("2. Simulating discovery of existing channel during sync");
+    let duplicate_channel = Channel::new(
+        "technology".to_string(),
+        "Technology discussions from peer".to_string(),
+        "peer_creator".to_string(),
+    );
+
+    // This should return 0 because the channel already exists
+    let discovered_count = process_discovered_channels(&[duplicate_channel], "test_peer").await.unwrap();
+    
+    println!("3. Discovered count for existing channel: {}", discovered_count);
+    assert_eq!(discovered_count, 0, "Existing channels should not be counted as discovered");
+
+    // Verify the channel still exists and wasn't duplicated
+    let final_channels = read_channels().await.unwrap();
+    println!("Final channels: {:?}", 
+        final_channels.iter().map(|c| (&c.name, &c.created_by)).collect::<Vec<_>>());
+    
+    // Check that we still have the technology channel with original metadata
+    let tech_channels: Vec<_> = final_channels.iter().filter(|c| c.name == "technology").collect();
+    assert_eq!(tech_channels.len(), 1, "Should have exactly one technology channel");
+    assert_eq!(tech_channels[0].created_by, "original_creator", "Original metadata should be preserved");
+
+    println!("=== Existing channel bug fix test completed successfully! ===");
+    cleanup_test_db("existing_channel_bug");
 }
