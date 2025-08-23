@@ -1257,25 +1257,30 @@ pub async fn handle_story_sync_event(
 
                             let story_count = filtered_stories.len();
 
-                            // Get channel metadata for the stories being shared
-                            let channels =
-                                match crate::storage::get_channels_for_stories(&filtered_stories)
-                                    .await
-                                {
-                                    Ok(channels) => {
-                                        debug!(
-                                            "Found {} channel metadata entries for sync response to {}: {:?}",
-                                            channels.len(),
-                                            peer,
-                                            channels.iter().map(|c| &c.name).collect::<Vec<_>>()
-                                        );
-                                        channels
+                            // Get ALL available channels for discovery, not just channels associated with the stories
+                            let channels = match crate::storage::read_channels().await {
+                                Ok(all_channels) => {
+                                    debug!(
+                                        "Sending {} total channels for peer discovery during sync response",
+                                        all_channels.len()
+                                    );
+                                    all_channels
+                                }
+                                Err(e) => {
+                                    debug!("Failed to read all channels for sync: {}", e);
+                                    // Fallback to story-specific channels if reading all channels fails
+                                    match crate::storage::get_channels_for_stories(&filtered_stories).await {
+                                        Ok(story_channels) => {
+                                            debug!("Fallback: using {} story-specific channels", story_channels.len());
+                                            story_channels
+                                        }
+                                        Err(e2) => {
+                                            debug!("Failed fallback channel lookup: {}", e2);
+                                            Vec::new() // Final fallback to maintain functionality
+                                        }
                                     }
-                                    Err(e) => {
-                                        debug!("Failed to get channel metadata for sync: {}", e);
-                                        Vec::new() // Fallback to empty list to maintain functionality
-                                    }
-                                };
+                                }
+                            };
 
                             let response = crate::network::StorySyncResponse {
                                 stories: filtered_stories,
