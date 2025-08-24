@@ -734,7 +734,6 @@ pub async fn get_auto_subscription_count(peer_id: &str) -> StorageResult<usize> 
     Ok(subscribed.len())
 }
 
-/// Save node description to file (limited to 1024 bytes)
 pub async fn save_node_description(description: &str) -> StorageResult<()> {
     if description.len() > 1024 {
         return Err("Description exceeds 1024 bytes limit".into());
@@ -744,14 +743,12 @@ pub async fn save_node_description(description: &str) -> StorageResult<()> {
     Ok(())
 }
 
-/// Load local node description from file
 pub async fn load_node_description() -> StorageResult<Option<String>> {
     match fs::read_to_string(NODE_DESCRIPTION_FILE_PATH).await {
         Ok(content) => {
             if content.is_empty() {
                 Ok(None)
             } else {
-                // Ensure it doesn't exceed the limit even if file was modified externally
                 if content.len() > 1024 {
                     return Err("Description file exceeds 1024 bytes limit".into());
                 }
@@ -763,53 +760,37 @@ pub async fn load_node_description() -> StorageResult<Option<String>> {
     }
 }
 
-/// Save bootstrap configuration to file
 pub async fn save_bootstrap_config(config: &BootstrapConfig) -> StorageResult<()> {
     save_bootstrap_config_to_path(config, "bootstrap_config.json").await
 }
 
-/// Save bootstrap configuration to specific path
 pub async fn save_bootstrap_config_to_path(
     config: &BootstrapConfig,
     path: &str,
 ) -> StorageResult<()> {
-    // Validate the config before saving
     config.validate()?;
 
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
-    debug!(
-        "Bootstrap config saved with {} peers",
-        config.bootstrap_peers.len()
-    );
     Ok(())
 }
 
-/// Load bootstrap configuration from file, creating default if missing
 pub async fn load_bootstrap_config() -> StorageResult<BootstrapConfig> {
     load_bootstrap_config_from_path("bootstrap_config.json").await
 }
 
-/// Load bootstrap configuration from specific path, creating default if missing
 pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<BootstrapConfig> {
     match fs::read_to_string(path).await {
         Ok(content) => {
             let config: BootstrapConfig = serde_json::from_str(&content)?;
 
-            // Validate the loaded config
             config.validate()?;
 
-            debug!(
-                "Loaded bootstrap config with {} peers",
-                config.bootstrap_peers.len()
-            );
             Ok(config)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            debug!("No bootstrap config file found, creating default");
             let default_config = BootstrapConfig::default();
 
-            // Save the default config for future use
             save_bootstrap_config_to_path(&default_config, path).await?;
 
             Ok(default_config)
@@ -818,131 +799,6 @@ pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<Bootst
     }
 }
 
-/// Ensure bootstrap config file exists with defaults
-pub async fn ensure_bootstrap_config_exists() -> StorageResult<()> {
-    if tokio::fs::metadata("bootstrap_config.json").await.is_err() {
-        let default_config = BootstrapConfig::default();
-        save_bootstrap_config(&default_config).await?;
-        debug!("Created default bootstrap config file");
-    }
-    Ok(())
-}
-
-/// Save direct message configuration to file
-pub async fn save_direct_message_config(config: &DirectMessageConfig) -> StorageResult<()> {
-    save_direct_message_config_to_path(config, "direct_message_config.json").await
-}
-
-/// Save direct message configuration to specific path
-pub async fn save_direct_message_config_to_path(
-    config: &DirectMessageConfig,
-    path: &str,
-) -> StorageResult<()> {
-    let json = serde_json::to_string_pretty(config)?;
-    fs::write(path, json).await?;
-    debug!("Saved direct message config to {path}");
-    Ok(())
-}
-
-/// Load direct message configuration from file, creating default if missing
-pub async fn load_direct_message_config() -> StorageResult<DirectMessageConfig> {
-    load_direct_message_config_from_path("direct_message_config.json").await
-}
-
-/// Load direct message configuration from specific path, creating default if missing
-pub async fn load_direct_message_config_from_path(
-    path: &str,
-) -> StorageResult<DirectMessageConfig> {
-    match fs::read_to_string(path).await {
-        Ok(content) => {
-            let config: DirectMessageConfig = serde_json::from_str(&content)?;
-
-            // Validate the loaded config
-            config.validate()?;
-
-            debug!("Loaded direct message config from {path}");
-            Ok(config)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            debug!("No direct message config file found, creating default");
-            let default_config = DirectMessageConfig::default();
-
-            // Save the default config for future use
-            save_direct_message_config_to_path(&default_config, path).await?;
-
-            Ok(default_config)
-        }
-        Err(e) => Err(e.into()),
-    }
-}
-
-/// Ensure direct message config file exists with defaults
-pub async fn ensure_direct_message_config_exists() -> StorageResult<()> {
-    if tokio::fs::metadata("direct_message_config.json")
-        .await
-        .is_err()
-    {
-        let default_config = DirectMessageConfig::default();
-        save_direct_message_config(&default_config).await?;
-        debug!("Created default direct message config file");
-    }
-    Ok(())
-}
-
-/// Save network configuration to file
-pub async fn save_network_config(config: &NetworkConfig) -> StorageResult<()> {
-    save_network_config_to_path(config, "network_config.json").await
-}
-
-/// Save network configuration to specific path
-pub async fn save_network_config_to_path(config: &NetworkConfig, path: &str) -> StorageResult<()> {
-    let json = serde_json::to_string_pretty(config)?;
-    fs::write(path, json).await?;
-    debug!("Saved network config to {path}");
-    Ok(())
-}
-
-/// Load network configuration from file, creating default if missing
-pub async fn load_network_config() -> StorageResult<NetworkConfig> {
-    load_network_config_from_path("network_config.json").await
-}
-
-/// Load network configuration from specific path, creating default if missing
-pub async fn load_network_config_from_path(path: &str) -> StorageResult<NetworkConfig> {
-    match fs::read_to_string(path).await {
-        Ok(content) => {
-            let config: NetworkConfig = serde_json::from_str(&content)?;
-
-            // Validate the loaded config
-            config.validate()?;
-
-            debug!("Loaded network config from {path}");
-            Ok(config)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            debug!("No network config file found, creating default");
-            let default_config = NetworkConfig::default();
-
-            // Save the default config for future use
-            save_network_config_to_path(&default_config, path).await?;
-
-            Ok(default_config)
-        }
-        Err(e) => Err(e.into()),
-    }
-}
-
-/// Ensure network config file exists with defaults
-pub async fn ensure_network_config_exists() -> StorageResult<()> {
-    if tokio::fs::metadata("network_config.json").await.is_err() {
-        let default_config = NetworkConfig::default();
-        save_network_config(&default_config).await?;
-        debug!("Created default network config file");
-    }
-    Ok(())
-}
-
-/// Save unified network configuration to file
 pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
     save_unified_network_config_to_path(config, "unified_network_config.json").await
 }
