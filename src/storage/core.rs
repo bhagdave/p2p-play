@@ -1,8 +1,7 @@
 use crate::errors::StorageResult;
 use crate::storage::{mappers, utils};
 use crate::types::{
-    BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
-    DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
+    BootstrapConfig, Channel, Channels, Stories, Story, UnifiedNetworkConfig,
 };
 use log::debug;
 use r2d2::Pool;
