@@ -31,18 +31,15 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-/// Handle auto-subscription to a channel with error handling and limits checking
 async fn handle_auto_subscription(
     peer_id: &str,
     channel_name: &str,
     max_auto_subs: usize,
     ui_logger: &UILogger,
 ) -> Result<bool, String> {
-    // Check if already subscribed
     match crate::storage::read_subscribed_channels(peer_id).await {
         Ok(subscribed) => {
             if subscribed.contains(&channel_name.to_string()) {
-                // Already subscribed - this is normal, not an error
                 return Ok(false); // Not an error, just already subscribed
             }
         }
@@ -51,7 +48,6 @@ async fn handle_auto_subscription(
         }
     }
 
-    // Check subscription count against limit
     match crate::storage::get_auto_subscription_count(peer_id).await {
         Ok(current_count) => {
             if current_count >= max_auto_subs {
@@ -66,14 +62,12 @@ async fn handle_auto_subscription(
         }
     }
 
-    // Attempt to auto-subscribe
     match crate::storage::subscribe_to_channel(peer_id, channel_name).await {
         Ok(_) => Ok(true),
         Err(e) => Err(format!("Failed to subscribe: {e}")),
     }
 }
 pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBehaviour>) {
-    debug!("Response received");
     let json = serde_json::to_string(&resp).expect("can jsonify response");
     let json_bytes = Bytes::from(json.into_bytes());
     swarm
@@ -82,24 +76,15 @@ pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBe
         .publish(TOPIC.clone(), json_bytes);
 }
 
-/// Handle story publishing events
 pub async fn handle_publish_story_event(
     story: crate::types::Story,
     swarm: &mut Swarm<StoryBehaviour>,
     error_logger: &ErrorLogger,
     network_circuit_breakers: &crate::network_circuit_breakers::NetworkCircuitBreakers,
 ) {
-    debug!("Broadcasting published story: {}", story.name);
-
-    // Pre-publish connection check and reconnection
     maintain_connections(swarm, error_logger).await;
 
-    // Debug: Show connected peers and floodsub state
     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-    debug!("Currently connected peers: {}", connected_peers.len());
-    for peer in &connected_peers {
-        debug!("Connected to: {peer}");
-    }
 
     if connected_peers.is_empty() {
         crate::log_network_error!(
@@ -114,20 +99,12 @@ pub async fn handle_publish_story_event(
         publisher: PEER_ID.to_string(),
     };
 
-    // Use circuit breaker for story publishing
     let publish_result = network_circuit_breakers
         .execute("story_publish", || async {
             let json = serde_json::to_string(&published_story)
                 .map_err(|e| format!("Failed to serialize story: {e}"))?;
             let json_bytes = Bytes::from(json.into_bytes());
 
-            debug!(
-                "Publishing {} bytes to topic {:?}",
-                json_bytes.len(),
-                TOPIC.clone()
-            );
-
-            // Perform the actual publishing
             swarm
                 .behaviour_mut()
                 .floodsub
@@ -143,7 +120,6 @@ pub async fn handle_publish_story_event(
         }
         Err(e) => {
             error_logger.log_error(&format!("Story publishing failed: {e:?}"));
-            // Log the specific type of error for better debugging
             match e {
                 crate::circuit_breaker::CircuitBreakerError::CircuitOpen { circuit_name } => {
                     error_logger.log_error(&format!(
@@ -167,7 +143,6 @@ pub async fn handle_publish_story_event(
     }
 }
 
-/// Handle user input events
 pub async fn handle_input_event(
     line: String,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -250,7 +225,6 @@ pub async fn handle_input_event(
             process::exit(0)
         }
         "name" => {
-            // Show current alias when no arguments provided
             match local_peer_name {
                 Some(name) => ui_logger.log(format!("Current alias: {name}")),
                 None => ui_logger.log("No alias set. Use 'name <alias>' to set one.".to_string()),
@@ -258,14 +232,12 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("name ") => {
             if let Some(peer_name) = handle_set_name(cmd, local_peer_name, ui_logger).await {
-                // Broadcast the peer name to connected peers
                 let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
                 let json_bytes = Bytes::from(json.into_bytes());
                 swarm
                     .behaviour_mut()
                     .floodsub
                     .publish(TOPIC.clone(), json_bytes);
-                debug!("Broadcasted peer name to connected peers");
             }
         }
         cmd if cmd.starts_with("connect ") => {
@@ -274,13 +246,11 @@ pub async fn handle_input_event(
             }
         }
         cmd if cmd.starts_with("compose ") => {
-            // Handle compose command to enter message composition mode
             if let Some(peer_name) = cmd.strip_prefix("compose ") {
                 let peer_name = peer_name.trim();
                 if peer_name.is_empty() {
                     ui_logger.log("Usage: compose <peer_alias>".to_string());
                 } else {
-                    // Check if peer exists
                     let peer_exists = peer_names.values().any(|name| name == peer_name);
                     if peer_exists {
                         return Some(crate::types::ActionResult::EnterMessageComposition(
@@ -321,7 +291,6 @@ pub async fn handle_input_event(
     None
 }
 
-/// Handle mDNS discovery events with peer validation
 pub async fn handle_mdns_event(
     mdns_event: libp2p::mdns::Event,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -330,11 +299,8 @@ pub async fn handle_mdns_event(
 ) {
     match mdns_event {
         libp2p::mdns::Event::Discovered(discovered_list) => {
-            debug!("Discovered Peers event");
             for (peer, addr) in discovered_list {
-                debug!("Discovered a peer:{peer} at {addr}");
                 if !swarm.is_connected(&peer) {
-                    debug!("Attempting to dial peer: {peer}");
                     if let Err(e) = swarm.dial(peer) {
                         crate::log_network_error!(
                             error_logger,
@@ -352,12 +318,9 @@ pub async fn handle_mdns_event(
             }
         }
         libp2p::mdns::Event::Expired(expired_list) => {
-            debug!("Expired Peers event");
             for (peer, _addr) in expired_list {
-                debug!("Expired a peer:{peer} at {_addr}");
                 let discovered_nodes: Vec<_> = swarm.behaviour().mdns.discovered_nodes().collect();
                 if !discovered_nodes.contains(&(&peer)) {
-                    debug!("Removing peer from partial view: {peer}");
                     swarm
                         .behaviour_mut()
                         .floodsub
@@ -368,7 +331,6 @@ pub async fn handle_mdns_event(
     }
 }
 
-/// Handle floodsub message events
 pub async fn handle_floodsub_event(
     floodsub_event: libp2p::floodsub::Event,
     response_sender: mpsc::UnboundedSender<ListResponse>,
@@ -382,10 +344,6 @@ pub async fn handle_floodsub_event(
 ) -> Option<crate::types::ActionResult> {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
-            debug!("Message event received from {:?}", msg.source);
-            debug!("Message data length: {} bytes", msg.data.len());
-
-            // Verify that message is from a verified P2P-Play peer
             let source_peer = msg.source;
             let is_verified = {
                 let verified_peers = verified_p2p_play_peers.lock().unwrap();
@@ -393,20 +351,14 @@ pub async fn handle_floodsub_event(
             };
 
             if !is_verified {
-                debug!(
-                    "Ignoring floodsub message from unverified peer: {}",
-                    source_peer
-                );
                 return None;
             }
             if let Ok(resp) = serde_json::from_slice::<ListResponse>(&msg.data) {
                 if resp.receiver == PEER_ID.to_string() {
-                    debug!("Response from {}:", msg.source);
                     resp.data.iter().for_each(|r| debug!("{r:?}"));
                 }
             } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                 if published.publisher != PEER_ID.to_string() {
-                    // Check if we're subscribed to the story's channel
                     let should_accept_story = match crate::storage::read_subscribed_channels(
                         &PEER_ID.to_string(),
                     )
@@ -429,19 +381,12 @@ pub async fn handle_floodsub_event(
                     };
 
                     if should_accept_story {
-                        debug!(
-                            "Received published story '{}' from {} in channel '{}'",
-                            published.story.name, msg.source, published.story.channel
-                        );
-                        debug!("Story: {:?}", published.story);
                         ui_logger.log(format!(
                             "📖 Received story '{}' from {} in channel '{}'",
                             published.story.name, msg.source, published.story.channel
                         ));
 
-                        // Save received story to local storage synchronously to ensure TUI refresh sees it
                         if let Err(e) = save_received_story(published.story.clone()).await {
-                            // Log error but continue processing
                             crate::log_network_error!(
                                 error_logger,
                                 "storage",
@@ -450,47 +395,27 @@ pub async fn handle_floodsub_event(
                             );
                             ui_logger.log(format!("Warning: Failed to save received story: {e}"));
                         } else {
-                            // Signal that stories need to be refreshed only if save was successful
                             return Some(crate::types::ActionResult::RefreshStories);
                         }
-                    } else {
-                        debug!(
-                            "Ignoring story '{}' from channel '{}' - not subscribed",
-                            published.story.name, published.story.channel
-                        );
                     }
                 }
             } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
                 if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
                     if peer_id != *PEER_ID {
-                        debug!("Received peer name '{}' from {}", peer_name.name, peer_id);
-
-                        // Only update the peer name if it's new or has actually changed
                         let mut names_changed = false;
                         peer_names
                             .entry(peer_id)
                             .and_modify(|existing_name| {
                                 if existing_name != &peer_name.name {
-                                    debug!(
-                                        "Peer {} name changed from '{}' to '{}'",
-                                        peer_id, existing_name, peer_name.name
-                                    );
                                     *existing_name = peer_name.name.clone();
                                     names_changed = true;
-                                } else {
-                                    debug!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
                                 }
                             })
                             .or_insert_with(|| {
-                                debug!(
-                                    "Setting peer {} name to '{}' (first time)",
-                                    peer_id, peer_name.name
-                                );
                                 names_changed = true;
                                 peer_name.name.clone()
                             });
 
-                        // Update the cache if peer names changed
                         if names_changed {
                             sorted_peer_names_cache.update(peer_names);
                         }
@@ -500,24 +425,15 @@ pub async fn handle_floodsub_event(
                 serde_json::from_slice::<PublishedChannel>(&msg.data)
             {
                 if published_channel.publisher != PEER_ID.to_string() {
-                    debug!(
-                        "Received published channel '{}' - {} from {}",
-                        published_channel.channel.name,
-                        published_channel.channel.description,
-                        msg.source
-                    );
 
-                    // Load auto-subscription config to determine behavior
                     let auto_sub_config = match crate::storage::load_unified_network_config().await
                     {
                         Ok(config) => config.channel_auto_subscription,
                         Err(e) => {
-                            debug!("Failed to load auto-subscription config: {e}");
                             crate::types::ChannelAutoSubscriptionConfig::new() // Use defaults
                         }
                     };
 
-                    // Show notification if enabled
                     if auto_sub_config.notify_new_channels {
                         ui_logger.log(format!(
                             "📺 New channel discovered: '{}' - {} from {}",
@@ -527,19 +443,15 @@ pub async fn handle_floodsub_event(
                         ));
                     }
 
-                    // Handle auto-subscription if enabled (but avoid the tokio::spawn Send issue)
                     let should_auto_subscribe = auto_sub_config.auto_subscribe_to_new_channels;
                     let max_auto_subs = auto_sub_config.max_auto_subscriptions;
 
-                    // Save the received channel to local storage synchronously to avoid race condition
                     let channel_to_save = &published_channel.channel;
                     let peer_id_str = PEER_ID.to_string();
 
-                    // Add validation before saving
                     if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
                         debug!("Ignoring invalid published channel with empty name or description");
                     } else {
-                        // Save the channel first - synchronously to ensure it exists before subscription
                         let channel_saved = match crate::storage::create_channel(
                             &channel_to_save.name,
                             &channel_to_save.description,
@@ -552,18 +464,9 @@ pub async fn handle_floodsub_event(
                                     "📺 Channel '{}' added to your channels list",
                                     channel_to_save.name
                                 ));
-                                debug!(
-                                    "Successfully created channel '{}' in database",
-                                    channel_to_save.name
-                                );
                                 true
                             }
                             Err(e) if e.to_string().contains("UNIQUE constraint") => {
-                                debug!(
-                                    "Published channel '{}' already exists in database",
-                                    channel_to_save.name
-                                );
-                                // Still notify user that channel is available
                                 ui_logger.log(format!(
                                     "📺 Channel '{}' is available (already in your channels list)",
                                     channel_to_save.name
@@ -582,7 +485,6 @@ pub async fn handle_floodsub_event(
                             }
                         };
 
-                        // Only attempt auto-subscription AFTER successful channel creation to avoid race condition
                         if channel_saved && should_auto_subscribe {
                             match handle_auto_subscription(
                                 &peer_id_str,
@@ -612,26 +514,18 @@ pub async fn handle_floodsub_event(
                     }
                 }
             } else if let Ok(channel) = serde_json::from_slice::<crate::types::Channel>(&msg.data) {
-                debug!(
-                    "Received channel '{}' - {} from {}",
-                    channel.name, channel.description, msg.source
-                );
                 ui_logger.log(format!(
                     "📺 Received channel '{}' - {} from network",
                     channel.name, channel.description
                 ));
 
-                // Save the received channel to local storage asynchronously
                 let channel_to_save = channel.clone();
                 let ui_logger_clone = ui_logger.clone();
                 tokio::spawn(async move {
-                    // Add validation before saving
                     if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
-                        debug!("Ignoring invalid channel with empty name or description");
                         return;
                     }
 
-                    // Distinguish error types
                     match crate::storage::create_channel(
                         &channel_to_save.name,
                         &channel_to_save.description,
@@ -649,7 +543,6 @@ pub async fn handle_floodsub_event(
                             debug!("Channel '{}' already exists", channel_to_save.name);
                         }
                         Err(e) => {
-                            // Create error logger for spawned task
                             let error_logger_for_task = ErrorLogger::new("errors.log");
                             crate::log_network_error!(
                                 error_logger_for_task,
@@ -664,11 +557,6 @@ pub async fn handle_floodsub_event(
             } else if let Ok(relay_msg) =
                 serde_json::from_slice::<crate::types::RelayMessage>(&msg.data)
             {
-                debug!(
-                    "Received relay message from {}: {}",
-                    msg.source, relay_msg.message_id
-                );
-
                 // Process relay message if relay service is available
                 if let Some(relay_svc) = relay_service {
                     match relay_svc.process_relay_message(&relay_msg) {
@@ -680,14 +568,8 @@ pub async fn handle_floodsub_event(
                                 direct_msg.to_name,
                                 direct_msg.message
                             ));
-                            debug!(
-                                "Relay message decrypted and delivered locally: {}",
-                                relay_msg.message_id
-                            );
                         }
                         Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
-                            // Return action to re-broadcast the forwarded message via floodsub
-                            debug!("Forwarding relay message: {}", forward_msg.message_id);
                             ui_logger.log(format!(
                                 "{} Forwarding relay message {} (hops: {}/{})",
                                 crate::types::Icons::antenna(),
@@ -723,10 +605,6 @@ pub async fn handle_floodsub_event(
             } else if let Ok(relay_confirmation) =
                 serde_json::from_slice::<crate::types::RelayConfirmation>(&msg.data)
             {
-                debug!(
-                    "Received relay confirmation from {}: {}",
-                    msg.source, relay_confirmation.message_id
-                );
                 ui_logger.log(format!(
                     "✅ Message delivery confirmed: {} (path length: {})",
                     &relay_confirmation.message_id[..8],
@@ -735,7 +613,6 @@ pub async fn handle_floodsub_event(
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                 match req.mode {
                     ListMode::ALL => {
-                        debug!("Received ALL req: {:?} from {:?}", req, msg.source);
                         respond_with_public_stories(
                             response_sender.clone(),
                             msg.source.to_string(),
@@ -743,7 +620,6 @@ pub async fn handle_floodsub_event(
                     }
                     ListMode::One(ref peer_id) => {
                         if peer_id == &PEER_ID.to_string() {
-                            debug!("Received req: {:?} from {:?}", req, msg.source);
                             respond_with_public_stories(
                                 response_sender.clone(),
                                 msg.source.to_string(),
@@ -760,7 +636,6 @@ pub async fn handle_floodsub_event(
     None
 }
 
-/// Handle DHT bootstrap command
 pub async fn handle_dht_bootstrap(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -769,7 +644,6 @@ pub async fn handle_dht_bootstrap(
     crate::handlers::handle_dht_bootstrap(cmd, swarm, ui_logger).await;
 }
 
-/// Handle DHT get closest peers command
 pub async fn handle_dht_get_peers(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -778,7 +652,6 @@ pub async fn handle_dht_get_peers(
     crate::handlers::handle_dht_get_peers(cmd, swarm, ui_logger).await;
 }
 
-/// Handle Kademlia DHT events for peer discovery
 pub async fn handle_kad_event(
     kad_event: libp2p::kad::Event,
     _swarm: &mut Swarm<StoryBehaviour>,
