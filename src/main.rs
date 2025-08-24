@@ -34,7 +34,7 @@ use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetwork
 use ui::App;
 
 use libp2p::{PeerId, Swarm};
-use log::{debug, error};
+use log:: error;
 use std::collections::HashMap;
 use std::error::Error;
 use std::process;
