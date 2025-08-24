@@ -253,7 +253,7 @@ impl EventProcessor {
                                 current_line: String::new(),
                             };
                             app.input.clear();
-                            app.add_to_log("✍️  Entered message composition mode".to_string());
+                            app.add_to_log(format!("{} Entered message composition mode", crate::types::Icons::memo()));
                             None
                         }
                     }

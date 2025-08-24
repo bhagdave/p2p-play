@@ -320,9 +320,9 @@ impl App {
                             self.input_mode = InputMode::QuickReply {
                                 target_peer: last_sender.clone(),
                             };
-                            self.add_to_log(format!("📤 Quick reply to {}", last_sender));
+                            self.add_to_log(format!("{} Quick reply to {}", crate::types::Icons::envelope(), last_sender));
                         } else {
-                            self.add_to_log("❌ No recent messages to reply to".to_string());
+                            self.add_to_log(format!("{} No recent messages to reply to", crate::types::Icons::cross()));
                         }
                     }
                     KeyCode::Char('m') => {
@@ -552,14 +552,14 @@ impl App {
                         KeyCode::Esc => {
                             self.input_mode = InputMode::Normal;
                             self.input.clear();
-                            self.add_to_log("❌ Quick reply cancelled".to_string());
+                            self.add_to_log(format!("{} Quick reply cancelled", crate::types::Icons::cross()));
                         }
                         KeyCode::Char(c) => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
                                 if c == 'c' {
                                     self.input_mode = InputMode::Normal;
                                     self.input.clear();
-                                    self.add_to_log("❌ Quick reply cancelled".to_string());
+                                    self.add_to_log(format!("{} Quick reply cancelled", crate::types::Icons::cross()));
                                 }
                             } else {
                                 self.input.push(c);
@@ -603,17 +603,32 @@ impl App {
                                 };
                             }
                         }
+                        // Alternative way to send message with Ctrl+D (for terminals where Ctrl+Enter doesn't work)
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            // Ctrl+D to send the multi-line message (alternative to Ctrl+Enter)
+                            if !new_current.trim().is_empty() {
+                                new_lines.push(new_current.clone());
+                            }
+                            if !new_lines.is_empty() {
+                                let full_message = new_lines.join(" ");
+                                let cmd = format!("msg {} {}", target_peer, full_message);
+                                self.input.clear();
+                                self.input_mode = InputMode::Normal;
+                                self.add_to_log(format!("> {}", cmd));
+                                return Some(AppEvent::Input(cmd));
+                            }
+                        }
                         KeyCode::Esc => {
                             self.input_mode = InputMode::Normal;
                             self.input.clear();
-                            self.add_to_log("❌ Message composition cancelled".to_string());
+                            self.add_to_log(format!("{} Message composition cancelled", crate::types::Icons::cross()));
                         }
                         KeyCode::Char(c) => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
                                 if c == 'c' {
                                     self.input_mode = InputMode::Normal;
                                     self.input.clear();
-                                    self.add_to_log("❌ Message composition cancelled".to_string());
+                                    self.add_to_log(format!("{} Message composition cancelled", crate::types::Icons::cross()));
                                 }
                             } else {
                                 new_current.push(c);
@@ -885,12 +900,12 @@ impl App {
             match matches.len() {
                 0 => {
                     // No matches
-                    self.add_to_log(format!("❌ No peers found matching '{}'", partial_name));
+                    self.add_to_log(format!("{} No peers found matching '{}'", crate::types::Icons::cross(), partial_name));
                 }
                 1 => {
                     // Exact match, complete it
                     self.input = format!("msg {} ", matches[0]);
-                    self.add_to_log(format!("✅ Completed to '{}'", matches[0]));
+                    self.add_to_log(format!("{} Completed to '{}'", crate::types::Icons::check(), matches[0]));
                 }
                 _ => {
                     // Multiple matches, show them
@@ -1363,17 +1378,17 @@ impl App {
             let input_text = match &self.input_mode {
                 InputMode::Normal => {
                     match &self.view_mode {
-                        ViewMode::Channels => "Press 'i' to enter input mode, 'r' for quick reply, 'm' for message compose, Enter to view channel stories, ←/→ to navigate, ↑/↓ to scroll, Ctrl+S to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
-                        ViewMode::Stories(_) => "Press 'i' to enter input mode, 'r' for quick reply, 'm' for message compose, Enter to view story, Esc to return to channels, ←/→ to navigate, ↑/↓ to scroll, Ctrl+S to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Channels => "Press 'i' for input, 'r' reply, 'm' compose, Enter view, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
+                        ViewMode::Stories(_) => "Press 'i' for input, 'r' reply, 'm' compose, Enter view, Esc back, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
                     }
                 }
-                InputMode::Editing => format!("Command (Tab for auto-complete, ↑/↓ for history, Ctrl+L to clear): {}", self.input),
-                InputMode::QuickReply { target_peer } => format!("📤 Quick reply to {}: {}", target_peer, self.input),
+                InputMode::Editing => format!("Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): {}", self.input),
+                InputMode::QuickReply { target_peer } => format!("{} Quick reply to {}: {}", crate::types::Icons::envelope(), target_peer, self.input),
                 InputMode::MessageComposition { target_peer, lines, current_line: _ } => {
                     if lines.is_empty() {
-                        format!("✍️  Compose to {} (Enter for new line, Ctrl+Enter to send): {}", target_peer, self.input)
+                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): {}", crate::types::Icons::memo(), target_peer, self.input)
                     } else {
-                        format!("✍️  Compose to {} (Line {}, Ctrl+Enter to send): {}", target_peer, lines.len() + 1, self.input)
+                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): {}", crate::types::Icons::memo(), target_peer, lines.len() + 1, self.input)
                     }
                 }
                 InputMode::CreatingStory { step, .. } => {
@@ -1401,7 +1416,7 @@ impl App {
                     );
                 }
                 InputMode::QuickReply { target_peer } => {
-                    let prefix_len = format!("📤 Quick reply to {}: ", target_peer).len();
+                    let prefix_len = format!("{} Quick reply to {}: ", crate::types::Icons::envelope(), target_peer).len();
                     f.set_cursor(
                         chunks[2].x + self.input.len() as u16 + prefix_len as u16,
                         chunks[2].y + 1,
@@ -1409,9 +1424,9 @@ impl App {
                 }
                 InputMode::MessageComposition { target_peer, lines, .. } => {
                     let prefix_len = if lines.is_empty() {
-                        format!("✍️  Compose to {} (Enter for new line, Ctrl+Enter to send): ", target_peer).len()
+                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer).len()
                     } else {
-                        format!("✍️  Compose to {} (Line {}, Ctrl+Enter to send): ", target_peer, lines.len() + 1).len()
+                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer, lines.len() + 1).len()
                     };
                     f.set_cursor(
                         chunks[2].x + self.input.len() as u16 + prefix_len as u16,
@@ -1421,25 +1436,10 @@ impl App {
                 InputMode::CreatingStory { step, .. } => {
                     // Calculate prefix length based on current platform icons
                     let prefix_len = match step {
-                        #[cfg(windows)]
-                        StoryCreationStep::Name => "> Story Name: ".len(),        // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Name => "📝 Story Name: ".len(),       // Unicode version
-
-                        #[cfg(windows)]
-                        StoryCreationStep::Header => "[DOC] Story Header: ".len(),      // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Header => "📄 Story Header: ".len(),         // Unicode version
-
-                        #[cfg(windows)]
-                        StoryCreationStep::Body => "[BOOK] Story Body: ".len(),        // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Body => "📖 Story Body: ".len(),            // Unicode version
-
-                        #[cfg(windows)]
-                        StoryCreationStep::Channel => "[DIR] Channel (Enter for 'general'): ".len(),     // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Channel => "📂 Channel (Enter for 'general'): ".len(),        // Unicode version
+                        StoryCreationStep::Name => format!("{} Story Name: ", crate::types::Icons::memo()).len(),
+                        StoryCreationStep::Header => format!("{} Story Header: ", crate::types::Icons::document()).len(),
+                        StoryCreationStep::Body => format!("{} Story Body: ", crate::types::Icons::book()).len(),
+                        StoryCreationStep::Channel => format!("{} Channel (Enter for 'general'): ", crate::types::Icons::folder()).len(),
                     };
                     f.set_cursor(
                         chunks[2].x + self.input.len() as u16 + prefix_len as u16,
