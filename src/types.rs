@@ -14,7 +14,6 @@ use crate::crypto::{EncryptedPayload, MessageSignature};
 
 pub type Stories = Vec<Story>;
 
-/// Information about a peer awaiting handshake completion
 #[derive(Debug, Clone)]
 pub struct PendingHandshakePeer {
     pub peer_id: PeerId,
@@ -31,7 +30,6 @@ pub struct Story {
     pub public: bool,
     pub channel: String,
     pub created_at: u64,
-    /// Per-story auto-share preference (None uses global setting)
     #[serde(default)]
     pub auto_share: Option<bool>,
 }
@@ -60,7 +58,6 @@ pub struct PublishedStory {
     pub publisher: String,
 }
 
-/// Search query types and filters
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchQuery {
     pub text: String,
@@ -99,7 +96,6 @@ pub struct DirectMessage {
     pub timestamp: u64,
 }
 
-/// Encrypted message for relay delivery
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RelayMessage {
     pub message_id: String,                  // Unique message identifier
@@ -113,7 +109,6 @@ pub struct RelayMessage {
     pub relay_attempt: bool,                 // Distinguishes from direct attempts
 }
 
-/// Relay delivery confirmation
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RelayConfirmation {
     pub message_id: String,
@@ -122,7 +117,6 @@ pub struct RelayConfirmation {
     pub delivery_timestamp: u64,
 }
 
-/// Configuration for relay behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelayConfig {
     pub enable_relay: bool,       // Master relay switch

@@ -115,9 +115,7 @@ pub async fn handle_publish_story_event(
         .await;
 
     match publish_result {
-        Ok(_) => {
-            debug!("Story broadcast completed successfully");
-        }
+        Ok(_) => {}
         Err(e) => {
             error_logger.log_error(&format!("Story publishing failed: {e:?}"));
             match e {
@@ -299,7 +297,7 @@ pub async fn handle_mdns_event(
 ) {
     match mdns_event {
         libp2p::mdns::Event::Discovered(discovered_list) => {
-            for (peer, addr) in discovered_list {
+            for (peer, _addr) in discovered_list {
                 if !swarm.is_connected(&peer) {
                     if let Err(e) = swarm.dial(peer) {
                         crate::log_network_error!(
@@ -309,11 +307,7 @@ pub async fn handle_mdns_event(
                             peer,
                             e
                         );
-                    } else {
-                        debug!("Dial initiated successfully for peer: {}", peer);
                     }
-                } else {
-                    debug!("Already connected to peer: {peer}");
                 }
             }
         }
@@ -429,7 +423,7 @@ pub async fn handle_floodsub_event(
                     let auto_sub_config = match crate::storage::load_unified_network_config().await
                     {
                         Ok(config) => config.channel_auto_subscription,
-                        Err(e) => {
+                        Err(_) => {
                             crate::types::ChannelAutoSubscriptionConfig::new() // Use defaults
                         }
                     };
@@ -662,10 +656,6 @@ pub async fn handle_kad_event(
     match kad_event {
         libp2p::kad::Event::OutboundQueryProgressed { result, .. } => match result {
             libp2p::kad::QueryResult::Bootstrap(Ok(bootstrap_ok)) => {
-                debug!(
-                    "Kademlia bootstrap successful with peer: {}",
-                    bootstrap_ok.peer
-                );
                 bootstrap_logger.log(&format!(
                     "DHT bootstrap successful with peer: {}",
                     bootstrap_ok.peer
@@ -678,13 +668,8 @@ pub async fn handle_kad_event(
                     "Kademlia bootstrap failed: {:?}",
                     e
                 );
-                // DHT bootstrap errors are logged to error file only, not shown in UI
             }
             libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
-                debug!(
-                    "Found {} closest peers to key",
-                    get_closest_peers_ok.peers.len()
-                );
                 for peer in &get_closest_peers_ok.peers {
                     debug!("Closest peer: {peer:?}");
                 }
@@ -706,9 +691,6 @@ pub async fn handle_kad_event(
         } => {
             if is_new_peer {
                 debug!("New peer added to DHT routing table: {peer}");
-                // NOTE: No longer showing all DHT peers in UI to reduce noise
-                // Only verified P2P-Play peers will be displayed after handshake
-                debug!("DHT peer {peer} requires handshake verification before UI display");
             }
         }
         libp2p::kad::Event::InboundRequest { request } => match request {
@@ -732,7 +714,6 @@ pub async fn handle_kad_event(
     }
 }
 
-/// Handle ping events for connection monitoring
 pub async fn handle_ping_event(ping_event: libp2p::ping::Event, error_logger: &ErrorLogger) {
     match ping_event {
         libp2p::ping::Event {
@@ -752,17 +733,14 @@ pub async fn handle_ping_event(ping_event: libp2p::ping::Event, error_logger: &E
     }
 }
 
-/// Handle peer name events
 pub async fn handle_peer_name_event(peer_name: PeerName) {
     // This shouldn't happen since PeerName events are created from floodsub messages
-    // but we'll handle it just in case
     debug!(
         "Received PeerName event: {} -> {}",
         peer_name.peer_id, peer_name.name
     );
 }
 
-/// Handle request-response events for direct messaging
 pub async fn handle_request_response_event(
     event: request_response::Event<DirectMessageRequest, DirectMessageResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -812,7 +790,6 @@ pub async fn handle_request_response_event(
                         return None;
                     }
 
-                    // Handle incoming direct message request
                     let should_process = if let Some(local_name) = local_peer_name {
                         &request.to_name == local_name
                     } else {
@@ -831,7 +808,6 @@ pub async fn handle_request_response_event(
                         None
                     };
 
-                    // Send response acknowledging receipt
                     let response = DirectMessageResponse {
                         received: should_process,
                         timestamp: std::time::SystemTime::now()
@@ -840,7 +816,6 @@ pub async fn handle_request_response_event(
                             .as_secs(),
                     };
 
-                    // Send the response using the channel
                     if let Err(e) = swarm
                         .behaviour_mut()
                         .request_response
@@ -857,11 +832,7 @@ pub async fn handle_request_response_event(
                     }
                 }
                 request_response::Message::Response { response, .. } => {
-                    // Handle response to our direct message request
                     if response.received {
-                        debug!("Direct message was received by peer {peer}");
-
-                        // Remove successful message from retry queue
                         if let Ok(mut queue) = pending_messages.lock() {
                             queue.retain(|msg| msg.target_peer_id != peer);
                         }
@@ -875,7 +846,6 @@ pub async fn handle_request_response_event(
                             peer
                         );
 
-                        // Message was rejected, but don't retry validation failures
                         if let Ok(mut queue) = pending_messages.lock() {
                             queue.retain(|msg| msg.target_peer_id != peer);
                         }
@@ -890,16 +860,12 @@ pub async fn handle_request_response_event(
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            // Log to error file instead of TUI to avoid corrupting the interface
             error_logger.log_network_error(
                 "direct_message",
                 &format!("Failed to send direct message to {peer}: {error:?}"),
             );
-            // Don't immediately report failure to user - let retry logic handle it
-            debug!("Direct message to {peer} failed, will be retried automatically");
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            // Log to error file instead of TUI to avoid corrupting the interface
             error_logger.log_network_error(
                 "direct_message",
                 &format!("Failed to receive direct message from {peer}: {error:?}"),
@@ -912,17 +878,13 @@ pub async fn handle_request_response_event(
     None
 }
 
-/// Handle direct message events
 pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
-    // This shouldn't happen since DirectMessage events are processed in floodsub handler
-    // but we'll handle it just in case
     debug!(
         "Received DirectMessage event: {} -> {}: {}",
         direct_msg.from_name, direct_msg.to_name, direct_msg.message
     );
 }
 
-/// Handle channel events
 pub async fn handle_channel_event(channel: crate::types::Channel) {
     debug!(
         "Received Channel event: {} - {}",
@@ -930,7 +892,6 @@ pub async fn handle_channel_event(channel: crate::types::Channel) {
     );
 }
 
-/// Handle channel subscription events
 pub async fn handle_channel_subscription_event(subscription: crate::types::ChannelSubscription) {
     debug!(
         "Received ChannelSubscription event: {} subscribed to {}",
@@ -938,7 +899,6 @@ pub async fn handle_channel_subscription_event(subscription: crate::types::Chann
     );
 }
 
-/// Handle node description request-response events
 pub async fn handle_node_description_event(
     event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -952,19 +912,12 @@ pub async fn handle_node_description_event(
                 request_response::Message::Request {
                     request, channel, ..
                 } => {
-                    // Handle incoming node description request
-                    debug!(
-                        "Received node description request from {} ({})",
-                        request.from_name, request.from_peer_id
-                    );
-
                     ui_logger.log(format!(
                         "{} Description request from {}",
                         Icons::clipboard(),
                         request.from_name
                     ));
 
-                    // Load our description and send it back
                     match load_node_description().await {
                         Ok(description) => {
                             let response = NodeDescriptionResponse {
@@ -980,7 +933,6 @@ pub async fn handle_node_description_event(
                                     .as_secs(),
                             };
 
-                            // Send the response
                             if let Err(e) = swarm
                                 .behaviour_mut()
                                 .node_description
@@ -1011,7 +963,6 @@ pub async fn handle_node_description_event(
                                 e
                             );
 
-                            // Send empty response to indicate no description
                             let response = NodeDescriptionResponse {
                                 description: None,
                                 from_peer_id: PEER_ID.to_string(),
@@ -1042,12 +993,6 @@ pub async fn handle_node_description_event(
                     }
                 }
                 request_response::Message::Response { response, .. } => {
-                    // Handle incoming node description response
-                    debug!(
-                        "Received node description response from {} ({}): {:?}",
-                        response.from_name, response.from_peer_id, response.description
-                    );
-
                     match response.description {
                         Some(description) => {
                             ui_logger.log(format!(
@@ -1113,7 +1058,6 @@ pub async fn handle_node_description_event(
     }
 }
 
-/// Handle story synchronization events
 pub async fn handle_story_sync_event(
     event: request_response::Event<
         crate::network::StorySyncRequest,
@@ -1130,12 +1074,6 @@ pub async fn handle_story_sync_event(
                 request_response::Message::Request {
                     request, channel, ..
                 } => {
-                    // Handle incoming story sync request
-                    debug!(
-                        "Received story sync request from {} ({}) for channels: {:?}",
-                        request.from_name, request.from_peer_id, request.subscribed_channels
-                    );
-
                     ui_logger.log(format!(
                         "{} Story sync request from {} (last sync: {})",
                         Icons::sync(),
@@ -1154,7 +1092,6 @@ pub async fn handle_story_sync_event(
                         }
                     ));
 
-                    // Get local stories that match the peer's subscribed channels and are newer than last sync
                     match crate::storage::read_local_stories_for_sync(
                         request.last_sync_timestamp,
                         &request.subscribed_channels,
@@ -1175,32 +1112,20 @@ pub async fn handle_story_sync_event(
 
                             let story_count = filtered_stories.len();
 
-                            // Get ALL available channels for discovery, not just channels associated with the stories
                             let channels = match crate::storage::read_channels().await {
                                 Ok(all_channels) => {
-                                    debug!(
-                                        "Sending {} total channels for peer discovery during sync response",
-                                        all_channels.len()
-                                    );
                                     all_channels
                                 }
-                                Err(e) => {
-                                    debug!("Failed to read all channels for sync: {}", e);
-                                    // Fallback to story-specific channels if reading all channels fails
+                                Err(_) => {
                                     match crate::storage::get_channels_for_stories(
                                         &filtered_stories,
                                     )
                                     .await
                                     {
                                         Ok(story_channels) => {
-                                            debug!(
-                                                "Fallback: using {} story-specific channels",
-                                                story_channels.len()
-                                            );
                                             story_channels
                                         }
-                                        Err(e2) => {
-                                            debug!("Failed fallback channel lookup: {}", e2);
+                                        Err(_) => {
                                             Vec::new() // Final fallback to maintain functionality
                                         }
                                     }
@@ -1221,7 +1146,6 @@ pub async fn handle_story_sync_event(
                                     .as_secs(),
                             };
 
-                            // Send the response
                             if let Err(e) = swarm
                                 .behaviour_mut()
                                 .story_sync
@@ -1241,7 +1165,6 @@ pub async fn handle_story_sync_event(
                                     e
                                 ));
                             } else {
-                                debug!("Sent story sync response to {peer}");
                                 ui_logger.log(format!(
                                     "{} Sent {} stories to {}",
                                     Icons::sync(),
@@ -1258,7 +1181,6 @@ pub async fn handle_story_sync_event(
                                 e
                             );
 
-                            // Send empty response to indicate error
                             let response = crate::network::StorySyncResponse {
                                 stories: Vec::new(),
                                 channels: Vec::new(), // No stories means no channels to share
@@ -1290,14 +1212,6 @@ pub async fn handle_story_sync_event(
                     }
                 }
                 request_response::Message::Response { response, .. } => {
-                    // Handle incoming story sync response
-                    debug!(
-                        "Received story sync response from {} ({}) with {} stories",
-                        response.from_name,
-                        response.from_peer_id,
-                        response.stories.len()
-                    );
-
                     if response.stories.is_empty() {
                         ui_logger.log(format!(
                             "{} No new stories from {}",
@@ -1314,18 +1228,7 @@ pub async fn handle_story_sync_event(
                         response.from_name
                     ));
 
-                    // Process discovered channels first (before stories for logical order)
                     let mut discovered_channels_count = 0;
-                    debug!(
-                        "Received {} channels from {}: {:?}",
-                        response.channels.len(),
-                        response.from_name,
-                        response
-                            .channels
-                            .iter()
-                            .map(|c| &c.name)
-                            .collect::<Vec<_>>()
-                    );
 
                     if !response.channels.is_empty() {
                         match crate::storage::process_discovered_channels(
@@ -1336,12 +1239,6 @@ pub async fn handle_story_sync_event(
                         {
                             Ok(count) => {
                                 discovered_channels_count = count;
-                                debug!(
-                                    "Channel discovery result: {} new channels from {} (out of {} total channels received)",
-                                    count,
-                                    response.from_name,
-                                    response.channels.len()
-                                );
                                 if count > 0 {
                                     ui_logger.log(format!(
                                         "📺 Discovered {} new channels from {}",
@@ -1361,17 +1258,13 @@ pub async fn handle_story_sync_event(
                         }
                     }
 
-                    // Save received stories (with deduplication handled by save_received_story)
                     let mut saved_count = 0;
                     for story in response.stories {
                         match crate::storage::save_received_story(story.clone()).await {
                             Ok(_) => {
                                 saved_count += 1;
-                                debug!("Saved story: {}", story.name);
                             }
                             Err(e) => {
-                                debug!("Failed to save story '{}': {}", story.name, e);
-                                // Don't log to UI for duplicates - this is expected
                                 if !e.to_string().contains("already exists") {
                                     crate::log_network_error!(
                                         error_logger,
@@ -1385,7 +1278,6 @@ pub async fn handle_story_sync_event(
                         }
                     }
 
-                    // Provide comprehensive sync summary
                     if discovered_channels_count > 0 && saved_count > 0 {
                         ui_logger.log(format!(
                             "{} Sync complete: {} stories, {} channels from {}",
@@ -1464,15 +1356,12 @@ pub async fn initiate_story_sync_with_peer(
     ui_logger: &UILogger,
     _error_logger: &ErrorLogger,
 ) {
-    debug!("Initiating story sync with peer {peer_id}");
 
-    // Load auto-share configuration to determine sync timeframe
     let sync_days = match crate::storage::load_unified_network_config().await {
         Ok(config) => config.auto_share.sync_days,
         Err(_) => 30, // Default to 30 days if config can't be loaded
     };
 
-    // Calculate last_sync_timestamp based on sync_days configuration
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -1480,17 +1369,14 @@ pub async fn initiate_story_sync_with_peer(
     let sync_timeframe_seconds = (sync_days as u64) * 24 * 60 * 60; // Convert days to seconds
     let last_sync_timestamp = now.saturating_sub(sync_timeframe_seconds);
 
-    // Get our subscribed channels to send in the sync request
     let subscribed_channels =
         match crate::storage::read_subscribed_channels(&PEER_ID.to_string()).await {
             Ok(channels) => channels,
-            Err(e) => {
-                debug!("Failed to read subscribed channels for sync: {e}");
+            Err(_) => {
                 Vec::new() // Send empty list as fallback
             }
         };
 
-    // Create sync request with calculated timestamp based on sync_days configuration
     let request = crate::network::StorySyncRequest {
         from_peer_id: PEER_ID.to_string(),
         from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
@@ -1499,16 +1385,12 @@ pub async fn initiate_story_sync_with_peer(
         timestamp: now,
     };
 
-    // Send the story sync request
-    let request_id = swarm
+    let _request_id = swarm
         .behaviour_mut()
         .story_sync
         .send_request(&peer_id, request.clone());
 
     {
-        debug!(
-            "Sent story sync request to peer {peer_id} (request ID: {request_id:?}, sync days: {sync_days})"
-        );
         ui_logger.log(format!(
             "{} Requesting stories from {} (syncing {} days)",
             Icons::sync(),
@@ -1518,7 +1400,6 @@ pub async fn initiate_story_sync_with_peer(
     }
 }
 
-/// Execute deferred operations for a peer after successful handshake
 pub async fn execute_deferred_peer_operations(
     peer_id: PeerId,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1529,12 +1410,6 @@ pub async fn execute_deferred_peer_operations(
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) {
-    debug!(
-        "Executing deferred operations for verified P2P-Play peer: {}",
-        peer_id
-    );
-
-    // Broadcast local peer name to the newly verified peer
     if let Some(name) = local_peer_name {
         let peer_name = PeerName::new(PEER_ID.to_string(), name.clone());
         let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
@@ -1543,25 +1418,13 @@ pub async fn execute_deferred_peer_operations(
             .behaviour_mut()
             .floodsub
             .publish(TOPIC.clone(), json_bytes);
-        debug!(
-            "Sent local peer name '{}' to verified peer {}",
-            name, peer_id
-        );
     }
 
-    // Retry any pending direct messages for this peer
     retry_messages_for_peer(peer_id, swarm, dm_config, pending_messages, peer_names).await;
 
-    // Initiate story synchronization with the verified peer
     initiate_story_sync_with_peer(peer_id, swarm, local_peer_name, ui_logger, error_logger).await;
-
-    debug!(
-        "Completed deferred operations for verified peer {}",
-        peer_id
-    );
 }
 
-/// Handle handshake protocol events for peer validation
 pub async fn handle_handshake_event(
     event: request_response::Event<HandshakeRequest, HandshakeResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1581,28 +1444,8 @@ pub async fn handle_handshake_event(
                 request_response::Message::Request {
                     request, channel, ..
                 } => {
-                    // Handle incoming handshake request
-                    debug!(
-                        "Received handshake request from {}: app={}, version={}",
-                        request.peer_id, request.app_name, request.app_version
-                    );
-
-                    // Validate the handshake request (only check app name)
                     let accepted = request.app_name == APP_NAME;
 
-                    if accepted {
-                        debug!(
-                            "✅ Verified P2P-Play peer: {} (v{})",
-                            request.peer_id, request.app_version
-                        );
-                    } else {
-                        debug!(
-                            "❌ Rejected non-P2P-Play peer: {} (app: {}, version: {})",
-                            request.peer_id, request.app_name, request.app_version
-                        );
-                    }
-
-                    // Send handshake response
                     let response = HandshakeResponse {
                         accepted,
                         app_name: APP_NAME.to_string(),
@@ -1623,33 +1466,17 @@ pub async fn handle_handshake_event(
                         );
                     }
 
-                    // If peer is not compatible, disconnect from them
                     if !accepted {
-                        debug!("Disconnecting from incompatible peer: {}", peer);
                         let _ = swarm.disconnect_peer_id(peer);
                     }
                 }
                 request_response::Message::Response { response, .. } => {
-                    // Handle handshake response
-                    debug!(
-                        "Received handshake response from {}: accepted={}, app={}, version={}",
-                        peer, response.accepted, response.app_name, response.app_version
-                    );
-
                     if response.accepted && response.app_name == APP_NAME {
-                        debug!(
-                            "✅ Handshake successful with P2P-Play peer: {} (v{})",
-                            peer, response.app_version
-                        );
-
-                        // Add peer to floodsub for story sharing
                         swarm
                             .behaviour_mut()
                             .floodsub
                             .add_node_to_partial_view(peer);
-                        debug!("Added verified peer {} to floodsub partial view", peer);
 
-                        // Add verified P2P-Play peer to UI display
                         let peer_name = format!("Peer_{peer}");
                         {
                             let mut verified_peers = verified_p2p_play_peers.lock().unwrap();
@@ -1657,9 +1484,7 @@ pub async fn handle_handshake_event(
                         }
                         peer_names.insert(peer, peer_name);
                         sorted_peer_names_cache.update(peer_names);
-                        debug!("Added verified P2P-Play peer {} to UI display", peer);
 
-                        // Execute all deferred operations now that handshake is successful
                         execute_deferred_peer_operations(
                             peer,
                             swarm,
@@ -1672,7 +1497,6 @@ pub async fn handle_handshake_event(
                         )
                         .await;
 
-                        // Remove peer from pending handshake list
                         {
                             let mut pending_peers = pending_handshake_peers.lock().unwrap();
                             if pending_peers.remove(&peer).is_some() {
@@ -1683,19 +1507,10 @@ pub async fn handle_handshake_event(
                             }
                         }
 
-                        // Log successful P2P-Play peer verification to UI
                         ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
                     } else {
-                        debug!(
-                            "❌ Handshake failed with peer {}: not a compatible P2P-Play node",
-                            peer
-                        );
-
-                        // Disconnect from incompatible peer
-                        debug!("Disconnecting from incompatible peer: {}", peer);
                         let _ = swarm.disconnect_peer_id(peer);
 
-                        // Remove peer from pending handshake list
                         {
                             let mut pending_peers = pending_handshake_peers.lock().unwrap();
                             if pending_peers.remove(&peer).is_some() {
@@ -1710,12 +1525,8 @@ pub async fn handle_handshake_event(
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            debug!("Handshake outbound failure with peer {}: {:?}", peer, error);
-            // If handshake fails, assume peer is not compatible and disconnect
-            debug!("Disconnecting from unresponsive peer: {}", peer);
             let _ = swarm.disconnect_peer_id(peer);
 
-            // Remove peer from pending handshake list
             {
                 let mut pending_peers = pending_handshake_peers.lock().unwrap();
                 if pending_peers.remove(&peer).is_some() {
@@ -1727,9 +1538,6 @@ pub async fn handle_handshake_event(
             }
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            debug!("Handshake inbound failure with peer {}: {:?}", peer, error);
-
-            // Remove peer from pending handshake list
             {
                 let mut pending_peers = pending_handshake_peers.lock().unwrap();
                 if pending_peers.remove(&peer).is_some() {
@@ -1741,7 +1549,6 @@ pub async fn handle_handshake_event(
     }
 }
 
-/// Main event dispatcher that routes events to appropriate handlers
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_event(
     event: EventType,
@@ -1761,7 +1568,6 @@ pub async fn handle_event(
     pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
     verified_p2p_play_peers: &Arc<Mutex<HashMap<PeerId, String>>>,
 ) -> Option<ActionResult> {
-    debug!("Event Received");
     match event {
         EventType::Response(resp) => {
             handle_response_event(resp, swarm).await;
@@ -1855,7 +1661,6 @@ pub async fn handle_event(
             .await;
         }
         EventType::HandshakeEvent(handshake_event) => {
-            // Handle handshake events with peer validation
             handle_handshake_event(
                 handshake_event,
                 swarm,
@@ -1903,43 +1708,28 @@ const CLEANUP_THRESHOLD: Duration = Duration::from_secs(3600); // 1 hour
 // Helper function that needs to be accessible - copied from main.rs
 pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logger: &ErrorLogger) {
     let discovered_peers: Vec<_> = swarm.behaviour().mdns.discovered_nodes().cloned().collect();
-    let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
 
-    debug!(
-        "Connection maintenance: {} discovered, {} connected",
-        discovered_peers.len(),
-        connected_peers.len()
-    );
-
-    // Try to connect to discovered peers that aren't connected
     for peer in discovered_peers {
         if !swarm.is_connected(&peer) {
-            // Check if we should throttle this connection attempt
             let should_attempt = match LAST_CONNECTION_ATTEMPTS.try_lock() {
                 Ok(mut attempts) => {
-                    // Cleanup entries older than the threshold to prevent memory leaks
                     attempts.retain(|_, &mut last_time| last_time.elapsed() < CLEANUP_THRESHOLD);
 
                     let last_attempt = attempts.get(&peer);
 
-                    // Determine the appropriate reconnect interval based on recent connection history
                     let reconnect_interval = match LAST_SUCCESSFUL_CONNECTIONS.try_lock() {
                         Ok(successful_connections) => {
                             if let Some(last_successful) = successful_connections.get(&peer) {
                                 if last_successful.elapsed() < RECENT_CONNECTION_THRESHOLD {
-                                    // Peer was recently connected, use shorter interval
                                     MIN_RECONNECT_INTERVAL_RECENT
                                 } else {
-                                    // Peer was not recently connected, use normal interval
                                     MIN_RECONNECT_INTERVAL
                                 }
                             } else {
-                                // Peer has never been successfully connected, use normal interval
                                 MIN_RECONNECT_INTERVAL
                             }
                         }
                         Err(_) => {
-                            debug!("Successful connections map temporarily unavailable");
                             MIN_RECONNECT_INTERVAL
                         }
                     };
@@ -1951,12 +1741,6 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
                                 attempts.insert(peer, Instant::now());
                                 true
                             } else {
-                                debug!(
-                                    "Throttling reconnection to peer {} (last attempt {} seconds ago, interval: {}s)",
-                                    peer,
-                                    elapsed.as_secs(),
-                                    reconnect_interval.as_secs()
-                                );
                                 false
                             }
                         }
@@ -1967,13 +1751,11 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
                     }
                 }
                 Err(_) => {
-                    debug!("Connection attempts map temporarily unavailable");
                     false
                 }
             };
 
             if should_attempt {
-                debug!("Reconnecting to discovered peer: {peer}");
                 if let Err(e) = swarm.dial(peer) {
                     crate::log_network_error!(
                         error_logger,
@@ -1988,28 +1770,22 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
     }
 }
 
-/// Track successful connection for improved reconnect timing
 pub fn track_successful_connection(peer_id: PeerId) {
     if let Ok(mut connections) = LAST_SUCCESSFUL_CONNECTIONS.try_lock() {
         connections.insert(peer_id, Instant::now());
-        debug!("Tracked successful connection to peer: {peer_id}");
     }
 }
 
-/// Trigger immediate connection maintenance (useful after connection drops)
 pub async fn trigger_immediate_connection_maintenance(
     swarm: &mut Swarm<StoryBehaviour>,
     error_logger: &ErrorLogger,
 ) {
-    debug!("Triggering immediate connection maintenance");
     maintain_connections(swarm, error_logger).await;
 }
 
-// Helper function that needs to be accessible - copied from main.rs
 pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, receiver: String) {
     tokio::spawn(async move {
         let error_logger = ErrorLogger::new("errors.log");
-        // Read stories and subscriptions separately to avoid Send issues
         let stories = match crate::storage::read_local_stories().await {
             Ok(stories) => stories,
             Err(e) => {
@@ -2038,7 +1814,6 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             }
         };
 
-        // Filter stories to only include public stories from subscribed channels
         let filtered_stories: Vec<_> = stories
             .into_iter()
             .filter(|story| {
@@ -2046,13 +1821,6 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
                     && (subscribed_channels.contains(&story.channel) || story.channel == "general")
             })
             .collect();
-
-        debug!(
-            "Sending {} filtered stories to {} based on {} subscribed channels",
-            filtered_stories.len(),
-            receiver,
-            subscribed_channels.len()
-        );
 
         let resp = ListResponse {
             mode: ListMode::ALL,
@@ -2070,7 +1838,6 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
     });
 }
 
-/// Process pending direct messages and retry failed ones
 pub async fn process_pending_messages(
     swarm: &mut Swarm<StoryBehaviour>,
     dm_config: &DirectMessageConfig,
@@ -2085,18 +1852,15 @@ pub async fn process_pending_messages(
     let mut messages_to_retry = Vec::new();
     let mut exhausted_messages = Vec::new();
 
-    // Collect messages that need retry or are exhausted
     if let Ok(mut queue) = pending_messages.lock() {
         let mut i = 0;
         while i < queue.len() {
             let msg = &mut queue[i];
 
             if msg.is_exhausted() {
-                // Message has exceeded max retry attempts
                 exhausted_messages.push(msg.clone());
                 queue.remove(i);
             } else if msg.should_retry(dm_config.retry_interval_seconds) {
-                // Message is ready for retry
                 msg.increment_attempt();
                 messages_to_retry.push(msg.clone());
                 i += 1;
@@ -2106,7 +1870,6 @@ pub async fn process_pending_messages(
         }
     }
 
-    // Report exhausted messages to user
     for msg in exhausted_messages {
         ui_logger.log(format!(
             "{} Failed to deliver message to {} after {} attempts",
@@ -2118,18 +1881,12 @@ pub async fn process_pending_messages(
 
     // Retry messages
     for msg in messages_to_retry {
-        debug!(
-            "Retrying direct message to {} (attempt {}/{})",
-            msg.target_name, msg.attempts, msg.max_attempts
-        );
-
         // For placeholder PeerIds, try to find the real peer with matching name
         let target_peer_id = if msg.is_placeholder_peer_id {
             if let Some((real_peer_id, _)) = peer_names
                 .iter()
                 .find(|(_, name)| name == &&msg.target_name)
             {
-                // Update the message with the real PeerId
                 if let Ok(mut queue) = pending_messages.lock() {
                     if let Some(stored_msg) = queue
                         .iter_mut()
@@ -2141,30 +1898,19 @@ pub async fn process_pending_messages(
                 }
                 *real_peer_id
             } else {
-                // Peer not connected or name not known yet, skip this retry
-                debug!(
-                    "Peer {} not found or name not available yet, skipping retry",
-                    msg.target_name
-                );
                 continue;
             }
         } else {
             msg.target_peer_id
         };
 
-        let request_id = swarm
+        let _request_id = swarm
             .behaviour_mut()
             .request_response
             .send_request(&target_peer_id, msg.message.clone());
-
-        debug!(
-            "Retry request sent to {} (request_id: {:?})",
-            msg.target_name, request_id
-        );
     }
 }
 
-/// Process pending messages when new connections are established
 pub async fn retry_messages_for_peer(
     peer_id: PeerId,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -2178,7 +1924,6 @@ pub async fn retry_messages_for_peer(
 
     let mut messages_to_retry = Vec::new();
 
-    // Find messages for this specific peer
     if let Ok(mut queue) = pending_messages.lock() {
         for msg in queue.iter_mut() {
             let should_retry = if msg.is_placeholder_peer_id {
@@ -2189,12 +1934,10 @@ pub async fn retry_messages_for_peer(
                     false
                 }
             } else {
-                // For real PeerIds, match by PeerId
                 msg.target_peer_id == peer_id
             };
 
             if should_retry && !msg.is_exhausted() {
-                // Update placeholder PeerIds with the real PeerId
                 if msg.is_placeholder_peer_id {
                     msg.target_peer_id = peer_id;
                     msg.is_placeholder_peer_id = false;
@@ -2205,26 +1948,16 @@ pub async fn retry_messages_for_peer(
         }
     }
 
-    // Retry messages for the newly connected peer
     for msg in messages_to_retry {
-        debug!(
-            "Retrying direct message to {} due to new connection (attempt {}/{})",
-            msg.target_name, msg.attempts, msg.max_attempts
-        );
 
-        let request_id = swarm
+        let _request_id = swarm
             .behaviour_mut()
             .request_response
             .send_request(&msg.target_peer_id, msg.message.clone());
 
-        debug!(
-            "Connection-based retry request sent to {} (request_id: {:?})",
-            msg.target_name, request_id
-        );
     }
 }
 
-/// Broadcast a relay message via floodsub
 pub async fn broadcast_relay_message(
     swarm: &mut Swarm<StoryBehaviour>,
     relay_msg: &crate::types::RelayMessage,
@@ -2238,31 +1971,6 @@ pub async fn broadcast_relay_message(
         .floodsub
         .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
 
-    debug!(
-        "Broadcasted relay message with ID: {}",
-        relay_msg.message_id
-    );
-    Ok(())
-}
-
-/// Broadcast a relay confirmation via floodsub
-pub async fn broadcast_relay_confirmation(
-    swarm: &mut Swarm<StoryBehaviour>,
-    confirmation: &crate::types::RelayConfirmation,
-) -> Result<(), String> {
-    let json = serde_json::to_string(confirmation)
-        .map_err(|e| format!("Failed to serialize relay confirmation: {e}"))?;
-
-    let json_bytes = Bytes::from(json.into_bytes());
-    swarm
-        .behaviour_mut()
-        .floodsub
-        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
-
-    debug!(
-        "Broadcasted relay confirmation for message: {}",
-        confirmation.message_id
-    );
     Ok(())
 }
 
