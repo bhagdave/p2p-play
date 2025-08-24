@@ -1439,3 +1439,21 @@ mod tests {
         }
     }
 }
+
+/// Communication channels for the main application
+pub struct CommunicationChannels {
+    pub response_sender: tokio::sync::mpsc::UnboundedSender<ListResponse>,
+    pub response_rcv: tokio::sync::mpsc::UnboundedReceiver<ListResponse>,
+    pub story_sender: tokio::sync::mpsc::UnboundedSender<Story>,
+    pub story_rcv: tokio::sync::mpsc::UnboundedReceiver<Story>,
+    pub ui_sender: tokio::sync::mpsc::UnboundedSender<crate::ui::AppEvent>,
+    pub ui_rcv: tokio::sync::mpsc::UnboundedReceiver<crate::ui::AppEvent>,
+    pub ui_log_rcv: tokio::sync::mpsc::UnboundedReceiver<String>,
+}
+
+/// Loggers for different parts of the application
+pub struct Loggers {
+    pub ui_logger: crate::handlers::UILogger,
+    pub error_logger: crate::error_logger::ErrorLogger,
+    pub bootstrap_logger: crate::bootstrap_logger::BootstrapLogger,
+}
