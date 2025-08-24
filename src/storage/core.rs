@@ -174,49 +174,6 @@ where
     }
 }
 
-pub async fn init_test_database() -> StorageResult<()> {
-    reset_db_connection_for_testing().await?;
-    ensure_stories_file_exists().await?;
-
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    conn.execute("PRAGMA foreign_keys = OFF", [])?;
-
-    let table_exists = |table_name: &str| -> StorageResult<bool> {
-        let mut stmt = conn.prepare(&format!(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-        ))?;
-        let exists = stmt.exists([])?;
-        Ok(exists)
-    };
-
-    if table_exists("channel_subscriptions")? {
-        conn.execute("DELETE FROM channel_subscriptions", [])?;
-    }
-    if table_exists("channels")? {
-        conn.execute("DELETE FROM channels", [])?;
-    }
-    if table_exists("stories")? {
-        conn.execute("DELETE FROM stories", [])?;
-    }
-    if table_exists("peer_names")? {
-        conn.execute("DELETE FROM peer_names", [])?;
-    }
-    if table_exists("story_read_status")? {
-        conn.execute("DELETE FROM story_read_status", [])?;
-    }
-
-    // Re-enable foreign key checks
-    conn.execute("PRAGMA foreign_keys = ON", [])?;
-
-    drop(conn); // Release the lock
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
-
-    Ok(())
-}
-
 async fn create_tables() -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -253,27 +210,6 @@ pub async fn read_local_stories() -> StorageResult<Stories> {
     }
 
     Ok(stories)
-}
-
-pub async fn read_local_stories_from_path(path: &str) -> StorageResult<Stories> {
-    if path.ends_with(".json") {
-        let content = fs::read(path).await?;
-        let result = serde_json::from_slice(&content)?;
-        Ok(result)
-    } else {
-        let conn = Connection::open(path)?;
-
-        let mut stmt = conn
-            .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
-        let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
-
-        let mut stories = Vec::new();
-        for story in story_iter {
-            stories.push(story?);
-        }
-
-        Ok(stories)
-    }
 }
 
 pub async fn read_local_stories_for_sync(
@@ -367,7 +303,6 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
 
 pub async fn process_discovered_channels(
     channels: &[Channel],
-    peer_name: &str,
 ) -> StorageResult<usize> {
     if channels.is_empty() {
         return Ok(0);
@@ -405,41 +340,6 @@ pub async fn process_discovered_channels(
     }
 
     Ok(saved_count)
-}
-
-pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
-    if path.ends_with(".json") {
-        let json = serde_json::to_string(&stories)?;
-        fs::write(path, &json).await?;
-        Ok(())
-    } else {
-        let conn = Connection::open(path)?;
-
-        migrations::create_tables(&conn)?;
-
-        conn.execute("DELETE FROM stories", [])?;
-
-        for story in stories {
-            conn.execute(
-                "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    &story.id.to_string(),
-                    &story.name,
-                    &story.header,
-                    &story.body,
-                    &(if story.public {
-                        "1".to_string()
-                    } else {
-                        "0".to_string()
-                    }),
-                    &story.channel,
-                    &story.created_at.to_string(),
-                ],
-            )?;
-        }
-
-        Ok(())
-    }
 }
 
 pub async fn create_new_story_with_channel(

@@ -1233,7 +1233,6 @@ pub async fn handle_story_sync_event(
                     if !response.channels.is_empty() {
                         match crate::storage::process_discovered_channels(
                             &response.channels,
-                            &response.from_name,
                         )
                         .await
                         {
