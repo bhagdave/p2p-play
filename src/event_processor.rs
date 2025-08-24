@@ -34,25 +34,19 @@ const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
 
 // Handshake timeout - if no response received within this time, disconnect peer
-// Increased timeout for slower internal networks and connection establishment
 const HANDSHAKE_TIMEOUT_SECS: u64 = 60;
 
-/// Event processor that handles the main application event loop
 pub struct EventProcessor {
-    // UI communication channels
     ui_rcv: mpsc::UnboundedReceiver<AppEvent>,
     ui_log_rcv: mpsc::UnboundedReceiver<String>,
     response_rcv: mpsc::UnboundedReceiver<crate::types::ListResponse>,
     story_rcv: mpsc::UnboundedReceiver<crate::types::Story>,
 
-    // Senders for event handlers
     response_sender: mpsc::UnboundedSender<crate::types::ListResponse>,
     story_sender: mpsc::UnboundedSender<crate::types::Story>,
 
-    // UI sender for events
     ui_sender: mpsc::UnboundedSender<AppEvent>,
 
-    // Intervals for periodic tasks
     connection_maintenance_interval: tokio::time::Interval,
     bootstrap_retry_interval: tokio::time::Interval,
     bootstrap_status_log_interval: tokio::time::Interval,
@@ -60,22 +54,17 @@ pub struct EventProcessor {
     network_health_update_interval: tokio::time::Interval,
     handshake_timeout_interval: tokio::time::Interval,
 
-    // Configuration and state
     dm_config: DirectMessageConfig,
     pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>>,
 
-    // Loggers
     ui_logger: UILogger,
     error_logger: ErrorLogger,
     bootstrap_logger: BootstrapLogger,
 
-    // Relay service for secure message routing
     relay_service: Option<RelayService>,
 
-    // Network circuit breakers for resilience
     network_circuit_breakers: NetworkCircuitBreakers,
 
-    // Peers awaiting handshake completion
     pending_handshake_peers: Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
 
     // Verified P2P-Play peers (only these are shown in UI)
@@ -151,18 +140,15 @@ impl EventProcessor {
                     .log_error(&format!("UI event handling error: {e}"));
             }
 
-            // Draw the UI
             if let Err(e) = app.draw() {
                 self.error_logger
                     .log_error(&format!("UI drawing error: {e}"));
             }
 
-            // Check if we should quit
             if app.should_quit {
                 break;
             }
 
-            // Yield control to allow other tasks to run
             tokio::task::yield_now().await;
 
             #[cfg(windows)]
@@ -194,14 +180,12 @@ impl EventProcessor {
                 )
                 .await;
 
-                // Update UI with the latest peer names
                 app.update_peers(peer_names.clone());
                 app.update_local_peer_name(local_peer_name.clone());
             }
         }
     }
 
-    /// Select the next event using tokio::select!
     #[allow(clippy::too_many_arguments)]
     async fn select_next_event(
         &mut self,
@@ -235,18 +219,15 @@ impl EventProcessor {
                             None
                         }
                         AppEvent::StoryViewed { story_id, channel } => {
-                            // Mark story as read and refresh unread counts
                             mark_story_as_read_for_peer(story_id, &PEER_ID.to_string(), &channel).await;
                             refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                             None
                         }
                         AppEvent::DirectMessage(direct_message) => {
-                            // Handle incoming direct message for UI
                             app.handle_direct_message(direct_message);
                             None
                         }
                         AppEvent::EnterMessageComposition { target_peer } => {
-                            // Switch UI to message composition mode
                             app.input_mode = crate::ui::InputMode::MessageComposition {
                                 target_peer,
                                 lines: Vec::new(),
@@ -287,7 +268,6 @@ impl EventProcessor {
                 None
             },
             _ = self.dm_retry_interval.tick() => {
-                // Process pending direct messages for retry
                 event_handlers::process_pending_messages(
                     swarm,
                     &self.dm_config,
@@ -298,24 +278,21 @@ impl EventProcessor {
                 None
             },
             _ = self.network_health_update_interval.tick() => {
-                // Update network health status in UI
                 let health_summary = self.network_circuit_breakers.health_summary().await;
                 app.update_network_health(health_summary);
                 None
             },
             _ = self.handshake_timeout_interval.tick() => {
-                // Check for and cleanup timed-out handshakes
                 self.cleanup_timed_out_handshakes(swarm).await;
                 None
             },
-            // Network events are processed but heavy operations are spawned to background
+            // Network events are processed with heavy operations spawned to background
             event = swarm.select_next_some() => {
                 self.handle_swarm_event(event, swarm, peer_names, sorted_peer_names_cache, local_peer_name, app, auto_bootstrap).await
             },
         }
     }
 
-    /// Handle swarm events
     #[allow(clippy::too_many_arguments)]
     async fn handle_swarm_event(
         &mut self,
@@ -355,7 +332,6 @@ impl EventProcessor {
                 Some(EventType::KadEvent(event))
             }
             SwarmEvent::NewListenAddr { address, .. } => {
-                debug!("Local node is listening on {address}");
                 app.add_to_log(format!("Local node is listening on {address}"));
                 None
             }
@@ -391,7 +367,7 @@ impl EventProcessor {
                 connection_id,
                 ..
             } => {
-                self.handle_outgoing_connection_error(peer_id, &error, &connection_id, app)
+                self.handle_outgoing_connection_error(peer_id, &error, &connection_id)
                     .await;
                 None
             }
@@ -407,7 +383,6 @@ impl EventProcessor {
                     &send_back_addr,
                     &error,
                     &connection_id,
-                    app,
                 )
                 .await;
                 None
@@ -427,7 +402,6 @@ impl EventProcessor {
         }
     }
 
-    /// Handle connection established events
     #[allow(clippy::too_many_arguments)]
     async fn handle_connection_established(
         &mut self,
@@ -440,14 +414,11 @@ impl EventProcessor {
     ) {
         debug!("Connection established to {peer_id} via {endpoint:?}");
 
-        // Add connection success logging to help debug network issues
         debug!(
             "Successful connection to peer {} - initiating handshake verification",
             peer_id
         );
 
-        // Store peer in pending handshake state - all P2P-Play specific operations
-        // will be deferred until handshake completion
         let pending_peer = PendingHandshakePeer {
             peer_id,
             connection_time: Instant::now(),
@@ -460,7 +431,6 @@ impl EventProcessor {
             debug!("Added peer {} to pending handshake list", peer_id);
         }
 
-        // Initiate handshake to verify this is a P2P-Play peer
         debug!(
             "Initiating handshake with newly connected peer: {}",
             peer_id
@@ -483,19 +453,13 @@ impl EventProcessor {
         // Track successful connection for improved reconnect timing
         track_successful_connection(peer_id);
 
-        // NOTE: Do NOT add peers to peer_names until handshake verification
-        // This prevents unverified peers from appearing in the UI
         debug!(
             "Peer {} awaiting handshake verification before UI display",
             peer_id
         );
 
-        // NOTE: All other P2P-Play specific operations (peer name broadcast,
-        // story sync, message retry) are deferred until handshake completion
-        // to prevent interaction with non-P2P-Play peers
     }
 
-    /// Handle connection closed events
     #[allow(clippy::too_many_arguments)]
     async fn handle_connection_closed(
         &self,
@@ -508,7 +472,6 @@ impl EventProcessor {
     ) {
         debug!("Connection closed to {peer_id}: {cause:?}");
 
-        // Check if this is a "Connection refused" error which is common during startup
         let error_msg = format!("{:?}", cause);
         if error_msg.contains("Connection refused") || error_msg.contains("os error 111") {
             debug!("Connection refused to {peer_id} - peer may still be starting up, will retry");
@@ -522,7 +485,6 @@ impl EventProcessor {
             .floodsub
             .remove_node_from_partial_view(&peer_id);
 
-        // Remove peer from pending handshake list if present
         {
             let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
             if pending_peers.remove(&peer_id).is_some() {
@@ -533,13 +495,11 @@ impl EventProcessor {
             }
         }
 
-        // Remove peer from verified P2P-Play peers if present
         let was_verified = {
             let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
             verified_peers.remove(&peer_id).is_some()
         };
 
-        // Remove the peer name when connection is closed (only if it was verified)
         if let Some(name) = peer_names.remove(&peer_id) {
             debug!("Removed verified peer name '{name}' for disconnected peer {peer_id}");
             sorted_peer_names_cache.update(peer_names);
@@ -553,34 +513,15 @@ impl EventProcessor {
             debug!("Unverified peer {} disconnected (was not in UI)", peer_id);
         }
 
-        // Trigger immediate connection maintenance to try reconnecting quickly
         trigger_immediate_connection_maintenance(swarm, &self.error_logger).await;
     }
 
-    /// Handle outgoing connection errors
     async fn handle_outgoing_connection_error(
         &self,
         peer_id: Option<PeerId>,
         error: &libp2p::swarm::DialError,
         connection_id: &libp2p::swarm::ConnectionId,
-        app: &mut App,
     ) {
-        // Filter out connection errors to reduce UI noise - default to NOT showing errors
-        let should_log_to_ui = match error {
-            // Never show these common dial errors in UI
-            libp2p::swarm::DialError::NoAddresses => false,
-            libp2p::swarm::DialError::LocalPeerId { address: _ } => false,
-            libp2p::swarm::DialError::WrongPeerId { .. } => false,
-            libp2p::swarm::DialError::Aborted => false,
-            libp2p::swarm::DialError::Denied { .. } => false,
-            libp2p::swarm::DialError::Transport(_) => false, // Never show transport errors in UI
-            _ => {
-                // For any other dial errors, also don't show them in UI by default
-                // All connection errors are logged to errors.log file for debugging
-                false
-            }
-        };
-
         crate::log_network_error!(
             self.error_logger,
             "outgoing_connection",
@@ -589,25 +530,15 @@ impl EventProcessor {
             connection_id,
             error
         );
-
-        if should_log_to_ui {
-            app.add_to_log(format!("Connection failed to peer: {error}"));
-        }
     }
 
-    /// Handle incoming connection errors
     async fn handle_incoming_connection_error(
         &self,
         local_addr: &libp2p::multiaddr::Multiaddr,
         send_back_addr: &libp2p::multiaddr::Multiaddr,
         error: &libp2p::swarm::ListenError,
         connection_id: &libp2p::swarm::ConnectionId,
-        app: &mut App,
     ) {
-        // Don't show any incoming connection errors in UI - they're all noise
-        // All errors are still logged to errors.log file for debugging
-        let should_log_to_ui = false;
-
         crate::log_network_error!(
             self.error_logger,
             "incoming_connection",
@@ -617,13 +548,8 @@ impl EventProcessor {
             connection_id,
             error
         );
-
-        if should_log_to_ui {
-            app.add_to_log(format!("Incoming connection error: {error}"));
-        }
     }
 
-    /// Process events with priority handling
     async fn process_event(
         &mut self,
         event: EventType,
@@ -658,12 +584,10 @@ impl EventProcessor {
         }
     }
 
-    /// Cleanup handshakes that have timed out
     async fn cleanup_timed_out_handshakes(&self, swarm: &mut Swarm<StoryBehaviour>) {
         let timeout_duration = Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
         let mut timed_out_peers = Vec::new();
 
-        // Identify timed-out peers
         {
             let pending_peers = self.pending_handshake_peers.lock().unwrap();
             for (peer_id, pending_peer) in pending_peers.iter() {
@@ -675,7 +599,6 @@ impl EventProcessor {
 
         let timed_out_count = timed_out_peers.len();
 
-        // Handle timed-out peers
         for peer_id in &timed_out_peers {
             // Check if this is a bootstrap peer - be more lenient for bootstrap connections
             let is_bootstrap_peer = {
@@ -708,10 +631,8 @@ impl EventProcessor {
                 peer_id, HANDSHAKE_TIMEOUT_SECS
             );
 
-            // Disconnect the peer
             let _ = swarm.disconnect_peer_id(*peer_id);
 
-            // Remove from pending list
             {
                 let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
                 pending_peers.remove(peer_id);
@@ -728,16 +649,12 @@ impl EventProcessor {
         }
     }
 
-    /// Handle action results from event processing
     async fn handle_action_result(&self, action_result: ActionResult, app: &mut App) {
         match action_result {
             ActionResult::RefreshStories => {
-                // Stories were updated, refresh them
                 match storage::read_local_stories().await {
                     Ok(stories) => {
-                        debug!("Refreshed {} stories", stories.len());
                         app.update_stories(stories);
-                        // Refresh unread counts
                         refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                     }
                     Err(e) => {
@@ -747,14 +664,11 @@ impl EventProcessor {
                 }
             }
             ActionResult::StartStoryCreation => {
-                // Start interactive story creation mode
                 app.start_story_creation();
             }
             ActionResult::RefreshChannels => {
-                // Channels were updated, refresh them
                 match storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
                     Ok(channels) => {
-                        debug!("Refreshed {} subscribed channels", channels.len());
                         app.update_channels(channels);
                     }
                     Err(e) => {
@@ -764,19 +678,15 @@ impl EventProcessor {
                 }
             }
             ActionResult::RebroadcastRelayMessage(_) => {
-                // This should already be handled in handle_event where we have access to the swarm
-                // If we get here, it means there's a logic error
                 debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
             }
             ActionResult::DirectMessageReceived(direct_message) => {
-                // Send direct message to UI
                 if let Err(e) = self.ui_sender.send(AppEvent::DirectMessage(direct_message)) {
                     self.error_logger
                         .log_error(&format!("Failed to send direct message to UI: {e}"));
                 }
             }
             ActionResult::EnterMessageComposition(target_peer) => {
-                // Send event to enter message composition mode
                 if let Err(e) = self
                     .ui_sender
                     .send(AppEvent::EnterMessageComposition { target_peer })
@@ -790,7 +700,6 @@ impl EventProcessor {
     }
 }
 
-/// Update bootstrap status based on DHT events
 fn update_bootstrap_status(
     kad_event: &libp2p::kad::Event,
     auto_bootstrap: &mut AutoBootstrap,
@@ -812,8 +721,6 @@ fn update_bootstrap_status(
         libp2p::kad::Event::RoutingUpdated {
             is_new_peer: true, ..
         } => {
-            // New peer added to routing table - this indicates successful DHT connectivity
-            // We'll count peers by checking the current status and updating if needed
             let status = auto_bootstrap.status.lock().unwrap();
             let is_in_progress = matches!(
                 *status,
@@ -822,7 +729,6 @@ fn update_bootstrap_status(
             drop(status); // Release lock before calling mark_connected
 
             if is_in_progress {
-                // Get the actual number of peers in the routing table
                 let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
                 debug!("Bootstrap marked as connected with {peer_count} peers in routing table");
                 auto_bootstrap.mark_connected(peer_count);
