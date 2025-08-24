@@ -70,12 +70,9 @@ async fn run_app() -> AppResult<()> {
         .filter_module("multistream_select", log::LevelFilter::Error)
         .init();
 
-    debug!("Peer Id: {}", PEER_ID.clone());
-
     // Initialize the UI
     let mut app = match App::new() {
         Ok(mut app) => {
-            // Set the peer ID in the UI
             app.update_local_peer_id(PEER_ID.to_string());
             app
         }
@@ -85,7 +82,6 @@ async fn run_app() -> AppResult<()> {
         }
     };
 
-    // Ensure stories.json file exists
     if let Err(e) = ensure_stories_file_exists().await {
         error!("Failed to initialize stories file: {e}");
         let _ = app.cleanup();
@@ -99,11 +95,7 @@ async fn run_app() -> AppResult<()> {
 
     // Create UI logger
     let ui_logger = handlers::UILogger::new(ui_log_sender);
-
-    // Create error logger that writes to file
     let error_logger = ErrorLogger::new("errors.log");
-
-    // Create bootstrap logger that writes to file
     let bootstrap_logger = BootstrapLogger::new("bootstrap.log");
 
     // Load unified network configuration
@@ -114,10 +106,6 @@ async fn run_app() -> AppResult<()> {
 
     let unified_config = match load_unified_network_config().await {
         Ok(config) => {
-            debug!(
-                "Loaded unified network config: connection_maintenance_interval_seconds={}",
-                config.network.connection_maintenance_interval_seconds
-            );
             app.add_to_log("Loaded unified network config from file".to_string());
             config
         }
@@ -130,16 +118,13 @@ async fn run_app() -> AppResult<()> {
         }
     };
 
-    // Extract individual configs for convenience
     let network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
 
     let mut swarm = create_swarm(&unified_config.ping).expect("Failed to create swarm");
 
-    // Storage for peer names (peer_id -> alias)
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
 
-    // Cache for sorted peer names to avoid repeated sorting on every direct message
     let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
     // Initialize direct message retry queue using config from unified_config
@@ -149,7 +134,6 @@ async fn run_app() -> AppResult<()> {
     let mut local_peer_name: Option<String> = match load_local_peer_name().await {
         Ok(saved_name) => {
             if let Some(ref name) = saved_name {
-                debug!("Loaded saved peer name: {name}");
                 app.add_to_log(format!("Loaded saved peer name: {name}"));
                 app.update_local_peer_name(saved_name.clone());
             }
@@ -175,8 +159,6 @@ async fn run_app() -> AppResult<()> {
                 if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
                 {
                     error!("Failed to auto-subscribe to general channel: {e}");
-                } else {
-                    debug!("Auto-subscribed to general channel");
                 }
             }
         }
@@ -189,14 +171,10 @@ async fn run_app() -> AppResult<()> {
         }
     }
 
-    // Load initial stories and update UI
     match storage::read_local_stories().await {
         Ok(stories) => {
-            debug!("Loaded {} local stories", stories.len());
             app.update_stories(stories);
-            // Refresh unread counts
             refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
-            // Note: Unread counts are loaded separately after this in the init phase
         }
         Err(e) => {
             error!("Failed to load local stories: {e}");
@@ -204,10 +182,8 @@ async fn run_app() -> AppResult<()> {
         }
     }
 
-    // Load initial subscribed channels and update UI
     match storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
         Ok(channels) => {
-            debug!("Loaded {} subscribed channels", channels.len());
             app.update_channels(channels);
         }
         Err(e) => {
@@ -216,7 +192,6 @@ async fn run_app() -> AppResult<()> {
         }
     }
 
-    // Load initial unread counts and update UI
     refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
     // Windows fix for port in use
     #[cfg(windows)]
@@ -231,13 +206,10 @@ async fn run_app() -> AppResult<()> {
     )
     .expect("swarm can be started");
 
-    // Initialize crypto service with shared keypair
     let crypto_service = CryptoService::new(KEYS.clone());
 
-    // Initialize network circuit breakers for resilience
     let network_circuit_breakers = NetworkCircuitBreakers::new(&unified_config.circuit_breaker);
 
-    // Initialize relay service with crypto and configuration
     let relay_service = if unified_config.relay.enable_relay {
         Some(RelayService::new(
             unified_config.relay.clone(),
@@ -278,7 +250,6 @@ async fn run_app() -> AppResult<()> {
         )
         .await;
 
-    // Cleanup
     app.cleanup().map_err(AppError::from).map_err(|e| {
         error!("Error during cleanup: {e}");
         e
