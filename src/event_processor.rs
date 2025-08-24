@@ -777,9 +777,13 @@ impl EventProcessor {
             }
             ActionResult::EnterMessageComposition(target_peer) => {
                 // Send event to enter message composition mode
-                if let Err(e) = self.ui_sender.send(AppEvent::EnterMessageComposition { target_peer }) {
-                    self.error_logger
-                        .log_error(&format!("Failed to send message composition event to UI: {e}"));
+                if let Err(e) = self
+                    .ui_sender
+                    .send(AppEvent::EnterMessageComposition { target_peer })
+                {
+                    self.error_logger.log_error(&format!(
+                        "Failed to send message composition event to UI: {e}"
+                    ));
                 }
             }
         }

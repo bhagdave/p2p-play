@@ -1,6 +1,7 @@
 use crate::errors::UIResult;
 use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
 use crate::validation::ContentSanitizer;
+use chrono::{DateTime, Local};
 use crossterm::{
     event::{
         self, Event, KeyCode, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
@@ -23,7 +24,6 @@ use std::collections::HashMap;
 use std::io::{self, Stdout};
 use std::time::{Duration, UNIX_EPOCH};
 use tokio::sync::mpsc;
-use chrono::{DateTime, Local};
 
 #[cfg(windows)]
 use std::sync::{Arc, Mutex};
@@ -73,8 +73,8 @@ pub struct App {
     pub direct_messages: Vec<DirectMessage>, // Store direct messages separately
     pub unread_message_count: usize,         // Track unread direct messages
     // Enhanced input features
-    pub input_history: Vec<String>,         // Command history for Up/Down navigation
-    pub history_index: Option<usize>,       // Current position in history
+    pub input_history: Vec<String>, // Command history for Up/Down navigation
+    pub history_index: Option<usize>, // Current position in history
     pub last_message_sender: Option<String>, // Track last sender for quick reply
 }
 
@@ -320,9 +320,16 @@ impl App {
                             self.input_mode = InputMode::QuickReply {
                                 target_peer: last_sender.clone(),
                             };
-                            self.add_to_log(format!("{} Quick reply to {}", crate::types::Icons::envelope(), last_sender));
+                            self.add_to_log(format!(
+                                "{} Quick reply to {}",
+                                crate::types::Icons::envelope(),
+                                last_sender
+                            ));
                         } else {
-                            self.add_to_log(format!("{} No recent messages to reply to", crate::types::Icons::cross()));
+                            self.add_to_log(format!(
+                                "{} No recent messages to reply to",
+                                crate::types::Icons::cross()
+                            ));
                         }
                     }
                     KeyCode::Char('m') => {
@@ -340,7 +347,9 @@ impl App {
                         self.history_index = None; // Reset history navigation
                         if !input.is_empty() {
                             // Add to history (avoid duplicates)
-                            if self.input_history.is_empty() || self.input_history.last() != Some(&input) {
+                            if self.input_history.is_empty()
+                                || self.input_history.last() != Some(&input)
+                            {
                                 self.input_history.push(input.clone());
                                 // Keep history size manageable
                                 if self.input_history.len() > 50 {
@@ -358,7 +367,8 @@ impl App {
                                 None => {
                                     // Start from the end
                                     self.history_index = Some(self.input_history.len() - 1);
-                                    self.input = self.input_history[self.input_history.len() - 1].clone();
+                                    self.input =
+                                        self.input_history[self.input_history.len() - 1].clone();
                                 }
                                 Some(idx) if idx > 0 => {
                                     self.history_index = Some(idx - 1);
@@ -552,14 +562,20 @@ impl App {
                         KeyCode::Esc => {
                             self.input_mode = InputMode::Normal;
                             self.input.clear();
-                            self.add_to_log(format!("{} Quick reply cancelled", crate::types::Icons::cross()));
+                            self.add_to_log(format!(
+                                "{} Quick reply cancelled",
+                                crate::types::Icons::cross()
+                            ));
                         }
                         KeyCode::Char(c) => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
                                 if c == 'c' {
                                     self.input_mode = InputMode::Normal;
                                     self.input.clear();
-                                    self.add_to_log(format!("{} Quick reply cancelled", crate::types::Icons::cross()));
+                                    self.add_to_log(format!(
+                                        "{} Quick reply cancelled",
+                                        crate::types::Icons::cross()
+                                    ));
                                 }
                             } else {
                                 self.input.push(c);
@@ -571,11 +587,15 @@ impl App {
                         _ => {}
                     }
                 }
-                InputMode::MessageComposition { target_peer, lines, current_line } => {
+                InputMode::MessageComposition {
+                    target_peer,
+                    lines,
+                    current_line,
+                } => {
                     let target_peer = target_peer.clone(); // Clone to avoid borrow checker issues
                     let mut new_lines = lines.clone();
                     let mut new_current = current_line.clone();
-                    
+
                     match key.code {
                         KeyCode::Enter => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -621,14 +641,20 @@ impl App {
                         KeyCode::Esc => {
                             self.input_mode = InputMode::Normal;
                             self.input.clear();
-                            self.add_to_log(format!("{} Message composition cancelled", crate::types::Icons::cross()));
+                            self.add_to_log(format!(
+                                "{} Message composition cancelled",
+                                crate::types::Icons::cross()
+                            ));
                         }
                         KeyCode::Char(c) => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
                                 if c == 'c' {
                                     self.input_mode = InputMode::Normal;
                                     self.input.clear();
-                                    self.add_to_log(format!("{} Message composition cancelled", crate::types::Icons::cross()));
+                                    self.add_to_log(format!(
+                                        "{} Message composition cancelled",
+                                        crate::types::Icons::cross()
+                                    ));
                                 }
                             } else {
                                 new_current.push(c);
@@ -893,19 +919,30 @@ impl App {
             let matches: Vec<String> = self
                 .peers
                 .values()
-                .filter(|name| name.to_lowercase().starts_with(&partial_name.to_lowercase()))
+                .filter(|name| {
+                    name.to_lowercase()
+                        .starts_with(&partial_name.to_lowercase())
+                })
                 .cloned()
                 .collect();
 
             match matches.len() {
                 0 => {
                     // No matches
-                    self.add_to_log(format!("{} No peers found matching '{}'", crate::types::Icons::cross(), partial_name));
+                    self.add_to_log(format!(
+                        "{} No peers found matching '{}'",
+                        crate::types::Icons::cross(),
+                        partial_name
+                    ));
                 }
                 1 => {
                     // Exact match, complete it
                     self.input = format!("msg {} ", matches[0]);
-                    self.add_to_log(format!("{} Completed to '{}'", crate::types::Icons::check(), matches[0]));
+                    self.add_to_log(format!(
+                        "{} Completed to '{}'",
+                        crate::types::Icons::check(),
+                        matches[0]
+                    ));
                 }
                 _ => {
                     // Multiple matches, show them
@@ -1410,39 +1447,39 @@ impl App {
             // Set cursor position if in editing mode or creating story
             match &self.input_mode {
                 InputMode::Editing => {
+                    let prefix = "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): ";
                     f.set_cursor(
-                        chunks[2].x + self.input.len() as u16 + "Command (Tab for auto-complete, ↑/↓ for history, Ctrl+L to clear): ".len() as u16,
+                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
                         chunks[2].y + 1,
                     );
                 }
                 InputMode::QuickReply { target_peer } => {
-                    let prefix_len = format!("{} Quick reply to {}: ", crate::types::Icons::envelope(), target_peer).len();
+                    let prefix = format!("{} Quick reply to {}: ", crate::types::Icons::envelope(), target_peer);
                     f.set_cursor(
-                        chunks[2].x + self.input.len() as u16 + prefix_len as u16,
+                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
                         chunks[2].y + 1,
                     );
                 }
                 InputMode::MessageComposition { target_peer, lines, .. } => {
-                    let prefix_len = if lines.is_empty() {
-                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer).len()
+                    let prefix = if lines.is_empty() {
+                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer)
                     } else {
-                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer, lines.len() + 1).len()
+                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer, lines.len() + 1)
                     };
                     f.set_cursor(
-                        chunks[2].x + self.input.len() as u16 + prefix_len as u16,
+                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
                         chunks[2].y + 1,
                     );
                 }
                 InputMode::CreatingStory { step, .. } => {
-                    // Calculate prefix length based on current platform icons
-                    let prefix_len = match step {
-                        StoryCreationStep::Name => format!("{} Story Name: ", crate::types::Icons::memo()).len(),
-                        StoryCreationStep::Header => format!("{} Story Header: ", crate::types::Icons::document()).len(),
-                        StoryCreationStep::Body => format!("{} Story Body: ", crate::types::Icons::book()).len(),
-                        StoryCreationStep::Channel => format!("{} Channel (Enter for 'general'): ", crate::types::Icons::folder()).len(),
+                    let prefix = match step {
+                        StoryCreationStep::Name => format!("{} Story Name: ", crate::types::Icons::memo()),
+                        StoryCreationStep::Header => format!("{} Story Header: ", crate::types::Icons::document()),
+                        StoryCreationStep::Body => format!("{} Story Body: ", crate::types::Icons::book()),
+                        StoryCreationStep::Channel => format!("{} Channel (Enter for 'general'): ", crate::types::Icons::folder()),
                     };
                     f.set_cursor(
-                        chunks[2].x + self.input.len() as u16 + prefix_len as u16,
+                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
                         chunks[2].y + 1,
                     );
                 }
@@ -1479,7 +1516,7 @@ fn find_common_prefix(strings: &[String]) -> Option<String> {
     if strings.is_empty() {
         return None;
     }
-    
+
     if strings.len() == 1 {
         return Some(strings[0].clone());
     }
@@ -1489,7 +1526,7 @@ fn find_common_prefix(strings: &[String]) -> Option<String> {
 
     for i in 0..first.len() {
         let ch = first.chars().nth(i)?;
-        
+
         for string in &strings[1..] {
             let other_ch = string.to_lowercase().chars().nth(i);
             if other_ch != Some(ch) {

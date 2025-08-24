@@ -283,11 +283,19 @@ pub async fn handle_input_event(
                     // Check if peer exists
                     let peer_exists = peer_names.values().any(|name| name == peer_name);
                     if peer_exists {
-                        return Some(crate::types::ActionResult::EnterMessageComposition(peer_name.to_string()));
+                        return Some(crate::types::ActionResult::EnterMessageComposition(
+                            peer_name.to_string(),
+                        ));
                     } else {
-                        ui_logger.log(format!("❌ Peer '{}' not found. Available peers: {}", 
-                            peer_name, 
-                            peer_names.values().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+                        ui_logger.log(format!(
+                            "❌ Peer '{}' not found. Available peers: {}",
+                            peer_name,
+                            peer_names
+                                .values()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
                     }
                 }
             } else {

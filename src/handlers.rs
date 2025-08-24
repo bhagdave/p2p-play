@@ -442,7 +442,10 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("peer id to show your full peer ID".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
     ui_logger.log("compose <peer_alias> to enter multi-line message composition mode".to_string());
-    ui_logger.log("Enhanced messaging: 'r' for quick reply, 'm' for message compose, Tab for auto-complete".to_string());
+    ui_logger.log(
+        "Enhanced messaging: 'r' for quick reply, 'm' for message compose, Tab for auto-complete"
+            .to_string(),
+    );
     ui_logger.log("dht bootstrap add/remove/list/clear/retry - manage bootstrap peers".to_string());
     ui_logger.log("dht bootstrap <multiaddr> to bootstrap directly with peer".to_string());
     ui_logger.log("dht peers to find closest peers in DHT".to_string());

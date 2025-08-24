@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [0.10.5] - 2025-01-17
+## [0.10.5] - 2025-01-27
 
 ### Added
 - **Enhanced Input Experience for Direct Messaging**: Comprehensive enhancement to direct messaging with shortcuts and auto-completion for improved productivity
