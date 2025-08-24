@@ -30,7 +30,7 @@ use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
     load_unified_network_config,
 };
-use types::{PendingDirectMessage, UnifiedNetworkConfig};
+use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::App;
 
 use libp2p::{PeerId, Swarm};
@@ -58,17 +58,7 @@ async fn main() {
 }
 
 async fn run_app() -> AppResult<()> {
-    // Set up custom logger that filters libp2p errors from console but logs them to file
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .filter_module("p2p_play", log::LevelFilter::Info) // Allow our app's info messages
-        .filter_module("libp2p", log::LevelFilter::Warn)
-        .filter_module("libp2p_swarm", log::LevelFilter::Error)
-        .filter_module("libp2p_tcp", log::LevelFilter::Error)
-        .filter_module("libp2p_noise", log::LevelFilter::Error)
-        .filter_module("libp2p_yamux", log::LevelFilter::Error)
-        .filter_module("multistream_select", log::LevelFilter::Error)
-        .init();
+    initialize_logging();
 
     // Initialize the UI
     let mut app = match App::new() {
@@ -88,35 +78,9 @@ async fn run_app() -> AppResult<()> {
         process::exit(1);
     }
 
-    let (response_sender, response_rcv) = mpsc::unbounded_channel();
-    let (story_sender, story_rcv) = mpsc::unbounded_channel();
-    let (ui_sender, ui_rcv) = mpsc::unbounded_channel();
-    let (ui_log_sender, ui_log_rcv) = mpsc::unbounded_channel();
+    let (channels, loggers) = setup_communication_channels();
 
-    // Create UI logger
-    let ui_logger = handlers::UILogger::new(ui_log_sender);
-    let error_logger = ErrorLogger::new("errors.log");
-    let bootstrap_logger = BootstrapLogger::new("bootstrap.log");
-
-    // Load unified network configuration
-    if let Err(e) = ensure_unified_network_config_exists().await {
-        error!("Failed to initialize unified network config: {e}");
-        app.add_to_log(format!("Failed to initialize unified network config: {e}"));
-    }
-
-    let unified_config = match load_unified_network_config().await {
-        Ok(config) => {
-            app.add_to_log("Loaded unified network config from file".to_string());
-            config
-        }
-        Err(e) => {
-            error!("Failed to load unified network config: {e}");
-            app.add_to_log(format!(
-                "Failed to load unified network config: {e}, using defaults"
-            ));
-            UnifiedNetworkConfig::new()
-        }
-    };
+    let unified_config = load_configuration(&mut app).await;
 
     let network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
@@ -149,7 +113,7 @@ async fn run_app() -> AppResult<()> {
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
     auto_bootstrap
-        .initialize(&unified_config.bootstrap, &bootstrap_logger, &error_logger)
+        .initialize(&unified_config.bootstrap, &loggers.bootstrap_logger, &loggers.error_logger)
         .await;
 
     // Auto-subscribe to general channel if not already subscribed
@@ -221,19 +185,19 @@ async fn run_app() -> AppResult<()> {
 
     // Create event processor
     let mut event_processor = EventProcessor::new(
-        ui_rcv,
-        ui_log_rcv,
-        response_rcv,
-        story_rcv,
-        response_sender,
-        story_sender,
-        ui_sender,
+        channels.ui_rcv,
+        channels.ui_log_rcv,
+        channels.response_rcv,
+        channels.story_rcv,
+        channels.response_sender,
+        channels.story_sender,
+        channels.ui_sender,
         network_config,
         dm_config.clone(),
         pending_messages,
-        ui_logger,
-        error_logger,
-        bootstrap_logger,
+        loggers.ui_logger,
+        loggers.error_logger,
+        loggers.bootstrap_logger,
         relay_service,
         network_circuit_breakers,
     );
@@ -256,4 +220,63 @@ async fn run_app() -> AppResult<()> {
     })?;
 
     Ok(())
+}
+
+fn initialize_logging() {
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .filter_module("p2p_play", log::LevelFilter::Info)
+        .filter_module("libp2p", log::LevelFilter::Warn)
+        .filter_module("libp2p_swarm", log::LevelFilter::Error)
+        .filter_module("libp2p_tcp", log::LevelFilter::Error)
+        .filter_module("libp2p_noise", log::LevelFilter::Error)
+        .filter_module("libp2p_yamux", log::LevelFilter::Error)
+        .filter_module("multistream_select", log::LevelFilter::Error)
+        .init();
+}
+
+fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
+    let (response_sender, response_rcv) = mpsc::unbounded_channel();
+    let (story_sender, story_rcv) = mpsc::unbounded_channel();
+    let (ui_sender, ui_rcv) = mpsc::unbounded_channel();
+    let (ui_log_sender, ui_log_rcv) = mpsc::unbounded_channel();
+
+    let channels = CommunicationChannels {
+        response_sender,
+        response_rcv,
+        story_sender,
+        story_rcv,
+        ui_sender,
+        ui_rcv,
+        ui_log_rcv,
+    };
+
+    let loggers = Loggers {
+        ui_logger: handlers::UILogger::new(ui_log_sender),
+        error_logger: ErrorLogger::new("errors.log"),
+        bootstrap_logger: BootstrapLogger::new("bootstrap.log"),
+    };
+
+    (channels, loggers)
+}
+
+async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
+    if let Err(e) = ensure_unified_network_config_exists().await {
+        error!("Failed to initialize unified network config: {e}");
+        app.add_to_log(format!("Failed to initialize unified network config: {e}"));
+    }
+
+    match load_unified_network_config().await {
+        Ok(config) => {
+            app.add_to_log("Loaded unified network config from file".to_string());
+            config
+        }
+        Err(e) => {
+            error!("Failed to load unified network config: {e}");
+            app.add_to_log(format!(
+                "Failed to load unified network config: {e}, using defaults"
+            ));
+            UnifiedNetworkConfig::new()
+        }
+    }
 }
