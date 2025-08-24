@@ -803,7 +803,6 @@ pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> Stora
     save_unified_network_config_to_path(config, "unified_network_config.json").await
 }
 
-/// Save unified network configuration to a specific path
 pub async fn save_unified_network_config_to_path(
     config: &UnifiedNetworkConfig,
     path: &str,
@@ -816,12 +815,10 @@ pub async fn save_unified_network_config_to_path(
     Ok(())
 }
 
-/// Load unified network configuration from file
 pub async fn load_unified_network_config() -> StorageResult<UnifiedNetworkConfig> {
     load_unified_network_config_from_path("unified_network_config.json").await
 }
 
-/// Load unified network configuration from a specific path
 pub async fn load_unified_network_config_from_path(
     path: &str,
 ) -> StorageResult<UnifiedNetworkConfig> {
@@ -837,13 +834,11 @@ pub async fn load_unified_network_config_from_path(
             // File doesn't exist, create with defaults
             let default_config = UnifiedNetworkConfig::new();
             save_unified_network_config_to_path(&default_config, path).await?;
-            debug!("Created default unified network config file at: {path}");
             Ok(default_config)
         }
     }
 }
 
-/// Ensure unified network config file exists with defaults
 pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("unified_network_config.json")
         .await
@@ -851,12 +846,10 @@ pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
     {
         let default_config = UnifiedNetworkConfig::default();
         save_unified_network_config(&default_config).await?;
-        debug!("Created default unified network config file");
     }
     Ok(())
 }
 
-/// Mark a story as read for a specific peer
 pub async fn mark_story_as_read(
     story_id: usize,
     peer_id: &str,
@@ -872,11 +865,9 @@ pub async fn mark_story_as_read(
         [&story_id.to_string(), peer_id, &read_at.to_string(), channel_name],
     )?;
 
-    debug!("Marked story {story_id} as read for peer {peer_id} in channel {channel_name}");
     Ok(())
 }
 
-/// Get unread story count for each channel for a specific peer
 pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMap<String, usize>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -902,7 +893,6 @@ pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMa
     Ok(unread_counts)
 }
 
-/// Check if a specific story is read by a peer
 pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -915,35 +905,6 @@ pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool
     Ok(count > 0)
 }
 
-/// Get all unread story IDs for a specific channel and peer
-pub async fn get_unread_story_ids_for_channel(
-    peer_id: &str,
-    channel_name: &str,
-) -> StorageResult<Vec<usize>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT s.id
-        FROM stories s
-        LEFT JOIN story_read_status srs ON s.id = srs.story_id AND srs.peer_id = ?
-        WHERE s.channel = ? AND s.public = 1 AND srs.story_id IS NULL
-        ORDER BY s.created_at DESC
-        "#,
-    )?;
-
-    let story_iter = stmt.query_map([peer_id, channel_name], mappers::map_row_to_usize)?;
-
-    let mut story_ids = Vec::new();
-    for story_id in story_iter {
-        story_ids.push(story_id?);
-    }
-
-    Ok(story_ids)
-}
-
-/// Search stories using SQL LIKE queries with optional filters
 pub async fn search_stories(
     query: &crate::types::SearchQuery,
 ) -> StorageResult<crate::types::SearchResults> {
@@ -952,7 +913,6 @@ pub async fn search_stories(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Build the search query using LIKE for text search
     let has_text_search = !query.text.trim().is_empty();
     let search_pattern = if has_text_search {
         Some(format!("%{}%", query.text.trim()))
@@ -960,7 +920,6 @@ pub async fn search_stories(
         None
     };
 
-    // Base SQL query
     let mut sql = r#"
         SELECT s.id, s.name, s.header, s.body, s.public, s.channel, s.created_at
         FROM stories s
@@ -970,7 +929,6 @@ pub async fn search_stories(
 
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-    // Add text search conditions (search in name, header, and body)
     if let Some(pattern) = &search_pattern {
         sql.push_str(" AND (s.name LIKE ? OR s.header LIKE ? OR s.body LIKE ?)");
         params.push(Box::new(pattern.clone()));
@@ -978,13 +936,11 @@ pub async fn search_stories(
         params.push(Box::new(pattern.clone()));
     }
 
-    // Add channel filter
     if let Some(channel) = &query.channel_filter {
         sql.push_str(" AND s.channel = ?");
         params.push(Box::new(channel.clone()));
     }
 
-    // Add visibility filter
     if let Some(public_only) = query.visibility_filter {
         if public_only {
             sql.push_str(" AND s.public = 1");
@@ -993,7 +949,6 @@ pub async fn search_stories(
         }
     }
 
-    // Add date range filter
     if let Some(days) = query.date_range_days {
         let cutoff_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1005,7 +960,6 @@ pub async fn search_stories(
         params.push(Box::new(cutoff_timestamp));
     }
 
-    // Order by created_at (most recent first)
     sql.push_str(" ORDER BY s.created_at DESC");
 
     let mut stmt = conn.prepare(&sql)?;
@@ -1031,8 +985,6 @@ pub async fn search_stories(
             auto_share: None,
         };
 
-        // For LIKE queries, we don't have relevance scores like FTS5
-        // But we could calculate a simple relevance based on where the match occurs
         let relevance_score = if has_text_search {
             calculate_simple_relevance(&story, &query.text)
         } else {
@@ -1055,7 +1007,6 @@ pub async fn search_stories(
     Ok(results)
 }
 
-/// Calculate a simple relevance score for LIKE-based search
 fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) -> Option<f64> {
     if search_term.trim().is_empty() {
         return None;
@@ -1064,7 +1015,6 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
     let term_lower = search_term.trim().to_lowercase();
     let mut score = 0.0;
 
-    // Check title match (highest weight)
     if story.name.to_lowercase().contains(&term_lower) {
         score += 3.0;
         if story.name.to_lowercase() == term_lower {
@@ -1072,12 +1022,10 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
         }
     }
 
-    // Check header match (medium weight)
     if story.header.to_lowercase().contains(&term_lower) {
         score += 2.0;
     }
 
-    // Check body match (lower weight)
     if story.body.to_lowercase().contains(&term_lower) {
         score += 1.0;
     }
@@ -1085,7 +1033,6 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
     if score > 0.0 { Some(score) } else { None }
 }
 
-/// Filter stories by channel
 pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::types::Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1107,7 +1054,6 @@ pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::ty
     Ok(stories)
 }
 
-/// Get recently created stories (within N days)
 pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::types::Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
