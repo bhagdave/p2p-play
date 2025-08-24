@@ -2,6 +2,21 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.5] - 2025-01-27
+
+### Added
+- **Enhanced Input Experience for Direct Messaging**: Comprehensive enhancement to direct messaging with shortcuts and auto-completion for improved productivity
+  - **Quick Reply Functionality**: Press `r` in normal mode to instantly reply to the last message sender, eliminating need to retype peer names for ongoing conversations
+  - **Auto-completion for Peer Names**: Press `Tab` while typing `msg <peer>` to auto-complete peer names with smart matching and partial matches
+  - **Input History Navigation**: Use `Up`/`Down` arrows in editing mode to navigate through command history with last 50 commands and duplicate prevention
+  - **Multi-line Message Composition**: New `compose <peer>` command enters dedicated composition mode with `m` shortcut, support for multi-line messages with `Enter` for new lines and `Ctrl+Enter` to send
+  - **Enhanced Keyboard Shortcuts**: `r` (quick reply), `m` (message composition), `Tab` (auto-complete), `Ctrl+L` (clear input), `Ctrl+C` (cancel input), `Up`/`Down` (history navigation)
+  - **Visual Feedback**: Color-coded input modes with contextual prompts showing current mode and available actions
+  - **Improved User Experience**: Multiple efficient options for messaging with reduced repetitive typing and intuitive shortcuts for common workflows
+  - Added comprehensive test suite with 7 test cases covering all enhanced messaging functionality
+  - Updated help text to document new messaging features and keyboard shortcuts
+  - Fixes issue #223
+
 ## [0.10.4] - 2025-08-23
 
 ### Fixed

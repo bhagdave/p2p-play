@@ -273,6 +273,35 @@ pub async fn handle_input_event(
                 establish_direct_connection(swarm, addr, ui_logger).await;
             }
         }
+        cmd if cmd.starts_with("compose ") => {
+            // Handle compose command to enter message composition mode
+            if let Some(peer_name) = cmd.strip_prefix("compose ") {
+                let peer_name = peer_name.trim();
+                if peer_name.is_empty() {
+                    ui_logger.log("Usage: compose <peer_alias>".to_string());
+                } else {
+                    // Check if peer exists
+                    let peer_exists = peer_names.values().any(|name| name == peer_name);
+                    if peer_exists {
+                        return Some(crate::types::ActionResult::EnterMessageComposition(
+                            peer_name.to_string(),
+                        ));
+                    } else {
+                        ui_logger.log(format!(
+                            "❌ Peer '{}' not found. Available peers: {}",
+                            peer_name,
+                            peer_names
+                                .values()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                    }
+                }
+            } else {
+                ui_logger.log("Usage: compose <peer_alias>".to_string());
+            }
+        }
         cmd if cmd.starts_with("msg ") => {
             handle_direct_message_with_relay(
                 cmd,

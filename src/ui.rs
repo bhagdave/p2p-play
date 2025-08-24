@@ -1,6 +1,7 @@
 use crate::errors::UIResult;
 use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
 use crate::validation::ContentSanitizer;
+use chrono::{DateTime, Local};
 use crossterm::{
     event::{
         self, Event, KeyCode, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
@@ -23,7 +24,6 @@ use std::collections::HashMap;
 use std::io::{self, Stdout};
 use std::time::{Duration, UNIX_EPOCH};
 use tokio::sync::mpsc;
-use chrono::{DateTime, Local};
 
 #[cfg(windows)]
 use std::sync::{Arc, Mutex};
@@ -72,6 +72,10 @@ pub struct App {
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub direct_messages: Vec<DirectMessage>, // Store direct messages separately
     pub unread_message_count: usize,         // Track unread direct messages
+    // Enhanced input features
+    pub input_history: Vec<String>, // Command history for Up/Down navigation
+    pub history_index: Option<usize>, // Current position in history
+    pub last_message_sender: Option<String>, // Track last sender for quick reply
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -87,6 +91,14 @@ pub enum InputMode {
     CreatingStory {
         step: StoryCreationStep,
         partial_story: PartialStory,
+    },
+    QuickReply {
+        target_peer: String,
+    },
+    MessageComposition {
+        target_peer: String,
+        lines: Vec<String>,
+        current_line: String,
     },
 }
 
@@ -111,6 +123,7 @@ pub enum AppEvent {
     Quit,
     StoryViewed { story_id: usize, channel: String },
     DirectMessage(DirectMessage),
+    EnterMessageComposition { target_peer: String },
 }
 
 impl App {
@@ -156,6 +169,10 @@ impl App {
             network_health: None,
             direct_messages: Vec::new(),
             unread_message_count: 0,
+            // Enhanced input features
+            input_history: Vec::new(),
+            history_index: None,
+            last_message_sender: None,
         })
     }
 
@@ -297,6 +314,29 @@ impl App {
                             self.return_to_channels();
                         }
                     }
+                    KeyCode::Char('r') => {
+                        // Quick reply to last message sender
+                        if let Some(ref last_sender) = self.last_message_sender.clone() {
+                            self.input_mode = InputMode::QuickReply {
+                                target_peer: last_sender.clone(),
+                            };
+                            self.add_to_log(format!(
+                                "{} Quick reply to {}",
+                                crate::types::Icons::envelope(),
+                                last_sender
+                            ));
+                        } else {
+                            self.add_to_log(format!(
+                                "{} No recent messages to reply to",
+                                crate::types::Icons::cross()
+                            ));
+                        }
+                    }
+                    KeyCode::Char('m') => {
+                        // Enter message composition mode (will be handled via input command)
+                        self.input_mode = InputMode::Editing;
+                        self.input = "compose ".to_string();
+                    }
                     _ => {}
                 },
                 InputMode::Editing => match key.code {
@@ -304,27 +344,91 @@ impl App {
                         let input = self.input.clone();
                         self.input.clear();
                         self.input_mode = InputMode::Normal;
+                        self.history_index = None; // Reset history navigation
                         if !input.is_empty() {
+                            // Add to history (avoid duplicates)
+                            if self.input_history.is_empty()
+                                || self.input_history.last() != Some(&input)
+                            {
+                                self.input_history.push(input.clone());
+                                // Keep history size manageable
+                                if self.input_history.len() > 50 {
+                                    self.input_history.remove(0);
+                                }
+                            }
                             self.add_to_log(format!("> {input}"));
                             return Some(AppEvent::Input(input));
                         }
                     }
+                    KeyCode::Up => {
+                        // Navigate up in command history
+                        if !self.input_history.is_empty() {
+                            match self.history_index {
+                                None => {
+                                    // Start from the end
+                                    self.history_index = Some(self.input_history.len() - 1);
+                                    self.input =
+                                        self.input_history[self.input_history.len() - 1].clone();
+                                }
+                                Some(idx) if idx > 0 => {
+                                    self.history_index = Some(idx - 1);
+                                    self.input = self.input_history[idx - 1].clone();
+                                }
+                                _ => {
+                                    // Already at the beginning, stay there
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Down => {
+                        // Navigate down in command history
+                        if let Some(idx) = self.history_index {
+                            if idx < self.input_history.len() - 1 {
+                                self.history_index = Some(idx + 1);
+                                self.input = self.input_history[idx + 1].clone();
+                            } else {
+                                // Clear input when going past the end
+                                self.history_index = None;
+                                self.input.clear();
+                            }
+                        }
+                    }
+                    KeyCode::Tab => {
+                        // Auto-complete peer names for msg commands
+                        if self.input.starts_with("msg ") {
+                            self.try_autocomplete_peer_name();
+                        }
+                    }
                     KeyCode::Char(c) => {
                         if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            if c == 'c' {
-                                self.input_mode = InputMode::Normal;
-                                self.input.clear();
+                            match c {
+                                'c' => {
+                                    self.input_mode = InputMode::Normal;
+                                    self.input.clear();
+                                    self.history_index = None;
+                                }
+                                'l' => {
+                                    // Clear current input line
+                                    self.input.clear();
+                                    self.history_index = None;
+                                }
+                                _ => {}
                             }
                         } else {
                             self.input.push(c);
+                            // Reset history navigation when user types
+                            self.history_index = None;
                         }
                     }
                     KeyCode::Backspace => {
                         self.input.pop();
+                        // Reset history navigation when user modifies input
+                        self.history_index = None;
                     }
                     KeyCode::Esc => {
                         self.input_mode = InputMode::Normal;
                         self.input.clear();
+                        self.history_index = None;
                     }
                     _ => {}
                 },
@@ -438,6 +542,149 @@ impl App {
                         }
                         KeyCode::Backspace => {
                             self.input.pop();
+                        }
+                        _ => {}
+                    }
+                }
+                InputMode::QuickReply { target_peer } => {
+                    let target_peer = target_peer.clone(); // Clone to avoid borrow checker issues
+                    match key.code {
+                        KeyCode::Enter => {
+                            let message = self.input.trim().to_string();
+                            self.input.clear();
+                            self.input_mode = InputMode::Normal;
+                            if !message.is_empty() {
+                                let cmd = format!("msg {} {}", target_peer, message);
+                                self.add_to_log(format!("> {}", cmd));
+                                return Some(AppEvent::Input(cmd));
+                            }
+                        }
+                        KeyCode::Esc => {
+                            self.input_mode = InputMode::Normal;
+                            self.input.clear();
+                            self.add_to_log(format!(
+                                "{} Quick reply cancelled",
+                                crate::types::Icons::cross()
+                            ));
+                        }
+                        KeyCode::Char(c) => {
+                            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                if c == 'c' {
+                                    self.input_mode = InputMode::Normal;
+                                    self.input.clear();
+                                    self.add_to_log(format!(
+                                        "{} Quick reply cancelled",
+                                        crate::types::Icons::cross()
+                                    ));
+                                }
+                            } else {
+                                self.input.push(c);
+                            }
+                        }
+                        KeyCode::Backspace => {
+                            self.input.pop();
+                        }
+                        _ => {}
+                    }
+                }
+                InputMode::MessageComposition {
+                    target_peer,
+                    lines,
+                    current_line,
+                } => {
+                    let target_peer = target_peer.clone(); // Clone to avoid borrow checker issues
+                    let mut new_lines = lines.clone();
+                    let mut new_current = current_line.clone();
+
+                    match key.code {
+                        KeyCode::Enter => {
+                            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                // Ctrl+Enter to send the multi-line message
+                                if !new_current.trim().is_empty() {
+                                    new_lines.push(new_current.clone());
+                                }
+                                if !new_lines.is_empty() {
+                                    let full_message = new_lines.join(" ");
+                                    let cmd = format!("msg {} {}", target_peer, full_message);
+                                    self.input.clear();
+                                    self.input_mode = InputMode::Normal;
+                                    self.add_to_log(format!("> {}", cmd));
+                                    return Some(AppEvent::Input(cmd));
+                                }
+                            } else {
+                                // Regular Enter adds a new line
+                                new_lines.push(new_current.clone());
+                                new_current.clear();
+                                self.input.clear();
+                                self.input_mode = InputMode::MessageComposition {
+                                    target_peer: target_peer.clone(),
+                                    lines: new_lines,
+                                    current_line: new_current,
+                                };
+                            }
+                        }
+                        // Alternative way to send message with Ctrl+D (for terminals where Ctrl+Enter doesn't work)
+                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            // Ctrl+D to send the multi-line message (alternative to Ctrl+Enter)
+                            if !new_current.trim().is_empty() {
+                                new_lines.push(new_current.clone());
+                            }
+                            if !new_lines.is_empty() {
+                                let full_message = new_lines.join(" ");
+                                let cmd = format!("msg {} {}", target_peer, full_message);
+                                self.input.clear();
+                                self.input_mode = InputMode::Normal;
+                                self.add_to_log(format!("> {}", cmd));
+                                return Some(AppEvent::Input(cmd));
+                            }
+                        }
+                        KeyCode::Esc => {
+                            self.input_mode = InputMode::Normal;
+                            self.input.clear();
+                            self.add_to_log(format!(
+                                "{} Message composition cancelled",
+                                crate::types::Icons::cross()
+                            ));
+                        }
+                        KeyCode::Char(c) => {
+                            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                if c == 'c' {
+                                    self.input_mode = InputMode::Normal;
+                                    self.input.clear();
+                                    self.add_to_log(format!(
+                                        "{} Message composition cancelled",
+                                        crate::types::Icons::cross()
+                                    ));
+                                }
+                            } else {
+                                new_current.push(c);
+                                self.input = new_current.clone();
+                                self.input_mode = InputMode::MessageComposition {
+                                    target_peer: target_peer.clone(),
+                                    lines: new_lines,
+                                    current_line: new_current,
+                                };
+                            }
+                        }
+                        KeyCode::Backspace => {
+                            if new_current.is_empty() && !new_lines.is_empty() {
+                                // If current line is empty, go back to previous line
+                                new_current = new_lines.pop().unwrap();
+                                self.input = new_current.clone();
+                                self.input_mode = InputMode::MessageComposition {
+                                    target_peer: target_peer.clone(),
+                                    lines: new_lines,
+                                    current_line: new_current,
+                                };
+                            } else {
+                                new_current.pop();
+                                self.input = new_current.clone();
+                                self.input_mode = InputMode::MessageComposition {
+                                    target_peer: target_peer.clone(),
+                                    lines: new_lines,
+                                    current_line: new_current,
+                                };
+                            }
                         }
                         _ => {}
                     }
@@ -650,10 +897,65 @@ impl App {
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
         // Store the direct message in our dedicated storage
-        self.direct_messages.push(dm);
+        self.direct_messages.push(dm.clone());
+
+        // Update last message sender for quick reply
+        self.last_message_sender = Some(dm.from_name);
 
         // Increment unread count
         self.unread_message_count += 1;
+    }
+
+    /// Try to auto-complete peer names for msg commands
+    pub fn try_autocomplete_peer_name(&mut self) {
+        let input_clone = self.input.clone(); // Clone to avoid borrow checker issues
+        if let Some(partial_name) = input_clone.strip_prefix("msg ") {
+            let partial_name = partial_name.trim();
+            if partial_name.is_empty() {
+                return;
+            }
+
+            // Find matching peer names
+            let matches: Vec<String> = self
+                .peers
+                .values()
+                .filter(|name| {
+                    name.to_lowercase()
+                        .starts_with(&partial_name.to_lowercase())
+                })
+                .cloned()
+                .collect();
+
+            match matches.len() {
+                0 => {
+                    // No matches
+                    self.add_to_log(format!(
+                        "{} No peers found matching '{}'",
+                        crate::types::Icons::cross(),
+                        partial_name
+                    ));
+                }
+                1 => {
+                    // Exact match, complete it
+                    self.input = format!("msg {} ", matches[0]);
+                    self.add_to_log(format!(
+                        "{} Completed to '{}'",
+                        crate::types::Icons::check(),
+                        matches[0]
+                    ));
+                }
+                _ => {
+                    // Multiple matches, show them
+                    self.add_to_log(format!("📋 Multiple matches: {}", matches.join(", ")));
+                    // Find common prefix and complete up to that
+                    if let Some(common_prefix) = find_common_prefix(&matches) {
+                        if common_prefix.len() > partial_name.len() {
+                            self.input = format!("msg {} ", common_prefix);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn mark_messages_as_read(&mut self) {
@@ -859,6 +1161,8 @@ impl App {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
                         InputMode::CreatingStory { .. } => "Creating Story",
+                        InputMode::QuickReply { .. } => "Quick Reply",
+                        InputMode::MessageComposition { .. } => "Message Composition",
                     },
                     if self.auto_scroll { "ON" } else { "OFF" }
                 )
@@ -873,6 +1177,8 @@ impl App {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
                         InputMode::CreatingStory { .. } => "Creating Story",
+                        InputMode::QuickReply { .. } => "Quick Reply",
+                        InputMode::MessageComposition { .. } => "Message Composition",
                     },
                     if self.auto_scroll { "ON" } else { "OFF" }
                 )
@@ -1102,16 +1408,26 @@ impl App {
                 InputMode::Normal => Style::default(),
                 InputMode::Editing => Style::default().fg(Color::Yellow),
                 InputMode::CreatingStory { .. } => Style::default().fg(Color::Green),
+                InputMode::QuickReply { .. } => Style::default().fg(Color::Cyan),
+                InputMode::MessageComposition { .. } => Style::default().fg(Color::Magenta),
             };
 
             let input_text = match &self.input_mode {
                 InputMode::Normal => {
                     match &self.view_mode {
-                        ViewMode::Channels => "Press 'i' to enter input mode, Enter to view channel stories, ←/→ to navigate, ↑/↓ to scroll, Ctrl+S to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
-                        ViewMode::Stories(_) => "Press 'i' to enter input mode, Enter to view story, Esc to return to channels, ←/→ to navigate, ↑/↓ to scroll, Ctrl+S to toggle auto-scroll, 'c' to clear output, 'q' to quit".to_string(),
+                        ViewMode::Channels => "Press 'i' for input, 'r' reply, 'm' compose, Enter view, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
+                        ViewMode::Stories(_) => "Press 'i' for input, 'r' reply, 'm' compose, Enter view, Esc back, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
                     }
                 }
-                InputMode::Editing => format!("Command: {}", self.input),
+                InputMode::Editing => format!("Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): {}", self.input),
+                InputMode::QuickReply { target_peer } => format!("{} Quick reply to {}: {}", crate::types::Icons::envelope(), target_peer, self.input),
+                InputMode::MessageComposition { target_peer, lines, current_line: _ } => {
+                    if lines.is_empty() {
+                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): {}", crate::types::Icons::memo(), target_peer, self.input)
+                    } else {
+                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): {}", crate::types::Icons::memo(), target_peer, lines.len() + 1, self.input)
+                    }
+                }
                 InputMode::CreatingStory { step, .. } => {
                     let prompt = match step {
                         StoryCreationStep::Name => format!("{} Story Name", Icons::memo()),
@@ -1131,36 +1447,39 @@ impl App {
             // Set cursor position if in editing mode or creating story
             match &self.input_mode {
                 InputMode::Editing => {
+                    let prefix = "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): ";
                     f.set_cursor(
-                        chunks[2].x + self.input.len() as u16 + 10, // 10 is for "Command: "
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
+                        chunks[2].y + 1,
+                    );
+                }
+                InputMode::QuickReply { target_peer } => {
+                    let prefix = format!("{} Quick reply to {}: ", crate::types::Icons::envelope(), target_peer);
+                    f.set_cursor(
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
+                        chunks[2].y + 1,
+                    );
+                }
+                InputMode::MessageComposition { target_peer, lines, .. } => {
+                    let prefix = if lines.is_empty() {
+                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer)
+                    } else {
+                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer, lines.len() + 1)
+                    };
+                    f.set_cursor(
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
                 }
                 InputMode::CreatingStory { step, .. } => {
-                    // Calculate prefix length based on current platform icons
-                    let prefix_len = match step {
-                        #[cfg(windows)]
-                        StoryCreationStep::Name => "> Story Name: ".len(),        // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Name => "📝 Story Name: ".len(),       // Unicode version
-
-                        #[cfg(windows)]
-                        StoryCreationStep::Header => "[DOC] Story Header: ".len(),      // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Header => "📄 Story Header: ".len(),         // Unicode version
-
-                        #[cfg(windows)]
-                        StoryCreationStep::Body => "[BOOK] Story Body: ".len(),        // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Body => "📖 Story Body: ".len(),            // Unicode version
-
-                        #[cfg(windows)]
-                        StoryCreationStep::Channel => "[DIR] Channel (Enter for 'general'): ".len(),     // ASCII version
-                        #[cfg(not(windows))]
-                        StoryCreationStep::Channel => "📂 Channel (Enter for 'general'): ".len(),        // Unicode version
+                    let prefix = match step {
+                        StoryCreationStep::Name => format!("{} Story Name: ", crate::types::Icons::memo()),
+                        StoryCreationStep::Header => format!("{} Story Header: ", crate::types::Icons::document()),
+                        StoryCreationStep::Body => format!("{} Story Body: ", crate::types::Icons::book()),
+                        StoryCreationStep::Channel => format!("{} Channel (Enter for 'general'): ", crate::types::Icons::folder()),
                     };
                     f.set_cursor(
-                        chunks[2].x + self.input.len() as u16 + prefix_len as u16,
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
                 }
@@ -1192,6 +1511,38 @@ pub async fn handle_ui_events(
 }
 
 /// Helper function to format Unix timestamp to human-readable format
+/// Find common prefix of a list of strings (case-insensitive)
+fn find_common_prefix(strings: &[String]) -> Option<String> {
+    if strings.is_empty() {
+        return None;
+    }
+
+    if strings.len() == 1 {
+        return Some(strings[0].clone());
+    }
+
+    let first = strings[0].to_lowercase();
+    let mut prefix_len = 0;
+
+    for i in 0..first.len() {
+        let ch = first.chars().nth(i)?;
+
+        for string in &strings[1..] {
+            let other_ch = string.to_lowercase().chars().nth(i);
+            if other_ch != Some(ch) {
+                if prefix_len == 0 {
+                    return None;
+                } else {
+                    return Some(strings[0][..prefix_len].to_string());
+                }
+            }
+        }
+        prefix_len = i + 1;
+    }
+
+    Some(strings[0][..prefix_len].to_string())
+}
+
 fn format_timestamp(timestamp: u64) -> String {
     use std::time::UNIX_EPOCH;
 
