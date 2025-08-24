@@ -245,6 +245,17 @@ impl EventProcessor {
                             app.handle_direct_message(direct_message);
                             None
                         }
+                        AppEvent::EnterMessageComposition { target_peer } => {
+                            // Switch UI to message composition mode
+                            app.input_mode = crate::ui::InputMode::MessageComposition {
+                                target_peer,
+                                lines: Vec::new(),
+                                current_line: String::new(),
+                            };
+                            app.input.clear();
+                            app.add_to_log("✍️  Entered message composition mode".to_string());
+                            None
+                        }
                     }
                 } else {
                     None
@@ -762,6 +773,13 @@ impl EventProcessor {
                 if let Err(e) = self.ui_sender.send(AppEvent::DirectMessage(direct_message)) {
                     self.error_logger
                         .log_error(&format!("Failed to send direct message to UI: {e}"));
+                }
+            }
+            ActionResult::EnterMessageComposition(target_peer) => {
+                // Send event to enter message composition mode
+                if let Err(e) = self.ui_sender.send(AppEvent::EnterMessageComposition { target_peer }) {
+                    self.error_logger
+                        .log_error(&format!("Failed to send message composition event to UI: {e}"));
                 }
             }
         }

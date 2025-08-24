@@ -303,6 +303,7 @@ pub enum ActionResult {
     RefreshChannels,
     RebroadcastRelayMessage(Box<crate::types::RelayMessage>),
     DirectMessageReceived(DirectMessage),
+    EnterMessageComposition(String), // peer name
 }
 
 pub enum EventType {
