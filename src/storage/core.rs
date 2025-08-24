@@ -382,15 +382,10 @@ pub async fn process_discovered_channels(
         match channel_exists(&channel.name).await {
             Ok(true) => {}
             Ok(false) => {
-                // Channel doesn't exist, try to create it
                 match create_channel(&channel.name, &channel.description, &channel.created_by).await
                 {
                     Ok(_) => {
                         saved_count += 1;
-                        debug!(
-                            "Successfully saved discovered channel '{}' from peer {}",
-                            channel.name, peer_name
-                        );
                     }
                     Err(e) => {
                         debug!(
@@ -409,58 +404,19 @@ pub async fn process_discovered_channels(
         }
     }
 
-    debug!(
-        "Processed {} channels from peer {}, saved {} new channels",
-        channels.len(),
-        peer_name,
-        saved_count
-    );
     Ok(saved_count)
 }
 
-pub async fn write_local_stories(stories: &Stories) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    // Clear existing stories and insert new ones
-    conn.execute("DELETE FROM stories", [])?;
-
-    for story in stories {
-        conn.execute(
-            "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                &story.id.to_string(),
-                &story.name,
-                &story.header,
-                &story.body,
-                &(if story.public {
-                    "1".to_string()
-                } else {
-                    "0".to_string()
-                }),
-                &story.channel,
-                &story.created_at.to_string(),
-            ],
-        )?;
-    }
-
-    Ok(())
-}
-
 pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
-    // For test compatibility, if path is a JSON file, write as JSON
     if path.ends_with(".json") {
         let json = serde_json::to_string(&stories)?;
         fs::write(path, &json).await?;
         Ok(())
     } else {
-        // Treat as SQLite database path - create a temporary connection
         let conn = Connection::open(path)?;
 
-        // Create tables if they don't exist
         migrations::create_tables(&conn)?;
 
-        // Clear existing stories and insert new ones
         conn.execute("DELETE FROM stories", [])?;
 
         for story in stories {
@@ -486,10 +442,6 @@ pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> Stora
     }
 }
 
-pub async fn create_new_story(name: &str, header: &str, body: &str) -> StorageResult<()> {
-    create_new_story_with_channel(name, header, body, "general").await
-}
-
 pub async fn create_new_story_with_channel(
     name: &str,
     header: &str,
@@ -498,20 +450,16 @@ pub async fn create_new_story_with_channel(
 ) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
 
-    // Get the next ID using utility function
     let next_id = utils::get_next_id(&conn_arc, "stories").await?;
 
-    // Get the current timestamp using utility function
     let created_at = utils::get_current_timestamp();
 
-    // Load auto-share configuration to determine if story should be public
     let should_be_public = match load_unified_network_config().await {
         Ok(config) => config.auto_share.global_auto_share,
         Err(_) => true, // Default to true if config can't be loaded
     };
 
     let conn = conn_arc.lock().await;
-    // Insert the new story
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
@@ -524,42 +472,7 @@ pub async fn create_new_story_with_channel(
             &created_at.to_string(),
         ],
     )?;
-
-    debug!("Created story:");
-    debug!("Name: {name}");
-    debug!("Header: {header}");
-    debug!("Body: {body}");
-
     Ok(())
-}
-
-pub async fn create_new_story_in_path(
-    name: &str,
-    header: &str,
-    body: &str,
-    path: &str,
-) -> StorageResult<usize> {
-    let mut local_stories: Vec<Story> =
-        read_local_stories_from_path(path).await.unwrap_or_default();
-    let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-        Some(v) => v.id + 1,
-        None => 0,
-    };
-    local_stories.push(Story {
-        id: new_id,
-        name: name.to_owned(),
-        header: header.to_owned(),
-        body: body.to_owned(),
-        public: false,
-        channel: "general".to_string(),
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
-        auto_share: None, // Use global setting by default
-    });
-    write_local_stories_to_path(&local_stories, path).await?;
-    Ok(new_id)
 }
 
 pub async fn publish_story(
@@ -569,14 +482,12 @@ pub async fn publish_story(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Update the story to be public
     let rows_affected = conn.execute(
         "UPDATE stories SET public = ? WHERE id = ?",
         [&utils::rust_bool_to_db(true), &id.to_string()],
     )?;
 
     if rows_affected > 0 {
-        // Fetch the updated story to send it
         let mut stmt = conn.prepare(
             "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?",
         )?;
@@ -602,38 +513,18 @@ pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Delete the story with the given ID
     let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", [&id.to_string()])?;
 
     if rows_affected > 0 {
-        debug!("Deleted story with ID: {id}");
         Ok(true)
     } else {
-        debug!("No story found with ID: {id}");
         Ok(false)
     }
-}
-
-pub async fn publish_story_in_path(id: usize, path: &str) -> StorageResult<Option<Story>> {
-    let mut local_stories = read_local_stories_from_path(path).await?;
-    let mut published_story = None;
-
-    for story in local_stories.iter_mut() {
-        if story.id == id {
-            story.public = true;
-            published_story = Some(story.clone());
-            break;
-        }
-    }
-
-    write_local_stories_to_path(&local_stories, path).await?;
-    Ok(published_story)
 }
 
 pub async fn save_received_story(story: Story) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
 
-    // Check if story already exists (by name and content to avoid duplicates)
     {
         let conn = conn_arc.lock().await;
         let mut stmt =
@@ -644,15 +535,12 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
         );
 
         if existing.is_ok() {
-            debug!("Story already exists locally, skipping save");
             return Ok(());
         }
     }
 
-    // Story doesn't exist, get the next ID
     let new_id = utils::get_next_id(&conn_arc, "stories").await?;
 
-    // Insert the story with the new ID and mark as public
     let conn = conn_arc.lock().await;
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -667,46 +555,9 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
         ],
     )?;
 
-    debug!("Saved received story to local storage with ID: {new_id}");
     Ok(())
 }
 
-pub async fn save_received_story_to_path(mut story: Story, path: &str) -> StorageResult<usize> {
-    let mut local_stories: Vec<Story> =
-        read_local_stories_from_path(path).await.unwrap_or_default();
-
-    // Check if story already exists
-    let already_exists = local_stories
-        .iter()
-        .any(|s| s.name == story.name && s.header == story.header && s.body == story.body);
-
-    if !already_exists {
-        let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-            Some(v) => v.id + 1,
-            None => 0,
-        };
-        story.id = new_id;
-        story.public = true;
-        // Set created_at if not already set
-        if story.created_at == 0 {
-            story.created_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-        }
-
-        local_stories.push(story);
-        write_local_stories_to_path(&local_stories, path).await?;
-        Ok(new_id)
-    } else {
-        // Return the existing story's ID
-        let existing = local_stories
-            .iter()
-            .find(|s| s.name == story.name && s.header == story.header && s.body == story.body)
-            .unwrap();
-        Ok(existing.id)
-    }
-}
 
 pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
