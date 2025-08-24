@@ -572,13 +572,6 @@ pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
     Ok(())
 }
 
-pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> StorageResult<()> {
-    // For test compatibility, keep writing to JSON file
-    let json = serde_json::to_string(name)?;
-    fs::write(path, &json).await?;
-    Ok(())
-}
-
 pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -593,18 +586,6 @@ pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
     }
 }
 
-pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<String>> {
-    // For test compatibility, keep reading from JSON file
-    match fs::read(path).await {
-        Ok(content) => {
-            let name: String = serde_json::from_slice(&content)?;
-            Ok(Some(name))
-        }
-        Err(_) => Ok(None), // File doesn't exist or can't be read, return None
-    }
-}
-
-// Channel management functions
 pub async fn create_channel(name: &str, description: &str, created_by: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -616,11 +597,9 @@ pub async fn create_channel(name: &str, description: &str, created_by: &str) -> 
         [name, description, created_by, &timestamp.to_string()],
     )?;
 
-    debug!("Created channel: {name} - {description}");
     Ok(())
 }
 
-/// Check if a channel exists in the database
 pub async fn channel_exists(name: &str) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -657,7 +636,6 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageR
         [peer_id, channel_name, &timestamp.to_string()],
     )?;
 
-    debug!("Subscribed {peer_id} to channel: {channel_name}");
     Ok(())
 }
 
@@ -670,7 +648,6 @@ pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> Stor
         [peer_id, channel_name],
     )?;
 
-    debug!("Unsubscribed {peer_id} from channel: {channel_name}");
     Ok(())
 }
 
@@ -691,7 +668,6 @@ pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String
     Ok(channels)
 }
 
-/// Get full channel details for channels that the user is subscribed to
 pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -722,7 +698,6 @@ pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResu
     Ok(channels)
 }
 
-/// Get channels that are available but not subscribed to by the given peer
 pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -754,79 +729,9 @@ pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels
     Ok(channels)
 }
 
-/// Get the count of current auto-subscriptions for a peer (to check against limits)
 pub async fn get_auto_subscription_count(peer_id: &str) -> StorageResult<usize> {
     let subscribed = read_subscribed_channels(peer_id).await?;
-    // For now, we'll count all subscriptions as auto-subscriptions
-    // In the future, we could add a flag to track which were auto vs manual
     Ok(subscribed.len())
-}
-
-pub async fn read_channel_subscriptions() -> StorageResult<ChannelSubscriptions> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    let mut stmt = conn.prepare("SELECT peer_id, channel_name, subscribed_at FROM channel_subscriptions ORDER BY channel_name, peer_id")?;
-    let subscription_iter = stmt.query_map([], |row| {
-        Ok(ChannelSubscription {
-            peer_id: row.get(0)?,
-            channel_name: row.get(1)?,
-            subscribed_at: row.get::<_, i64>(2)? as u64,
-        })
-    })?;
-
-    let mut subscriptions = Vec::new();
-    for subscription in subscription_iter {
-        subscriptions.push(subscription?);
-    }
-
-    Ok(subscriptions)
-}
-
-pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    let mut stmt = conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE channel = ? AND public = 1 ORDER BY created_at DESC")?;
-    let story_iter = stmt.query_map([channel_name], mappers::map_row_to_story)?;
-
-    let mut stories = Vec::new();
-    for story in story_iter {
-        stories.push(story?);
-    }
-
-    Ok(stories)
-}
-
-/// Clears all data from the database and ensures fresh test database (useful for testing)
-pub async fn clear_database_for_testing() -> StorageResult<()> {
-    // Reset the connection to ensure we're using the test database path
-    reset_db_connection_for_testing().await?;
-
-    // Ensure the test database is initialized
-    ensure_stories_file_exists().await?;
-
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    // Clear all tables in correct order (respecting foreign key constraints)
-    conn.execute("DELETE FROM story_read_status", [])?; // Clear first - has FKs to stories and channels
-    conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear second - has FK to channels
-    conn.execute("DELETE FROM stories", [])?; // Clear third - referenced by story_read_status
-    conn.execute("DELETE FROM channels", [])?; // Clear fourth - referenced by subscriptions and read_status
-    conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
-
-    // Recreate the general channel to ensure consistent test state
-    conn.execute(
-        r#"
-        INSERT INTO channels (name, description, created_by, created_at)
-        VALUES ('general', 'Default general discussion channel', 'system', 0)
-        "#,
-        [],
-    )?;
-
-    debug!("Test database cleared and reset");
-    Ok(())
 }
 
 /// Save node description to file (limited to 1024 bytes)
