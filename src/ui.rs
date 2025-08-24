@@ -1449,14 +1449,14 @@ impl App {
                 InputMode::Editing => {
                     let prefix = "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): ";
                     f.set_cursor(
-                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
                 }
                 InputMode::QuickReply { target_peer } => {
                     let prefix = format!("{} Quick reply to {}: ", crate::types::Icons::envelope(), target_peer);
                     f.set_cursor(
-                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
                 }
@@ -1467,7 +1467,7 @@ impl App {
                         format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer, lines.len() + 1)
                     };
                     f.set_cursor(
-                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
                 }
@@ -1479,7 +1479,7 @@ impl App {
                         StoryCreationStep::Channel => format!("{} Channel (Enter for 'general'): ", crate::types::Icons::folder()),
                     };
                     f.set_cursor(
-                        chunks[2].x + 1 + prefix.len() as u16 + self.input.len() as u16,
+                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
                 }
