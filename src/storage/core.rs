@@ -390,8 +390,11 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         unique_channels.insert(story.channel.clone());
     }
 
-    debug!("Found {} unique channel names in stories: {:?}", 
-        unique_channels.len(), unique_channels);
+    debug!(
+        "Found {} unique channel names in stories: {:?}",
+        unique_channels.len(),
+        unique_channels
+    );
 
     if unique_channels.is_empty() {
         debug!("No unique channels found in stories");
@@ -404,7 +407,10 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         "SELECT name, description, created_by, created_at FROM channels WHERE name IN ({placeholders}) ORDER BY name"
     );
 
-    debug!("Executing query: {} with params: {:?}", query, unique_channels);
+    debug!(
+        "Executing query: {} with params: {:?}",
+        query, unique_channels
+    );
 
     let mut stmt = conn.prepare(&query)?;
 
@@ -419,7 +425,7 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
 
     let mut channels = Vec::new();
     let mut found_channel_names = std::collections::HashSet::new();
-    
+
     for channel in channel_iter {
         let channel = channel?;
         found_channel_names.insert(channel.name.clone());
@@ -431,7 +437,10 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
     // doesn't have the metadata stored locally
     for channel_name in unique_channels {
         if !found_channel_names.contains(&channel_name) {
-            debug!("Creating default metadata for unknown channel: {}", channel_name);
+            debug!(
+                "Creating default metadata for unknown channel: {}",
+                channel_name
+            );
             let default_channel = crate::types::Channel::new(
                 channel_name.clone(),
                 format!("Channel: {}", channel_name),
@@ -460,31 +469,41 @@ pub async fn process_discovered_channels(
         return Ok(0);
     }
 
-    debug!("Processing {} discovered channels from peer {}", channels.len(), peer_name);
-    
+    debug!(
+        "Processing {} discovered channels from peer {}",
+        channels.len(),
+        peer_name
+    );
+
     let mut saved_count = 0;
     for channel in channels {
         debug!(
             "Processing channel: name='{}', description='{}', created_by='{}'",
             channel.name, channel.description, channel.created_by
         );
-        
+
         // Validate channel data before saving
         if channel.name.is_empty() || channel.description.is_empty() {
-            debug!("Skipping invalid channel with empty name or description: name='{}', description='{}'", 
-                channel.name, channel.description);
+            debug!(
+                "Skipping invalid channel with empty name or description: name='{}', description='{}'",
+                channel.name, channel.description
+            );
             continue;
         }
 
         // Check if channel already exists before trying to create it
         match channel_exists(&channel.name).await {
             Ok(true) => {
-                debug!("Channel '{}' already exists in database, skipping", channel.name);
+                debug!(
+                    "Channel '{}' already exists in database, skipping",
+                    channel.name
+                );
                 // Channel already exists, don't count as new discovery
             }
             Ok(false) => {
                 // Channel doesn't exist, try to create it
-                match create_channel(&channel.name, &channel.description, &channel.created_by).await {
+                match create_channel(&channel.name, &channel.description, &channel.created_by).await
+                {
                     Ok(_) => {
                         saved_count += 1;
                         debug!(
@@ -509,8 +528,12 @@ pub async fn process_discovered_channels(
         }
     }
 
-    debug!("Processed {} channels from peer {}, saved {} new channels", 
-        channels.len(), peer_name, saved_count);
+    debug!(
+        "Processed {} channels from peer {}, saved {} new channels",
+        channels.len(),
+        peer_name,
+        saved_count
+    );
     Ok(saved_count)
 }
 

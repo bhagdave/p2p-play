@@ -302,6 +302,7 @@ pub enum ActionResult {
     StartStoryCreation,
     RefreshChannels,
     RebroadcastRelayMessage(Box<crate::types::RelayMessage>),
+    DirectMessageReceived(DirectMessage),
 }
 
 pub enum EventType {

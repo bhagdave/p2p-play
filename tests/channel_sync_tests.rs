@@ -9,14 +9,16 @@ const TEST_DB_PATH: &str = "./test_channel_sync.db";
 async fn setup_test_environment() {
     // Clean up any existing test database first
     cleanup_test_db();
-    
+
     unsafe {
         std::env::set_var("TEST_DATABASE_PATH", TEST_DB_PATH);
     }
-    
+
     // Reset any cached database connections since we changed the environment variable
-    p2p_play::storage::reset_db_connection_for_testing().await.unwrap();
-    
+    p2p_play::storage::reset_db_connection_for_testing()
+        .await
+        .unwrap();
+
     // Initialize the database by ensuring we have a connection and creating tables
     let conn_arc = p2p_play::storage::get_db_connection().await.unwrap();
     let conn = conn_arc.lock().await;

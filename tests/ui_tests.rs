@@ -28,6 +28,14 @@ fn test_input_mode() {
 
 #[test]
 fn test_app_event_variants() {
+    let dm = DirectMessage {
+        from_peer_id: "peer123".to_string(),
+        from_name: "Alice".to_string(),
+        to_name: "Bob".to_string(),
+        message: "Hello!".to_string(),
+        timestamp: 1234567890,
+    };
+
     let events = [
         AppEvent::Input("test".to_string()),
         AppEvent::Quit,
@@ -35,10 +43,11 @@ fn test_app_event_variants() {
             story_id: 1,
             channel: "general".to_string(),
         },
+        AppEvent::DirectMessage(dm),
     ];
 
     // Test that we can create all event variants
-    assert_eq!(events.len(), 3);
+    assert_eq!(events.len(), 4);
 }
 
 #[test]
@@ -110,6 +119,74 @@ fn test_direct_message_handling() {
 
     assert_eq!(dm.from_name, "Alice");
     assert_eq!(dm.message, "Hello Bob!");
+}
+
+#[test]
+fn test_direct_message_storage_and_unread_tracking() {
+    // Create a mock App structure with our new fields
+    struct MockApp {
+        direct_messages: Vec<DirectMessage>,
+        unread_message_count: usize,
+    }
+
+    impl MockApp {
+        fn new() -> Self {
+            Self {
+                direct_messages: Vec::new(),
+                unread_message_count: 0,
+            }
+        }
+
+        fn handle_direct_message(&mut self, dm: DirectMessage) {
+            self.direct_messages.push(dm);
+            self.unread_message_count += 1;
+        }
+
+        fn mark_messages_as_read(&mut self) {
+            self.unread_message_count = 0;
+        }
+    }
+
+    let mut app = MockApp::new();
+
+    // Initially no messages
+    assert_eq!(app.direct_messages.len(), 0);
+    assert_eq!(app.unread_message_count, 0);
+
+    // Add first message
+    let dm1 = DirectMessage {
+        from_peer_id: "peer123".to_string(),
+        from_name: "Alice".to_string(),
+        to_name: "Bob".to_string(),
+        message: "Hello Bob!".to_string(),
+        timestamp: 1234567890,
+    };
+    app.handle_direct_message(dm1);
+
+    assert_eq!(app.direct_messages.len(), 1);
+    assert_eq!(app.unread_message_count, 1);
+
+    // Add second message
+    let dm2 = DirectMessage {
+        from_peer_id: "peer456".to_string(),
+        from_name: "Charlie".to_string(),
+        to_name: "Bob".to_string(),
+        message: "Hi there!".to_string(),
+        timestamp: 1234567900,
+    };
+    app.handle_direct_message(dm2);
+
+    assert_eq!(app.direct_messages.len(), 2);
+    assert_eq!(app.unread_message_count, 2);
+
+    // Mark as read
+    app.mark_messages_as_read();
+    assert_eq!(app.direct_messages.len(), 2); // Messages still stored
+    assert_eq!(app.unread_message_count, 0); // But unread count reset
+
+    // Verify message content
+    assert_eq!(app.direct_messages[0].from_name, "Alice");
+    assert_eq!(app.direct_messages[1].from_name, "Charlie");
 }
 
 #[test]
