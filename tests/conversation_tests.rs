@@ -431,29 +431,38 @@ async fn test_outgoing_messages_appear_in_conversations() {
         let conn_arc = p2p_play::storage::core::get_db_connection().await.unwrap();
         let conn = conn_arc.lock().await;
         let mut stmt = conn.prepare("SELECT from_peer_id, from_name, to_name, message FROM direct_messages ORDER BY timestamp").unwrap();
-        let message_iter = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?
-            ))
-        }).unwrap();
+        let message_iter = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .unwrap();
 
         println!("All messages in database:");
         for msg in message_iter {
             let (from_peer_id, from_name, to_name, message) = msg.unwrap();
-            println!("  {} ({}) -> {}: {}", from_name, from_peer_id, to_name, message);
+            println!(
+                "  {} ({}) -> {}: {}",
+                from_name, from_peer_id, to_name, message
+            );
         }
     }
 
     // Debug: Check what get_conversations_with_unread_counts returns
     {
-        let conversations_data = p2p_play::storage::get_conversations_with_unread_counts("Alice").await.unwrap();
+        let conversations_data = p2p_play::storage::get_conversations_with_unread_counts("Alice")
+            .await
+            .unwrap();
         println!("get_conversations_with_unread_counts returned:");
         for (peer_id, peer_name, unread_count, last_activity) in &conversations_data {
-            println!("  peer_id: '{}', peer_name: '{}', unread: {}, last_activity: {}", 
-                     peer_id, peer_name, unread_count, last_activity);
+            println!(
+                "  peer_id: '{}', peer_name: '{}', unread: {}, last_activity: {}",
+                peer_id, peer_name, unread_count, last_activity
+            );
         }
     }
 
@@ -463,19 +472,36 @@ async fn test_outgoing_messages_appear_in_conversations() {
         .expect("Failed to load conversation manager");
 
     // Debug: print all conversations
-    println!("Found {} conversations", conversation_manager.conversations.len());
+    println!(
+        "Found {} conversations",
+        conversation_manager.conversations.len()
+    );
     for (peer_id, conversation) in &conversation_manager.conversations {
-        println!("Conversation with peer_id '{}', peer_name '{}', {} messages", 
-                 peer_id, conversation.peer_name, conversation.messages.len());
+        println!(
+            "Conversation with peer_id '{}', peer_name '{}', {} messages",
+            peer_id,
+            conversation.peer_name,
+            conversation.messages.len()
+        );
         for msg in &conversation.messages {
-            println!("  Message: {} -> {}: {}", msg.from_name, msg.to_name, msg.message);
+            println!(
+                "  Message: {} -> {}: {}",
+                msg.from_name, msg.to_name, msg.message
+            );
         }
     }
 
     // Check if there's a conversation using Bob's peer_id
-    let bob_conversation = conversation_manager.conversations.get("bob_peer_id")
+    let bob_conversation = conversation_manager
+        .conversations
+        .get("bob_peer_id")
         .or_else(|| conversation_manager.conversations.get("Bob"))
-        .or_else(|| conversation_manager.conversations.values().find(|conv| conv.peer_name == "Bob"));
+        .or_else(|| {
+            conversation_manager
+                .conversations
+                .values()
+                .find(|conv| conv.peer_name == "Bob")
+        });
 
     assert!(
         bob_conversation.is_some(),
@@ -483,7 +509,7 @@ async fn test_outgoing_messages_appear_in_conversations() {
     );
 
     let bob_conversation = bob_conversation.unwrap();
-    
+
     // The conversation should have 2 messages: outgoing + incoming
     assert_eq!(
         bob_conversation.messages.len(),
@@ -495,13 +521,21 @@ async fn test_outgoing_messages_appear_in_conversations() {
     let outgoing_found = bob_conversation.messages.iter().any(|msg| {
         msg.from_name == "Alice" && msg.to_name == "Bob" && msg.message == "Hey Bob, how are you?"
     });
-    assert!(outgoing_found, "Outgoing message from Alice should be in conversation");
+    assert!(
+        outgoing_found,
+        "Outgoing message from Alice should be in conversation"
+    );
 
     // Check the incoming message is there
     let incoming_found = bob_conversation.messages.iter().any(|msg| {
-        msg.from_name == "Bob" && msg.to_name == "Alice" && msg.message == "Hi Alice! I'm doing well, thanks!"
+        msg.from_name == "Bob"
+            && msg.to_name == "Alice"
+            && msg.message == "Hi Alice! I'm doing well, thanks!"
     });
-    assert!(incoming_found, "Incoming message from Bob should be in conversation");
+    assert!(
+        incoming_found,
+        "Incoming message from Bob should be in conversation"
+    );
 
     println!("✅ Outgoing messages properly appear in conversations!");
 }

@@ -564,20 +564,17 @@ impl ConversationManager {
         format!("conv:{}:{}", participants[0], participants[1])
     }
 
-    /// Public helper to generate conversation IDs (used by storage functions)
     pub fn conversation_id_for_peers(local_peer_name: &str, remote_peer_name: &str) -> String {
         Self::generate_conversation_id(local_peer_name, remote_peer_name)
     }
 
     pub fn add_message(&mut self, message: DirectMessage, local_peer_name: &str) -> bool {
         let (conversation_id, conversation_peer_name) = if message.from_name == local_peer_name {
-            // Outgoing message: conversation is with the recipient
             (
                 Self::generate_conversation_id(local_peer_name, &message.to_name),
                 message.to_name.clone(),
             )
         } else {
-            // Incoming message: conversation is with the sender
             (
                 Self::generate_conversation_id(local_peer_name, &message.from_name),
                 message.from_name.clone(),
@@ -587,9 +584,7 @@ impl ConversationManager {
         let conversation = self
             .conversations
             .entry(conversation_id.clone())
-            .or_insert_with(|| {
-                Conversation::new(conversation_id.clone(), conversation_peer_name)
-            });
+            .or_insert_with(|| Conversation::new(conversation_id.clone(), conversation_peer_name));
 
         conversation.add_message(message);
 

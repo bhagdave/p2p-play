@@ -1078,13 +1078,12 @@ pub async fn load_conversation_messages(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Extract peer names from conversation ID to match messages
     if let Some(peer_names) = conversation_id.strip_prefix("conv:") {
         let parts: Vec<&str> = peer_names.split(':').collect();
         if parts.len() == 2 {
             let peer1 = parts[0];
             let peer2 = parts[1];
-            
+
             let mut stmt = conn.prepare(
                 r#"
                 SELECT from_peer_id, from_name, to_name, message, timestamp
@@ -1096,18 +1095,15 @@ pub async fn load_conversation_messages(
                 "#,
             )?;
 
-            let message_iter = stmt.query_map(
-                [peer1, peer2, peer2, peer1],
-                |row| {
-                    Ok(crate::types::DirectMessage {
-                        from_peer_id: row.get(0)?,
-                        from_name: row.get(1)?,
-                        to_name: row.get(2)?,
-                        message: row.get(3)?,
-                        timestamp: row.get::<_, i64>(4)? as u64,
-                    })
-                },
-            )?;
+            let message_iter = stmt.query_map([peer1, peer2, peer2, peer1], |row| {
+                Ok(crate::types::DirectMessage {
+                    from_peer_id: row.get(0)?,
+                    from_name: row.get(1)?,
+                    to_name: row.get(2)?,
+                    message: row.get(3)?,
+                    timestamp: row.get::<_, i64>(4)? as u64,
+                })
+            })?;
 
             let mut messages = Vec::new();
             for message in message_iter {
@@ -1118,7 +1114,6 @@ pub async fn load_conversation_messages(
         }
     }
 
-    // Fallback for invalid conversation IDs
     Ok(Vec::new())
 }
 
@@ -1129,13 +1124,12 @@ pub async fn mark_conversation_messages_as_read(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Extract peer names from conversation ID to mark messages as read
     if let Some(peer_names) = conversation_id.strip_prefix("conv:") {
         let parts: Vec<&str> = peer_names.split(':').collect();
         if parts.len() == 2 {
             let peer1 = parts[0];
             let peer2 = parts[1];
-            
+
             conn.execute(
                 r#"
                 UPDATE direct_messages 
@@ -1202,11 +1196,11 @@ pub async fn get_conversations_with_unread_counts(
 
     let conversation_iter = stmt.query_map(
         [
-            local_peer_name,  // peer_name CASE condition
-            local_peer_name,  // Unread count condition
-            local_peer_name,  // First WHERE condition
-            local_peer_name,  // Second WHERE condition
-            local_peer_name,  // GROUP BY peer_name CASE condition
+            local_peer_name, // peer_name CASE condition
+            local_peer_name, // Unread count condition
+            local_peer_name, // First WHERE condition
+            local_peer_name, // Second WHERE condition
+            local_peer_name, // GROUP BY peer_name CASE condition
         ],
         |row| {
             Ok((

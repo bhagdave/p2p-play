@@ -8,8 +8,8 @@ use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, filter_stories_by_channel,
     filter_stories_by_recent_days, load_bootstrap_config, load_node_description,
     mark_story_as_read, publish_story, read_channels, read_local_stories, read_subscribed_channels,
-    read_unsubscribed_channels, save_bootstrap_config, save_direct_message, save_local_peer_name, save_node_description,
-    search_stories, subscribe_to_channel, unsubscribe_from_channel,
+    read_unsubscribed_channels, save_bootstrap_config, save_direct_message, save_local_peer_name,
+    save_node_description, search_stories, subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, Icons, ListMode, ListRequest, PeerName,
@@ -765,7 +765,11 @@ pub async fn handle_direct_message_with_relay(
                 };
 
                 if let Err(e) = save_direct_message(&outgoing_msg).await {
-                    ui_logger.log(format!("⚠️ Failed to save outgoing message to database: {}", e));
+                    ui_logger.log(format!(
+                        "{} Failed to save outgoing message to database: {}",
+                        crate::types::Icons::warning(),
+                        e
+                    ));
                 }
 
                 ui_logger.log(format!(
@@ -795,7 +799,8 @@ pub async fn handle_direct_message_with_relay(
                         dm_config,
                         pending_messages,
                         ui_logger,
-                    ).await;
+                    )
+                    .await;
                     return;
                 };
 
@@ -826,7 +831,8 @@ pub async fn handle_direct_message_with_relay(
             dm_config,
             pending_messages,
             ui_logger,
-        ).await;
+        )
+        .await;
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
     }
@@ -860,7 +866,11 @@ async fn try_relay_delivery(
             match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
                 Ok(()) => {
                     if let Err(e) = save_direct_message(&direct_msg).await {
-                        ui_logger.log(format!("⚠️ Failed to save outgoing message to database: {}", e));
+                        ui_logger.log(format!(
+                            "{} Failed to save outgoing message to database: {}",
+                            crate::types::Icons::warning(),
+                            e
+                        ));
                     }
                     ui_logger.log(format!("✅ Message sent to {to_name} via relay network"));
                     true
@@ -944,7 +954,11 @@ async fn queue_message_for_retry(
 
     if let Ok(mut queue) = pending_messages.lock() {
         if let Err(e) = save_direct_message(&outgoing_msg).await {
-            ui_logger.log(format!("⚠️ Failed to save queued message to database: {}", e));
+            ui_logger.log(format!(
+                "{} Failed to save queued message to database: {}",
+                crate::types::Icons::warning(),
+                e
+            ));
         }
 
         queue.push(pending_msg);

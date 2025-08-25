@@ -882,10 +882,7 @@ pub async fn handle_direct_message_event(direct_msg: DirectMessage, error_logger
     );
 
     if let Err(e) = crate::storage::save_direct_message(&direct_msg).await {
-        error_logger.log_error(&format!(
-            "Failed to save direct message to database: {}",
-            e
-        ));
+        error_logger.log_error(&format!("Failed to save direct message to database: {}", e));
     }
 }
 
@@ -2119,7 +2116,7 @@ mod tests {
             "Bob".to_string(),
             "Test message".to_string(),
         );
-        
+
         let error_logger = ErrorLogger::new("test_errors.log");
 
         // This function doesn't return a value, so we just test it doesn't panic
