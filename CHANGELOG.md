@@ -2,6 +2,22 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.6] - 2025-01-18
+
+### Added
+- **Comprehensive Conversation Management System**: Complete threading and organization of direct messages by sender with persistent conversation history
+  - **Message Threading**: All direct messages automatically grouped by sender into persistent conversations with chronological message history and unread count tracking
+  - **Dual View System**: Conversation list showing all active conversations with message previews and unread indicators, plus dedicated thread view for focused conversation history
+  - **Intuitive Navigation**: Tab key toggles between Conversations and Channels views, Enter opens conversation threads, Esc navigates back through view hierarchy
+  - **Visual Indicators**: Cyan highlighting for unread conversations and clear message count displays
+  - **Database Layer**: Added `direct_messages` table with optimized indexes for efficient conversation queries and automatic message persistence
+  - **Conversation State Management**: Introduced `Conversation` and `ConversationManager` types handling message grouping, unread counting, and navigation state
+  - **Seamless UI Integration**: Extended ViewMode system with Conversations and ConversationThread variants integrated with existing TUI design patterns
+- **Backward Compatibility**: All existing direct message functionality preserved with traditional message display maintained alongside new conversation views
+- **Enhanced Windows Support**: Improved icon compatibility using the Icons type system for cross-platform emoji display
+- **Code Quality Improvements**: Reduced code duplication in conversation navigation functions and cleaned up excessive inline comments
+- Fixes issue #222
+
 ## [0.10.5] - 2025-08-24
 
 ### Added

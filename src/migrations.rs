@@ -89,7 +89,6 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         [],
     )?;
 
-    // Create direct_messages table for conversation storage
     conn.execute(
         r#"
         CREATE TABLE IF NOT EXISTS direct_messages (
@@ -114,7 +113,6 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         [],
     )?;
 
-    // Create indexes for direct_messages for efficient conversation queries
     conn.execute(
         r#"
         CREATE INDEX IF NOT EXISTS idx_direct_messages_from_peer 

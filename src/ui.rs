@@ -72,7 +72,7 @@ pub struct App {
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub direct_messages: Vec<DirectMessage>, // Store direct messages separately
     pub unread_message_count: usize,         // Track unread direct messages
-    pub conversation_manager: ConversationManager, // Manage conversations
+    pub conversation_manager: ConversationManager,
     // Enhanced input features
     pub input_history: Vec<String>, // Command history for Up/Down navigation
     pub history_index: Option<usize>, // Current position in history
@@ -233,7 +233,6 @@ impl App {
                                 self.navigate_list_up();
                             }
                             ViewMode::ConversationThread(_) => {
-                                // In thread view, Left key could go back to conversation list
                                 self.view_mode = ViewMode::Conversations;
                                 self.list_state.select(Some(0));
                             }
@@ -252,7 +251,6 @@ impl App {
                                 self.navigate_list_down();
                             }
                             ViewMode::ConversationThread(_) => {
-                                // In thread view, Right key scrolls messages
                                 self.navigate_list_down();
                             }
                         }
@@ -326,14 +324,11 @@ impl App {
                                 }
                             }
                             ViewMode::Conversations => {
-                                // Enter conversation thread view
                                 if let Some(conversation) = self.get_selected_conversation() {
                                     self.enter_conversation_thread(conversation.peer_id.clone());
                                 }
                             }
                             ViewMode::ConversationThread(_) => {
-                                // In thread view, Enter could scroll or do nothing
-                                // For now, just scroll down
                                 self.navigate_list_down();
                             }
                         }
@@ -350,19 +345,16 @@ impl App {
                             _ => {}
                         }
                     }
-                    KeyCode::Tab => {
-                        // Switch between conversations view and channels view
-                        match &self.view_mode {
-                            ViewMode::Channels | ViewMode::Stories(_) => {
-                                self.view_mode = ViewMode::Conversations;
-                                self.list_state.select(Some(0));
-                            }
-                            ViewMode::Conversations | ViewMode::ConversationThread(_) => {
-                                self.view_mode = ViewMode::Channels;
-                                self.list_state.select(Some(0));
-                            }
+                    KeyCode::Tab => match &self.view_mode {
+                        ViewMode::Channels | ViewMode::Stories(_) => {
+                            self.view_mode = ViewMode::Conversations;
+                            self.list_state.select(Some(0));
                         }
-                    }
+                        ViewMode::Conversations | ViewMode::ConversationThread(_) => {
+                            self.view_mode = ViewMode::Channels;
+                            self.list_state.select(Some(0));
+                        }
+                    },
                     KeyCode::Char('r') => {
                         // Quick reply to last message sender
                         if let Some(ref last_sender) = self.last_message_sender.clone() {
@@ -961,18 +953,14 @@ impl App {
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
-        // Store the direct message in our dedicated storage (keep for backward compatibility)
         self.direct_messages.push(dm.clone());
 
-        // Add message to conversation manager
         let local_peer_id = self.local_peer_id.as_deref().unwrap_or("unknown");
         self.conversation_manager
             .add_message(dm.clone(), local_peer_id);
 
-        // Update last message sender for quick reply
         self.last_message_sender = Some(dm.from_name);
 
-        // Update total unread count
         self.unread_message_count = self.conversation_manager.get_total_unread_count();
     }
 
@@ -1045,7 +1033,6 @@ impl App {
     }
 
     pub fn enter_conversation_thread(&mut self, peer_id: String) {
-        // Find peer name from the conversation
         if let Some(conversation) = self.conversation_manager.get_conversation(&peer_id) {
             self.view_mode = ViewMode::ConversationThread(conversation.peer_name.clone());
             self.conversation_manager

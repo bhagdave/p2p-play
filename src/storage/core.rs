@@ -1052,7 +1052,6 @@ mod read_status_tests {
     }
 }
 
-// Direct message storage functions
 pub async fn save_direct_message(message: &crate::types::DirectMessage) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1137,7 +1136,6 @@ pub async fn mark_conversation_messages_as_read(
 pub async fn get_conversations_with_unread_counts(
     local_peer_name: &str,
 ) -> StorageResult<Vec<(String, String, usize, u64)>> {
-    // Returns (peer_id, peer_name, unread_count, last_activity_timestamp)
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -1192,10 +1190,8 @@ pub async fn load_conversation_manager(
 ) -> StorageResult<crate::types::ConversationManager> {
     let mut conversation_manager = crate::types::ConversationManager::new();
 
-    // Get all conversation metadata
     let conversations_data = get_conversations_with_unread_counts(local_peer_name).await?;
 
-    // Load messages for each conversation
     for (peer_id, peer_name, unread_count, last_activity) in conversations_data {
         let messages = load_conversation_messages(&peer_id, local_peer_name).await?;
 

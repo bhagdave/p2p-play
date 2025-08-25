@@ -875,15 +875,17 @@ pub async fn handle_request_response_event(
     None
 }
 
-pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
+pub async fn handle_direct_message_event(direct_msg: DirectMessage, error_logger: &ErrorLogger) {
     debug!(
         "Received DirectMessage event: {} -> {}: {}",
         direct_msg.from_name, direct_msg.to_name, direct_msg.message
     );
 
-    // Save the direct message to the database for persistence
     if let Err(e) = crate::storage::save_direct_message(&direct_msg).await {
-        eprintln!("Failed to save direct message to database: {}", e);
+        error_logger.log_error(&format!(
+            "Failed to save direct message to database: {}",
+            e
+        ));
     }
 }
 
@@ -1662,7 +1664,7 @@ pub async fn handle_event(
             handle_peer_name_event(peer_name).await;
         }
         EventType::DirectMessage(direct_msg) => {
-            handle_direct_message_event(direct_msg).await;
+            handle_direct_message_event(direct_msg, error_logger).await;
         }
         EventType::Channel(channel) => {
             handle_channel_event(channel).await;
@@ -2117,9 +2119,11 @@ mod tests {
             "Bob".to_string(),
             "Test message".to_string(),
         );
+        
+        let error_logger = ErrorLogger::new("test_errors.log");
 
         // This function doesn't return a value, so we just test it doesn't panic
-        handle_direct_message_event(direct_msg).await;
+        handle_direct_message_event(direct_msg, &error_logger).await;
     }
 
     #[tokio::test]

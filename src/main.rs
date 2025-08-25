@@ -160,12 +160,14 @@ async fn run_app() -> AppResult<()> {
         }
     }
 
-    // Load conversation history
     if let Some(ref local_peer_name_str) = local_peer_name {
         match storage::load_conversation_manager(local_peer_name_str).await {
             Ok(conversation_manager) => {
                 app.update_conversation_manager(conversation_manager);
-                app.add_to_log("📩 Loaded conversation history".to_string());
+                app.add_to_log(format!(
+                    "{} Loaded conversation history",
+                    crate::types::Icons::envelope()
+                ));
             }
             Err(e) => {
                 error!("Failed to load conversation history: {e}");
