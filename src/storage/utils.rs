@@ -31,6 +31,11 @@ pub fn rust_bool_to_db(value: bool) -> String {
     if value { "1" } else { "0" }.to_string()
 }
 
+/// Convert database string boolean to Rust bool
+pub fn db_to_rust_bool(value: &str) -> bool {
+    value == "1"
+}
+
 /// Get optional string with default value
 pub fn get_optional_string_with_default(
     row: &Row,

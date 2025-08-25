@@ -757,11 +757,11 @@ pub async fn handle_direct_message_with_relay(
                     .send_request(&target_peer_id, direct_msg_request.clone());
 
                 let outgoing_msg = DirectMessage {
-                    from_peer_id: direct_msg_request.from_peer_id,
-                    from_name: direct_msg_request.from_name,
-                    to_name: direct_msg_request.to_name,
+                    local_peer_id: PEER_ID.to_string(),
+                    remote_peer_id: target_peer_id.to_string(),
                     message: direct_msg_request.message,
                     timestamp: direct_msg_request.timestamp,
+                    is_outgoing: true,
                 };
 
                 if let Err(e) = save_direct_message(&outgoing_msg).await {
@@ -850,14 +850,14 @@ async fn try_relay_delivery(
     ui_logger.log(format!("📡 Trying relay delivery to {to_name}..."));
 
     let direct_msg = DirectMessage {
-        from_peer_id: PEER_ID.to_string(),
-        from_name: from_name.to_string(),
-        to_name: to_name.to_string(),
+        local_peer_id: PEER_ID.to_string(),
+        remote_peer_id: target_peer_id.to_string(),
         message: message.to_string(),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
+        is_outgoing: true,
     };
 
     match relay_service.create_relay_message(&direct_msg, target_peer_id) {
@@ -937,11 +937,11 @@ async fn queue_message_for_retry(
     };
 
     let outgoing_msg = DirectMessage {
-        from_peer_id: direct_msg_request.from_peer_id.clone(),
-        from_name: direct_msg_request.from_name.clone(),
-        to_name: direct_msg_request.to_name.clone(),
+        local_peer_id: PEER_ID.to_string(),
+        remote_peer_id: target_peer_id.to_string(),
         message: direct_msg_request.message.clone(),
         timestamp: direct_msg_request.timestamp,
+        is_outgoing: true,
     };
 
     let pending_msg = PendingDirectMessage::new(

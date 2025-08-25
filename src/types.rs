@@ -90,11 +90,11 @@ pub struct PeerName {
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct DirectMessage {
-    pub from_peer_id: String,
-    pub from_name: String,
-    pub to_name: String,
+    pub local_peer_id: String,
+    pub remote_peer_id: String,
     pub message: String,
     pub timestamp: u64,
+    pub is_outgoing: bool, // true if sent by local_peer_id, false if received
 }
 
 #[derive(Debug, Clone)]
@@ -487,18 +487,18 @@ impl PeerName {
 }
 
 impl DirectMessage {
-    pub fn new(from_peer_id: String, from_name: String, to_name: String, message: String) -> Self {
+    pub fn new(local_peer_id: String, remote_peer_id: String, message: String, is_outgoing: bool) -> Self {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
         Self {
-            from_peer_id,
-            from_name,
-            to_name,
+            local_peer_id,
+            remote_peer_id,
             message,
             timestamp,
+            is_outgoing,
         }
     }
 }
@@ -541,7 +541,8 @@ impl Conversation {
             } else {
                 msg.message.clone()
             };
-            format!("{}: {}", msg.from_name, preview)
+            let sender_name = if msg.is_outgoing { "You" } else { &msg.remote_peer_id };
+            format!("{}: {}", sender_name, preview)
         } else {
             "No messages".to_string()
         }
@@ -568,18 +569,9 @@ impl ConversationManager {
         Self::generate_conversation_id(local_peer_name, remote_peer_name)
     }
 
-    pub fn add_message(&mut self, message: DirectMessage, local_peer_name: &str) -> bool {
-        let (conversation_id, conversation_peer_name) = if message.from_name == local_peer_name {
-            (
-                Self::generate_conversation_id(local_peer_name, &message.to_name),
-                message.to_name.clone(),
-            )
-        } else {
-            (
-                Self::generate_conversation_id(local_peer_name, &message.from_name),
-                message.from_name.clone(),
-            )
-        };
+    pub fn add_message(&mut self, message: DirectMessage, _local_peer_id: &str) -> bool {
+        let conversation_id = message.remote_peer_id.clone();
+        let conversation_peer_name = message.remote_peer_id.clone();
 
         let conversation = self
             .conversations

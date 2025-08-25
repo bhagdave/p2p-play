@@ -1057,13 +1057,13 @@ pub async fn save_direct_message(message: &crate::types::DirectMessage) -> Stora
     let conn = conn_arc.lock().await;
 
     conn.execute(
-        "INSERT INTO direct_messages (from_peer_id, from_name, to_name, message, timestamp, is_read) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO direct_messages (local_peer_id, remote_peer_id, message, timestamp, is_outgoing, is_read) VALUES (?, ?, ?, ?, ?, ?)",
         [
-            &message.from_peer_id,
-            &message.from_name,
-            &message.to_name,
+            &message.local_peer_id,
+            &message.remote_peer_id,
             &message.message,
             &message.timestamp.to_string(),
+            &utils::rust_bool_to_db(message.is_outgoing),
             &utils::rust_bool_to_db(false), // New messages start as unread
         ],
     )?;
@@ -1072,142 +1072,87 @@ pub async fn save_direct_message(message: &crate::types::DirectMessage) -> Stora
 }
 
 pub async fn load_conversation_messages(
-    conversation_id: &str,
-    local_peer_name: &str,
+    local_peer_id: &str,
+    remote_peer_id: &str,
 ) -> StorageResult<Vec<crate::types::DirectMessage>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    if let Some(peer_names) = conversation_id.strip_prefix("conv:") {
-        let parts: Vec<&str> = peer_names.split(':').collect();
-        if parts.len() == 2 {
-            let peer1 = parts[0];
-            let peer2 = parts[1];
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT local_peer_id, remote_peer_id, message, timestamp, is_outgoing
+        FROM direct_messages
+        WHERE local_peer_id = ? AND remote_peer_id = ?
+        ORDER BY timestamp ASC
+        "#,
+    )?;
 
-            let mut stmt = conn.prepare(
-                r#"
-                SELECT from_peer_id, from_name, to_name, message, timestamp
-                FROM direct_messages
-                WHERE 
-                    (from_name = ? AND to_name = ?) OR 
-                    (from_name = ? AND to_name = ?)
-                ORDER BY timestamp ASC
-                "#,
-            )?;
+    let message_iter = stmt.query_map([local_peer_id, remote_peer_id], |row| {
+        Ok(crate::types::DirectMessage {
+            local_peer_id: row.get(0)?,
+            remote_peer_id: row.get(1)?,
+            message: row.get(2)?,
+            timestamp: row.get::<_, i64>(3)? as u64,
+            is_outgoing: utils::db_to_rust_bool(&row.get::<_, String>(4)?),
+        })
+    })?;
 
-            let message_iter = stmt.query_map([peer1, peer2, peer2, peer1], |row| {
-                Ok(crate::types::DirectMessage {
-                    from_peer_id: row.get(0)?,
-                    from_name: row.get(1)?,
-                    to_name: row.get(2)?,
-                    message: row.get(3)?,
-                    timestamp: row.get::<_, i64>(4)? as u64,
-                })
-            })?;
-
-            let mut messages = Vec::new();
-            for message in message_iter {
-                messages.push(message?);
-            }
-
-            return Ok(messages);
-        }
+    let mut messages = Vec::new();
+    for message in message_iter {
+        messages.push(message?);
     }
 
-    Ok(Vec::new())
+    Ok(messages)
 }
 
 pub async fn mark_conversation_messages_as_read(
-    conversation_id: &str,
-    local_peer_name: &str,
+    local_peer_id: &str,
+    remote_peer_id: &str,
 ) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    if let Some(peer_names) = conversation_id.strip_prefix("conv:") {
-        let parts: Vec<&str> = peer_names.split(':').collect();
-        if parts.len() == 2 {
-            let peer1 = parts[0];
-            let peer2 = parts[1];
-
-            conn.execute(
-                r#"
-                UPDATE direct_messages 
-                SET is_read = ? 
-                WHERE 
-                    ((from_name = ? AND to_name = ?) OR (from_name = ? AND to_name = ?))
-                    AND to_name = ?
-                "#,
-                [
-                    &utils::rust_bool_to_db(true),
-                    peer1,
-                    peer2,
-                    peer2,
-                    peer1,
-                    local_peer_name,
-                ],
-            )?;
-        }
-    }
+    // Mark all messages in this conversation as read
+    conn.execute(
+        r#"
+        UPDATE direct_messages 
+        SET is_read = ? 
+        WHERE local_peer_id = ? AND remote_peer_id = ?
+        "#,
+        [
+            &utils::rust_bool_to_db(true),
+            local_peer_id,
+            remote_peer_id,
+        ],
+    )?;
 
     Ok(())
 }
 
 pub async fn get_conversations_with_unread_counts(
-    local_peer_name: &str,
-) -> StorageResult<Vec<(String, String, usize, u64)>> {
+    local_peer_id: &str,
+) -> StorageResult<Vec<(String, usize, u64)>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
     let mut stmt = conn.prepare(
         r#"
         SELECT 
-            conversation_id,
-            peer_name,
-            unread_count,
-            last_activity
-        FROM (
-            SELECT 
-                CASE 
-                    WHEN from_name < to_name THEN 'conv:' || from_name || ':' || to_name
-                    ELSE 'conv:' || to_name || ':' || from_name
-                END as conversation_id,
-                CASE 
-                    WHEN from_name = ? THEN to_name 
-                    ELSE from_name 
-                END as peer_name,
-                COUNT(CASE WHEN is_read = 0 AND from_name != ? THEN 1 END) as unread_count,
-                MAX(timestamp) as last_activity
-            FROM direct_messages dm
-            WHERE from_name = ? OR to_name = ?
-            GROUP BY 
-                CASE 
-                    WHEN from_name < to_name THEN 'conv:' || from_name || ':' || to_name
-                    ELSE 'conv:' || to_name || ':' || from_name
-                END,
-                CASE 
-                    WHEN from_name = ? THEN to_name 
-                    ELSE from_name 
-                END
-        )
+            remote_peer_id,
+            COUNT(CASE WHEN is_read = 0 AND is_outgoing = 0 THEN 1 END) as unread_count,
+            MAX(timestamp) as last_activity
+        FROM direct_messages 
+        WHERE local_peer_id = ?
+        GROUP BY remote_peer_id
         ORDER BY last_activity DESC
         "#,
     )?;
 
-    let conversation_iter = stmt.query_map(
-        [
-            local_peer_name, // peer_name CASE condition
-            local_peer_name, // Unread count condition
-            local_peer_name, // First WHERE condition
-            local_peer_name, // Second WHERE condition
-            local_peer_name, // GROUP BY peer_name CASE condition
-        ],
-        |row| {
+    let conversation_iter = stmt.query_map([local_peer_id], |row| {
             Ok((
-                row.get::<_, String>(0)?,       // conversation_id
-                row.get::<_, String>(1)?,       // peer_name
-                row.get::<_, i64>(2)? as usize, // unread_count
-                row.get::<_, i64>(3)? as u64,   // last_activity
+                row.get::<_, String>(0)?,       // remote_peer_id
+                row.get::<_, i64>(1)? as usize, // unread_count
+                row.get::<_, i64>(2)? as u64,   // last_activity
             ))
         },
     )?;
@@ -1221,27 +1166,42 @@ pub async fn get_conversations_with_unread_counts(
 }
 
 pub async fn load_conversation_manager(
-    local_peer_name: &str,
+    local_peer_id: &str,
 ) -> StorageResult<crate::types::ConversationManager> {
     let mut conversation_manager = crate::types::ConversationManager::new();
 
-    let conversations_data = get_conversations_with_unread_counts(local_peer_name).await?;
+    let conversations_data = get_conversations_with_unread_counts(local_peer_id).await?;
 
-    for (conversation_id, peer_name, unread_count, last_activity) in conversations_data {
-        let messages = load_conversation_messages(&conversation_id, local_peer_name).await?;
+    for (remote_peer_id, unread_count, last_activity) in conversations_data {
+        let messages = load_conversation_messages(local_peer_id, &remote_peer_id).await?;
 
         if !messages.is_empty() {
-            let mut conversation =
-                crate::types::Conversation::new(conversation_id.clone(), peer_name.clone());
+            let mut conversation = crate::types::Conversation::new(
+                remote_peer_id.clone(), 
+                remote_peer_id.clone()
+            );
             conversation.messages = messages;
             conversation.unread_count = unread_count;
             conversation.last_activity = last_activity;
 
             conversation_manager
                 .conversations
-                .insert(conversation_id, conversation);
+                .insert(remote_peer_id, conversation);
         }
     }
 
     Ok(conversation_manager)
+}
+
+pub fn update_conversation_manager_with_peer_names(
+    conversation_manager: &mut crate::types::ConversationManager,
+    peer_names: &std::collections::HashMap<libp2p::PeerId, String>,
+) {
+    for conversation in conversation_manager.conversations.values_mut() {
+        if let Ok(peer_id) = conversation.peer_id.parse::<libp2p::PeerId>() {
+            if let Some(peer_name) = peer_names.get(&peer_id) {
+                conversation.peer_name = peer_name.clone();
+            }
+        }
+    }
 }

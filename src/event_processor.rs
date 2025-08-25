@@ -182,6 +182,12 @@ impl EventProcessor {
 
                 app.update_peers(peer_names.clone());
                 app.update_local_peer_name(local_peer_name.clone());
+                
+                {
+                    let mut conversation_manager = app.conversation_manager.clone();
+                    crate::storage::update_conversation_manager_with_peer_names(&mut conversation_manager, peer_names);
+                    app.update_conversation_manager(conversation_manager);
+                }
             }
         }
     }
@@ -503,6 +509,12 @@ impl EventProcessor {
             debug!("Removed verified peer name '{name}' for disconnected peer {peer_id}");
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
+            
+            {
+                let mut conversation_manager = app.conversation_manager.clone();
+                crate::storage::update_conversation_manager_with_peer_names(&mut conversation_manager, peer_names);
+                app.update_conversation_manager(conversation_manager);
+            }
         } else if was_verified {
             debug!(
                 "Verified peer {} disconnected but already removed from UI",

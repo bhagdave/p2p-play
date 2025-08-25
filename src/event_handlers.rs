@@ -555,8 +555,8 @@ pub async fn handle_floodsub_event(
                             ui_logger.log(format!(
                                 "{} Relay message delivered: {} -> {}: {}",
                                 crate::types::Icons::speech(),
-                                direct_msg.from_name,
-                                direct_msg.to_name,
+                                if direct_msg.is_outgoing { "You" } else { &direct_msg.remote_peer_id },
+                                if direct_msg.is_outgoing { &direct_msg.remote_peer_id } else { "You" },
                                 direct_msg.message
                             ));
                         }
@@ -795,11 +795,11 @@ pub async fn handle_request_response_event(
 
                     let direct_message = if should_process {
                         Some(DirectMessage {
-                            from_peer_id: request.from_peer_id.clone(),
-                            from_name: request.from_name.clone(),
-                            to_name: request.to_name.clone(),
+                            local_peer_id: crate::network::PEER_ID.to_string(),
+                            remote_peer_id: peer.to_string(),
                             message: request.message.clone(),
                             timestamp: request.timestamp,
+                            is_outgoing: false,
                         })
                     } else {
                         None
@@ -878,7 +878,9 @@ pub async fn handle_request_response_event(
 pub async fn handle_direct_message_event(direct_msg: DirectMessage, error_logger: &ErrorLogger) {
     debug!(
         "Received DirectMessage event: {} -> {}: {}",
-        direct_msg.from_name, direct_msg.to_name, direct_msg.message
+        if direct_msg.is_outgoing { "You" } else { &direct_msg.remote_peer_id }, 
+        if direct_msg.is_outgoing { &direct_msg.remote_peer_id } else { "You" }, 
+        direct_msg.message
     );
 
     if let Err(e) = crate::storage::save_direct_message(&direct_msg).await {

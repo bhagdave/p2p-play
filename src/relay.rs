@@ -105,7 +105,7 @@ impl RelayService {
         let relay_message = RelayMessage::new(
             message_id.clone(),
             target_peer_id.to_string(),
-            direct_msg.to_name.clone(),
+            direct_msg.remote_peer_id.clone(),
             encrypted_payload,
             sender_signature,
             self.config.max_hops,
