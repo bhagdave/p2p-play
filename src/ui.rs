@@ -127,6 +127,7 @@ pub enum AppEvent {
     StoryViewed { story_id: usize, channel: String },
     DirectMessage(DirectMessage),
     EnterMessageComposition { target_peer: String },
+    UpdateConversationManager(crate::types::ConversationManager),
 }
 
 impl App {

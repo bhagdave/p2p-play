@@ -284,6 +284,7 @@ pub enum ActionResult {
     RefreshStories,
     StartStoryCreation,
     RefreshChannels,
+    RefreshConversations,
     RebroadcastRelayMessage(Box<crate::types::RelayMessage>),
     DirectMessageReceived(DirectMessage),
     EnterMessageComposition(String), // peer name

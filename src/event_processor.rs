@@ -243,6 +243,10 @@ impl EventProcessor {
                             app.add_to_log(format!("{} Entered message composition mode", crate::types::Icons::memo()));
                             None
                         }
+                        AppEvent::UpdateConversationManager(conversation_manager) => {
+                            app.update_conversation_manager(conversation_manager);
+                            None
+                        }
                     }
                 } else {
                     None
@@ -686,10 +690,41 @@ impl EventProcessor {
                     }
                 }
             }
+            ActionResult::RefreshConversations => {
+                match storage::load_conversation_manager(&PEER_ID.to_string()).await {
+                    Ok(conversation_manager) => {
+                        app.update_conversation_manager(conversation_manager);
+                    }
+                    Err(e) => {
+                        self.error_logger
+                            .log_error(&format!("Failed to refresh conversation manager: {e}"));
+                    }
+                }
+            }
             ActionResult::RebroadcastRelayMessage(_) => {
                 debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
             }
             ActionResult::DirectMessageReceived(direct_message) => {
+                // Save incoming direct message to database
+                if let Err(e) = storage::save_direct_message(&direct_message).await {
+                    self.error_logger
+                        .log_error(&format!("Failed to save incoming direct message to database: {e}"));
+                }
+                
+                // Refresh conversation manager from database to include the new message
+                match storage::load_conversation_manager(&PEER_ID.to_string()).await {
+                    Ok(conversation_manager) => {
+                        if let Err(e) = self.ui_sender.send(AppEvent::UpdateConversationManager(conversation_manager)) {
+                            self.error_logger
+                                .log_error(&format!("Failed to send conversation manager update to UI: {e}"));
+                        }
+                    }
+                    Err(e) => {
+                        self.error_logger
+                            .log_error(&format!("Failed to reload conversation manager after direct message: {e}"));
+                    }
+                }
+                
                 if let Err(e) = self.ui_sender.send(AppEvent::DirectMessage(direct_message)) {
                     self.error_logger
                         .log_error(&format!("Failed to send direct message to UI: {e}"));

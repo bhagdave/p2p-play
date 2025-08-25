@@ -281,6 +281,9 @@ pub async fn handle_input_event(
                 pending_messages,
             )
             .await;
+            
+            // Refresh conversations after sending a message to ensure UI shows the outgoing message
+            return Some(crate::types::ActionResult::RefreshConversations);
         }
         _ => ui_logger.log("unknown command".to_string()),
     }
