@@ -7,6 +7,7 @@ use crate::network::{
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 // Import crypto types that will be used in RelayMessage
@@ -94,6 +95,21 @@ pub struct DirectMessage {
     pub to_name: String,
     pub message: String,
     pub timestamp: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Conversation {
+    pub peer_id: String,
+    pub peer_name: String,
+    pub messages: Vec<DirectMessage>,
+    pub unread_count: usize,
+    pub last_activity: u64, // timestamp
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationManager {
+    pub conversations: HashMap<String, Conversation>, // peer_id -> conversation
+    pub active_conversation: Option<String>, // active peer_id
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -484,6 +500,179 @@ impl DirectMessage {
             message,
             timestamp,
         }
+    }
+}
+
+impl Conversation {
+    pub fn new(peer_id: String, peer_name: String) -> Self {
+        Self {
+            peer_id,
+            peer_name,
+            messages: Vec::new(),
+            unread_count: 0,
+            last_activity: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+        }
+    }
+
+    pub fn add_message(&mut self, message: DirectMessage) {
+        self.messages.push(message);
+        self.last_activity = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        self.unread_count += 1;
+    }
+
+    pub fn mark_as_read(&mut self) {
+        self.unread_count = 0;
+    }
+
+    pub fn get_last_message(&self) -> Option<&DirectMessage> {
+        self.messages.last()
+    }
+
+    pub fn get_last_message_preview(&self) -> String {
+        if let Some(msg) = self.get_last_message() {
+            let preview = if msg.message.len() > 50 {
+                format!("{}...", &msg.message[..47])
+            } else {
+                msg.message.clone()
+            };
+            format!("{}: {}", msg.from_name, preview)
+        } else {
+            "No messages".to_string()
+        }
+    }
+}
+
+impl ConversationManager {
+    pub fn new() -> Self {
+        Self {
+            conversations: HashMap::new(),
+            active_conversation: None,
+        }
+    }
+
+    pub fn add_message(&mut self, message: DirectMessage, local_peer_id: &str) -> bool {
+        // Determine the peer_id for the conversation (the other participant)
+        let conversation_peer_id = if message.from_peer_id == local_peer_id {
+            // This is an outgoing message, conversation is with the recipient
+            // We need to use the recipient's peer_id, but we only have their name
+            // For now, use the to_name as a placeholder peer_id
+            message.to_name.clone()
+        } else {
+            // This is an incoming message, conversation is with the sender
+            message.from_peer_id.clone()
+        };
+
+        let conversation_peer_name = if message.from_peer_id == local_peer_id {
+            message.to_name.clone()
+        } else {
+            message.from_name.clone()
+        };
+
+        // Get or create conversation
+        let conversation = self.conversations
+            .entry(conversation_peer_id.clone())
+            .or_insert_with(|| Conversation::new(conversation_peer_id.clone(), conversation_peer_name));
+
+        // Add the message
+        conversation.add_message(message);
+        
+        // Return true if this is a new conversation
+        self.conversations.len() == 1
+    }
+
+    pub fn mark_conversation_as_read(&mut self, peer_id: &str) {
+        if let Some(conversation) = self.conversations.get_mut(peer_id) {
+            conversation.mark_as_read();
+        }
+    }
+
+    pub fn set_active_conversation(&mut self, peer_id: Option<String>) {
+        self.active_conversation = peer_id.clone();
+        if let Some(peer_id) = peer_id {
+            self.mark_conversation_as_read(&peer_id);
+        }
+    }
+
+    pub fn get_active_conversation(&self) -> Option<&Conversation> {
+        if let Some(ref peer_id) = self.active_conversation {
+            self.conversations.get(peer_id)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_conversation(&self, peer_id: &str) -> Option<&Conversation> {
+        self.conversations.get(peer_id)
+    }
+
+    pub fn get_conversations_sorted_by_activity(&self) -> Vec<&Conversation> {
+        let mut conversations: Vec<&Conversation> = self.conversations.values().collect();
+        conversations.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
+        conversations
+    }
+
+    pub fn get_total_unread_count(&self) -> usize {
+        self.conversations.values().map(|c| c.unread_count).sum()
+    }
+
+    pub fn switch_to_next_conversation(&mut self) {
+        let conversations = self.get_conversations_sorted_by_activity();
+        if conversations.is_empty() {
+            self.active_conversation = None;
+            return;
+        }
+
+        if let Some(ref current_peer_id) = self.active_conversation {
+            // Find current conversation index and move to next
+            if let Some(current_index) = conversations.iter().position(|c| &c.peer_id == current_peer_id) {
+                let next_index = (current_index + 1) % conversations.len();
+                self.set_active_conversation(Some(conversations[next_index].peer_id.clone()));
+            } else {
+                // Current conversation not found, select first
+                self.set_active_conversation(Some(conversations[0].peer_id.clone()));
+            }
+        } else {
+            // No active conversation, select first
+            self.set_active_conversation(Some(conversations[0].peer_id.clone()));
+        }
+    }
+
+    pub fn switch_to_previous_conversation(&mut self) {
+        let conversations = self.get_conversations_sorted_by_activity();
+        if conversations.is_empty() {
+            self.active_conversation = None;
+            return;
+        }
+
+        if let Some(ref current_peer_id) = self.active_conversation {
+            // Find current conversation index and move to previous
+            if let Some(current_index) = conversations.iter().position(|c| &c.peer_id == current_peer_id) {
+                let prev_index = if current_index == 0 {
+                    conversations.len() - 1
+                } else {
+                    current_index - 1
+                };
+                self.set_active_conversation(Some(conversations[prev_index].peer_id.clone()));
+            } else {
+                // Current conversation not found, select first
+                self.set_active_conversation(Some(conversations[0].peer_id.clone()));
+            }
+        } else {
+            // No active conversation, select first
+            self.set_active_conversation(Some(conversations[0].peer_id.clone()));
+        }
+    }
+}
+
+impl Default for ConversationManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

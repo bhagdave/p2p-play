@@ -1,7 +1,7 @@
 use crate::errors::StorageResult;
 use crate::storage::{mappers, utils};
 use crate::types::{
-    BootstrapConfig, Channel, Channels, Stories, Story, UnifiedNetworkConfig,
+    BootstrapConfig, Channel, Channels, DirectMessage, Stories, Story, UnifiedNetworkConfig,
 };
 use log::debug;
 use r2d2::Pool;
@@ -1053,4 +1053,156 @@ mod read_status_tests {
 
         println!("✅ Read status functionality test passed!");
     }
+}
+
+// Direct message storage functions
+pub async fn save_direct_message(message: &crate::types::DirectMessage) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute(
+        "INSERT INTO direct_messages (from_peer_id, from_name, to_name, message, timestamp, is_read) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            &message.from_peer_id,
+            &message.from_name,
+            &message.to_name,
+            &message.message,
+            &message.timestamp.to_string(),
+            &utils::rust_bool_to_db(false), // New messages start as unread
+        ],
+    )?;
+
+    Ok(())
+}
+
+pub async fn load_conversation_messages(
+    peer_id: &str,
+    local_peer_name: &str,
+) -> StorageResult<Vec<crate::types::DirectMessage>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT from_peer_id, from_name, to_name, message, timestamp
+        FROM direct_messages
+        WHERE (from_peer_id = ? AND to_name = ?) OR (from_name = ? AND to_name = ?)
+        ORDER BY timestamp ASC
+        "#,
+    )?;
+
+    let message_iter = stmt.query_map(
+        [peer_id, local_peer_name, peer_id, local_peer_name],
+        |row| {
+            Ok(crate::types::DirectMessage {
+                from_peer_id: row.get(0)?,
+                from_name: row.get(1)?,
+                to_name: row.get(2)?,
+                message: row.get(3)?,
+                timestamp: row.get::<_, i64>(4)? as u64,
+            })
+        },
+    )?;
+
+    let mut messages = Vec::new();
+    for message in message_iter {
+        messages.push(message?);
+    }
+
+    Ok(messages)
+}
+
+pub async fn mark_conversation_messages_as_read(
+    peer_id: &str,
+    local_peer_name: &str,
+) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute(
+        r#"
+        UPDATE direct_messages 
+        SET is_read = ? 
+        WHERE (from_peer_id = ? AND to_name = ?) OR (from_name = ? AND to_name = ?)
+        "#,
+        [
+            &utils::rust_bool_to_db(true),
+            peer_id,
+            local_peer_name,
+            peer_id,
+            local_peer_name,
+        ],
+    )?;
+
+    Ok(())
+}
+
+pub async fn get_conversations_with_unread_counts(
+    local_peer_name: &str,
+) -> StorageResult<Vec<(String, String, usize, u64)>> {
+    // Returns (peer_id, peer_name, unread_count, last_activity_timestamp)
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT 
+            CASE 
+                WHEN from_name = ? THEN to_name 
+                ELSE from_name 
+            END as peer_name,
+            CASE 
+                WHEN from_name = ? THEN from_peer_id 
+                ELSE from_peer_id 
+            END as peer_id,
+            COUNT(CASE WHEN is_read = 0 AND from_name != ? THEN 1 END) as unread_count,
+            MAX(timestamp) as last_activity
+        FROM direct_messages
+        WHERE from_name = ? OR to_name = ?
+        GROUP BY peer_name, peer_id
+        ORDER BY last_activity DESC
+        "#,
+    )?;
+
+    let conversation_iter = stmt.query_map(
+        [local_peer_name, local_peer_name, local_peer_name, local_peer_name, local_peer_name],
+        |row| {
+            Ok((
+                row.get::<_, String>(1)?, // peer_id
+                row.get::<_, String>(0)?, // peer_name
+                row.get::<_, i64>(2)? as usize, // unread_count
+                row.get::<_, i64>(3)? as u64, // last_activity
+            ))
+        },
+    )?;
+
+    let mut conversations = Vec::new();
+    for conversation in conversation_iter {
+        conversations.push(conversation?);
+    }
+
+    Ok(conversations)
+}
+
+pub async fn load_conversation_manager(local_peer_name: &str) -> StorageResult<crate::types::ConversationManager> {
+    let mut conversation_manager = crate::types::ConversationManager::new();
+    
+    // Get all conversation metadata
+    let conversations_data = get_conversations_with_unread_counts(local_peer_name).await?;
+    
+    // Load messages for each conversation
+    for (peer_id, peer_name, unread_count, last_activity) in conversations_data {
+        let messages = load_conversation_messages(&peer_id, local_peer_name).await?;
+        
+        if !messages.is_empty() {
+            let mut conversation = crate::types::Conversation::new(peer_id.clone(), peer_name.clone());
+            conversation.messages = messages;
+            conversation.unread_count = unread_count;
+            conversation.last_activity = last_activity;
+            
+            conversation_manager.conversations.insert(peer_id, conversation);
+        }
+    }
+    
+    Ok(conversation_manager)
 }

@@ -89,11 +89,52 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         [],
     )?;
 
+    // Create direct_messages table for conversation storage
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS direct_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_peer_id TEXT NOT NULL,
+            from_name TEXT NOT NULL,
+            to_name TEXT NOT NULL,
+            message TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            is_read BOOLEAN NOT NULL DEFAULT 0
+        )
+        "#,
+        [],
+    )?;
+
     // Create index for efficient channel-based queries
     conn.execute(
         r#"
         CREATE INDEX IF NOT EXISTS idx_story_read_status_peer_channel 
         ON story_read_status(peer_id, channel_name)
+        "#,
+        [],
+    )?;
+
+    // Create indexes for direct_messages for efficient conversation queries
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_direct_messages_from_peer 
+        ON direct_messages(from_peer_id, timestamp)
+        "#,
+        [],
+    )?;
+
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_direct_messages_to_name 
+        ON direct_messages(to_name, timestamp)
+        "#,
+        [],
+    )?;
+
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_direct_messages_timestamp 
+        ON direct_messages(timestamp DESC)
         "#,
         [],
     )?;

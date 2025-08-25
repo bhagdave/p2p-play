@@ -156,6 +156,20 @@ async fn run_app() -> AppResult<()> {
         }
     }
 
+    // Load conversation history
+    if let Some(ref local_peer_name_str) = local_peer_name {
+        match storage::load_conversation_manager(local_peer_name_str).await {
+            Ok(conversation_manager) => {
+                app.update_conversation_manager(conversation_manager);
+                app.add_to_log("📩 Loaded conversation history".to_string());
+            }
+            Err(e) => {
+                error!("Failed to load conversation history: {e}");
+                app.add_to_log(format!("Failed to load conversation history: {e}"));
+            }
+        }
+    }
+
     refresh_unread_counts_for_ui(&mut app, &PEER_ID.to_string()).await;
     // Windows fix for port in use
     #[cfg(windows)]

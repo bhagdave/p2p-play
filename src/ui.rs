@@ -1,5 +1,5 @@
 use crate::errors::UIResult;
-use crate::types::{Channels, DirectMessage, Icons, Stories, Story};
+use crate::types::{Channels, ConversationManager, DirectMessage, Icons, Stories, Story};
 use crate::validation::ContentSanitizer;
 use chrono::{DateTime, Local};
 use crossterm::{
@@ -72,6 +72,7 @@ pub struct App {
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub direct_messages: Vec<DirectMessage>, // Store direct messages separately
     pub unread_message_count: usize,         // Track unread direct messages
+    pub conversation_manager: ConversationManager, // Manage conversations
     // Enhanced input features
     pub input_history: Vec<String>, // Command history for Up/Down navigation
     pub history_index: Option<usize>, // Current position in history
@@ -82,6 +83,8 @@ pub struct App {
 pub enum ViewMode {
     Channels,
     Stories(String), // Selected channel name
+    Conversations,   // Conversation list view
+    ConversationThread(String), // Thread view for specific peer
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -169,6 +172,7 @@ impl App {
             network_health: None,
             direct_messages: Vec::new(),
             unread_message_count: 0,
+            conversation_manager: ConversationManager::new(),
             // Enhanced input features
             input_history: Vec::new(),
             history_index: None,
@@ -225,6 +229,14 @@ impl App {
                             ViewMode::Stories(_) => {
                                 self.navigate_list_up();
                             }
+                            ViewMode::Conversations => {
+                                self.navigate_list_up();
+                            }
+                            ViewMode::ConversationThread(_) => {
+                                // In thread view, Left key could go back to conversation list
+                                self.view_mode = ViewMode::Conversations;
+                                self.list_state.select(Some(0));
+                            }
                         }
                     }
                     KeyCode::Right => {
@@ -234,6 +246,13 @@ impl App {
                                 self.navigate_list_down();
                             }
                             ViewMode::Stories(_) => {
+                                self.navigate_list_down();
+                            }
+                            ViewMode::Conversations => {
+                                self.navigate_list_down();
+                            }
+                            ViewMode::ConversationThread(_) => {
+                                // In thread view, Right key scrolls messages
                                 self.navigate_list_down();
                             }
                         }
@@ -306,12 +325,42 @@ impl App {
                                     });
                                 }
                             }
+                            ViewMode::Conversations => {
+                                // Enter conversation thread view
+                                if let Some(conversation) = self.get_selected_conversation() {
+                                    self.enter_conversation_thread(conversation.peer_id.clone());
+                                }
+                            }
+                            ViewMode::ConversationThread(_) => {
+                                // In thread view, Enter could scroll or do nothing
+                                // For now, just scroll down
+                                self.navigate_list_down();
+                            }
                         }
                     }
                     KeyCode::Esc => {
-                        // Return to channels view if in stories view
-                        if matches!(self.view_mode, ViewMode::Stories(_)) {
-                            self.return_to_channels();
+                        // Return to appropriate parent view
+                        match &self.view_mode {
+                            ViewMode::Stories(_) => {
+                                self.return_to_channels();
+                            }
+                            ViewMode::ConversationThread(_) => {
+                                self.return_to_conversations();
+                            }
+                            _ => {}
+                        }
+                    }
+                    KeyCode::Tab => {
+                        // Switch between conversations view and channels view
+                        match &self.view_mode {
+                            ViewMode::Channels | ViewMode::Stories(_) => {
+                                self.view_mode = ViewMode::Conversations;
+                                self.list_state.select(Some(0));
+                            }
+                            ViewMode::Conversations | ViewMode::ConversationThread(_) => {
+                                self.view_mode = ViewMode::Channels;
+                                self.list_state.select(Some(0));
+                            }
                         }
                     }
                     KeyCode::Char('r') => {
@@ -767,6 +816,14 @@ impl App {
                 .iter()
                 .filter(|story| story.channel == *channel_name)
                 .count(),
+            ViewMode::Conversations => self.conversation_manager.conversations.len(),
+            ViewMode::ConversationThread(ref peer_id) => {
+                // Number of messages in the active conversation
+                self.conversation_manager
+                    .get_conversation(peer_id)
+                    .map(|c| c.messages.len())
+                    .unwrap_or(0)
+            }
         };
 
         if list_len > 0 {
@@ -788,6 +845,14 @@ impl App {
                 .iter()
                 .filter(|story| story.channel == *channel_name)
                 .count(),
+            ViewMode::Conversations => self.conversation_manager.conversations.len(),
+            ViewMode::ConversationThread(ref peer_id) => {
+                // Number of messages in the active conversation
+                self.conversation_manager
+                    .get_conversation(peer_id)
+                    .map(|c| c.messages.len())
+                    .unwrap_or(0)
+            }
         };
 
         if list_len > 0 {
@@ -896,14 +961,18 @@ impl App {
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
-        // Store the direct message in our dedicated storage
+        // Store the direct message in our dedicated storage (keep for backward compatibility)
         self.direct_messages.push(dm.clone());
+
+        // Add message to conversation manager
+        let local_peer_id = self.local_peer_id.as_deref().unwrap_or("unknown");
+        self.conversation_manager.add_message(dm.clone(), local_peer_id);
 
         // Update last message sender for quick reply
         self.last_message_sender = Some(dm.from_name);
 
-        // Increment unread count
-        self.unread_message_count += 1;
+        // Update total unread count
+        self.unread_message_count = self.conversation_manager.get_total_unread_count();
     }
 
     /// Try to auto-complete peer names for msg commands
@@ -961,6 +1030,37 @@ impl App {
     pub fn mark_messages_as_read(&mut self) {
         // Reset unread count when user views messages
         self.unread_message_count = 0;
+    }
+
+    pub fn get_selected_conversation(&self) -> Option<&crate::types::Conversation> {
+        if let Some(selected) = self.list_state.selected() {
+            let conversations = self.conversation_manager.get_conversations_sorted_by_activity();
+            conversations.get(selected).copied()
+        } else {
+            None
+        }
+    }
+
+    pub fn enter_conversation_thread(&mut self, peer_id: String) {
+        // Find peer name from the conversation
+        if let Some(conversation) = self.conversation_manager.get_conversation(&peer_id) {
+            self.view_mode = ViewMode::ConversationThread(conversation.peer_name.clone());
+            self.conversation_manager.set_active_conversation(Some(peer_id));
+            self.list_state.select(Some(0));
+        }
+    }
+
+    pub fn return_to_conversations(&mut self) {
+        self.view_mode = ViewMode::Conversations;
+        self.conversation_manager.set_active_conversation(None);
+        if !self.conversation_manager.conversations.is_empty() {
+            self.list_state.select(Some(0));
+        }
+    }
+
+    pub fn update_conversation_manager(&mut self, conversation_manager: ConversationManager) {
+        self.conversation_manager = conversation_manager;
+        self.unread_message_count = self.conversation_manager.get_total_unread_count();
     }
 
     /// Display a user-friendly error message in the UI log
@@ -1396,6 +1496,53 @@ impl App {
                         .collect();
                     (story_items, format!("Stories in '{selected_channel}' (Press Esc to return to channels)"))
                 }
+                ViewMode::Conversations => {
+                    let conversation_items: Vec<ListItem> = self
+                        .conversation_manager
+                        .get_conversations_sorted_by_activity()
+                        .iter()
+                        .map(|conversation| {
+                            let preview = conversation.get_last_message_preview();
+                            let unread_indicator = if conversation.unread_count > 0 {
+                                format!(" [{}]", conversation.unread_count)
+                            } else {
+                                String::new()
+                            };
+                            
+                            let display_text = format!("{} {}{} - {}", 
+                                Icons::memo(), 
+                                conversation.peer_name, 
+                                unread_indicator, 
+                                preview
+                            );
+                            
+                            let item = ListItem::new(display_text);
+                            if conversation.unread_count > 0 {
+                                item.style(Style::default().fg(Color::Cyan))
+                            } else {
+                                item
+                            }
+                        })
+                        .collect();
+                    (conversation_items, "Conversations (Press Enter to view thread)".to_string())
+                }
+                ViewMode::ConversationThread(peer_name) => {
+                    let message_items: Vec<ListItem> = if let Some(conversation) = self.conversation_manager.get_active_conversation() {
+                        conversation
+                            .messages
+                            .iter()
+                            .map(|message| {
+                                let timestamp = chrono::DateTime::from_timestamp(message.timestamp as i64, 0)
+                                    .map(|dt| dt.format("%H:%M").to_string())
+                                    .unwrap_or_else(|| "??:??".to_string());
+                                ListItem::new(format!("[{}] {}: {}", timestamp, message.from_name, message.message))
+                            })
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    (message_items, format!("Chat with '{}' (Press Esc to return to conversations)", peer_name))
+                }
             };
 
             let list = List::new(list_items)
@@ -1417,6 +1564,8 @@ impl App {
                     match &self.view_mode {
                         ViewMode::Channels => "Press 'i' for input, 'r' reply, 'm' compose, Enter view, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
                         ViewMode::Stories(_) => "Press 'i' for input, 'r' reply, 'm' compose, Enter view, Esc back, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
+                        ViewMode::Conversations => "Press 'i' for input, 'r' reply, 'm' compose, Enter view, ←/→ nav, ↑/↓ scroll, Tab conv, 'c' clear, 'q' quit".to_string(),
+                        ViewMode::ConversationThread(_) => "Press 'i' for input, 'r' reply, 'm' compose, Esc back, ←/→ nav, ↑/↓ scroll, 'c' clear, 'q' quit".to_string(),
                     }
                 }
                 InputMode::Editing => format!("Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): {}", self.input),

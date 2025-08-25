@@ -883,6 +883,11 @@ pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
         "Received DirectMessage event: {} -> {}: {}",
         direct_msg.from_name, direct_msg.to_name, direct_msg.message
     );
+    
+    // Save the direct message to the database for persistence
+    if let Err(e) = crate::storage::save_direct_message(&direct_msg).await {
+        eprintln!("Failed to save direct message to database: {}", e);
+    }
 }
 
 pub async fn handle_channel_event(channel: crate::types::Channel) {
