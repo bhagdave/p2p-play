@@ -14,6 +14,7 @@ use crate::crypto::{EncryptedPayload, MessageSignature};
 
 pub type Stories = Vec<Story>;
 
+/// Information about a peer awaiting handshake completion
 #[derive(Debug, Clone)]
 pub struct PendingHandshakePeer {
     pub peer_id: PeerId,
@@ -30,6 +31,7 @@ pub struct Story {
     pub public: bool,
     pub channel: String,
     pub created_at: u64,
+    /// Per-story auto-share preference (None uses global setting)
     #[serde(default)]
     pub auto_share: Option<bool>,
 }
@@ -58,6 +60,7 @@ pub struct PublishedStory {
     pub publisher: String,
 }
 
+/// Search query types and filters
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchQuery {
     pub text: String,
@@ -96,6 +99,7 @@ pub struct DirectMessage {
     pub timestamp: u64,
 }
 
+/// Encrypted message for relay delivery
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RelayMessage {
     pub message_id: String,                  // Unique message identifier
@@ -109,6 +113,7 @@ pub struct RelayMessage {
     pub relay_attempt: bool,                 // Distinguishes from direct attempts
 }
 
+/// Relay delivery confirmation
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RelayConfirmation {
     pub message_id: String,
@@ -117,6 +122,7 @@ pub struct RelayConfirmation {
     pub delivery_timestamp: u64,
 }
 
+/// Configuration for relay behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelayConfig {
     pub enable_relay: bool,       // Master relay switch
@@ -150,6 +156,12 @@ pub struct StoryReadStatus {
     pub channel_name: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct ChannelWithUnreadCount {
+    pub channel: Channel,
+    pub unread_count: usize,
+}
+
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct BootstrapConfig {
     pub bootstrap_peers: Vec<String>,
@@ -158,21 +170,28 @@ pub struct BootstrapConfig {
     pub bootstrap_timeout_ms: u64,
 }
 
+/// Configuration for network connectivity settings
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NetworkConfig {
     pub connection_maintenance_interval_seconds: u64,
     pub request_timeout_seconds: u64,
     pub max_concurrent_streams: usize,
+    /// Maximum number of established connections per peer (default: 1)
     #[serde(default = "default_max_connections_per_peer")]
     pub max_connections_per_peer: u32,
+    /// Maximum number of pending incoming connections (default: 10)
     #[serde(default = "default_max_pending_incoming")]
     pub max_pending_incoming: u32,
+    /// Maximum number of pending outgoing connections (default: 10)  
     #[serde(default = "default_max_pending_outgoing")]
     pub max_pending_outgoing: u32,
+    /// Maximum total number of established connections (default: 100)
     #[serde(default = "default_max_established_total")]
     pub max_established_total: u32,
+    /// Connection establishment timeout in seconds (default: 30)
     #[serde(default = "default_connection_establishment_timeout_seconds")]
     pub connection_establishment_timeout_seconds: u64,
+    /// Network health update interval in seconds (default: 15)
     #[serde(default = "default_network_health_update_interval_seconds")]
     pub network_health_update_interval_seconds: u64,
 }
@@ -196,6 +215,7 @@ fn default_network_health_update_interval_seconds() -> u64 {
     15
 }
 
+/// Configuration for ping keep-alive settings
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct PingConfig {
     /// Interval between ping messages in seconds (default: 30)
@@ -204,6 +224,7 @@ pub struct PingConfig {
     pub timeout_secs: u64,
 }
 
+/// Configuration for direct message retry logic
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DirectMessageConfig {
     pub max_retry_attempts: u8,
@@ -212,6 +233,7 @@ pub struct DirectMessageConfig {
     pub enable_timed_retries: bool,
 }
 
+/// Configuration for channel auto-subscription behavior
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChannelAutoSubscriptionConfig {
     /// Auto-subscribe to new channels when discovered
@@ -222,21 +244,31 @@ pub struct ChannelAutoSubscriptionConfig {
     pub max_auto_subscriptions: usize,
 }
 
+/// Configuration for automatic story sharing behavior
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AutoShareConfig {
+    /// Whether stories are auto-published on creation (global setting)
     pub global_auto_share: bool,
+    /// How many days back to sync stories when connecting to peers
     pub sync_days: u32,
 }
 
+/// Circuit breaker configuration for network resilience
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NetworkCircuitBreakerConfig {
+    /// Number of failures before opening the circuit
     pub failure_threshold: u32,
+    /// Number of successes needed to close from half-open state  
     pub success_threshold: u32,
+    /// Time to wait before transitioning from open to half-open (in seconds)
     pub timeout_secs: u32,
+    /// Maximum time to wait for an operation (in seconds)
     pub operation_timeout_secs: u32,
+    /// Enable circuit breaker protection
     pub enabled: bool,
 }
 
+/// Unified network configuration that consolidates all network-related settings
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnifiedNetworkConfig {
     pub bootstrap: BootstrapConfig,
@@ -249,6 +281,7 @@ pub struct UnifiedNetworkConfig {
     pub circuit_breaker: NetworkCircuitBreakerConfig,
 }
 
+/// Pending direct message for retry logic
 #[derive(Debug, Clone)]
 pub struct PendingDirectMessage {
     pub target_peer_id: PeerId,
@@ -632,6 +665,15 @@ impl StoryReadStatus {
     }
 }
 
+impl ChannelWithUnreadCount {
+    pub fn new(channel: Channel, unread_count: usize) -> Self {
+        Self {
+            channel,
+            unread_count,
+        }
+    }
+}
+
 impl BootstrapConfig {
     pub fn new() -> Self {
         Self {
@@ -882,6 +924,7 @@ impl Default for AutoShareConfig {
 }
 
 impl NetworkCircuitBreakerConfig {
+    /// Create a new NetworkCircuitBreakerConfig with sensible defaults
     pub fn new() -> Self {
         Self {
             failure_threshold: 5,
@@ -892,6 +935,7 @@ impl NetworkCircuitBreakerConfig {
         }
     }
 
+    /// Validate the circuit breaker configuration
     pub fn validate(&self) -> Result<(), String> {
         if self.failure_threshold == 0 {
             return Err("failure_threshold must be greater than 0".to_string());
@@ -916,14 +960,17 @@ impl NetworkCircuitBreakerConfig {
         Ok(())
     }
 
+    /// Convert timeout to Duration
     pub fn timeout_duration(&self) -> Duration {
         Duration::from_secs(self.timeout_secs as u64)
     }
 
+    /// Convert operation timeout to Duration  
     pub fn operation_timeout_duration(&self) -> Duration {
         Duration::from_secs(self.operation_timeout_secs as u64)
     }
 
+    /// Create a circuit breaker configuration for use with the circuit_breaker module
     pub fn to_circuit_breaker_config(&self, name: String) -> circuit_breaker::CircuitBreakerConfig {
         circuit_breaker::CircuitBreakerConfig {
             failure_threshold: self.failure_threshold,
@@ -942,6 +989,7 @@ impl Default for NetworkCircuitBreakerConfig {
 }
 
 impl PingConfig {
+    /// Create a new PingConfig with lenient default values
     pub fn new() -> Self {
         Self {
             interval_secs: 30, // Ping every 30s instead of default 15s
@@ -949,6 +997,7 @@ impl PingConfig {
         }
     }
 
+    /// Load ping configuration from a file, falling back to defaults if file doesn't exist
     pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
@@ -963,6 +1012,7 @@ impl PingConfig {
         }
     }
 
+    /// Validate the configuration values
     pub fn validate(&self) -> Result<(), String> {
         if self.interval_secs == 0 {
             return Err("interval_secs must be greater than 0".to_string());
@@ -976,10 +1026,12 @@ impl PingConfig {
         Ok(())
     }
 
+    /// Convert to libp2p Duration for interval
     pub fn interval_duration(&self) -> Duration {
         Duration::from_secs(self.interval_secs)
     }
 
+    /// Convert to libp2p Duration for timeout
     pub fn timeout_duration(&self) -> Duration {
         Duration::from_secs(self.timeout_secs)
     }
@@ -992,6 +1044,7 @@ impl Default for PingConfig {
 }
 
 impl UnifiedNetworkConfig {
+    /// Create a new UnifiedNetworkConfig with all default values
     pub fn new() -> Self {
         Self {
             bootstrap: BootstrapConfig::new(),
@@ -1005,6 +1058,7 @@ impl UnifiedNetworkConfig {
         }
     }
 
+    /// Validate all configuration sections
     pub fn validate(&self) -> Result<(), String> {
         self.bootstrap.validate()?;
         self.network.validate()?;
@@ -1017,6 +1071,7 @@ impl UnifiedNetworkConfig {
         Ok(())
     }
 
+    /// Load unified configuration from a file, falling back to defaults if file doesn't exist
     pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
@@ -1033,6 +1088,7 @@ impl UnifiedNetworkConfig {
         }
     }
 
+    /// Save unified configuration to a file
     pub fn save_to_file(&self, path: &str) -> ConfigResult<()> {
         self.validate()
             .map_err(|e| format!("Configuration validation failed: {e}"))?;
