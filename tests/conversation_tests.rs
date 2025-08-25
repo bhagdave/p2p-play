@@ -1,9 +1,9 @@
 /// Tests for conversation management and message threading functionality
 use p2p_play::storage::{
-    save_direct_message, load_conversation_messages, mark_conversation_messages_as_read,
-    get_conversations_with_unread_counts, load_conversation_manager,
+    get_conversations_with_unread_counts, load_conversation_manager, load_conversation_messages,
+    mark_conversation_messages_as_read, save_direct_message,
 };
-use p2p_play::types::{DirectMessage, Conversation, ConversationManager};
+use p2p_play::types::{Conversation, ConversationManager, DirectMessage};
 use std::env;
 use tempfile::TempDir;
 
@@ -47,9 +47,15 @@ async fn test_save_and_load_direct_messages() {
     );
 
     // Save messages to database
-    save_direct_message(&message1).await.expect("Failed to save message 1");
-    save_direct_message(&message2).await.expect("Failed to save message 2");
-    save_direct_message(&message3).await.expect("Failed to save message 3");
+    save_direct_message(&message1)
+        .await
+        .expect("Failed to save message 1");
+    save_direct_message(&message2)
+        .await
+        .expect("Failed to save message 2");
+    save_direct_message(&message3)
+        .await
+        .expect("Failed to save message 3");
 
     // Load conversation messages for Alice (conversation with Bob)
     let alice_bob_conversation = load_conversation_messages("peer123", "Bob")
@@ -61,10 +67,13 @@ async fn test_save_and_load_direct_messages() {
     // Messages should be in chronological order
     assert_eq!(alice_bob_conversation[0].message, "Hello Bob!");
     assert_eq!(alice_bob_conversation[1].message, "Hi Alice! How are you?");
-    assert_eq!(alice_bob_conversation[2].message, "I'm doing great, thanks!");
+    assert_eq!(
+        alice_bob_conversation[2].message,
+        "I'm doing great, thanks!"
+    );
 
     // Load the same conversation from Bob's perspective
-    let bob_alice_conversation = load_conversation_messages("peer123", "Alice") 
+    let bob_alice_conversation = load_conversation_messages("peer123", "Alice")
         .await
         .expect("Failed to load Bob-Alice conversation");
 
@@ -107,8 +116,12 @@ async fn test_conversation_unread_counts() {
     );
 
     // Save messages
-    save_direct_message(&message1).await.expect("Failed to save message 1");
-    save_direct_message(&message2).await.expect("Failed to save message 2");
+    save_direct_message(&message1)
+        .await
+        .expect("Failed to save message 1");
+    save_direct_message(&message2)
+        .await
+        .expect("Failed to save message 2");
 
     // Get conversations with unread counts for Bob
     let conversations = get_conversations_with_unread_counts("Bob")
@@ -159,15 +172,37 @@ async fn test_conversation_manager_functionality() {
 
     // Create test messages between multiple peers
     let messages = vec![
-        DirectMessage::new("peer1".to_string(), "Alice".to_string(), "Bob".to_string(), "Hi Bob!".to_string()),
-        DirectMessage::new("peer1".to_string(), "Alice".to_string(), "Bob".to_string(), "How are you?".to_string()),
-        DirectMessage::new("peer2".to_string(), "Charlie".to_string(), "Bob".to_string(), "Hey Bob!".to_string()),
-        DirectMessage::new("peer3".to_string(), "David".to_string(), "Bob".to_string(), "Hello!".to_string()),
+        DirectMessage::new(
+            "peer1".to_string(),
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Hi Bob!".to_string(),
+        ),
+        DirectMessage::new(
+            "peer1".to_string(),
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "How are you?".to_string(),
+        ),
+        DirectMessage::new(
+            "peer2".to_string(),
+            "Charlie".to_string(),
+            "Bob".to_string(),
+            "Hey Bob!".to_string(),
+        ),
+        DirectMessage::new(
+            "peer3".to_string(),
+            "David".to_string(),
+            "Bob".to_string(),
+            "Hello!".to_string(),
+        ),
     ];
 
     // Save all messages
     for message in &messages {
-        save_direct_message(message).await.expect("Failed to save message");
+        save_direct_message(message)
+            .await
+            .expect("Failed to save message");
     }
 
     // Load conversation manager for Bob
@@ -179,17 +214,23 @@ async fn test_conversation_manager_functionality() {
     assert_eq!(conversation_manager.conversations.len(), 3);
 
     // Check that conversations are properly organized
-    let alice_conversation = conversation_manager.get_conversation("peer1").expect("Alice conversation should exist");
+    let alice_conversation = conversation_manager
+        .get_conversation("peer1")
+        .expect("Alice conversation should exist");
     assert_eq!(alice_conversation.peer_name, "Alice");
     assert_eq!(alice_conversation.messages.len(), 2);
     assert_eq!(alice_conversation.unread_count, 2);
 
-    let charlie_conversation = conversation_manager.get_conversation("peer2").expect("Charlie conversation should exist");
+    let charlie_conversation = conversation_manager
+        .get_conversation("peer2")
+        .expect("Charlie conversation should exist");
     assert_eq!(charlie_conversation.peer_name, "Charlie");
     assert_eq!(charlie_conversation.messages.len(), 1);
     assert_eq!(charlie_conversation.unread_count, 1);
 
-    let david_conversation = conversation_manager.get_conversation("peer3").expect("David conversation should exist");
+    let david_conversation = conversation_manager
+        .get_conversation("peer3")
+        .expect("David conversation should exist");
     assert_eq!(david_conversation.peer_name, "David");
     assert_eq!(david_conversation.messages.len(), 1);
     assert_eq!(david_conversation.unread_count, 1);
@@ -200,7 +241,7 @@ async fn test_conversation_manager_functionality() {
     // Test conversation sorting by activity
     let sorted_conversations = conversation_manager.get_conversations_sorted_by_activity();
     assert_eq!(sorted_conversations.len(), 3);
-    
+
     // Most recent should be first (David, then Charlie, then Alice with 2 messages)
     assert_eq!(sorted_conversations[0].peer_name, "David");
     assert_eq!(sorted_conversations[1].peer_name, "Charlie");
@@ -230,13 +271,20 @@ async fn test_conversation_switching() {
         "Hi there!".to_string(),
     ));
 
-    conversation_manager.conversations.insert("peer1".to_string(), alice_conv);
-    conversation_manager.conversations.insert("peer2".to_string(), charlie_conv);
+    conversation_manager
+        .conversations
+        .insert("peer1".to_string(), alice_conv);
+    conversation_manager
+        .conversations
+        .insert("peer2".to_string(), charlie_conv);
 
     // Test setting active conversation
     conversation_manager.set_active_conversation(Some("peer1".to_string()));
-    assert_eq!(conversation_manager.active_conversation, Some("peer1".to_string()));
-    
+    assert_eq!(
+        conversation_manager.active_conversation,
+        Some("peer1".to_string())
+    );
+
     // Test getting active conversation
     let active = conversation_manager.get_active_conversation();
     assert!(active.is_some());
@@ -250,7 +298,7 @@ async fn test_conversation_switching() {
     assert!(conversation_manager.active_conversation.is_some());
     let new_active = conversation_manager.get_active_conversation();
     assert!(new_active.is_some());
-    
+
     // Since conversations are sorted by activity, and both have the same timestamp,
     // the order might vary, but we should have a valid active conversation
     assert!(new_active.unwrap().peer_name == "Alice" || new_active.unwrap().peer_name == "Charlie");
@@ -261,10 +309,10 @@ async fn test_conversation_switching() {
 #[tokio::test]
 async fn test_conversation_message_preview() {
     let mut conversation = Conversation::new("peer1".to_string(), "Alice".to_string());
-    
+
     // Test empty conversation
     assert_eq!(conversation.get_last_message_preview(), "No messages");
-    
+
     // Add a short message
     conversation.add_message(DirectMessage::new(
         "peer1".to_string(),
@@ -272,9 +320,9 @@ async fn test_conversation_message_preview() {
         "Bob".to_string(),
         "Hello!".to_string(),
     ));
-    
+
     assert_eq!(conversation.get_last_message_preview(), "Alice: Hello!");
-    
+
     // Add a long message that should be truncated
     let long_message = "This is a very long message that should be truncated because it exceeds the preview length limit of 50 characters";
     conversation.add_message(DirectMessage::new(
@@ -283,7 +331,7 @@ async fn test_conversation_message_preview() {
         "Bob".to_string(),
         long_message.to_string(),
     ));
-    
+
     let preview = conversation.get_last_message_preview();
     assert!(preview.starts_with("Alice: This is a very long message that should be"));
     assert!(preview.ends_with("..."));

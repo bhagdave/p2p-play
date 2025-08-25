@@ -222,12 +222,10 @@ pub async fn handle_input_event(
             #[allow(unreachable_code)]
             process::exit(0)
         }
-        "name" => {
-            match local_peer_name {
-                Some(name) => ui_logger.log(format!("Current alias: {name}")),
-                None => ui_logger.log("No alias set. Use 'name <alias>' to set one.".to_string()),
-            }
-        }
+        "name" => match local_peer_name {
+            Some(name) => ui_logger.log(format!("Current alias: {name}")),
+            None => ui_logger.log("No alias set. Use 'name <alias>' to set one.".to_string()),
+        },
         cmd if cmd.starts_with("name ") => {
             if let Some(peer_name) = handle_set_name(cmd, local_peer_name, ui_logger).await {
                 let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
@@ -419,7 +417,6 @@ pub async fn handle_floodsub_event(
                 serde_json::from_slice::<PublishedChannel>(&msg.data)
             {
                 if published_channel.publisher != PEER_ID.to_string() {
-
                     let auto_sub_config = match crate::storage::load_unified_network_config().await
                     {
                         Ok(config) => config.channel_auto_subscription,
@@ -883,7 +880,7 @@ pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
         "Received DirectMessage event: {} -> {}: {}",
         direct_msg.from_name, direct_msg.to_name, direct_msg.message
     );
-    
+
     // Save the direct message to the database for persistence
     if let Err(e) = crate::storage::save_direct_message(&direct_msg).await {
         eprintln!("Failed to save direct message to database: {}", e);
@@ -912,113 +909,103 @@ pub async fn handle_node_description_event(
     error_logger: &ErrorLogger,
 ) {
     match event {
-        request_response::Event::Message { peer, message, .. } => {
-            match message {
-                request_response::Message::Request {
-                    request, channel, ..
-                } => {
-                    ui_logger.log(format!(
-                        "{} Description request from {}",
-                        Icons::clipboard(),
-                        request.from_name
-                    ));
+        request_response::Event::Message { peer, message, .. } => match message {
+            request_response::Message::Request {
+                request, channel, ..
+            } => {
+                ui_logger.log(format!(
+                    "{} Description request from {}",
+                    Icons::clipboard(),
+                    request.from_name
+                ));
 
-                    match load_node_description().await {
-                        Ok(description) => {
-                            let response = NodeDescriptionResponse {
-                                description,
-                                from_peer_id: PEER_ID.to_string(),
-                                from_name: local_peer_name
-                                    .as_deref()
-                                    .unwrap_or("Unknown")
-                                    .to_string(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
-                            };
+                match load_node_description().await {
+                    Ok(description) => {
+                        let response = NodeDescriptionResponse {
+                            description,
+                            from_peer_id: PEER_ID.to_string(),
+                            from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        };
 
-                            if let Err(e) = swarm
-                                .behaviour_mut()
-                                .node_description
-                                .send_response(channel, response)
-                            {
-                                crate::log_network_error!(
-                                    error_logger,
-                                    "node_description",
-                                    "Failed to send node description response to {}: {:?}",
-                                    peer,
-                                    e
-                                );
-                                ui_logger.log(format!(
-                                    "{} Failed to send description response to {}: {:?}",
-                                    Icons::cross(),
-                                    peer,
-                                    e
-                                ));
-                            } else {
-                                debug!("Sent description response to {peer}");
-                            }
-                        }
-                        Err(e) => {
+                        if let Err(e) = swarm
+                            .behaviour_mut()
+                            .node_description
+                            .send_response(channel, response)
+                        {
                             crate::log_network_error!(
                                 error_logger,
                                 "node_description",
-                                "Failed to load description: {}",
+                                "Failed to send node description response to {}: {:?}",
+                                peer,
                                 e
                             );
-
-                            let response = NodeDescriptionResponse {
-                                description: None,
-                                from_peer_id: PEER_ID.to_string(),
-                                from_name: local_peer_name
-                                    .as_deref()
-                                    .unwrap_or("Unknown")
-                                    .to_string(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
-                            };
-
-                            if let Err(e) = swarm
-                                .behaviour_mut()
-                                .node_description
-                                .send_response(channel, response)
-                            {
-                                crate::log_network_error!(
-                                    error_logger,
-                                    "node_description",
-                                    "Failed to send empty description response to {}: {:?}",
-                                    peer,
-                                    e
-                                );
-                            }
+                            ui_logger.log(format!(
+                                "{} Failed to send description response to {}: {:?}",
+                                Icons::cross(),
+                                peer,
+                                e
+                            ));
+                        } else {
+                            debug!("Sent description response to {peer}");
                         }
                     }
-                }
-                request_response::Message::Response { response, .. } => {
-                    match response.description {
-                        Some(description) => {
-                            ui_logger.log(format!(
-                                "{} Description from {} ({} bytes):",
-                                Icons::clipboard(),
-                                response.from_name,
-                                description.len()
-                            ));
-                            ui_logger.log(description);
-                        }
-                        None => {
-                            ui_logger.log(format!(
-                                "{} {} has no description set",
-                                Icons::clipboard(),
-                                response.from_name
-                            ));
+                    Err(e) => {
+                        crate::log_network_error!(
+                            error_logger,
+                            "node_description",
+                            "Failed to load description: {}",
+                            e
+                        );
+
+                        let response = NodeDescriptionResponse {
+                            description: None,
+                            from_peer_id: PEER_ID.to_string(),
+                            from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        };
+
+                        if let Err(e) = swarm
+                            .behaviour_mut()
+                            .node_description
+                            .send_response(channel, response)
+                        {
+                            crate::log_network_error!(
+                                error_logger,
+                                "node_description",
+                                "Failed to send empty description response to {}: {:?}",
+                                peer,
+                                e
+                            );
                         }
                     }
                 }
             }
-        }
+            request_response::Message::Response { response, .. } => match response.description {
+                Some(description) => {
+                    ui_logger.log(format!(
+                        "{} Description from {} ({} bytes):",
+                        Icons::clipboard(),
+                        response.from_name,
+                        description.len()
+                    ));
+                    ui_logger.log(description);
+                }
+                None => {
+                    ui_logger.log(format!(
+                        "{} {} has no description set",
+                        Icons::clipboard(),
+                        response.from_name
+                    ));
+                }
+            },
+        },
         request_response::Event::OutboundFailure { peer, error, .. } => {
             crate::log_network_error!(
                 error_logger,
@@ -1118,18 +1105,14 @@ pub async fn handle_story_sync_event(
                             let story_count = filtered_stories.len();
 
                             let channels = match crate::storage::read_channels().await {
-                                Ok(all_channels) => {
-                                    all_channels
-                                }
+                                Ok(all_channels) => all_channels,
                                 Err(_) => {
                                     match crate::storage::get_channels_for_stories(
                                         &filtered_stories,
                                     )
                                     .await
                                     {
-                                        Ok(story_channels) => {
-                                            story_channels
-                                        }
+                                        Ok(story_channels) => story_channels,
                                         Err(_) => {
                                             Vec::new() // Final fallback to maintain functionality
                                         }
@@ -1236,10 +1219,7 @@ pub async fn handle_story_sync_event(
                     let mut discovered_channels_count = 0;
 
                     if !response.channels.is_empty() {
-                        match crate::storage::process_discovered_channels(
-                            &response.channels,
-                        )
-                        .await
+                        match crate::storage::process_discovered_channels(&response.channels).await
                         {
                             Ok(count) => {
                                 discovered_channels_count = count;
@@ -1360,7 +1340,6 @@ pub async fn initiate_story_sync_with_peer(
     ui_logger: &UILogger,
     _error_logger: &ErrorLogger,
 ) {
-
     let sync_days = match crate::storage::load_unified_network_config().await {
         Ok(config) => config.auto_share.sync_days,
         Err(_) => 30, // Default to 30 days if config can't be loaded
@@ -1443,91 +1422,89 @@ pub async fn handle_handshake_event(
     verified_p2p_play_peers: &Arc<Mutex<HashMap<PeerId, String>>>,
 ) {
     match event {
-        request_response::Event::Message { peer, message, .. } => {
-            match message {
-                request_response::Message::Request {
-                    request, channel, ..
-                } => {
-                    let accepted = request.app_name == APP_NAME;
+        request_response::Event::Message { peer, message, .. } => match message {
+            request_response::Message::Request {
+                request, channel, ..
+            } => {
+                let accepted = request.app_name == APP_NAME;
 
-                    let response = HandshakeResponse {
-                        accepted,
-                        app_name: APP_NAME.to_string(),
-                        app_version: APP_VERSION.to_string(),
-                    };
+                let response = HandshakeResponse {
+                    accepted,
+                    app_name: APP_NAME.to_string(),
+                    app_version: APP_VERSION.to_string(),
+                };
 
-                    if let Err(e) = swarm
-                        .behaviour_mut()
-                        .handshake
-                        .send_response(channel, response)
-                    {
-                        crate::log_network_error!(
-                            error_logger,
-                            "handshake",
-                            "Failed to send handshake response to {}: {:?}",
-                            peer,
-                            e
-                        );
-                    }
-
-                    if !accepted {
-                        let _ = swarm.disconnect_peer_id(peer);
-                    }
+                if let Err(e) = swarm
+                    .behaviour_mut()
+                    .handshake
+                    .send_response(channel, response)
+                {
+                    crate::log_network_error!(
+                        error_logger,
+                        "handshake",
+                        "Failed to send handshake response to {}: {:?}",
+                        peer,
+                        e
+                    );
                 }
-                request_response::Message::Response { response, .. } => {
-                    if response.accepted && response.app_name == APP_NAME {
-                        swarm
-                            .behaviour_mut()
-                            .floodsub
-                            .add_node_to_partial_view(peer);
 
-                        let peer_name = format!("Peer_{peer}");
-                        {
-                            let mut verified_peers = verified_p2p_play_peers.lock().unwrap();
-                            verified_peers.insert(peer, peer_name.clone());
+                if !accepted {
+                    let _ = swarm.disconnect_peer_id(peer);
+                }
+            }
+            request_response::Message::Response { response, .. } => {
+                if response.accepted && response.app_name == APP_NAME {
+                    swarm
+                        .behaviour_mut()
+                        .floodsub
+                        .add_node_to_partial_view(peer);
+
+                    let peer_name = format!("Peer_{peer}");
+                    {
+                        let mut verified_peers = verified_p2p_play_peers.lock().unwrap();
+                        verified_peers.insert(peer, peer_name.clone());
+                    }
+                    peer_names.insert(peer, peer_name);
+                    sorted_peer_names_cache.update(peer_names);
+
+                    execute_deferred_peer_operations(
+                        peer,
+                        swarm,
+                        peer_names,
+                        local_peer_name,
+                        ui_logger,
+                        error_logger,
+                        dm_config,
+                        pending_messages,
+                    )
+                    .await;
+
+                    {
+                        let mut pending_peers = pending_handshake_peers.lock().unwrap();
+                        if pending_peers.remove(&peer).is_some() {
+                            debug!(
+                                "Removed peer {} from pending handshake list after successful handshake",
+                                peer
+                            );
                         }
-                        peer_names.insert(peer, peer_name);
-                        sorted_peer_names_cache.update(peer_names);
+                    }
 
-                        execute_deferred_peer_operations(
-                            peer,
-                            swarm,
-                            peer_names,
-                            local_peer_name,
-                            ui_logger,
-                            error_logger,
-                            dm_config,
-                            pending_messages,
-                        )
-                        .await;
+                    ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
+                } else {
+                    let _ = swarm.disconnect_peer_id(peer);
 
-                        {
-                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                            if pending_peers.remove(&peer).is_some() {
-                                debug!(
-                                    "Removed peer {} from pending handshake list after successful handshake",
-                                    peer
-                                );
-                            }
-                        }
-
-                        ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
-                    } else {
-                        let _ = swarm.disconnect_peer_id(peer);
-
-                        {
-                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                            if pending_peers.remove(&peer).is_some() {
-                                debug!(
-                                    "Removed incompatible peer {} from pending handshake list",
-                                    peer
-                                );
-                            }
+                    {
+                        let mut pending_peers = pending_handshake_peers.lock().unwrap();
+                        if pending_peers.remove(&peer).is_some() {
+                            debug!(
+                                "Removed incompatible peer {} from pending handshake list",
+                                peer
+                            );
                         }
                     }
                 }
             }
-        }
+        },
         request_response::Event::OutboundFailure { peer, error, .. } => {
             let _ = swarm.disconnect_peer_id(peer);
 
@@ -1542,11 +1519,9 @@ pub async fn handle_handshake_event(
             }
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            {
-                let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                if pending_peers.remove(&peer).is_some() {
-                    debug!("Removed failed peer {} from pending handshake list", peer);
-                }
+            let mut pending_peers = pending_handshake_peers.lock().unwrap();
+            if pending_peers.remove(&peer).is_some() {
+                debug!("Removed failed peer {} from pending handshake list", peer);
             }
         }
         _ => {}
@@ -1733,9 +1708,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
                                 MIN_RECONNECT_INTERVAL
                             }
                         }
-                        Err(_) => {
-                            MIN_RECONNECT_INTERVAL
-                        }
+                        Err(_) => MIN_RECONNECT_INTERVAL,
                     };
 
                     match last_attempt {
@@ -1754,9 +1727,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
                         }
                     }
                 }
-                Err(_) => {
-                    false
-                }
+                Err(_) => false,
             };
 
             if should_attempt {
@@ -1953,12 +1924,10 @@ pub async fn retry_messages_for_peer(
     }
 
     for msg in messages_to_retry {
-
         let _request_id = swarm
             .behaviour_mut()
             .request_response
             .send_request(&msg.target_peer_id, msg.message.clone());
-
     }
 }
 

@@ -300,9 +300,7 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
     Ok(channels)
 }
 
-pub async fn process_discovered_channels(
-    channels: &[Channel],
-) -> StorageResult<usize> {
+pub async fn process_discovered_channels(channels: &[Channel]) -> StorageResult<usize> {
     if channels.is_empty() {
         return Ok(0);
     }
@@ -456,7 +454,6 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
 
     Ok(())
 }
-
 
 pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
@@ -1165,13 +1162,19 @@ pub async fn get_conversations_with_unread_counts(
     )?;
 
     let conversation_iter = stmt.query_map(
-        [local_peer_name, local_peer_name, local_peer_name, local_peer_name, local_peer_name],
+        [
+            local_peer_name,
+            local_peer_name,
+            local_peer_name,
+            local_peer_name,
+            local_peer_name,
+        ],
         |row| {
             Ok((
-                row.get::<_, String>(1)?, // peer_id
-                row.get::<_, String>(0)?, // peer_name
+                row.get::<_, String>(1)?,       // peer_id
+                row.get::<_, String>(0)?,       // peer_name
                 row.get::<_, i64>(2)? as usize, // unread_count
-                row.get::<_, i64>(3)? as u64, // last_activity
+                row.get::<_, i64>(3)? as u64,   // last_activity
             ))
         },
     )?;
@@ -1184,25 +1187,30 @@ pub async fn get_conversations_with_unread_counts(
     Ok(conversations)
 }
 
-pub async fn load_conversation_manager(local_peer_name: &str) -> StorageResult<crate::types::ConversationManager> {
+pub async fn load_conversation_manager(
+    local_peer_name: &str,
+) -> StorageResult<crate::types::ConversationManager> {
     let mut conversation_manager = crate::types::ConversationManager::new();
-    
+
     // Get all conversation metadata
     let conversations_data = get_conversations_with_unread_counts(local_peer_name).await?;
-    
+
     // Load messages for each conversation
     for (peer_id, peer_name, unread_count, last_activity) in conversations_data {
         let messages = load_conversation_messages(&peer_id, local_peer_name).await?;
-        
+
         if !messages.is_empty() {
-            let mut conversation = crate::types::Conversation::new(peer_id.clone(), peer_name.clone());
+            let mut conversation =
+                crate::types::Conversation::new(peer_id.clone(), peer_name.clone());
             conversation.messages = messages;
             conversation.unread_count = unread_count;
             conversation.last_activity = last_activity;
-            
-            conversation_manager.conversations.insert(peer_id, conversation);
+
+            conversation_manager
+                .conversations
+                .insert(peer_id, conversation);
         }
     }
-    
+
     Ok(conversation_manager)
 }

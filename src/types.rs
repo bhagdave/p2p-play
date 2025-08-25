@@ -109,7 +109,7 @@ pub struct Conversation {
 #[derive(Debug, Clone)]
 pub struct ConversationManager {
     pub conversations: HashMap<String, Conversation>, // peer_id -> conversation
-    pub active_conversation: Option<String>, // active peer_id
+    pub active_conversation: Option<String>,          // active peer_id
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -575,13 +575,16 @@ impl ConversationManager {
         };
 
         // Get or create conversation
-        let conversation = self.conversations
+        let conversation = self
+            .conversations
             .entry(conversation_peer_id.clone())
-            .or_insert_with(|| Conversation::new(conversation_peer_id.clone(), conversation_peer_name));
+            .or_insert_with(|| {
+                Conversation::new(conversation_peer_id.clone(), conversation_peer_name)
+            });
 
         // Add the message
         conversation.add_message(message);
-        
+
         // Return true if this is a new conversation
         self.conversations.len() == 1
     }
@@ -630,7 +633,10 @@ impl ConversationManager {
 
         if let Some(ref current_peer_id) = self.active_conversation {
             // Find current conversation index and move to next
-            if let Some(current_index) = conversations.iter().position(|c| &c.peer_id == current_peer_id) {
+            if let Some(current_index) = conversations
+                .iter()
+                .position(|c| &c.peer_id == current_peer_id)
+            {
                 let next_index = (current_index + 1) % conversations.len();
                 self.set_active_conversation(Some(conversations[next_index].peer_id.clone()));
             } else {
@@ -652,7 +658,10 @@ impl ConversationManager {
 
         if let Some(ref current_peer_id) = self.active_conversation {
             // Find current conversation index and move to previous
-            if let Some(current_index) = conversations.iter().position(|c| &c.peer_id == current_peer_id) {
+            if let Some(current_index) = conversations
+                .iter()
+                .position(|c| &c.peer_id == current_peer_id)
+            {
                 let prev_index = if current_index == 0 {
                     conversations.len() - 1
                 } else {

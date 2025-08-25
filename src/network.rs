@@ -78,21 +78,17 @@ pub struct HandshakeResponse {
 }
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
-    Ok(bytes) => {
-        match identity::Keypair::from_protobuf_encoding(&bytes) {
-            Ok(keypair) => {
-                let peer_id = PeerId::from(keypair.public());
-                keypair
-            }
-            Err(e) => {
-                warn!("Error loading keypair: {e}, generating new one");
-                generate_and_save_keypair()
-            }
+    Ok(bytes) => match identity::Keypair::from_protobuf_encoding(&bytes) {
+        Ok(keypair) => {
+            let peer_id = PeerId::from(keypair.public());
+            keypair
         }
-    }
-    Err(e) => {
-        generate_and_save_keypair()
-    }
+        Err(e) => {
+            warn!("Error loading keypair: {e}, generating new one");
+            generate_and_save_keypair()
+        }
+    },
+    Err(e) => generate_and_save_keypair(),
 });
 
 pub static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));

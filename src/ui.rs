@@ -82,8 +82,8 @@ pub struct App {
 #[derive(PartialEq, Debug, Clone)]
 pub enum ViewMode {
     Channels,
-    Stories(String), // Selected channel name
-    Conversations,   // Conversation list view
+    Stories(String),            // Selected channel name
+    Conversations,              // Conversation list view
     ConversationThread(String), // Thread view for specific peer
 }
 
@@ -966,7 +966,8 @@ impl App {
 
         // Add message to conversation manager
         let local_peer_id = self.local_peer_id.as_deref().unwrap_or("unknown");
-        self.conversation_manager.add_message(dm.clone(), local_peer_id);
+        self.conversation_manager
+            .add_message(dm.clone(), local_peer_id);
 
         // Update last message sender for quick reply
         self.last_message_sender = Some(dm.from_name);
@@ -1034,7 +1035,9 @@ impl App {
 
     pub fn get_selected_conversation(&self) -> Option<&crate::types::Conversation> {
         if let Some(selected) = self.list_state.selected() {
-            let conversations = self.conversation_manager.get_conversations_sorted_by_activity();
+            let conversations = self
+                .conversation_manager
+                .get_conversations_sorted_by_activity();
             conversations.get(selected).copied()
         } else {
             None
@@ -1045,7 +1048,8 @@ impl App {
         // Find peer name from the conversation
         if let Some(conversation) = self.conversation_manager.get_conversation(&peer_id) {
             self.view_mode = ViewMode::ConversationThread(conversation.peer_name.clone());
-            self.conversation_manager.set_active_conversation(Some(peer_id));
+            self.conversation_manager
+                .set_active_conversation(Some(peer_id));
             self.list_state.select(Some(0));
         }
     }
@@ -1508,14 +1512,14 @@ impl App {
                             } else {
                                 String::new()
                             };
-                            
-                            let display_text = format!("{} {}{} - {}", 
-                                Icons::memo(), 
-                                conversation.peer_name, 
-                                unread_indicator, 
+
+                            let display_text = format!("{} {}{} - {}",
+                                Icons::memo(),
+                                conversation.peer_name,
+                                unread_indicator,
                                 preview
                             );
-                            
+
                             let item = ListItem::new(display_text);
                             if conversation.unread_count > 0 {
                                 item.style(Style::default().fg(Color::Cyan))

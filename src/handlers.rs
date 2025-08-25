@@ -267,34 +267,32 @@ pub async fn handle_publish_story(
 pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
     if let Some(rest) = cmd.strip_prefix("show story ") {
         match ContentValidator::validate_story_id(rest) {
-            Ok(id) => {
-                match read_local_stories().await {
-                    Ok(stories) => {
-                        if let Some(story) = stories.iter().find(|s| s.id == id) {
-                            ui_logger.log(format!(
-                                "{} Story {}: {}",
-                                Icons::book(),
-                                story.id,
-                                story.name
-                            ));
-                            ui_logger.log(format!("Channel: {}", story.channel));
-                            ui_logger.log(format!("Header: {}", story.header));
-                            ui_logger.log(format!("Body: {}", story.body));
-                            ui_logger.log(format!(
-                                "Public: {}",
-                                if story.public { "Yes" } else { "No" }
-                            ));
+            Ok(id) => match read_local_stories().await {
+                Ok(stories) => {
+                    if let Some(story) = stories.iter().find(|s| s.id == id) {
+                        ui_logger.log(format!(
+                            "{} Story {}: {}",
+                            Icons::book(),
+                            story.id,
+                            story.name
+                        ));
+                        ui_logger.log(format!("Channel: {}", story.channel));
+                        ui_logger.log(format!("Header: {}", story.header));
+                        ui_logger.log(format!("Body: {}", story.body));
+                        ui_logger.log(format!(
+                            "Public: {}",
+                            if story.public { "Yes" } else { "No" }
+                        ));
 
-                            mark_story_as_read_for_peer(story.id, peer_id, &story.channel).await;
-                        } else {
-                            ui_logger.log(format!("Story with id {id} not found"));
-                        }
-                    }
-                    Err(e) => {
-                        ui_logger.log(format!("Error reading stories: {e}"));
+                        mark_story_as_read_for_peer(story.id, peer_id, &story.channel).await;
+                    } else {
+                        ui_logger.log(format!("Story with id {id} not found"));
                     }
                 }
-            }
+                Err(e) => {
+                    ui_logger.log(format!("Error reading stories: {e}"));
+                }
+            },
             Err(e) => {
                 ui_logger.log(format!("Invalid story ID: {e}"));
             }
@@ -682,7 +680,6 @@ pub fn parse_direct_message_command(
     None
 }
 
-
 pub async fn handle_direct_message_with_relay(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1025,55 +1022,45 @@ pub async fn handle_create_channel(
 pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     let rest = cmd.strip_prefix("ls ch");
     match rest {
-        Some(" available") => {
-            match read_channels().await {
-                Ok(channels) => {
-                    ui_logger.log("Available channels:".to_string());
-                    if channels.is_empty() {
-                        ui_logger.log("  (no channels discovered)".to_string());
-                    } else {
-                        for channel in channels {
-                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
-                        }
+        Some(" available") => match read_channels().await {
+            Ok(channels) => {
+                ui_logger.log("Available channels:".to_string());
+                if channels.is_empty() {
+                    ui_logger.log("  (no channels discovered)".to_string());
+                } else {
+                    for channel in channels {
+                        ui_logger.log(format!("  {} - {}", channel.name, channel.description));
                     }
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to read available channels: {e}"))
-                }
             }
-        }
-        Some(" unsubscribed") => {
-            match read_unsubscribed_channels(&PEER_ID.to_string()).await {
-                Ok(channels) => {
-                    ui_logger.log("Unsubscribed channels:".to_string());
-                    if channels.is_empty() {
-                        ui_logger.log("  (no unsubscribed channels)".to_string());
-                    } else {
-                        for channel in channels {
-                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
-                        }
+            Err(e) => error_logger.log_error(&format!("Failed to read available channels: {e}")),
+        },
+        Some(" unsubscribed") => match read_unsubscribed_channels(&PEER_ID.to_string()).await {
+            Ok(channels) => {
+                ui_logger.log("Unsubscribed channels:".to_string());
+                if channels.is_empty() {
+                    ui_logger.log("  (no unsubscribed channels)".to_string());
+                } else {
+                    for channel in channels {
+                        ui_logger.log(format!("  {} - {}", channel.name, channel.description));
                     }
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to read unsubscribed channels: {e}"))
-                }
             }
-        }
-        Some("") | None => {
-            match read_channels().await {
-                Ok(channels) => {
-                    ui_logger.log("Available channels:".to_string());
-                    if channels.is_empty() {
-                        ui_logger.log("  (no channels discovered)".to_string());
-                    } else {
-                        for channel in channels {
-                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
-                        }
+            Err(e) => error_logger.log_error(&format!("Failed to read unsubscribed channels: {e}")),
+        },
+        Some("") | None => match read_channels().await {
+            Ok(channels) => {
+                ui_logger.log("Available channels:".to_string());
+                if channels.is_empty() {
+                    ui_logger.log("  (no channels discovered)".to_string());
+                } else {
+                    for channel in channels {
+                        ui_logger.log(format!("  {} - {}", channel.name, channel.description));
                     }
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to read channels: {e}")),
             }
-        }
+            Err(e) => error_logger.log_error(&format!("Failed to read channels: {e}")),
+        },
         _ => {
             ui_logger.log("Usage: ls ch [available|unsubscribed]".to_string());
         }
@@ -1180,62 +1167,56 @@ pub async fn handle_set_auto_subscription(
 ) {
     let rest = cmd.strip_prefix("set auto-sub ");
     match rest {
-        Some("on") => {
-            match crate::storage::load_unified_network_config().await {
-                Ok(mut config) => {
-                    config
-                        .channel_auto_subscription
-                        .auto_subscribe_to_new_channels = true;
-                    match crate::storage::save_unified_network_config(&config).await {
-                        Ok(_) => ui_logger.log("✅ Auto-subscription enabled".to_string()),
-                        Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
-                    }
+        Some("on") => match crate::storage::load_unified_network_config().await {
+            Ok(mut config) => {
+                config
+                    .channel_auto_subscription
+                    .auto_subscribe_to_new_channels = true;
+                match crate::storage::save_unified_network_config(&config).await {
+                    Ok(_) => ui_logger.log("✅ Auto-subscription enabled".to_string()),
+                    Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
             }
-        }
-        Some("off") => {
-            match crate::storage::load_unified_network_config().await {
-                Ok(mut config) => {
-                    config
-                        .channel_auto_subscription
-                        .auto_subscribe_to_new_channels = false;
-                    match crate::storage::save_unified_network_config(&config).await {
-                        Ok(_) => ui_logger.log("❌ Auto-subscription disabled".to_string()),
-                        Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
-                    }
+            Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+        },
+        Some("off") => match crate::storage::load_unified_network_config().await {
+            Ok(mut config) => {
+                config
+                    .channel_auto_subscription
+                    .auto_subscribe_to_new_channels = false;
+                match crate::storage::save_unified_network_config(&config).await {
+                    Ok(_) => ui_logger.log("❌ Auto-subscription disabled".to_string()),
+                    Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
             }
-        }
-        Some("status") | None => {
-            match crate::storage::load_unified_network_config().await {
-                Ok(config) => {
-                    let status = if config
-                        .channel_auto_subscription
-                        .auto_subscribe_to_new_channels
-                    {
+            Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+        },
+        Some("status") | None => match crate::storage::load_unified_network_config().await {
+            Ok(config) => {
+                let status = if config
+                    .channel_auto_subscription
+                    .auto_subscribe_to_new_channels
+                {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                ui_logger.log(format!("Auto-subscription is currently {status}"));
+                ui_logger.log(format!(
+                    "Notifications: {}",
+                    if config.channel_auto_subscription.notify_new_channels {
                         "enabled"
                     } else {
                         "disabled"
-                    };
-                    ui_logger.log(format!("Auto-subscription is currently {status}"));
-                    ui_logger.log(format!(
-                        "Notifications: {}",
-                        if config.channel_auto_subscription.notify_new_channels {
-                            "enabled"
-                        } else {
-                            "disabled"
-                        }
-                    ));
-                    ui_logger.log(format!(
-                        "Max auto-subscriptions: {}",
-                        config.channel_auto_subscription.max_auto_subscriptions
-                    ));
-                }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+                    }
+                ));
+                ui_logger.log(format!(
+                    "Max auto-subscriptions: {}",
+                    config.channel_auto_subscription.max_auto_subscriptions
+                ));
             }
-        }
+            Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+        },
         _ => {
             ui_logger.log("Usage: set auto-sub [on|off|status]".to_string());
         }

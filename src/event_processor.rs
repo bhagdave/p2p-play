@@ -457,7 +457,6 @@ impl EventProcessor {
             "Peer {} awaiting handshake verification before UI display",
             peer_id
         );
-
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -651,18 +650,16 @@ impl EventProcessor {
 
     async fn handle_action_result(&self, action_result: ActionResult, app: &mut App) {
         match action_result {
-            ActionResult::RefreshStories => {
-                match storage::read_local_stories().await {
-                    Ok(stories) => {
-                        app.update_stories(stories);
-                        refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
-                    }
-                    Err(e) => {
-                        self.error_logger
-                            .log_error(&format!("Failed to refresh stories: {e}"));
-                    }
+            ActionResult::RefreshStories => match storage::read_local_stories().await {
+                Ok(stories) => {
+                    app.update_stories(stories);
+                    refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                 }
-            }
+                Err(e) => {
+                    self.error_logger
+                        .log_error(&format!("Failed to refresh stories: {e}"));
+                }
+            },
             ActionResult::StartStoryCreation => {
                 app.start_story_creation();
             }

@@ -34,7 +34,7 @@ use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetwork
 use ui::App;
 
 use libp2p::{PeerId, Swarm};
-use log:: error;
+use log::error;
 use std::collections::HashMap;
 use std::error::Error;
 use std::process;
@@ -113,7 +113,11 @@ async fn run_app() -> AppResult<()> {
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
     auto_bootstrap
-        .initialize(&unified_config.bootstrap, &loggers.bootstrap_logger, &loggers.error_logger)
+        .initialize(
+            &unified_config.bootstrap,
+            &loggers.bootstrap_logger,
+            &loggers.error_logger,
+        )
         .await;
 
     // Auto-subscribe to general channel if not already subscribed
