@@ -541,7 +541,7 @@ impl Conversation {
             } else {
                 msg.message.clone()
             };
-            let sender_name = if msg.is_outgoing { "You" } else { &msg.remote_peer_id };
+            let sender_name = if msg.is_outgoing { "You" } else { &self.peer_name };
             format!("{}: {}", sender_name, preview)
         } else {
             "No messages".to_string()

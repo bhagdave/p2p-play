@@ -959,9 +959,18 @@ impl App {
         self.conversation_manager
             .add_message(dm.clone(), local_peer_name);
 
-        self.last_message_sender = Some(
-            if dm.is_outgoing { "You".to_string() } else { dm.remote_peer_id.clone() }
-        );
+        self.last_message_sender = if dm.is_outgoing {
+            None // Don't set last_message_sender for outgoing messages (can't reply to yourself)
+        } else {
+            // Try to get the peer name from the peers map, fallback to peer ID
+            if let Ok(peer_id) = dm.remote_peer_id.parse::<libp2p::PeerId>() {
+                Some(self.peers.get(&peer_id)
+                    .cloned()
+                    .unwrap_or_else(|| dm.remote_peer_id.clone()))
+            } else {
+                Some(dm.remote_peer_id.clone())
+            }
+        };
 
         self.unread_message_count = self.conversation_manager.get_total_unread_count();
     }
@@ -1397,8 +1406,19 @@ impl App {
                 .take(10) // Limit to last 10 messages for display
                 .map(|dm| {
                     // Sanitize content for safe display
-                    let from_name = if dm.is_outgoing { "You" } else { &dm.remote_peer_id };
-                    let sanitized_from_name = ContentSanitizer::sanitize_for_display(from_name);
+                    let from_name = if dm.is_outgoing { 
+                        "You".to_string()
+                    } else {
+                        // Try to get the peer name from the peers map, fallback to peer ID
+                        if let Ok(peer_id) = dm.remote_peer_id.parse::<libp2p::PeerId>() {
+                            self.peers.get(&peer_id)
+                                .cloned()
+                                .unwrap_or_else(|| dm.remote_peer_id.clone())
+                        } else {
+                            dm.remote_peer_id.clone()
+                        }
+                    };
+                    let sanitized_from_name = ContentSanitizer::sanitize_for_display(&from_name);
                     let sanitized_message = ContentSanitizer::sanitize_for_display(&dm.message);
 
                     // Format timestamp as HH:MM in local timezone
@@ -1529,8 +1549,19 @@ impl App {
                                 let timestamp = chrono::DateTime::from_timestamp(message.timestamp as i64, 0)
                                     .map(|dt| dt.format("%H:%M").to_string())
                                     .unwrap_or_else(|| "??:??".to_string());
-                                let sender_name = if message.is_outgoing { "You" } else { &message.remote_peer_id };
-                                ListItem::new(format!("[{}] {}: {}", timestamp, sender_name, message.message))
+                                let sender_name = if message.is_outgoing { 
+                                    "You".to_string()
+                                } else {
+                                    // Try to get the peer name from the peers map, fallback to peer ID
+                                    if let Ok(peer_id) = message.remote_peer_id.parse::<libp2p::PeerId>() {
+                                        self.peers.get(&peer_id)
+                                            .cloned()
+                                            .unwrap_or_else(|| message.remote_peer_id.clone())
+                                    } else {
+                                        message.remote_peer_id.clone()
+                                    }
+                                };
+                                ListItem::new(format!("[{}] {}: {}", timestamp, &sender_name, message.message))
                             })
                             .collect()
                     } else {
