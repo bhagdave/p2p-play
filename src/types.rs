@@ -556,26 +556,39 @@ impl ConversationManager {
         }
     }
 
-    pub fn add_message(&mut self, message: DirectMessage, local_peer_id: &str) -> bool {
-        let conversation_peer_id = if message.from_peer_id == local_peer_id {
-            // TODO: For outgoing messages, we need a peer name->ID mapping
-            // Using name as conversation ID for now
-            format!("name:{}", message.to_name)
-        } else {
-            message.from_peer_id.clone()
-        };
+    /// Generate a consistent conversation ID for messages between two peers
+    /// This ensures that messages in both directions use the same conversation ID
+    fn generate_conversation_id(local_peer_name: &str, remote_peer_name: &str) -> String {
+        let mut participants = vec![local_peer_name, remote_peer_name];
+        participants.sort();
+        format!("conv:{}:{}", participants[0], participants[1])
+    }
 
-        let conversation_peer_name = if message.from_peer_id == local_peer_id {
-            message.to_name.clone()
+    /// Public helper to generate conversation IDs (used by storage functions)
+    pub fn conversation_id_for_peers(local_peer_name: &str, remote_peer_name: &str) -> String {
+        Self::generate_conversation_id(local_peer_name, remote_peer_name)
+    }
+
+    pub fn add_message(&mut self, message: DirectMessage, local_peer_name: &str) -> bool {
+        let (conversation_id, conversation_peer_name) = if message.from_name == local_peer_name {
+            // Outgoing message: conversation is with the recipient
+            (
+                Self::generate_conversation_id(local_peer_name, &message.to_name),
+                message.to_name.clone(),
+            )
         } else {
-            message.from_name.clone()
+            // Incoming message: conversation is with the sender
+            (
+                Self::generate_conversation_id(local_peer_name, &message.from_name),
+                message.from_name.clone(),
+            )
         };
 
         let conversation = self
             .conversations
-            .entry(conversation_peer_id.clone())
+            .entry(conversation_id.clone())
             .or_insert_with(|| {
-                Conversation::new(conversation_peer_id.clone(), conversation_peer_name)
+                Conversation::new(conversation_id.clone(), conversation_peer_name)
             });
 
         conversation.add_message(message);

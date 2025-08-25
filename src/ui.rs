@@ -955,9 +955,9 @@ impl App {
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
         self.direct_messages.push(dm.clone());
 
-        let local_peer_id = self.local_peer_id.as_deref().unwrap_or("unknown");
+        let local_peer_name = self.local_peer_name.as_deref().unwrap_or("unknown");
         self.conversation_manager
-            .add_message(dm.clone(), local_peer_id);
+            .add_message(dm.clone(), local_peer_name);
 
         self.last_message_sender = Some(dm.from_name);
 
