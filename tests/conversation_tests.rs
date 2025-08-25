@@ -382,3 +382,126 @@ async fn test_conversation_manager_add_message() {
 
     println!("✅ Conversation manager add message test passed!");
 }
+
+#[tokio::test]
+async fn test_outgoing_messages_appear_in_conversations() {
+    // Setup test database
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let db_path = temp_dir.path().join("test_outgoing_messages.db");
+    unsafe {
+        env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+    }
+
+    // Initialize storage
+    p2p_play::storage::reset_db_connection_for_testing()
+        .await
+        .expect("Failed to reset database connection");
+    p2p_play::storage::ensure_stories_file_exists()
+        .await
+        .expect("Failed to initialize storage");
+
+    // Simulate the scenario where a user sends a message
+    // This is what should happen when using the msg command
+    let outgoing_msg = DirectMessage::new(
+        "local_peer_id".to_string(),
+        "Alice".to_string(),
+        "Bob".to_string(),
+        "Hey Bob, how are you?".to_string(),
+    );
+
+    // Save the outgoing message (this is what our fix should do)
+    save_direct_message(&outgoing_msg)
+        .await
+        .expect("Failed to save outgoing message");
+
+    // Simulate Bob responding
+    let incoming_msg = DirectMessage::new(
+        "bob_peer_id".to_string(),
+        "Bob".to_string(),
+        "Alice".to_string(),
+        "Hi Alice! I'm doing well, thanks!".to_string(),
+    );
+
+    save_direct_message(&incoming_msg)
+        .await
+        .expect("Failed to save incoming message");
+
+    // Debug: Check all direct messages in the database
+    {
+        let conn_arc = p2p_play::storage::core::get_db_connection().await.unwrap();
+        let conn = conn_arc.lock().await;
+        let mut stmt = conn.prepare("SELECT from_peer_id, from_name, to_name, message FROM direct_messages ORDER BY timestamp").unwrap();
+        let message_iter = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?
+            ))
+        }).unwrap();
+
+        println!("All messages in database:");
+        for msg in message_iter {
+            let (from_peer_id, from_name, to_name, message) = msg.unwrap();
+            println!("  {} ({}) -> {}: {}", from_name, from_peer_id, to_name, message);
+        }
+    }
+
+    // Debug: Check what get_conversations_with_unread_counts returns
+    {
+        let conversations_data = p2p_play::storage::get_conversations_with_unread_counts("Alice").await.unwrap();
+        println!("get_conversations_with_unread_counts returned:");
+        for (peer_id, peer_name, unread_count, last_activity) in &conversations_data {
+            println!("  peer_id: '{}', peer_name: '{}', unread: {}, last_activity: {}", 
+                     peer_id, peer_name, unread_count, last_activity);
+        }
+    }
+
+    // Load conversation manager from Alice's perspective
+    let conversation_manager = load_conversation_manager("Alice")
+        .await
+        .expect("Failed to load conversation manager");
+
+    // Debug: print all conversations
+    println!("Found {} conversations", conversation_manager.conversations.len());
+    for (peer_id, conversation) in &conversation_manager.conversations {
+        println!("Conversation with peer_id '{}', peer_name '{}', {} messages", 
+                 peer_id, conversation.peer_name, conversation.messages.len());
+        for msg in &conversation.messages {
+            println!("  Message: {} -> {}: {}", msg.from_name, msg.to_name, msg.message);
+        }
+    }
+
+    // Check if there's a conversation using Bob's peer_id
+    let bob_conversation = conversation_manager.conversations.get("bob_peer_id")
+        .or_else(|| conversation_manager.conversations.get("Bob"))
+        .or_else(|| conversation_manager.conversations.values().find(|conv| conv.peer_name == "Bob"));
+
+    assert!(
+        bob_conversation.is_some(),
+        "Alice should have a conversation with Bob"
+    );
+
+    let bob_conversation = bob_conversation.unwrap();
+    
+    // The conversation should have 2 messages: outgoing + incoming
+    assert_eq!(
+        bob_conversation.messages.len(),
+        2,
+        "Conversation should contain both outgoing and incoming messages"
+    );
+
+    // Check the outgoing message is there
+    let outgoing_found = bob_conversation.messages.iter().any(|msg| {
+        msg.from_name == "Alice" && msg.to_name == "Bob" && msg.message == "Hey Bob, how are you?"
+    });
+    assert!(outgoing_found, "Outgoing message from Alice should be in conversation");
+
+    // Check the incoming message is there
+    let incoming_found = bob_conversation.messages.iter().any(|msg| {
+        msg.from_name == "Bob" && msg.to_name == "Alice" && msg.message == "Hi Alice! I'm doing well, thanks!"
+    });
+    assert!(incoming_found, "Incoming message from Bob should be in conversation");
+
+    println!("✅ Outgoing messages properly appear in conversations!");
+}

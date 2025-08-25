@@ -1082,13 +1082,19 @@ pub async fn load_conversation_messages(
         r#"
         SELECT from_peer_id, from_name, to_name, message, timestamp
         FROM direct_messages
-        WHERE (from_peer_id = ? AND to_name = ?) OR (from_name = ? AND to_name = ?)
+        WHERE 
+            (from_peer_id = ? AND to_name = ?) OR 
+            (from_name = ? AND to_name = ?) OR
+            (? LIKE 'name:%' AND (
+                (from_name = ? AND to_name = SUBSTR(?, 6)) OR
+                (from_name = SUBSTR(?, 6) AND to_name = ?)
+            ))
         ORDER BY timestamp ASC
         "#,
     )?;
 
     let message_iter = stmt.query_map(
-        [peer_id, local_peer_name, peer_id, local_peer_name],
+        [peer_id, local_peer_name, peer_id, local_peer_name, peer_id, local_peer_name, peer_id, peer_id, local_peer_name],
         |row| {
             Ok(crate::types::DirectMessage {
                 from_peer_id: row.get(0)?,
@@ -1142,30 +1148,59 @@ pub async fn get_conversations_with_unread_counts(
     let mut stmt = conn.prepare(
         r#"
         SELECT 
-            CASE 
-                WHEN from_name = ? THEN to_name 
-                ELSE from_name 
-            END as peer_name,
-            CASE 
-                WHEN from_name = ? THEN from_peer_id 
-                ELSE from_peer_id 
-            END as peer_id,
-            COUNT(CASE WHEN is_read = 0 AND from_name != ? THEN 1 END) as unread_count,
-            MAX(timestamp) as last_activity
-        FROM direct_messages
-        WHERE from_name = ? OR to_name = ?
-        GROUP BY peer_name, peer_id
+            peer_name,
+            peer_id,
+            unread_count,
+            last_activity
+        FROM (
+            SELECT 
+                CASE 
+                    WHEN from_name = ? THEN to_name 
+                    ELSE from_name 
+                END as peer_name,
+                CASE 
+                    WHEN from_name = ? THEN 
+                        COALESCE(
+                            (SELECT DISTINCT from_peer_id FROM direct_messages d2 
+                             WHERE d2.from_name = dm.to_name AND d2.to_name = ? LIMIT 1),
+                            'name:' || to_name
+                        )
+                    ELSE from_peer_id 
+                END as peer_id,
+                COUNT(CASE WHEN is_read = 0 AND from_name != ? THEN 1 END) as unread_count,
+                MAX(timestamp) as last_activity
+            FROM direct_messages dm
+            WHERE from_name = ? OR to_name = ?
+            GROUP BY 
+                CASE 
+                    WHEN from_name = ? THEN to_name 
+                    ELSE from_name 
+                END,
+                CASE 
+                    WHEN from_name = ? THEN 
+                        COALESCE(
+                            (SELECT DISTINCT from_peer_id FROM direct_messages d2 
+                             WHERE d2.from_name = dm.to_name AND d2.to_name = ? LIMIT 1),
+                            'name:' || to_name
+                        )
+                    ELSE from_peer_id 
+                END
+        )
         ORDER BY last_activity DESC
         "#,
     )?;
 
     let conversation_iter = stmt.query_map(
         [
-            local_peer_name,
-            local_peer_name,
-            local_peer_name,
-            local_peer_name,
-            local_peer_name,
+            local_peer_name,  // First peer_name CASE condition
+            local_peer_name,  // First peer_id CASE condition
+            local_peer_name,  // Subquery in peer_id CASE
+            local_peer_name,  // Unread count condition
+            local_peer_name,  // First WHERE condition
+            local_peer_name,  // Second WHERE condition
+            local_peer_name,  // Second peer_name CASE condition (in GROUP BY)
+            local_peer_name,  // Second peer_id CASE condition (in GROUP BY)
+            local_peer_name,  // Second subquery in peer_id CASE (in GROUP BY)
         ],
         |row| {
             Ok((

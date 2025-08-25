@@ -8,7 +8,7 @@ use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, filter_stories_by_channel,
     filter_stories_by_recent_days, load_bootstrap_config, load_node_description,
     mark_story_as_read, publish_story, read_channels, read_local_stories, read_subscribed_channels,
-    read_unsubscribed_channels, save_bootstrap_config, save_local_peer_name, save_node_description,
+    read_unsubscribed_channels, save_bootstrap_config, save_direct_message, save_local_peer_name, save_node_description,
     search_stories, subscribe_to_channel, unsubscribe_from_channel,
 };
 use crate::types::{
@@ -756,6 +756,18 @@ pub async fn handle_direct_message_with_relay(
                     .request_response
                     .send_request(&target_peer_id, direct_msg_request.clone());
 
+                let outgoing_msg = DirectMessage {
+                    from_peer_id: direct_msg_request.from_peer_id,
+                    from_name: direct_msg_request.from_name,
+                    to_name: direct_msg_request.to_name,
+                    message: direct_msg_request.message,
+                    timestamp: direct_msg_request.timestamp,
+                };
+
+                if let Err(e) = save_direct_message(&outgoing_msg).await {
+                    ui_logger.log(format!("⚠️ Failed to save outgoing message to database: {}", e));
+                }
+
                 ui_logger.log(format!(
                     "📨 Direct message sent to {to_name} (request_id: {request_id:?})"
                 ));
@@ -783,7 +795,7 @@ pub async fn handle_direct_message_with_relay(
                         dm_config,
                         pending_messages,
                         ui_logger,
-                    );
+                    ).await;
                     return;
                 };
 
@@ -814,7 +826,7 @@ pub async fn handle_direct_message_with_relay(
             dm_config,
             pending_messages,
             ui_logger,
-        );
+        ).await;
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
     }
@@ -847,6 +859,9 @@ async fn try_relay_delivery(
             // Broadcast the relay message via floodsub
             match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
                 Ok(()) => {
+                    if let Err(e) = save_direct_message(&direct_msg).await {
+                        ui_logger.log(format!("⚠️ Failed to save outgoing message to database: {}", e));
+                    }
                     ui_logger.log(format!("✅ Message sent to {to_name} via relay network"));
                     true
                 }
@@ -881,7 +896,7 @@ async fn try_relay_delivery(
     }
 }
 
-fn queue_message_for_retry(
+async fn queue_message_for_retry(
     from_name: &str,
     to_name: &str,
     message: &str,
@@ -911,6 +926,14 @@ fn queue_message_for_retry(
             .as_secs(),
     };
 
+    let outgoing_msg = DirectMessage {
+        from_peer_id: direct_msg_request.from_peer_id.clone(),
+        from_name: direct_msg_request.from_name.clone(),
+        to_name: direct_msg_request.to_name.clone(),
+        message: direct_msg_request.message.clone(),
+        timestamp: direct_msg_request.timestamp,
+    };
+
     let pending_msg = PendingDirectMessage::new(
         target_peer_id,
         to_name.to_string(),
@@ -920,6 +943,10 @@ fn queue_message_for_retry(
     );
 
     if let Ok(mut queue) = pending_messages.lock() {
+        if let Err(e) = save_direct_message(&outgoing_msg).await {
+            ui_logger.log(format!("⚠️ Failed to save queued message to database: {}", e));
+        }
+
         queue.push(pending_msg);
         ui_logger.log(format!("Message for {to_name} added to retry queue"));
     } else {
