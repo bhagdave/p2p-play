@@ -97,6 +97,16 @@ pub struct DirectMessage {
     pub to_name: String,
     pub message: String,
     pub timestamp: u64,
+    pub is_outgoing: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Conversation {
+    pub peer_id: String,
+    pub peer_name: String,
+    pub messages: Vec<DirectMessage>,
+    pub unread_count: usize,
+    pub last_activity: u64, // timestamp
 }
 
 /// Encrypted message for relay delivery
@@ -516,6 +526,7 @@ impl DirectMessage {
             to_name,
             message,
             timestamp,
+            is_outgoing: false,
         }
     }
 }

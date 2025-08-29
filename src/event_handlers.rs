@@ -953,6 +953,7 @@ pub async fn handle_request_response_event(
                             to_name: request.to_name.clone(),
                             message: request.message.clone(),
                             timestamp: request.timestamp,
+                            is_outgoing: false,
                         })
                     } else {
                         None

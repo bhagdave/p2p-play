@@ -1009,6 +1009,7 @@ async fn try_relay_delivery(
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
+        is_outgoing: true,
     };
 
     // Create and broadcast relay message
