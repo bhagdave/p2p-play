@@ -1051,6 +1051,25 @@ pub async fn read_channel_subscriptions() -> StorageResult<ChannelSubscriptions>
     Ok(subscriptions)
 }
 
+pub async fn save_direct_message(message: &crate::types::DirectMessage) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+    let is_read = message.is_outgoing; // Outgoing messages are considered read by default
+
+    conn.execute(
+        "INSERT INTO direct_messages (local_peer_id, remote_peer_id, message, timestamp, is_outgoing, is_read) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            &message.from_peer_id,
+            &message.message,
+            &message.timestamp.to_string(),
+            &utils::rust_bool_to_db(message.is_outgoing),
+            &utils::rust_bool_to_db(is_read), 
+        ],
+    )?;
+
+    Ok(())
+}
+
 pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
