@@ -724,6 +724,15 @@ impl EventProcessor {
                 debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
             }
             ActionResult::DirectMessageReceived(direct_message) => {
+                if let Err(e) = crate::storage::save_direct_message(&direct_message).await {
+                    self.error_logger
+                        .log_error(&format!("Failed to save received direct message: {e}"));
+                } else {
+                    debug!(
+                        "Saved received direct message from {}",
+                        direct_message.from_peer_id
+                    );
+                }
                 if let Err(e) = self.ui_sender.send(AppEvent::DirectMessage(direct_message)) {
                     self.error_logger
                         .log_error(&format!("Failed to send direct message to UI: {e}"));
