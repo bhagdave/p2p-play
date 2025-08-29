@@ -1057,7 +1057,7 @@ pub async fn save_direct_message(message: &crate::types::DirectMessage) -> Stora
     let is_read = message.is_outgoing; // Outgoing messages are considered read by default
 
     conn.execute(
-        "INSERT INTO direct_messages (local_peer_id, remote_peer_id, message, timestamp, is_outgoing, is_read) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO direct_messages (remote_peer_id, message, timestamp, is_outgoing, is_read) VALUES (?, ?, ?, ?, ?)",
         [
             &message.from_peer_id,
             &message.message,
