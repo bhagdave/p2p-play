@@ -333,6 +333,7 @@ async fn test_story_sync_serialization_edge_cases() {
     // Empty stories list
     let empty_sync_response = StorySyncResponse {
         stories: vec![],
+        channels: vec![],
         from_peer_id: "peer".to_string(),
         from_name: "name".to_string(),
         sync_timestamp: current_timestamp(),
@@ -358,6 +359,7 @@ async fn test_story_sync_serialization_edge_cases() {
 
     let large_sync_response = StorySyncResponse {
         stories: many_stories.clone(),
+        channels: vec![],
         from_peer_id: "peer".to_string(),
         from_name: "name".to_string(),
         sync_timestamp: current_timestamp(),
@@ -383,6 +385,7 @@ async fn test_story_sync_serialization_edge_cases() {
 
     let huge_sync_response = StorySyncResponse {
         stories: vec![huge_story],
+        channels: vec![],
         from_peer_id: "peer".to_string(),
         from_name: "name".to_string(),
         sync_timestamp: current_timestamp(),
@@ -559,6 +562,7 @@ async fn test_large_json_performance() {
 
     let large_response = StorySyncResponse {
         stories: large_stories,
+        channels: vec![],
         from_peer_id: "performance_test_peer".to_string(),
         from_name: "Performance Tester".to_string(),
         sync_timestamp: current_timestamp(),
@@ -646,4 +650,101 @@ async fn test_backwards_compatibility_serialization() {
     let future_story = future_story.unwrap();
     assert_eq!(future_story.name, "Future Story");
     assert_eq!(future_story.channel, "future_channel");
+}
+
+#[tokio::test]
+async fn test_story_sync_response_backward_compatibility() {
+    // Test that the enhanced StorySyncResponse maintains backward compatibility
+
+    // Test old format StorySyncResponse (without channels field)
+    let old_response_json = r#"{
+        "stories": [
+            {
+                "id": 1,
+                "name": "Test Story",
+                "header": "Test Header",
+                "body": "Test Body",
+                "public": true,
+                "channel": "general",
+                "created_at": 1234567890
+            }
+        ],
+        "from_peer_id": "test_peer_123",
+        "from_name": "TestPeer",
+        "sync_timestamp": 1234567890
+    }"#;
+
+    // Should deserialize successfully with default empty channels field
+    let response: Result<StorySyncResponse, _> = serde_json::from_str(old_response_json);
+    assert!(response.is_ok());
+
+    let response = response.unwrap();
+    assert_eq!(response.stories.len(), 1);
+    assert_eq!(response.channels.len(), 0); // Should default to empty
+    assert_eq!(response.from_peer_id, "test_peer_123");
+    assert_eq!(response.from_name, "TestPeer");
+
+    // Test new format StorySyncResponse (with channels field)
+    let new_response_json = r#"{
+        "stories": [
+            {
+                "id": 1,
+                "name": "Test Story",
+                "header": "Test Header",
+                "body": "Test Body",
+                "public": true,
+                "channel": "general",
+                "created_at": 1234567890
+            }
+        ],
+        "channels": [
+            {
+                "name": "general",
+                "description": "General discussion",
+                "created_by": "admin",
+                "created_at": 1234567890
+            }
+        ],
+        "from_peer_id": "test_peer_123",
+        "from_name": "TestPeer",
+        "sync_timestamp": 1234567890
+    }"#;
+
+    let new_response: Result<StorySyncResponse, _> = serde_json::from_str(new_response_json);
+    assert!(new_response.is_ok());
+
+    let new_response = new_response.unwrap();
+    assert_eq!(new_response.stories.len(), 1);
+    assert_eq!(new_response.channels.len(), 1);
+    assert_eq!(new_response.channels[0].name, "general");
+    assert_eq!(new_response.channels[0].description, "General discussion");
+
+    // Test that new format can be serialized and deserialized
+    let test_response = StorySyncResponse {
+        stories: vec![Story {
+            id: 1,
+            name: "Test".to_string(),
+            header: "Header".to_string(),
+            body: "Body".to_string(),
+            public: true,
+            channel: "tech".to_string(),
+            created_at: 1000,
+            auto_share: None,
+        }],
+        channels: vec![Channel {
+            name: "tech".to_string(),
+            description: "Technology".to_string(),
+            created_by: "creator".to_string(),
+            created_at: 1000,
+        }],
+        from_peer_id: "peer123".to_string(),
+        from_name: "Peer".to_string(),
+        sync_timestamp: 2000,
+    };
+
+    let json = serde_json::to_string(&test_response).unwrap();
+    let deserialized: StorySyncResponse = serde_json::from_str(&json).unwrap();
+    assert_eq!(deserialized.stories.len(), 1);
+    assert_eq!(deserialized.channels.len(), 1);
+    assert_eq!(deserialized, test_response);
 }

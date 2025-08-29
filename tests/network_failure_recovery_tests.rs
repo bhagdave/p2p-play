@@ -847,7 +847,9 @@ async fn test_bootstrap_failure_recovery() {
         .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
         .unwrap();
     let bootstrap_addr = loop {
-        if let SwarmEvent::NewListenAddr { address, .. } = bootstrap_peer.select_next_some().await { break address }
+        if let SwarmEvent::NewListenAddr { address, .. } = bootstrap_peer.select_next_some().await {
+            break address;
+        }
     };
 
     // Add bootstrap peer to swarm's Kademlia routing table

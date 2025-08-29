@@ -273,6 +273,35 @@ pub async fn handle_input_event(
                 establish_direct_connection(swarm, addr, ui_logger).await;
             }
         }
+        cmd if cmd.starts_with("compose ") => {
+            // Handle compose command to enter message composition mode
+            if let Some(peer_name) = cmd.strip_prefix("compose ") {
+                let peer_name = peer_name.trim();
+                if peer_name.is_empty() {
+                    ui_logger.log("Usage: compose <peer_alias>".to_string());
+                } else {
+                    // Check if peer exists
+                    let peer_exists = peer_names.values().any(|name| name == peer_name);
+                    if peer_exists {
+                        return Some(crate::types::ActionResult::EnterMessageComposition(
+                            peer_name.to_string(),
+                        ));
+                    } else {
+                        ui_logger.log(format!(
+                            "❌ Peer '{}' not found. Available peers: {}",
+                            peer_name,
+                            peer_names
+                                .values()
+                                .map(|s| s.as_str())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ));
+                    }
+                }
+            } else {
+                ui_logger.log("Usage: compose <peer_alias>".to_string());
+            }
+        }
         cmd if cmd.starts_with("msg ") => {
             handle_direct_message_with_relay(
                 cmd,
@@ -776,7 +805,7 @@ pub async fn handle_kad_event(
                     "Kademlia bootstrap failed: {:?}",
                     e
                 );
-                ui_logger.log(format!("DHT bootstrap failed: {e:?}"));
+                // DHT bootstrap errors are logged to error file only, not shown in UI
             }
             libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
                 debug!(
@@ -868,7 +897,7 @@ pub async fn handle_request_response_event(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
-) {
+) -> Option<DirectMessage> {
     match event {
         request_response::Event::Message { peer, message, .. } => {
             match message {
@@ -907,23 +936,31 @@ pub async fn handle_request_response_event(
                                 e
                             );
                         }
-                        return;
+                        return None;
                     }
 
                     // Handle incoming direct message request
-                    if let Some(local_name) = local_peer_name {
-                        if &request.to_name == local_name {
-                            // Regular direct message
-                            ui_logger.log(format!(
-                                "📨 Direct message from {}: {}",
-                                request.from_name, request.message
-                            ));
-                        }
-                    }
+                    let should_process = if let Some(local_name) = local_peer_name {
+                        &request.to_name == local_name
+                    } else {
+                        false
+                    };
+
+                    let direct_message = if should_process {
+                        Some(DirectMessage {
+                            from_peer_id: request.from_peer_id.clone(),
+                            from_name: request.from_name.clone(),
+                            to_name: request.to_name.clone(),
+                            message: request.message.clone(),
+                            timestamp: request.timestamp,
+                        })
+                    } else {
+                        None
+                    };
 
                     // Send response acknowledging receipt
                     let response = DirectMessageResponse {
-                        received: true,
+                        received: should_process,
                         timestamp: std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -940,6 +977,10 @@ pub async fn handle_request_response_event(
                             "direct_message",
                             &format!("Failed to send response to {peer}: {e:?}"),
                         );
+                    }
+
+                    if let Some(dm) = direct_message {
+                        return Some(dm);
                     }
                 }
                 request_response::Message::Response { response, .. } => {
@@ -995,6 +1036,7 @@ pub async fn handle_request_response_event(
             debug!("Response sent to {peer}");
         }
     }
+    None
 }
 
 /// Handle direct message events
@@ -1248,14 +1290,53 @@ pub async fn handle_story_sync_event(
                     {
                         Ok(filtered_stories) => {
                             debug!(
-                                "Sending {} stories to peer {}",
+                                "Sync request from {} - sending {} stories (channels: {:?}) since timestamp {}",
+                                peer,
                                 filtered_stories.len(),
-                                peer
+                                filtered_stories
+                                    .iter()
+                                    .map(|s| &s.channel)
+                                    .collect::<std::collections::HashSet<_>>(),
+                                request.last_sync_timestamp
                             );
 
                             let story_count = filtered_stories.len();
+
+                            // Get ALL available channels for discovery, not just channels associated with the stories
+                            let channels = match crate::storage::read_channels().await {
+                                Ok(all_channels) => {
+                                    debug!(
+                                        "Sending {} total channels for peer discovery during sync response",
+                                        all_channels.len()
+                                    );
+                                    all_channels
+                                }
+                                Err(e) => {
+                                    debug!("Failed to read all channels for sync: {}", e);
+                                    // Fallback to story-specific channels if reading all channels fails
+                                    match crate::storage::get_channels_for_stories(
+                                        &filtered_stories,
+                                    )
+                                    .await
+                                    {
+                                        Ok(story_channels) => {
+                                            debug!(
+                                                "Fallback: using {} story-specific channels",
+                                                story_channels.len()
+                                            );
+                                            story_channels
+                                        }
+                                        Err(e2) => {
+                                            debug!("Failed fallback channel lookup: {}", e2);
+                                            Vec::new() // Final fallback to maintain functionality
+                                        }
+                                    }
+                                }
+                            };
+
                             let response = crate::network::StorySyncResponse {
                                 stories: filtered_stories,
+                                channels,
                                 from_peer_id: PEER_ID.to_string(),
                                 from_name: local_peer_name
                                     .as_deref()
@@ -1307,6 +1388,7 @@ pub async fn handle_story_sync_event(
                             // Send empty response to indicate error
                             let response = crate::network::StorySyncResponse {
                                 stories: Vec::new(),
+                                channels: Vec::new(), // No stories means no channels to share
                                 from_peer_id: PEER_ID.to_string(),
                                 from_name: local_peer_name
                                     .as_deref()
@@ -1359,6 +1441,53 @@ pub async fn handle_story_sync_event(
                         response.from_name
                     ));
 
+                    // Process discovered channels first (before stories for logical order)
+                    let mut discovered_channels_count = 0;
+                    debug!(
+                        "Received {} channels from {}: {:?}",
+                        response.channels.len(),
+                        response.from_name,
+                        response
+                            .channels
+                            .iter()
+                            .map(|c| &c.name)
+                            .collect::<Vec<_>>()
+                    );
+
+                    if !response.channels.is_empty() {
+                        match crate::storage::process_discovered_channels(
+                            &response.channels,
+                            &response.from_name,
+                        )
+                        .await
+                        {
+                            Ok(count) => {
+                                discovered_channels_count = count;
+                                debug!(
+                                    "Channel discovery result: {} new channels from {} (out of {} total channels received)",
+                                    count,
+                                    response.from_name,
+                                    response.channels.len()
+                                );
+                                if count > 0 {
+                                    ui_logger.log(format!(
+                                        "📺 Discovered {} new channels from {}",
+                                        count, response.from_name
+                                    ));
+                                }
+                            }
+                            Err(e) => {
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "story_sync",
+                                    "Failed to process discovered channels from {}: {}",
+                                    response.from_name,
+                                    e
+                                );
+                            }
+                        }
+                    }
+
                     // Save received stories (with deduplication handled by save_received_story)
                     let mut saved_count = 0;
                     for story in response.stories {
@@ -1383,12 +1512,30 @@ pub async fn handle_story_sync_event(
                         }
                     }
 
-                    ui_logger.log(format!(
-                        "{} Saved {} new stories from {}",
-                        Icons::checkmark(),
-                        saved_count,
-                        response.from_name
-                    ));
+                    // Provide comprehensive sync summary
+                    if discovered_channels_count > 0 && saved_count > 0 {
+                        ui_logger.log(format!(
+                            "{} Sync complete: {} stories, {} channels from {}",
+                            Icons::checkmark(),
+                            saved_count,
+                            discovered_channels_count,
+                            response.from_name
+                        ));
+                    } else if saved_count > 0 {
+                        ui_logger.log(format!(
+                            "{} Saved {} new stories from {}",
+                            Icons::checkmark(),
+                            saved_count,
+                            response.from_name
+                        ));
+                    } else if discovered_channels_count > 0 {
+                        ui_logger.log(format!(
+                            "{} Discovered {} channels from {} (no new stories)",
+                            Icons::checkmark(),
+                            discovered_channels_count,
+                            response.from_name
+                        ));
+                    }
                 }
             }
         }
@@ -1801,7 +1948,7 @@ pub async fn handle_event(
             handle_ping_event(ping_event, error_logger).await;
         }
         EventType::RequestResponseEvent(request_response_event) => {
-            handle_request_response_event(
+            if let Some(direct_message) = handle_request_response_event(
                 request_response_event,
                 swarm,
                 local_peer_name,
@@ -1809,7 +1956,10 @@ pub async fn handle_event(
                 error_logger,
                 pending_messages,
             )
-            .await;
+            .await
+            {
+                return Some(ActionResult::DirectMessageReceived(direct_message));
+            }
         }
         EventType::NodeDescriptionEvent(node_desc_event) => {
             handle_node_description_event(

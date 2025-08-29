@@ -57,6 +57,9 @@ pub struct StorySyncResponse {
     pub from_peer_id: String,
     pub from_name: String,
     pub sync_timestamp: u64,
+    /// Channels associated with the stories being shared (for retroactive discovery)
+    #[serde(default)]
+    pub channels: Vec<crate::types::Channel>,
 }
 
 /// Application handshake protocol constants

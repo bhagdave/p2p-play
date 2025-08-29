@@ -2,6 +2,52 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.5] - 2025-08-24
+
+### Added
+- **Enhanced Input Experience for Direct Messaging**: Comprehensive enhancement to direct messaging with shortcuts and auto-completion for improved productivity
+  - **Quick Reply Functionality**: Press `r` in normal mode to instantly reply to the last message sender, eliminating need to retype peer names for ongoing conversations
+  - **Auto-completion for Peer Names**: Press `Tab` while typing `msg <peer>` to auto-complete peer names with smart matching and partial matches
+  - **Input History Navigation**: Use `Up`/`Down` arrows in editing mode to navigate through command history with last 50 commands and duplicate prevention
+  - **Multi-line Message Composition**: New `compose <peer>` command enters dedicated composition mode with `m` shortcut, support for multi-line messages with `Enter` for new lines and `Ctrl+Enter` to send
+  - **Enhanced Keyboard Shortcuts**: `r` (quick reply), `m` (message composition), `Tab` (auto-complete), `Ctrl+L` (clear input), `Ctrl+C` (cancel input), `Up`/`Down` (history navigation)
+  - **Visual Feedback**: Color-coded input modes with contextual prompts showing current mode and available actions
+  - **Improved User Experience**: Multiple efficient options for messaging with reduced repetitive typing and intuitive shortcuts for common workflows
+  - Added comprehensive test suite with 7 test cases covering all enhanced messaging functionality
+  - Updated help text to document new messaging features and keyboard shortcuts
+  - Fixes issue #223
+
+## [0.10.4] - 2025-08-23
+
+### Fixed
+- **Direct Message Time Format**: Fixed time display in the dedicated Messages panel where timestamps were showing as raw numbers instead of proper HH:MM format
+  - Updated time formatting to convert Unix timestamps to readable HH:MM format
+  - Messages now display time properly (e.g., [14:32] instead of [830609])
+  - Improved message readability in the Messages panel
+
+## [0.10.3] - 2025-08-23
+
+### Added
+- **Channel Synchronization During Story Sync**: Implemented automatic channel discovery during story synchronization to resolve issue where nodes joining the network after channel creation cannot discover existing channels
+  - Enhanced `StorySyncResponse` with channels field using `#[serde(default)]` for backward compatibility with existing nodes
+  - Added `get_channels_for_stories()` storage function to efficiently extract unique channel metadata for shared stories
+  - Added `process_discovered_channels()` storage function to process and save discovered channels with validation and deduplication
+  - Enhanced story sync flow to include channel metadata when responding to sync requests and automatically process discovered channels when receiving responses
+  - Provides seamless user experience where running `ls s all` automatically discovers and saves available channels from other peers
+  - Users receive clear notifications about newly discovered channels: `📺 Discovered N new channels from PeerName`
+  - Newly discovered channels immediately appear in `ls ch available` and can be subscribed to with `sub <channel>`
+  - Backward compatible implementation that works with both old and new protocol versions
+  - Network efficient design that piggybacks on existing story sync protocol without additional network requests
+  - Comprehensive test coverage including unit tests for new storage functions and backward compatibility validation
+  - Fixes issue #217
+
+## [0.10.2] - 2025-08-22
+
+### Fixed
+- **Connection Error UI Clutter**: All connection and bootstrap errors are now suppressed from the TUI interface by default
+  - The UI no longer displays any connection or bootstrap errors, regardless of error type or message
+  - All such errors are still logged to the `errors.log` file for debugging purposes, keeping the UI clean
+
 ## [0.10.1] - 2025-08-21
 
 ### Fixed
