@@ -985,12 +985,34 @@ pub async fn handle_request_response_event(
                     }
                 }
                 request_response::Message::Response { response, .. } => {
-                    // Handle response to our direct message request
                     if response.received {
                         debug!("Direct message was received by peer {peer}");
 
-                        // Remove successful message from retry queue
+                        // Save the outgoing message before removing it from queue
                         if let Ok(mut queue) = pending_messages.lock() {
+                            if let Some(pending_msg) = queue.iter().find(|msg| msg.target_peer_id == peer) {
+                                let outgoing_message = crate::types::DirectMessage {
+                                    from_peer_id: pending_msg.message.from_peer_id.clone(),
+                                    from_name: pending_msg.message.from_name.clone(),
+                                    to_name: pending_msg.message.to_name.clone(),
+                                    message: pending_msg.message.message.clone(),
+                                    timestamp: pending_msg.message.timestamp,
+                                    is_outgoing: true,
+                                };
+
+                                if let Err(e) = crate::storage::save_direct_message(&outgoing_message).await {
+                                    crate::log_network_error!(
+                                        error_logger,
+                                        "direct_message",
+                                        "Failed to save outgoing direct message: {}",
+                                        e
+                                    );
+                                } else {
+                                    debug!("Saved outgoing direct message to {}", peer);
+                                }
+                            }
+
+                            // Remove successful message from retry queue
                             queue.retain(|msg| msg.target_peer_id != peer);
                         }
 
