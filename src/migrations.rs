@@ -141,10 +141,13 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         CREATE TABLE IF NOT EXISTS direct_messages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             remote_peer_id TEXT NOT NULL,
+            to_peer_id TEXT NOT NULL,
             message TEXT NOT NULL,
             timestamp INTEGER NOT NULL,
             is_outgoing BOOLEAN NOT NULL,
-            is_read BOOLEAN NOT NULL DEFAULT 0
+            is_read BOOLEAN NOT NULL DEFAULT 0,
+            conversation_id INTEGER,
+            FOREIGN KEY (conversation_id) REFERENCES conversations(id)
         )
         "#,
         [],
@@ -162,6 +165,17 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         r#"
         CREATE INDEX IF NOT EXISTS idx_direct_messages_timestamp 
         ON direct_messages(timestamp DESC)
+        "#,
+        [],
+    )?;
+
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS conversations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            peer_id TEXT NOT NULL UNIQUE,
+            peer_name TEXT NOT NULL
+        )
         "#,
         [],
     )?;
