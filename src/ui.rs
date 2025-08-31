@@ -1296,7 +1296,7 @@ impl App {
                 .highlight_style(Style::default().fg(Color::Yellow));
             f.render_widget(peers_list, side_chunks[0]);
 
-            // Direct Messages panel
+            // Conversations panel
             let message_items: Vec<ListItem> = self
                 .direct_messages
                 .iter()
@@ -1334,9 +1334,9 @@ impl App {
 
             // Create title with unread indicator
             let message_title = if self.unread_message_count > 0 {
-                format!("Messages [{}]", self.unread_message_count)
+                format!("Conversations [{}]", self.unread_message_count)
             } else {
-                "Messages".to_string()
+                "Conversations".to_string()
             };
 
             let messages_list = List::new(message_items)
