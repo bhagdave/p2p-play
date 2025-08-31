@@ -1007,13 +1007,13 @@ pub async fn handle_request_response_event(
                                         "Failed to save outgoing direct message: {}",
                                         e
                                     );
-                                } else {
-                                    debug!("Saved outgoing direct message to {}", peer);
                                 }
                             }
 
                             // Remove successful message from retry queue
+                            let before_count = queue.len();
                             queue.retain(|msg| msg.target_peer_id != peer);
+                            let after_count = queue.len();
                         }
 
                         ui_logger.log(format!("{} Message delivered to {}", Icons::check(), peer));
