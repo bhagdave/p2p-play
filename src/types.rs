@@ -94,6 +94,7 @@ pub struct PeerName {
 pub struct DirectMessage {
     pub from_peer_id: String,
     pub from_name: String,
+    pub to_peer_id: String,
     pub to_name: String,
     pub message: String,
     pub timestamp: u64,
@@ -514,7 +515,7 @@ impl PeerName {
 }
 
 impl DirectMessage {
-    pub fn new(from_peer_id: String, from_name: String, to_name: String, message: String) -> Self {
+    pub fn new(from_peer_id: String, from_name: String, to_peer_id: String, to_name: String, message: String) -> Self {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -523,6 +524,7 @@ impl DirectMessage {
         Self {
             from_peer_id,
             from_name,
+            to_peer_id,
             to_name,
             message,
             timestamp,

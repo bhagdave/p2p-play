@@ -921,6 +921,7 @@ pub async fn handle_direct_message_with_relay(
                 let outgoing_message = crate::types::DirectMessage {
                     from_peer_id: direct_msg_request.from_peer_id.clone(),
                     from_name: direct_msg_request.from_name.clone(),
+                    to_peer_id: target_peer_id.to_string(),
                     to_name: direct_msg_request.to_name.clone(),
                     message: direct_msg_request.message.clone(),
                     timestamp: direct_msg_request.timestamp,
@@ -1020,6 +1021,7 @@ async fn try_relay_delivery(
     let direct_msg = DirectMessage {
         from_peer_id: PEER_ID.to_string(),
         from_name: from_name.to_string(),
+        to_peer_id: target_peer_id.to_string(),
         to_name: to_name.to_string(),
         message: message.to_string(),
         timestamp: std::time::SystemTime::now()

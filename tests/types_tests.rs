@@ -297,12 +297,14 @@ fn test_direct_message_creation() {
     let dm = DirectMessage::new(
         "peer123".to_string(),
         "Alice".to_string(),
+        "peer456".to_string(),
         "Bob".to_string(),
         "Hello Bob!".to_string(),
     );
 
     assert_eq!(dm.from_peer_id, "peer123");
     assert_eq!(dm.from_name, "Alice");
+    assert_eq!(dm.to_peer_id, "peer456");
     assert_eq!(dm.to_name, "Bob");
     assert_eq!(dm.message, "Hello Bob!");
     assert!(dm.timestamp > 0);
@@ -313,6 +315,7 @@ fn test_direct_message_serialization() {
     let dm = DirectMessage::new(
         "peer456".to_string(),
         "Charlie".to_string(),
+        "peer789".to_string(),
         "David".to_string(),
         "Test message with special chars: 🌍!".to_string(),
     );
@@ -328,23 +331,29 @@ fn test_direct_message_equality() {
     let dm1 = DirectMessage {
         from_peer_id: "peer1".to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: "peer2".to_string(),
         to_name: "Bob".to_string(),
         message: "Hello".to_string(),
         timestamp: 1234567890,
+        is_outgoing: false,
     };
     let dm2 = DirectMessage {
         from_peer_id: "peer1".to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: "peer2".to_string(),
         to_name: "Bob".to_string(),
         message: "Hello".to_string(),
         timestamp: 1234567890,
+        is_outgoing: false,
     };
     let dm3 = DirectMessage {
         from_peer_id: "peer1".to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: "peer2".to_string(),
         to_name: "Bob".to_string(),
         message: "Different message".to_string(),
         timestamp: 1234567890,
+        is_outgoing: false,
     };
 
     assert_eq!(dm1, dm2);
@@ -576,6 +585,7 @@ fn test_direct_message_new() {
     let dm = DirectMessage::new(
         from_peer_id.clone(),
         from_name.clone(),
+        "peer456".to_string(),
         to_name.clone(),
         message.clone(),
     );
@@ -622,6 +632,7 @@ fn test_event_type_variants_construction() {
     let direct_msg = DirectMessage::new(
         "peer123".to_string(),
         "Alice".to_string(),
+        "peer456".to_string(),
         "Bob".to_string(),
         "Hello".to_string(),
     );

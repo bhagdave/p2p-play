@@ -951,6 +951,7 @@ pub async fn handle_request_response_event(
                         Some(DirectMessage {
                             from_peer_id: request.from_peer_id.clone(),
                             from_name: request.from_name.clone(),
+                            to_peer_id: swarm.local_peer_id().to_string(),
                             to_name: request.to_name.clone(),
                             message: request.message.clone(),
                             timestamp: request.timestamp,
@@ -995,6 +996,7 @@ pub async fn handle_request_response_event(
                                 let outgoing_message = crate::types::DirectMessage {
                                     from_peer_id: pending_msg.message.from_peer_id.clone(),
                                     from_name: pending_msg.message.from_name.clone(),
+                                    to_peer_id: peer.to_string(),
                                     to_name: pending_msg.message.to_name.clone(),
                                     message: pending_msg.message.message.clone(),
                                     timestamp: pending_msg.message.timestamp,
@@ -2585,6 +2587,7 @@ mod tests {
         let direct_msg = DirectMessage::new(
             "peer123".to_string(),
             "Alice".to_string(),
+            "peer456".to_string(),
             "Bob".to_string(),
             "Test message".to_string(),
         );
