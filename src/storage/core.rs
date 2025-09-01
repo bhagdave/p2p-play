@@ -1051,23 +1051,72 @@ pub async fn read_channel_subscriptions() -> StorageResult<ChannelSubscriptions>
     Ok(subscriptions)
 }
 
-pub async fn save_direct_message(message: &crate::types::DirectMessage) -> StorageResult<()> {
+pub async fn save_direct_message(
+    message: &crate::types::DirectMessage,
+    peer_names: Option<&std::collections::HashMap<libp2p::PeerId, String>>,
+) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
     let is_read = message.is_outgoing; // Outgoing messages are considered read by default
 
+    // Determine the remote peer ID 
+    let remote_peer_id = if message.is_outgoing {
+        &message.to_peer_id
+    } else {
+        &message.from_peer_id
+    };
+
+    let conversation_id = create_or_find_conversation(&conn, remote_peer_id, peer_names)?;
+
     conn.execute(
-        "INSERT INTO direct_messages (remote_peer_id, message, timestamp, is_outgoing, is_read) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO direct_messages (remote_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?)",
         [
             &message.from_peer_id,
             &message.message,
             &message.timestamp.to_string(),
             &utils::rust_bool_to_db(message.is_outgoing),
-            &utils::rust_bool_to_db(is_read), 
+            &utils::rust_bool_to_db(is_read),
+            &conversation_id.to_string(),
         ],
     )?;
 
     Ok(())
+}
+
+fn create_or_find_conversation(
+    conn: &Connection,
+    peer_id: &str,
+    peer_names: Option<&std::collections::HashMap<libp2p::PeerId, String>>,
+) -> StorageResult<i64> {
+    let mut stmt = conn.prepare("SELECT id FROM conversations WHERE peer_id = ?")?;
+    let existing_id = stmt.query_row([peer_id], |row| row.get::<_, i64>(0));
+    
+    match existing_id {
+        Ok(id) => Ok(id),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            // Get the peer name from the peer_names map if available
+            let peer_name = if let Some(names) = peer_names {
+                // Try to parse peer_id as a PeerId and look it up
+                if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
+                    names.get(&parsed_peer_id).cloned().unwrap_or_else(|| peer_id.to_string())
+                } else {
+                    peer_id.to_string()
+                }
+            } else {
+                peer_id.to_string()
+            };
+
+            conn.execute(
+                "INSERT INTO conversations (peer_id, peer_name) VALUES (?, ?)",
+                [peer_id, &peer_name],
+            )?;
+            
+            // Get the ID of the newly created conversation
+            let new_id = conn.last_insert_rowid();
+            Ok(new_id)
+        }
+        Err(e) => Err(e.into()),
+    }
 }
 
 pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {

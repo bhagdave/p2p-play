@@ -893,6 +893,7 @@ pub async fn handle_peer_name_event(peer_name: PeerName) {
 pub async fn handle_request_response_event(
     event: request_response::Event<DirectMessageRequest, DirectMessageResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
+    peer_names: &HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
@@ -1000,7 +1001,7 @@ pub async fn handle_request_response_event(
                                     is_outgoing: true,
                                 };
 
-                                if let Err(e) = crate::storage::save_direct_message(&outgoing_message).await {
+                                if let Err(e) = crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await {
                                     crate::log_network_error!(
                                         error_logger,
                                         "direct_message",
@@ -1974,6 +1975,7 @@ pub async fn handle_event(
             if let Some(direct_message) = handle_request_response_event(
                 request_response_event,
                 swarm,
+                peer_names,
                 local_peer_name,
                 ui_logger,
                 error_logger,

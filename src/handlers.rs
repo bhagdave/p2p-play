@@ -927,7 +927,7 @@ pub async fn handle_direct_message_with_relay(
                     is_outgoing: true,
                 };
 
-                if let Err(e) = crate::storage::save_direct_message(&outgoing_message).await {
+                if let Err(e) = crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await {
                     ui_logger.log(format!("Failed to save outgoing message: {}", e));
                 } else {
                     ui_logger.log(format!("Saved outgoing message to {}", to_name));

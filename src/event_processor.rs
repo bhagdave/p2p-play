@@ -724,7 +724,7 @@ impl EventProcessor {
                 debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
             }
             ActionResult::DirectMessageReceived(direct_message) => {
-                if let Err(e) = crate::storage::save_direct_message(&direct_message).await {
+                if let Err(e) = crate::storage::save_direct_message(&direct_message, None).await {
                     self.error_logger
                         .log_error(&format!("Failed to save received direct message: {e}"));
                 } else {
