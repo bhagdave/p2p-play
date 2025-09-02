@@ -1069,9 +1069,10 @@ pub async fn save_direct_message(
     let conversation_id = create_or_find_conversation(&conn, remote_peer_id, peer_names)?;
 
     conn.execute(
-        "INSERT INTO direct_messages (remote_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT INTO direct_messages (remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             &message.from_peer_id,
+            &message.to_peer_id,
             &message.message,
             &message.timestamp.to_string(),
             &utils::rust_bool_to_db(message.is_outgoing),
@@ -1094,9 +1095,7 @@ fn create_or_find_conversation(
     match existing_id {
         Ok(id) => Ok(id),
         Err(rusqlite::Error::QueryReturnedNoRows) => {
-            // Get the peer name from the peer_names map if available
             let peer_name = if let Some(names) = peer_names {
-                // Try to parse peer_id as a PeerId and look it up
                 if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
                     names.get(&parsed_peer_id).cloned().unwrap_or_else(|| peer_id.to_string())
                 } else {
