@@ -1089,11 +1089,27 @@ fn create_or_find_conversation(
     peer_id: &str,
     peer_names: Option<&std::collections::HashMap<libp2p::PeerId, String>>,
 ) -> StorageResult<i64> {
-    let mut stmt = conn.prepare("SELECT id FROM conversations WHERE peer_id = ?")?;
-    let existing_id = stmt.query_row([peer_id], |row| row.get::<_, i64>(0));
+    let mut stmt = conn.prepare("SELECT id, peer_name FROM conversations WHERE peer_id = ?")?;
+    let existing_result = stmt.query_row([peer_id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    });
     
-    match existing_id {
-        Ok(id) => Ok(id),
+    match existing_result {
+        Ok((id, current_peer_name)) => {
+            if let Some(names) = peer_names {
+                if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
+                    if let Some(actual_name) = names.get(&parsed_peer_id) {
+                        if current_peer_name == peer_id || current_peer_name != *actual_name {
+                            conn.execute(
+                                "UPDATE conversations SET peer_name = ? WHERE id = ?",
+                                [actual_name, &id.to_string()],
+                            )?;
+                        }
+                    }
+                }
+            }
+            Ok(id)
+        }
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             let peer_name = if let Some(names) = peer_names {
                 if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
@@ -1110,7 +1126,6 @@ fn create_or_find_conversation(
                 [peer_id, &peer_name],
             )?;
             
-            // Get the ID of the newly created conversation
             let new_id = conn.last_insert_rowid();
             Ok(new_id)
         }
