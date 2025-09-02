@@ -225,6 +225,7 @@ impl EventProcessor {
                         }
                         AppEvent::DirectMessage(direct_message) => {
                             app.handle_direct_message(direct_message);
+                            app.refresh_conversations().await;
                             None
                         }
                         AppEvent::EnterMessageComposition { target_peer } => {

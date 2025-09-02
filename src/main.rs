@@ -64,6 +64,7 @@ async fn run_app() -> AppResult<()> {
     let mut app = match App::new() {
         Ok(mut app) => {
             app.update_local_peer_id(PEER_ID.to_string());
+            app.refresh_conversations().await;
             app
         }
         Err(e) => {

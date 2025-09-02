@@ -70,7 +70,7 @@ pub struct App {
     pub scroll_offset: usize,
     pub auto_scroll: bool, // Track if we should auto-scroll to bottom
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
-    pub direct_messages: Vec<DirectMessage>, // Store direct messages separately
+    pub conversations: Vec<crate::types::Conversation>, // Store conversations with status
     pub unread_message_count: usize,         // Track unread direct messages
     // Enhanced input features
     pub input_history: Vec<String>, // Command history for Up/Down navigation
@@ -167,7 +167,7 @@ impl App {
             scroll_offset: 0,
             auto_scroll: true, // Start with auto-scroll enabled
             network_health: None,
-            direct_messages: Vec::new(),
+            conversations: Vec::new(),
             unread_message_count: 0,
             // Enhanced input features
             input_history: Vec::new(),
@@ -896,14 +896,25 @@ impl App {
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
-        // Store the direct message in our dedicated storage
-        self.direct_messages.push(dm.clone());
-
-        // Update last message sender for quick reply
         self.last_message_sender = Some(dm.from_name);
+        
+        // Refresh conversations to show updated state
+        if let Ok(conversations) = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(crate::storage::get_conversations_with_status())
+        }) {
+            self.update_conversations(conversations);
+        }
+    }
 
-        // Increment unread count
-        self.unread_message_count += 1;
+    pub fn update_conversations(&mut self, conversations: Vec<crate::types::Conversation>) {
+        self.unread_message_count = conversations.iter().map(|c| c.unread_count).sum();
+        self.conversations = conversations;
+    }
+
+    pub async fn refresh_conversations(&mut self) {
+        if let Ok(conversations) = crate::storage::get_conversations_with_status().await {
+            self.update_conversations(conversations);
+        }
     }
 
     /// Try to auto-complete peer names for msg commands
@@ -1297,37 +1308,32 @@ impl App {
             f.render_widget(peers_list, side_chunks[0]);
 
             // Conversations panel
-            let message_items: Vec<ListItem> = self
-                .direct_messages
+            let conversation_items: Vec<ListItem> = self
+                .conversations
                 .iter()
-                .rev() // Show newest messages first
-                .take(10) // Limit to last 10 messages for display
-                .map(|dm| {
-                    // Sanitize content for safe display
-                    let sanitized_from_name = ContentSanitizer::sanitize_for_display(&dm.from_name);
-                    let sanitized_message = ContentSanitizer::sanitize_for_display(&dm.message);
+                .map(|conv| {
+                    let sanitized_peer_name = ContentSanitizer::sanitize_for_display(&conv.peer_name);
 
-                    // Format timestamp as HH:MM in local timezone
-                    let time_str = {
-                        let datetime = UNIX_EPOCH + Duration::from_secs(dm.timestamp);
+                    let time_str = if conv.last_activity > 0 {
+                        let datetime = UNIX_EPOCH + Duration::from_secs(conv.last_activity);
                         let local_datetime = DateTime::<Local>::from(datetime);
                         local_datetime.format("%H:%M").to_string()
+                    } else {
+                        "--:--".to_string()
                     };
 
-                    // Truncate message if too long
-                    let max_msg_len = 25; // Adjust based on panel width
-                    let display_message = if sanitized_message.len() > max_msg_len {
-                        format!("{}...", &sanitized_message[..max_msg_len])
+                    let unread_indicator = if conv.unread_count > 0 {
+                        format!(" ({})", conv.unread_count)
                     } else {
-                        sanitized_message
+                        String::new()
                     };
 
                     ListItem::new(format!(
-                        "{} {} [{}]: {}",
-                        Icons::envelope(),
-                        sanitized_from_name,
+                        "{} {} [{}]{}",
+                        Icons::speech(),
+                        sanitized_peer_name,
                         time_str,
-                        display_message
+                        unread_indicator
                     ))
                 })
                 .collect();
@@ -1339,14 +1345,14 @@ impl App {
                 "Conversations".to_string()
             };
 
-            let messages_list = List::new(message_items)
+            let conversations_list = List::new(conversation_items)
                 .block(
                     Block::default()
                         .borders(Borders::ALL)
                         .title(message_title),
                 )
                 .highlight_style(Style::default().fg(Color::Yellow));
-            f.render_widget(messages_list, side_chunks[1]);
+            f.render_widget(conversations_list, side_chunks[1]);
 
             // Channels/Stories list - display based on view mode
             let (list_items, list_title) = match &self.view_mode {

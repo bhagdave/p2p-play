@@ -1504,6 +1504,47 @@ pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool
     Ok(count > 0)
 }
 
+pub async fn get_conversations_with_status() -> StorageResult<Vec<crate::types::Conversation>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT 
+            c.peer_id, 
+            c.peer_name,
+            COUNT(CASE WHEN dm.is_read = 0 AND dm.is_outgoing = 0 THEN 1 END) as unread_count,
+            MAX(dm.timestamp) as last_activity
+        FROM conversations c
+        LEFT JOIN direct_messages dm ON c.id = dm.conversation_id
+        GROUP BY c.id, c.peer_id, c.peer_name
+        ORDER BY last_activity DESC NULLS LAST
+        "#,
+    )?;
+
+    let conversation_iter = stmt.query_map([], |row| {
+        let peer_id: String = row.get(0)?;
+        let peer_name: String = row.get(1)?;
+        let unread_count: i64 = row.get(2)?;
+        let last_activity: Option<i64> = row.get(3)?;
+
+        Ok(crate::types::Conversation {
+            peer_id,
+            peer_name,
+            messages: Vec::new(),
+            unread_count: unread_count as usize,
+            last_activity: last_activity.unwrap_or(0) as u64,
+        })
+    })?;
+
+    let mut conversations = Vec::new();
+    for conversation in conversation_iter {
+        conversations.push(conversation?);
+    }
+
+    Ok(conversations)
+}
+
 /// Get all unread story IDs for a specific channel and peer
 pub async fn get_unread_story_ids_for_channel(
     peer_id: &str,
