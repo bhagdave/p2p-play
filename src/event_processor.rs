@@ -623,7 +623,7 @@ impl EventProcessor {
         .await;
 
         if let Some(action_result) = action_result {
-            self.handle_action_result(action_result, app).await;
+            self.handle_action_result(action_result, app, peer_names).await;
         }
     }
 
@@ -692,7 +692,7 @@ impl EventProcessor {
         }
     }
 
-    async fn handle_action_result(&self, action_result: ActionResult, app: &mut App) {
+    async fn handle_action_result(&self, action_result: ActionResult, app: &mut App, peer_names: &HashMap<PeerId, String>) {
         match action_result {
             ActionResult::RefreshStories => {
                 match storage::read_local_stories().await {
@@ -724,7 +724,7 @@ impl EventProcessor {
                 debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
             }
             ActionResult::DirectMessageReceived(direct_message) => {
-                if let Err(e) = crate::storage::save_direct_message(&direct_message, None).await {
+                if let Err(e) = crate::storage::save_direct_message(&direct_message, Some(peer_names)).await {
                     self.error_logger
                         .log_error(&format!("Failed to save received direct message: {e}"));
                 } else {
