@@ -255,6 +255,23 @@ pub struct ChannelAutoSubscriptionConfig {
     pub max_auto_subscriptions: usize,
 }
 
+/// Configuration for visual message notifications and indicators
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MessageNotificationConfig {
+    /// Enable color coding for conversations with unread messages
+    pub enable_color_coding: bool,
+    /// Enable sound notifications for new messages
+    pub enable_sound_notifications: bool,
+    /// Enable visual flash indicators when new messages arrive
+    pub enable_flash_indicators: bool,
+    /// Duration of flash indicator in milliseconds
+    pub flash_duration_ms: u64,
+    /// Show delivery status indicators for outgoing messages
+    pub show_delivery_status: bool,
+    /// Enhanced timestamp formatting in conversation view
+    pub enhanced_timestamps: bool,
+}
+
 /// Configuration for automatic story sharing behavior
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AutoShareConfig {
@@ -287,6 +304,7 @@ pub struct UnifiedNetworkConfig {
     pub ping: PingConfig,
     pub direct_message: DirectMessageConfig,
     pub channel_auto_subscription: ChannelAutoSubscriptionConfig,
+    pub message_notifications: MessageNotificationConfig,
     pub relay: RelayConfig,
     pub auto_share: AutoShareConfig,
     pub circuit_breaker: NetworkCircuitBreakerConfig,
@@ -913,6 +931,37 @@ impl Default for ChannelAutoSubscriptionConfig {
     }
 }
 
+impl MessageNotificationConfig {
+    pub fn new() -> Self {
+        Self {
+            enable_color_coding: true,        // Enable color coding by default
+            enable_sound_notifications: false, // Disabled by default to be non-intrusive
+            enable_flash_indicators: true,    // Enable flash indicators by default
+            flash_duration_ms: 200,          // Brief 200ms flash
+            show_delivery_status: true,       // Show delivery status by default
+            enhanced_timestamps: true,        // Enhanced timestamps by default
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.flash_duration_ms == 0 {
+            return Err("flash_duration_ms must be greater than 0".to_string());
+        }
+
+        if self.flash_duration_ms > 5000 {
+            return Err("flash_duration_ms should not exceed 5000ms to avoid annoyance".to_string());
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for MessageNotificationConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AutoShareConfig {
     pub fn new() -> Self {
         Self {
@@ -1071,6 +1120,7 @@ impl UnifiedNetworkConfig {
             ping: PingConfig::new(),
             direct_message: DirectMessageConfig::new(),
             channel_auto_subscription: ChannelAutoSubscriptionConfig::new(),
+            message_notifications: MessageNotificationConfig::new(),
             relay: RelayConfig::new(),
             auto_share: AutoShareConfig::new(),
             circuit_breaker: NetworkCircuitBreakerConfig::new(),
@@ -1084,6 +1134,7 @@ impl UnifiedNetworkConfig {
         self.ping.validate()?;
         self.direct_message.validate()?;
         self.channel_auto_subscription.validate()?;
+        self.message_notifications.validate()?;
         self.relay.validate()?;
         self.auto_share.validate()?;
         self.circuit_breaker.validate()?;

@@ -31,9 +31,11 @@ fn test_app_event_variants() {
     let dm = DirectMessage {
         from_peer_id: "peer123".to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: "peer456".to_string(),
         to_name: "Bob".to_string(),
         message: "Hello!".to_string(),
         timestamp: 1234567890,
+        is_outgoing: false,
     };
 
     let events = [
@@ -112,9 +114,11 @@ fn test_direct_message_handling() {
     let dm = DirectMessage {
         from_peer_id: "peer123".to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: "peer456".to_string(),
         to_name: "Bob".to_string(),
         message: "Hello Bob!".to_string(),
         timestamp: 1234567890,
+        is_outgoing: false,
     };
 
     assert_eq!(dm.from_name, "Alice");
@@ -157,9 +161,11 @@ fn test_direct_message_storage_and_unread_tracking() {
     let dm1 = DirectMessage {
         from_peer_id: "peer123".to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: "peer789".to_string(),
         to_name: "Bob".to_string(),
         message: "Hello Bob!".to_string(),
         timestamp: 1234567890,
+        is_outgoing: false,
     };
     app.handle_direct_message(dm1);
 
@@ -170,9 +176,11 @@ fn test_direct_message_storage_and_unread_tracking() {
     let dm2 = DirectMessage {
         from_peer_id: "peer456".to_string(),
         from_name: "Charlie".to_string(),
+        to_peer_id: "peer789".to_string(),
         to_name: "Bob".to_string(),
         message: "Hi there!".to_string(),
         timestamp: 1234567900,
+        is_outgoing: false,
     };
     app.handle_direct_message(dm2);
 
