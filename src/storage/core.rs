@@ -1066,7 +1066,7 @@ pub async fn save_direct_message(
         &message.from_peer_id
     };
 
-    let conversation_id = create_or_find_conversation(&conn, remote_peer_id, peer_names)?;
+    let conversation_id = create_or_find_conversation(&conn, origin_peer_id, peer_names)?;
 
     conn.execute(
         "INSERT INTO direct_messages (origin_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
