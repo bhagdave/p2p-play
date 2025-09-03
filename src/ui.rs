@@ -1521,7 +1521,7 @@ impl App {
                         })
                 )
                 .highlight_style(Style::default().fg(Color::Yellow));
-            
+
             if matches!(self.view_mode, ViewMode::Channels | ViewMode::Stories(_)) {
                 f.render_stateful_widget(list, side_chunks[2], &mut self.list_state);
             } else {
