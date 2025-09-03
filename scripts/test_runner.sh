@@ -45,6 +45,14 @@ echo "🔄 Running Auto-Subscription Tests..."
 # Auto-subscription tests need database isolation
 TEST_DATABASE_PATH="./test_stories.db" cargo test --test auto_subscription_tests --quiet -- --test-threads=1
 
+echo "💬 Running Conversation Tests..."
+# Conversation database tests need database isolation  
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test conversation_tests --quiet -- --test-threads=1
+
+echo "🔄 Running Conversation Integration Tests..."
+# Conversation integration tests need database isolation
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test conversation_integration_tests --quiet -- --test-threads=1
+
 # Clean up test database after tests
 rm -f ./test_stories.db
 
@@ -57,4 +65,6 @@ echo "  • Multi-peer interaction scenarios"
 echo "  • Message serialization edge cases"
 echo "  • Network failure and recovery"
 echo "  • Performance and load testing"
+echo "  • Conversation handling and message threading"
+echo "  • UI conversation navigation and state management"
 
