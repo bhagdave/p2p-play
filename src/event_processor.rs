@@ -238,6 +238,14 @@ impl EventProcessor {
                             app.add_to_log(format!("{} Entered message composition mode", crate::types::Icons::memo()));
                             None
                         }
+                        AppEvent::ConversationViewed { peer_id } => {
+                            if let Err(e) = crate::storage::mark_conversation_messages_as_read(&peer_id).await {
+                                self.error_logger.log_error(&format!("Failed to mark messages as read: {e}"));
+                            }
+                            app.display_conversation(&peer_id).await;
+                            app.refresh_conversations().await;
+                            None
+                        }
                     }
                 } else {
                     None

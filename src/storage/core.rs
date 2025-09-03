@@ -1545,6 +1545,49 @@ pub async fn get_conversations_with_status() -> StorageResult<Vec<crate::types::
     Ok(conversations)
 }
 
+pub async fn mark_conversation_messages_as_read(peer_id: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute(
+        "UPDATE direct_messages SET is_read = 1 WHERE remote_peer_id = ? AND is_outgoing = 0 AND is_read = 0",
+        [peer_id],
+    )?;
+
+    Ok(())
+}
+
+pub async fn get_conversation_messages(peer_id: &str) -> StorageResult<Vec<crate::types::DirectMessage>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read FROM direct_messages dm 
+         JOIN conversations c ON dm.conversation_id = c.id 
+         WHERE c.peer_id = ? 
+         ORDER BY dm.timestamp ASC"
+    )?;
+
+    let message_iter = stmt.query_map([peer_id], |row| {
+        Ok(crate::types::DirectMessage {
+            from_peer_id: row.get(0)?,
+            to_peer_id: row.get(1)?,
+            from_name: String::new(),
+            to_name: String::new(),
+            message: row.get(2)?,
+            timestamp: row.get(3)?,
+            is_outgoing: utils::db_bool_to_rust(row.get(4)?),
+        })
+    })?;
+
+    let mut messages = Vec::new();
+    for message in message_iter {
+        messages.push(message?);
+    }
+
+    Ok(messages)
+}
+
 /// Get all unread story IDs for a specific channel and peer
 pub async fn get_unread_story_ids_for_channel(
     peer_id: &str,
