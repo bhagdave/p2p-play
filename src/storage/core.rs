@@ -1060,7 +1060,7 @@ pub async fn save_direct_message(
     let is_read = message.is_outgoing; // Outgoing messages are considered read by default
 
     // Determine the remote peer ID
-    let remote_peer_id = if message.is_outgoing {
+    let origin_peer_id = if message.is_outgoing {
         &message.to_peer_id
     } else {
         &message.from_peer_id
@@ -1069,7 +1069,7 @@ pub async fn save_direct_message(
     let conversation_id = create_or_find_conversation(&conn, remote_peer_id, peer_names)?;
 
     conn.execute(
-        "INSERT INTO direct_messages (remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO direct_messages (origin_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             &message.from_peer_id,
             &message.to_peer_id,
