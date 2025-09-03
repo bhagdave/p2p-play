@@ -1,5 +1,5 @@
 use libp2p::PeerId;
-use p2p_play::types::{Channel, DirectMessage};
+use p2p_play::types::{Channel, DirectMessage, Conversation};
 use p2p_play::ui::{AppEvent, InputMode, PartialStory, StoryCreationStep, ViewMode};
 use std::collections::HashMap;
 
@@ -803,4 +803,306 @@ fn test_channel_navigation_state() {
     app.return_to_channels();
     assert_eq!(app.view_mode, ViewMode::Channels);
     assert_eq!(app.get_selected_channel(), Some("general"));
+}
+
+#[test]
+fn test_conversation_view_modes() {
+    // Test the new conversation-related ViewMode variants
+    let conversations_view = ViewMode::Conversations;
+    let conversation_view = ViewMode::ConversationView("peer123".to_string());
+    
+    assert_eq!(conversations_view, ViewMode::Conversations);
+    assert_eq!(conversation_view, ViewMode::ConversationView("peer123".to_string()));
+    assert_ne!(conversations_view, conversation_view);
+}
+
+#[test]
+fn test_conversation_navigation_flow() {
+    // Test the complete navigation flow between conversations
+    struct MockAppWithConversations {
+        view_mode: ViewMode,
+        conversations: Vec<Conversation>,
+        selected_index: Option<usize>,
+    }
+
+    impl MockAppWithConversations {
+        fn new() -> Self {
+            Self {
+                view_mode: ViewMode::Conversations,
+                conversations: vec![
+                    Conversation {
+                        peer_id: "peer1".to_string(),
+                        peer_name: "Alice".to_string(),
+                        messages: vec![],
+                        unread_count: 2,
+                        last_activity: 3000,
+                    },
+                    Conversation {
+                        peer_id: "peer2".to_string(),
+                        peer_name: "Bob".to_string(),
+                        messages: vec![],
+                        unread_count: 0,
+                        last_activity: 2000,
+                    },
+                ],
+                selected_index: Some(0),
+            }
+        }
+
+        fn get_selected_conversation(&self) -> Option<&Conversation> {
+            if matches!(self.view_mode, ViewMode::Conversations) {
+                if let Some(index) = self.selected_index {
+                    self.conversations.get(index)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+
+        fn enter_conversation(&mut self, peer_id: String) {
+            self.view_mode = ViewMode::ConversationView(peer_id);
+        }
+
+        fn return_to_conversations(&mut self) {
+            self.view_mode = ViewMode::Conversations;
+            self.selected_index = Some(0);
+        }
+
+        fn cycle_view_mode(&mut self) {
+            self.view_mode = match &self.view_mode {
+                ViewMode::Channels => ViewMode::Conversations,
+                ViewMode::Conversations => ViewMode::Channels,
+                ViewMode::Stories(_) => ViewMode::Channels,
+                ViewMode::ConversationView(_) => ViewMode::Conversations,
+            };
+            self.selected_index = Some(0);
+        }
+
+        fn navigate_list_down(&mut self) {
+            let list_len = match self.view_mode {
+                ViewMode::Conversations => self.conversations.len(),
+                _ => 0,
+            };
+            if list_len > 0 {
+                let current = self.selected_index.unwrap_or(0);
+                let new_index = if current >= list_len - 1 {
+                    0 // Wrap around to beginning
+                } else {
+                    current + 1
+                };
+                self.selected_index = Some(new_index);
+            }
+        }
+
+        fn navigate_list_up(&mut self) {
+            let list_len = match self.view_mode {
+                ViewMode::Conversations => self.conversations.len(),
+                _ => 0,
+            };
+            if list_len > 0 {
+                let current = self.selected_index.unwrap_or(0);
+                let new_index = if current == 0 {
+                    list_len - 1 // Wrap around to end
+                } else {
+                    current - 1
+                };
+                self.selected_index = Some(new_index);
+            }
+        }
+    }
+
+    let mut app = MockAppWithConversations::new();
+
+    // Initially should be in conversations view with first conversation selected
+    assert_eq!(app.view_mode, ViewMode::Conversations);
+    assert_eq!(app.selected_index, Some(0));
+    
+    let selected_conversation = app.get_selected_conversation().unwrap();
+    assert_eq!(selected_conversation.peer_name, "Alice");
+    assert_eq!(selected_conversation.unread_count, 2);
+
+    // Test navigation within conversations list
+    app.navigate_list_down();
+    let selected_conversation = app.get_selected_conversation().unwrap();
+    assert_eq!(selected_conversation.peer_name, "Bob");
+    assert_eq!(selected_conversation.unread_count, 0);
+
+    // Test wrap-around navigation
+    app.navigate_list_down();
+    let selected_conversation = app.get_selected_conversation().unwrap();
+    assert_eq!(selected_conversation.peer_name, "Alice"); // Should wrap to first
+
+    // Test entering a conversation
+    app.enter_conversation("peer2".to_string());
+    match app.view_mode {
+        ViewMode::ConversationView(ref peer_id) => {
+            assert_eq!(peer_id, "peer2");
+        }
+        _ => panic!("Expected ConversationView mode"),
+    }
+    assert!(app.get_selected_conversation().is_none()); // Should return None in conversation view
+
+    // Test returning to conversations list
+    app.return_to_conversations();
+    assert_eq!(app.view_mode, ViewMode::Conversations);
+    assert_eq!(app.selected_index, Some(0));
+    
+    let selected_conversation = app.get_selected_conversation().unwrap();
+    assert_eq!(selected_conversation.peer_name, "Alice");
+}
+
+#[test]
+fn test_conversation_app_events() {
+    // Test the new ConversationViewed event
+    let conversation_event = AppEvent::ConversationViewed {
+        peer_id: "peer123".to_string(),
+    };
+
+    match conversation_event {
+        AppEvent::ConversationViewed { peer_id } => {
+            assert_eq!(peer_id, "peer123");
+        }
+        _ => panic!("Expected ConversationViewed event"),
+    }
+}
+
+#[test]
+fn test_conversation_display_formatting() {
+    // Test conversation display formatting
+    let conversation = Conversation {
+        peer_id: "peer123".to_string(),
+        peer_name: "Alice".to_string(),
+        messages: vec![],
+        unread_count: 3,
+        last_activity: 1640995200,
+    };
+
+    // Format as it would appear in the UI
+    let formatted_with_unread = if conversation.unread_count > 0 {
+        format!(
+            "{} ({} unread)",
+            conversation.peer_name,
+            conversation.unread_count
+        )
+    } else {
+        conversation.peer_name.clone()
+    };
+
+    assert_eq!(formatted_with_unread, "Alice (3 unread)");
+
+    // Test with no unread messages
+    let conversation_read = Conversation {
+        peer_id: "peer456".to_string(),
+        peer_name: "Bob".to_string(),
+        messages: vec![],
+        unread_count: 0,
+        last_activity: 1640995300,
+    };
+
+    let formatted_read = if conversation_read.unread_count > 0 {
+        format!(
+            "{} ({} unread)",
+            conversation_read.peer_name,
+            conversation_read.unread_count
+        )
+    } else {
+        conversation_read.peer_name.clone()
+    };
+
+    assert_eq!(formatted_read, "Bob");
+}
+
+#[test]
+fn test_conversation_sorting_by_activity() {
+    // Test that conversations are properly sorted by last activity
+    let mut conversations = vec![
+        Conversation {
+            peer_id: "peer1".to_string(),
+            peer_name: "Alice".to_string(),
+            messages: vec![],
+            unread_count: 1,
+            last_activity: 1000,
+        },
+        Conversation {
+            peer_id: "peer2".to_string(),
+            peer_name: "Bob".to_string(),
+            messages: vec![],
+            unread_count: 2,
+            last_activity: 3000,
+        },
+        Conversation {
+            peer_id: "peer3".to_string(),
+            peer_name: "Charlie".to_string(),
+            messages: vec![],
+            unread_count: 0,
+            last_activity: 2000,
+        },
+    ];
+
+    // Sort by last activity (most recent first) - as the database query does
+    conversations.sort_by(|a, b| b.last_activity.cmp(&a.last_activity));
+
+    assert_eq!(conversations[0].peer_name, "Bob"); // Most recent
+    assert_eq!(conversations[1].peer_name, "Charlie"); // Middle
+    assert_eq!(conversations[2].peer_name, "Alice"); // Oldest
+}
+
+#[test]
+fn test_empty_conversations_handling() {
+    // Test handling when no conversations exist
+    struct MockEmptyConversations {
+        view_mode: ViewMode,
+        conversations: Vec<Conversation>,
+        selected_index: Option<usize>,
+    }
+
+    impl MockEmptyConversations {
+        fn new() -> Self {
+            Self {
+                view_mode: ViewMode::Conversations,
+                conversations: vec![],
+                selected_index: None,
+            }
+        }
+
+        fn get_selected_conversation(&self) -> Option<&Conversation> {
+            if matches!(self.view_mode, ViewMode::Conversations) {
+                if let Some(index) = self.selected_index {
+                    self.conversations.get(index)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        }
+
+        fn navigate_list_down(&mut self) {
+            let list_len = self.conversations.len();
+            if list_len > 0 {
+                let current = self.selected_index.unwrap_or(0);
+                let new_index = if current >= list_len - 1 {
+                    0
+                } else {
+                    current + 1
+                };
+                self.selected_index = Some(new_index);
+            }
+            // If list is empty, do nothing
+        }
+    }
+
+    let mut app = MockEmptyConversations::new();
+
+    assert_eq!(app.view_mode, ViewMode::Conversations);
+    assert_eq!(app.conversations.len(), 0);
+    assert_eq!(app.selected_index, None);
+    assert!(app.get_selected_conversation().is_none());
+
+    // Navigation should be safe with empty list
+    app.navigate_list_down();
+    assert_eq!(app.selected_index, None);
+    assert!(app.get_selected_conversation().is_none());
 }

@@ -64,6 +64,7 @@ async fn run_app() -> AppResult<()> {
     let mut app = match App::new() {
         Ok(mut app) => {
             app.update_local_peer_id(PEER_ID.to_string());
+            app.refresh_conversations().await;
             app
         }
         Err(e) => {
@@ -113,7 +114,11 @@ async fn run_app() -> AppResult<()> {
     // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
     auto_bootstrap
-        .initialize(&unified_config.bootstrap, &loggers.bootstrap_logger, &loggers.error_logger)
+        .initialize(
+            &unified_config.bootstrap,
+            &loggers.bootstrap_logger,
+            &loggers.error_logger,
+        )
         .await;
 
     // Auto-subscribe to general channel if not already subscribed

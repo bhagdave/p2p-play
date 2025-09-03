@@ -2,6 +2,24 @@
 
 All changes to this project will be documented in this file.
 
+## [0.10.6] - 2025-09-03
+
+### Added
+- **Conversation-based Message Management**: Implemented conversation handling to change direct messaging from individual message display to threaded conversations
+  - **Database Conversation Storage**: Added `get_conversations()` and `get_messages_for_conversation()` functions to retrieve and organize messages by peer relationships
+  - **TUI Conversation Navigation**: Changed Messages panel to display conversations as interactive list with peer names and message counts (e.g., "alice (5 messages)")
+  - **Message Threading**: Messages now grouped by conversation partners with chronological ordering within each conversation thread
+  - **Navigation Controls**: Added keyboard navigation with Enter key to view individual conversation threads and Escape key to return to conversation list
+  - **Real-time Updates**: Conversation list automatically updates when new messages are received, maintaining current navigation state
+  - **Improved Message Display**: Individual messages within conversations show sender names, timestamps, and formatting for readability
+  - **Enhanced UI State Management**: Added conversation tracking in UI state for navigation context between conversation list and individual conversation views
+  - **Database Query Optimization**: SQL queries for conversation aggregation with message counting and timestamps
+
+### Fixed
+- **Peer Name Resolution in Messages**: Fixed issue where received direct messages were not properly associating sender peer names with conversation threads
+- **Database Foreign Key Constraints**: Enhanced direct message storage to properly handle peer_id relationships and prevent database constraint violations
+- **Message Panel Refresh**: Fixed conversation list not updating immediately when new messages were received from other peers
+
 ## [0.10.5] - 2025-08-24
 
 ### Added

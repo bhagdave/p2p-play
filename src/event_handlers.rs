@@ -893,6 +893,7 @@ pub async fn handle_peer_name_event(peer_name: PeerName) {
 pub async fn handle_request_response_event(
     event: request_response::Event<DirectMessageRequest, DirectMessageResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
+    peer_names: &HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
@@ -950,9 +951,11 @@ pub async fn handle_request_response_event(
                         Some(DirectMessage {
                             from_peer_id: request.from_peer_id.clone(),
                             from_name: request.from_name.clone(),
+                            to_peer_id: swarm.local_peer_id().to_string(),
                             to_name: request.to_name.clone(),
                             message: request.message.clone(),
                             timestamp: request.timestamp,
+                            is_outgoing: false,
                         })
                     } else {
                         None
@@ -984,13 +987,43 @@ pub async fn handle_request_response_event(
                     }
                 }
                 request_response::Message::Response { response, .. } => {
-                    // Handle response to our direct message request
                     if response.received {
                         debug!("Direct message was received by peer {peer}");
 
-                        // Remove successful message from retry queue
+                        // Save the outgoing message before removing it from queue
                         if let Ok(mut queue) = pending_messages.lock() {
+                            if let Some(pending_msg) =
+                                queue.iter().find(|msg| msg.target_peer_id == peer)
+                            {
+                                let outgoing_message = crate::types::DirectMessage {
+                                    from_peer_id: pending_msg.message.from_peer_id.clone(),
+                                    from_name: pending_msg.message.from_name.clone(),
+                                    to_peer_id: peer.to_string(),
+                                    to_name: pending_msg.message.to_name.clone(),
+                                    message: pending_msg.message.message.clone(),
+                                    timestamp: pending_msg.message.timestamp,
+                                    is_outgoing: true,
+                                };
+
+                                if let Err(e) = crate::storage::save_direct_message(
+                                    &outgoing_message,
+                                    Some(peer_names),
+                                )
+                                .await
+                                {
+                                    crate::log_network_error!(
+                                        error_logger,
+                                        "direct_message",
+                                        "Failed to save outgoing direct message: {}",
+                                        e
+                                    );
+                                }
+                            }
+
+                            // Remove successful message from retry queue
+                            let before_count = queue.len();
                             queue.retain(|msg| msg.target_peer_id != peer);
+                            let after_count = queue.len();
                         }
 
                         ui_logger.log(format!("{} Message delivered to {}", Icons::check(), peer));
@@ -1951,6 +1984,7 @@ pub async fn handle_event(
             if let Some(direct_message) = handle_request_response_event(
                 request_response_event,
                 swarm,
+                peer_names,
                 local_peer_name,
                 ui_logger,
                 error_logger,
@@ -2560,6 +2594,7 @@ mod tests {
         let direct_msg = DirectMessage::new(
             "peer123".to_string(),
             "Alice".to_string(),
+            "peer456".to_string(),
             "Bob".to_string(),
             "Test message".to_string(),
         );

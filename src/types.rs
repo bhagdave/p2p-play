@@ -94,9 +94,20 @@ pub struct PeerName {
 pub struct DirectMessage {
     pub from_peer_id: String,
     pub from_name: String,
+    pub to_peer_id: String,
     pub to_name: String,
     pub message: String,
     pub timestamp: u64,
+    pub is_outgoing: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct Conversation {
+    pub peer_id: String,
+    pub peer_name: String,
+    pub messages: Vec<DirectMessage>,
+    pub unread_count: usize,
+    pub last_activity: u64, // timestamp
 }
 
 /// Encrypted message for relay delivery
@@ -504,7 +515,13 @@ impl PeerName {
 }
 
 impl DirectMessage {
-    pub fn new(from_peer_id: String, from_name: String, to_name: String, message: String) -> Self {
+    pub fn new(
+        from_peer_id: String,
+        from_name: String,
+        to_peer_id: String,
+        to_name: String,
+        message: String,
+    ) -> Self {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -513,9 +530,11 @@ impl DirectMessage {
         Self {
             from_peer_id,
             from_name,
+            to_peer_id,
             to_name,
             message,
             timestamp,
+            is_outgoing: false,
         }
     }
 }
