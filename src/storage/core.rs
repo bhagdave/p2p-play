@@ -1059,7 +1059,7 @@ pub async fn save_direct_message(
     let conn = conn_arc.lock().await;
     let is_read = message.is_outgoing; // Outgoing messages are considered read by default
 
-    // Determine the remote peer ID 
+    // Determine the remote peer ID
     let remote_peer_id = if message.is_outgoing {
         &message.to_peer_id
     } else {
@@ -1093,7 +1093,7 @@ fn create_or_find_conversation(
     let existing_result = stmt.query_row([peer_id], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
     });
-    
+
     match existing_result {
         Ok((id, current_peer_name)) => {
             if let Some(names) = peer_names {
@@ -1113,7 +1113,10 @@ fn create_or_find_conversation(
         Err(rusqlite::Error::QueryReturnedNoRows) => {
             let peer_name = if let Some(names) = peer_names {
                 if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
-                    names.get(&parsed_peer_id).cloned().unwrap_or_else(|| peer_id.to_string())
+                    names
+                        .get(&parsed_peer_id)
+                        .cloned()
+                        .unwrap_or_else(|| peer_id.to_string())
                 } else {
                     peer_id.to_string()
                 }
@@ -1125,7 +1128,7 @@ fn create_or_find_conversation(
                 "INSERT INTO conversations (peer_id, peer_name) VALUES (?, ?)",
                 [peer_id, &peer_name],
             )?;
-            
+
             let new_id = conn.last_insert_rowid();
             Ok(new_id)
         }
@@ -1557,7 +1560,9 @@ pub async fn mark_conversation_messages_as_read(peer_id: &str) -> StorageResult<
     Ok(())
 }
 
-pub async fn get_conversation_messages(peer_id: &str) -> StorageResult<Vec<crate::types::DirectMessage>> {
+pub async fn get_conversation_messages(
+    peer_id: &str,
+) -> StorageResult<Vec<crate::types::DirectMessage>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 

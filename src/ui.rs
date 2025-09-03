@@ -71,7 +71,7 @@ pub struct App {
     pub auto_scroll: bool, // Track if we should auto-scroll to bottom
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub conversations: Vec<crate::types::Conversation>, // Store conversations with status
-    pub unread_message_count: usize,         // Track unread direct messages
+    pub unread_message_count: usize,                    // Track unread direct messages
     // Enhanced input features
     pub input_history: Vec<String>, // Command history for Up/Down navigation
     pub history_index: Option<usize>, // Current position in history
@@ -219,34 +219,30 @@ impl App {
                         // Only handle output scrolling with Up/Down keys
                         self.scroll_down();
                     }
-                    KeyCode::Left => {
-                        match self.view_mode {
-                            ViewMode::Channels => {
-                                self.navigate_list_up();
-                            }
-                            ViewMode::Stories(_) => {
-                                self.navigate_list_up();
-                            }
-                            ViewMode::Conversations => {
-                                self.navigate_list_up();
-                            }
-                            ViewMode::ConversationView(_) => {}
+                    KeyCode::Left => match self.view_mode {
+                        ViewMode::Channels => {
+                            self.navigate_list_up();
                         }
-                    }
-                    KeyCode::Right => {
-                        match self.view_mode {
-                            ViewMode::Channels => {
-                                self.navigate_list_down();
-                            }
-                            ViewMode::Stories(_) => {
-                                self.navigate_list_down();
-                            }
-                            ViewMode::Conversations => {
-                                self.navigate_list_down();
-                            }
-                            ViewMode::ConversationView(_) => {}
+                        ViewMode::Stories(_) => {
+                            self.navigate_list_up();
                         }
-                    }
+                        ViewMode::Conversations => {
+                            self.navigate_list_up();
+                        }
+                        ViewMode::ConversationView(_) => {}
+                    },
+                    KeyCode::Right => match self.view_mode {
+                        ViewMode::Channels => {
+                            self.navigate_list_down();
+                        }
+                        ViewMode::Stories(_) => {
+                            self.navigate_list_down();
+                        }
+                        ViewMode::Conversations => {
+                            self.navigate_list_down();
+                        }
+                        ViewMode::ConversationView(_) => {}
+                    },
                     KeyCode::End => {
                         // Re-enable auto-scroll and go to bottom
                         self.auto_scroll = true;
@@ -297,42 +293,38 @@ impl App {
                             }
                         ));
                     }
-                    KeyCode::Enter => {
-                        match &self.view_mode {
-                            ViewMode::Channels => {
-                                if let Some(channel_name) = self.get_selected_channel() {
-                                    self.enter_channel(channel_name.to_string());
-                                }
+                    KeyCode::Enter => match &self.view_mode {
+                        ViewMode::Channels => {
+                            if let Some(channel_name) = self.get_selected_channel() {
+                                self.enter_channel(channel_name.to_string());
                             }
-                            ViewMode::Stories(_) => {
-                                if let Some(story) = self.get_selected_story() {
-                                    self.display_story_content(&story);
-                                    return Some(AppEvent::StoryViewed {
-                                        story_id: story.id,
-                                        channel: story.channel.clone(),
-                                    });
-                                }
-                            }
-                            ViewMode::Conversations => {
-                                if let Some(conversation) = self.get_selected_conversation() {
-                                    return Some(AppEvent::ConversationViewed {
-                                        peer_id: conversation.peer_id.clone(),
-                                    });
-                                }
-                            }
-                            ViewMode::ConversationView(_) => {}
                         }
-                    }
-                    KeyCode::Esc => {
-                        match &self.view_mode {
-                            ViewMode::Stories(_) => self.return_to_channels(),
-                            ViewMode::ConversationView(_) => {
-                                self.view_mode = ViewMode::Conversations;
-                                self.list_state.select(Some(0));
+                        ViewMode::Stories(_) => {
+                            if let Some(story) = self.get_selected_story() {
+                                self.display_story_content(&story);
+                                return Some(AppEvent::StoryViewed {
+                                    story_id: story.id,
+                                    channel: story.channel.clone(),
+                                });
                             }
-                            _ => {}
                         }
-                    }
+                        ViewMode::Conversations => {
+                            if let Some(conversation) = self.get_selected_conversation() {
+                                return Some(AppEvent::ConversationViewed {
+                                    peer_id: conversation.peer_id.clone(),
+                                });
+                            }
+                        }
+                        ViewMode::ConversationView(_) => {}
+                    },
+                    KeyCode::Esc => match &self.view_mode {
+                        ViewMode::Stories(_) => self.return_to_channels(),
+                        ViewMode::ConversationView(_) => {
+                            self.view_mode = ViewMode::Conversations;
+                            self.list_state.select(Some(0));
+                        }
+                        _ => {}
+                    },
                     KeyCode::Char('r') => {
                         // Quick reply to last message sender
                         if let Some(ref last_sender) = self.last_message_sender.clone() {
@@ -950,10 +942,11 @@ impl App {
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
         self.last_message_sender = Some(dm.from_name);
-        
+
         // Refresh conversations to show updated state
         if let Ok(conversations) = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(crate::storage::get_conversations_with_status())
+            tokio::runtime::Handle::current()
+                .block_on(crate::storage::get_conversations_with_status())
         }) {
             self.update_conversations(conversations);
         }
@@ -972,7 +965,12 @@ impl App {
 
     pub async fn display_conversation(&mut self, peer_id: &str) {
         if let Ok(messages) = crate::storage::get_conversation_messages(peer_id).await {
-            if let Some(conversation) = self.conversations.iter().find(|c| c.peer_id == peer_id).cloned() {
+            if let Some(conversation) = self
+                .conversations
+                .iter()
+                .find(|c| c.peer_id == peer_id)
+                .cloned()
+            {
                 self.add_to_log("".to_string());
                 self.add_to_log(format!(
                     "{} ═══════════════ CONVERSATION WITH {} ═══════════════",
@@ -990,12 +988,16 @@ impl App {
 
                     let direction = if msg.is_outgoing { "→" } else { "←" };
                     let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
-                    
+
                     self.add_to_log(format!(
                         "{} [{}] {} {}",
                         direction,
                         time_str,
-                        if msg.is_outgoing { "You" } else { &conversation.peer_name },
+                        if msg.is_outgoing {
+                            "You"
+                        } else {
+                            &conversation.peer_name
+                        },
                         sanitized_message
                     ));
                 }

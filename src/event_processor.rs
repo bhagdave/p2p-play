@@ -466,7 +466,6 @@ impl EventProcessor {
             "Peer {} awaiting handshake verification before UI display",
             peer_id
         );
-
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -632,7 +631,8 @@ impl EventProcessor {
         .await;
 
         if let Some(action_result) = action_result {
-            self.handle_action_result(action_result, app, peer_names).await;
+            self.handle_action_result(action_result, app, peer_names)
+                .await;
         }
     }
 
@@ -701,20 +701,23 @@ impl EventProcessor {
         }
     }
 
-    async fn handle_action_result(&self, action_result: ActionResult, app: &mut App, peer_names: &HashMap<PeerId, String>) {
+    async fn handle_action_result(
+        &self,
+        action_result: ActionResult,
+        app: &mut App,
+        peer_names: &HashMap<PeerId, String>,
+    ) {
         match action_result {
-            ActionResult::RefreshStories => {
-                match storage::read_local_stories().await {
-                    Ok(stories) => {
-                        app.update_stories(stories);
-                        refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
-                    }
-                    Err(e) => {
-                        self.error_logger
-                            .log_error(&format!("Failed to refresh stories: {e}"));
-                    }
+            ActionResult::RefreshStories => match storage::read_local_stories().await {
+                Ok(stories) => {
+                    app.update_stories(stories);
+                    refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                 }
-            }
+                Err(e) => {
+                    self.error_logger
+                        .log_error(&format!("Failed to refresh stories: {e}"));
+                }
+            },
             ActionResult::StartStoryCreation => {
                 app.start_story_creation();
             }
@@ -733,7 +736,9 @@ impl EventProcessor {
                 debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
             }
             ActionResult::DirectMessageReceived(direct_message) => {
-                if let Err(e) = crate::storage::save_direct_message(&direct_message, Some(peer_names)).await {
+                if let Err(e) =
+                    crate::storage::save_direct_message(&direct_message, Some(peer_names)).await
+                {
                     self.error_logger
                         .log_error(&format!("Failed to save received direct message: {e}"));
                 } else {

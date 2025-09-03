@@ -992,7 +992,9 @@ pub async fn handle_request_response_event(
 
                         // Save the outgoing message before removing it from queue
                         if let Ok(mut queue) = pending_messages.lock() {
-                            if let Some(pending_msg) = queue.iter().find(|msg| msg.target_peer_id == peer) {
+                            if let Some(pending_msg) =
+                                queue.iter().find(|msg| msg.target_peer_id == peer)
+                            {
                                 let outgoing_message = crate::types::DirectMessage {
                                     from_peer_id: pending_msg.message.from_peer_id.clone(),
                                     from_name: pending_msg.message.from_name.clone(),
@@ -1003,7 +1005,12 @@ pub async fn handle_request_response_event(
                                     is_outgoing: true,
                                 };
 
-                                if let Err(e) = crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await {
+                                if let Err(e) = crate::storage::save_direct_message(
+                                    &outgoing_message,
+                                    Some(peer_names),
+                                )
+                                .await
+                                {
                                     crate::log_network_error!(
                                         error_logger,
                                         "direct_message",

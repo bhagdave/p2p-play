@@ -515,7 +515,13 @@ impl PeerName {
 }
 
 impl DirectMessage {
-    pub fn new(from_peer_id: String, from_name: String, to_peer_id: String, to_name: String, message: String) -> Self {
+    pub fn new(
+        from_peer_id: String,
+        from_name: String,
+        to_peer_id: String,
+        to_name: String,
+        message: String,
+    ) -> Self {
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

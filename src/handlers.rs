@@ -824,7 +824,10 @@ pub async fn handle_direct_message(
         // Add to pending queue regardless - will be removed on successful delivery
         if let Ok(mut queue) = pending_messages.lock() {
             queue.push(pending_msg.clone());
-            ui_logger.log(format!("Added message to pending queue for peer: {}", target_peer_id));
+            ui_logger.log(format!(
+                "Added message to pending queue for peer: {}",
+                target_peer_id
+            ));
         }
 
         ui_logger.log(format!(
@@ -928,7 +931,9 @@ pub async fn handle_direct_message_with_relay(
                     is_outgoing: true,
                 };
 
-                if let Err(e) = crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await {
+                if let Err(e) =
+                    crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await
+                {
                     ui_logger.log(format!("Failed to save outgoing message: {}", e));
                 } else {
                     ui_logger.log(format!("Saved outgoing message to {}", to_name));
