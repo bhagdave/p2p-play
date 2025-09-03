@@ -934,12 +934,12 @@ impl Default for ChannelAutoSubscriptionConfig {
 impl MessageNotificationConfig {
     pub fn new() -> Self {
         Self {
-            enable_color_coding: true,        // Enable color coding by default
+            enable_color_coding: true,         // Enable color coding by default
             enable_sound_notifications: false, // Disabled by default to be non-intrusive
-            enable_flash_indicators: true,    // Enable flash indicators by default
-            flash_duration_ms: 200,          // Brief 200ms flash
-            show_delivery_status: true,       // Show delivery status by default
-            enhanced_timestamps: true,        // Enhanced timestamps by default
+            enable_flash_indicators: true,     // Enable flash indicators by default
+            flash_duration_ms: 200,            // Brief 200ms flash
+            show_delivery_status: true,        // Show delivery status by default
+            enhanced_timestamps: true,         // Enhanced timestamps by default
         }
     }
 
@@ -949,7 +949,9 @@ impl MessageNotificationConfig {
         }
 
         if self.flash_duration_ms > 5000 {
-            return Err("flash_duration_ms should not exceed 5000ms to avoid annoyance".to_string());
+            return Err(
+                "flash_duration_ms should not exceed 5000ms to avoid annoyance".to_string(),
+            );
         }
 
         Ok(())

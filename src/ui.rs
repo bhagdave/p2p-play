@@ -78,7 +78,7 @@ pub struct App {
     pub last_message_sender: Option<String>, // Track last sender for quick reply
     // Visual notification features
     pub notification_config: crate::types::MessageNotificationConfig, // Notification settings
-    pub flash_active: bool,           // Track if flash indicator is currently active
+    pub flash_active: bool, // Track if flash indicator is currently active
     pub flash_start_time: Option<std::time::Instant>, // When flash started
 }
 
@@ -992,7 +992,11 @@ impl App {
             "{} New message from {} {}",
             Icons::envelope(),
             dm.from_name,
-            if self.notification_config.enable_flash_indicators { "📳" } else { "" }
+            if self.notification_config.enable_flash_indicators {
+                "📳"
+            } else {
+                ""
+            }
         );
         self.add_to_log(notification_text);
     }
@@ -1058,11 +1062,12 @@ impl App {
                     let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
 
                     // Add delivery status indicator for outgoing messages if enabled
-                    let status_indicator = if msg.is_outgoing && self.notification_config.show_delivery_status {
-                        format!(" {}", Icons::checkmark()) // Simple delivered indicator
-                    } else {
-                        String::new()
-                    };
+                    let status_indicator =
+                        if msg.is_outgoing && self.notification_config.show_delivery_status {
+                            format!(" {}", Icons::checkmark()) // Simple delivered indicator
+                        } else {
+                            String::new()
+                        };
 
                     self.add_to_log(format!(
                         "{} [{}] {} {}{}",
@@ -1510,7 +1515,7 @@ impl App {
                                 .unwrap_or_default()
                                 .as_secs();
                             let age_secs = now.saturating_sub(conv.last_activity);
-                            
+
                             if age_secs < 60 {
                                 "now".to_string()
                             } else if age_secs < 3600 {

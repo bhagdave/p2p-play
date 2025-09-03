@@ -1,5 +1,5 @@
 use libp2p::PeerId;
-use p2p_play::types::{Channel, DirectMessage, Conversation};
+use p2p_play::types::{Channel, Conversation, DirectMessage};
 use p2p_play::ui::{AppEvent, InputMode, PartialStory, StoryCreationStep, ViewMode};
 use std::collections::HashMap;
 
@@ -818,9 +818,12 @@ fn test_conversation_view_modes() {
     // Test the new conversation-related ViewMode variants
     let conversations_view = ViewMode::Conversations;
     let conversation_view = ViewMode::ConversationView("peer123".to_string());
-    
+
     assert_eq!(conversations_view, ViewMode::Conversations);
-    assert_eq!(conversation_view, ViewMode::ConversationView("peer123".to_string()));
+    assert_eq!(
+        conversation_view,
+        ViewMode::ConversationView("peer123".to_string())
+    );
     assert_ne!(conversations_view, conversation_view);
 }
 
@@ -926,7 +929,7 @@ fn test_conversation_navigation_flow() {
     // Initially should be in conversations view with first conversation selected
     assert_eq!(app.view_mode, ViewMode::Conversations);
     assert_eq!(app.selected_index, Some(0));
-    
+
     let selected_conversation = app.get_selected_conversation().unwrap();
     assert_eq!(selected_conversation.peer_name, "Alice");
     assert_eq!(selected_conversation.unread_count, 2);
@@ -956,7 +959,7 @@ fn test_conversation_navigation_flow() {
     app.return_to_conversations();
     assert_eq!(app.view_mode, ViewMode::Conversations);
     assert_eq!(app.selected_index, Some(0));
-    
+
     let selected_conversation = app.get_selected_conversation().unwrap();
     assert_eq!(selected_conversation.peer_name, "Alice");
 }
@@ -991,8 +994,7 @@ fn test_conversation_display_formatting() {
     let formatted_with_unread = if conversation.unread_count > 0 {
         format!(
             "{} ({} unread)",
-            conversation.peer_name,
-            conversation.unread_count
+            conversation.peer_name, conversation.unread_count
         )
     } else {
         conversation.peer_name.clone()
@@ -1012,8 +1014,7 @@ fn test_conversation_display_formatting() {
     let formatted_read = if conversation_read.unread_count > 0 {
         format!(
             "{} ({} unread)",
-            conversation_read.peer_name,
-            conversation_read.unread_count
+            conversation_read.peer_name, conversation_read.unread_count
         )
     } else {
         conversation_read.peer_name.clone()
