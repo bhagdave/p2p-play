@@ -370,7 +370,8 @@ async fn test_name_command_shows_current_alias() {
 
     // Setup test components
     let ping_config = p2p_play::types::PingConfig::new();
-    let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create swarm");
     let peer_names = HashMap::new();
     let (story_sender, _story_receiver) = mpsc::unbounded_channel();
     let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
@@ -790,7 +791,8 @@ async fn test_swarm_creation() {
     use p2p_play::network::create_swarm;
 
     let ping_config = p2p_play::types::PingConfig::new();
-    let result = create_swarm(&ping_config);
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let result = create_swarm(&ping_config, &network_config);
 
     // Test that we can create a swarm
     assert!(result.is_ok());

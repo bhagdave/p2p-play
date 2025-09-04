@@ -225,8 +225,9 @@ async fn test_connection_failure_recovery() {
 
     // Force disconnection by creating new swarm instances (simulates network failure)
     let ping_config = PingConfig::new();
-    let mut new_swarm1 = create_swarm(&ping_config).unwrap();
-    let mut new_swarm2 = create_swarm(&ping_config).unwrap();
+    let network_config = NetworkConfig::new();
+    let mut new_swarm1 = create_swarm(&ping_config, &network_config).unwrap();
+    let mut new_swarm2 = create_swarm(&ping_config, &network_config).unwrap();
 
     // Subscribe new swarms to topics
     new_swarm1.behaviour_mut().floodsub.subscribe(TOPIC.clone());
@@ -512,7 +513,8 @@ async fn test_message_delivery_failure_scenarios() {
     // Force disconnect by dropping and recreating swarm2
     drop(swarm2);
     let ping_config = PingConfig::new();
-    swarm2 = create_swarm(&ping_config).unwrap();
+    let network_config = NetworkConfig::new();
+    swarm2 = create_swarm(&ping_config, &network_config).unwrap();
 
     let mut disconnect_failure_detected = false;
 

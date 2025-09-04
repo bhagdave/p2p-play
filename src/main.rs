@@ -86,7 +86,7 @@ async fn run_app() -> AppResult<()> {
     let network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
 
-    let mut swarm = create_swarm(&unified_config.ping).expect("Failed to create swarm");
+    let mut swarm = create_swarm(&unified_config.ping, &unified_config.network).expect("Failed to create swarm");
 
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
 

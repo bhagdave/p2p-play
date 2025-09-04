@@ -121,5 +121,6 @@ pub fn current_timestamp() -> u64 {
 pub fn create_test_swarm_with_ping_config()
 -> Result<libp2p::Swarm<StoryBehaviour>, Box<dyn std::error::Error>> {
     let ping_config = PingConfig::new();
-    create_swarm(&ping_config).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    let network_config = NetworkConfig::new();
+    create_swarm(&ping_config, &network_config).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }

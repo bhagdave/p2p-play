@@ -2692,8 +2692,9 @@ mod tests {
     async fn test_maintain_connections() {
         // Create a mock swarm for testing
         let ping_config = crate::types::PingConfig::new();
+        let network_config = crate::types::NetworkConfig::new();
         let mut swarm =
-            crate::network::create_swarm(&ping_config).expect("Failed to create test swarm");
+            crate::network::create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
 
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
@@ -2729,7 +2730,8 @@ mod tests {
         use std::time::Instant;
 
         let ping_config = crate::types::PingConfig::new();
-        let mut swarm = create_swarm(&ping_config).expect("Failed to create swarm");
+        let network_config = crate::types::NetworkConfig::new();
+        let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create swarm");
         let story = Story {
             id: 1,
             name: "Test Story".to_string(),

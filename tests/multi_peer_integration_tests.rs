@@ -1349,7 +1349,8 @@ async fn test_peer_disconnection_and_reconnection() {
 
     // Force disconnect by creating a new swarm for peer 1 (simulating network disruption)
     let ping_config = PingConfig::new();
-    let mut new_swarm1 = create_swarm(&ping_config).unwrap();
+    let network_config = NetworkConfig::new();
+    let mut new_swarm1 = create_swarm(&ping_config, &network_config).unwrap();
     new_swarm1.behaviour_mut().floodsub.subscribe(TOPIC.clone());
 
     // Replace the disconnected swarm

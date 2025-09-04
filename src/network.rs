@@ -209,7 +209,7 @@ impl From<kad::Event> for StoryBehaviourEvent {
     }
 }
 
-pub fn create_swarm(ping_config: &PingConfig) -> NetworkResult<Swarm<StoryBehaviour>> {
+pub fn create_swarm(ping_config: &PingConfig, network_config: &NetworkConfig) -> NetworkResult<Swarm<StoryBehaviour>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, dns, noise, swarm::Config as SwarmConfig, tcp, yamux};
     use std::num::NonZeroU8;
@@ -239,12 +239,6 @@ pub fn create_swarm(ping_config: &PingConfig) -> NetworkResult<Swarm<StoryBehavi
         .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux_config)
         .boxed();
-
-    // Load network configuration
-    let network_config = NetworkConfig::load_from_file("network_config.json").unwrap_or_else(|e| {
-        warn!("Failed to load network config: {e}, using defaults");
-        NetworkConfig::new()
-    });
 
     debug!(
         "Using network config - timeout: {}s, streams: {}, connections_per_peer: {}, max_total: {}",
