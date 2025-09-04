@@ -72,14 +72,12 @@ pub struct App {
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub conversations: Vec<crate::types::Conversation>, // Store conversations with status
     pub unread_message_count: usize,                    // Track unread direct messages
-    // Enhanced input features
-    pub input_history: Vec<String>, // Command history for Up/Down navigation
-    pub history_index: Option<usize>, // Current position in history
-    pub last_message_sender: Option<String>, // Track last sender for quick reply
-    // Visual notification features
-    pub notification_config: crate::types::MessageNotificationConfig, // Notification settings
-    pub flash_active: bool, // Track if flash indicator is currently active
-    pub flash_start_time: Option<std::time::Instant>, // When flash started
+    pub input_history: Vec<String>,
+    pub history_index: Option<usize>,
+    pub last_message_sender: Option<String>,
+    pub notification_config: crate::types::MessageNotificationConfig,
+    pub flash_active: bool,
+    pub flash_start_time: Option<std::time::Instant>,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -951,10 +949,8 @@ impl App {
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
         self.last_message_sender = Some(dm.from_name.clone());
 
-        // Trigger visual notifications
         self.trigger_message_notification(&dm);
 
-        // Refresh conversations to show updated state
         if let Ok(conversations) = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
                 .block_on(crate::storage::get_conversations_with_status())

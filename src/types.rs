@@ -255,20 +255,13 @@ pub struct ChannelAutoSubscriptionConfig {
     pub max_auto_subscriptions: usize,
 }
 
-/// Configuration for visual message notifications and indicators
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MessageNotificationConfig {
-    /// Enable color coding for conversations with unread messages
     pub enable_color_coding: bool,
-    /// Enable sound notifications for new messages
     pub enable_sound_notifications: bool,
-    /// Enable visual flash indicators when new messages arrive
     pub enable_flash_indicators: bool,
-    /// Duration of flash indicator in milliseconds
     pub flash_duration_ms: u64,
-    /// Show delivery status indicators for outgoing messages
     pub show_delivery_status: bool,
-    /// Enhanced timestamp formatting in conversation view
     pub enhanced_timestamps: bool,
 }
 
@@ -934,12 +927,12 @@ impl Default for ChannelAutoSubscriptionConfig {
 impl MessageNotificationConfig {
     pub fn new() -> Self {
         Self {
-            enable_color_coding: true,         // Enable color coding by default
-            enable_sound_notifications: false, // Disabled by default to be non-intrusive
-            enable_flash_indicators: true,     // Enable flash indicators by default
-            flash_duration_ms: 200,            // Brief 200ms flash
-            show_delivery_status: true,        // Show delivery status by default
-            enhanced_timestamps: true,         // Enhanced timestamps by default
+            enable_color_coding: true,
+            enable_sound_notifications: false,
+            enable_flash_indicators: true,
+            flash_duration_ms: 200,
+            show_delivery_status: true,
+            enhanced_timestamps: true,
         }
     }
 
