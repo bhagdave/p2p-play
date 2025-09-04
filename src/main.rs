@@ -34,7 +34,7 @@ use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetwork
 use ui::App;
 
 use libp2p::{PeerId, Swarm};
-use log::{debug, error};
+use log::error;
 use std::collections::HashMap;
 use std::error::Error;
 use std::process;
@@ -121,7 +121,6 @@ async fn run_app() -> AppResult<()> {
         )
         .await;
 
-    // Auto-subscribe to general channel if not already subscribed
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
         Ok(subscriptions) => {
             if !subscriptions.contains(&"general".to_string()) {
@@ -133,7 +132,6 @@ async fn run_app() -> AppResult<()> {
         }
         Err(e) => {
             error!("Failed to check subscriptions: {e}");
-            // Try to subscribe to general anyway
             if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await {
                 error!("Failed to auto-subscribe to general channel: {e}");
             }
