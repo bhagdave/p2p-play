@@ -531,7 +531,7 @@ impl EventProcessor {
         connection_id: &libp2p::swarm::ConnectionId,
     ) {
         // Filter out common connection timeout/refused errors to reduce noise
-        let should_log_to_ui = match error {
+        let _should_log_to_ui = match error {
             libp2p::swarm::DialError::Transport(transport_errors) => {
                 // Only log to UI for unexpected transport errors, not common connectivity issues
                 !transport_errors.iter().any(|(_, e)| {
@@ -577,7 +577,7 @@ impl EventProcessor {
         connection_id: &libp2p::swarm::ConnectionId,
     ) {
         // Filter out common connection errors to reduce noise
-        let should_log_to_ui = {
+        let _should_log_to_ui = {
             let error_str = error.to_string();
             !(error_str.contains("Connection reset")
                 || error_str.contains("Broken pipe")

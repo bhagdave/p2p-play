@@ -965,7 +965,6 @@ pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String
     Ok(channels)
 }
 
-/// Get full channel details for channels that the user is subscribed to
 pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -996,7 +995,6 @@ pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResu
     Ok(channels)
 }
 
-/// Get channels that are available but not subscribed to by the given peer
 pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1028,7 +1026,6 @@ pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels
     Ok(channels)
 }
 
-/// Get the count of current auto-subscriptions for a peer (to check against limits)
 pub async fn get_auto_subscription_count(peer_id: &str) -> StorageResult<usize> {
     let subscribed = read_subscribed_channels(peer_id).await?;
     // For now, we'll count all subscriptions as auto-subscriptions
@@ -1157,7 +1154,6 @@ pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories
     Ok(stories)
 }
 
-/// Clears all data from the database and ensures fresh test database (useful for testing)
 pub async fn clear_database_for_testing() -> StorageResult<()> {
     // Reset the connection to ensure we're using the test database path
     reset_db_connection_for_testing().await?;
@@ -1190,7 +1186,6 @@ pub async fn clear_database_for_testing() -> StorageResult<()> {
     Ok(())
 }
 
-/// Save node description to file (limited to 1024 bytes)
 pub async fn save_node_description(description: &str) -> StorageResult<()> {
     if description.len() > 1024 {
         return Err("Description exceeds 1024 bytes limit".into());
@@ -1200,7 +1195,6 @@ pub async fn save_node_description(description: &str) -> StorageResult<()> {
     Ok(())
 }
 
-/// Load local node description from file
 pub async fn load_node_description() -> StorageResult<Option<String>> {
     match fs::read_to_string(NODE_DESCRIPTION_FILE_PATH).await {
         Ok(content) => {
@@ -1219,12 +1213,10 @@ pub async fn load_node_description() -> StorageResult<Option<String>> {
     }
 }
 
-/// Save bootstrap configuration to file
 pub async fn save_bootstrap_config(config: &BootstrapConfig) -> StorageResult<()> {
     save_bootstrap_config_to_path(config, "bootstrap_config.json").await
 }
 
-/// Save bootstrap configuration to specific path
 pub async fn save_bootstrap_config_to_path(
     config: &BootstrapConfig,
     path: &str,
@@ -1241,12 +1233,10 @@ pub async fn save_bootstrap_config_to_path(
     Ok(())
 }
 
-/// Load bootstrap configuration from file, creating default if missing
 pub async fn load_bootstrap_config() -> StorageResult<BootstrapConfig> {
     load_bootstrap_config_from_path("bootstrap_config.json").await
 }
 
-/// Load bootstrap configuration from specific path, creating default if missing
 pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<BootstrapConfig> {
     match fs::read_to_string(path).await {
         Ok(content) => {
@@ -1274,7 +1264,6 @@ pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<Bootst
     }
 }
 
-/// Ensure bootstrap config file exists with defaults
 pub async fn ensure_bootstrap_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("bootstrap_config.json").await.is_err() {
         let default_config = BootstrapConfig::default();
@@ -1284,12 +1273,10 @@ pub async fn ensure_bootstrap_config_exists() -> StorageResult<()> {
     Ok(())
 }
 
-/// Save direct message configuration to file
 pub async fn save_direct_message_config(config: &DirectMessageConfig) -> StorageResult<()> {
     save_direct_message_config_to_path(config, "direct_message_config.json").await
 }
 
-/// Save direct message configuration to specific path
 pub async fn save_direct_message_config_to_path(
     config: &DirectMessageConfig,
     path: &str,
@@ -1300,12 +1287,10 @@ pub async fn save_direct_message_config_to_path(
     Ok(())
 }
 
-/// Load direct message configuration from file, creating default if missing
 pub async fn load_direct_message_config() -> StorageResult<DirectMessageConfig> {
     load_direct_message_config_from_path("direct_message_config.json").await
 }
 
-/// Load direct message configuration from specific path, creating default if missing
 pub async fn load_direct_message_config_from_path(
     path: &str,
 ) -> StorageResult<DirectMessageConfig> {
@@ -1332,7 +1317,6 @@ pub async fn load_direct_message_config_from_path(
     }
 }
 
-/// Ensure direct message config file exists with defaults
 pub async fn ensure_direct_message_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("direct_message_config.json")
         .await
@@ -1346,12 +1330,10 @@ pub async fn ensure_direct_message_config_exists() -> StorageResult<()> {
 }
 
 
-/// Save unified network configuration to file
 pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
     save_unified_network_config_to_path(config, "unified_network_config.json").await
 }
 
-/// Save unified network configuration to a specific path
 pub async fn save_unified_network_config_to_path(
     config: &UnifiedNetworkConfig,
     path: &str,
@@ -1364,12 +1346,10 @@ pub async fn save_unified_network_config_to_path(
     Ok(())
 }
 
-/// Load unified network configuration from file
 pub async fn load_unified_network_config() -> StorageResult<UnifiedNetworkConfig> {
     load_unified_network_config_from_path("unified_network_config.json").await
 }
 
-/// Load unified network configuration from a specific path
 pub async fn load_unified_network_config_from_path(
     path: &str,
 ) -> StorageResult<UnifiedNetworkConfig> {
@@ -1391,7 +1371,6 @@ pub async fn load_unified_network_config_from_path(
     }
 }
 
-/// Ensure unified network config file exists with defaults
 pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
     if tokio::fs::metadata("unified_network_config.json")
         .await
@@ -1404,7 +1383,6 @@ pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
     Ok(())
 }
 
-/// Mark a story as read for a specific peer
 pub async fn mark_story_as_read(
     story_id: usize,
     peer_id: &str,
@@ -1424,7 +1402,6 @@ pub async fn mark_story_as_read(
     Ok(())
 }
 
-/// Get unread story count for each channel for a specific peer
 pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMap<String, usize>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1450,7 +1427,6 @@ pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMa
     Ok(unread_counts)
 }
 
-/// Check if a specific story is read by a peer
 pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1549,7 +1525,6 @@ pub async fn get_conversation_messages(
     Ok(messages)
 }
 
-/// Get all unread story IDs for a specific channel and peer
 pub async fn get_unread_story_ids_for_channel(
     peer_id: &str,
     channel_name: &str,
@@ -1577,7 +1552,6 @@ pub async fn get_unread_story_ids_for_channel(
     Ok(story_ids)
 }
 
-/// Search stories using SQL LIKE queries with optional filters
 pub async fn search_stories(
     query: &crate::types::SearchQuery,
 ) -> StorageResult<crate::types::SearchResults> {
@@ -1689,7 +1663,6 @@ pub async fn search_stories(
     Ok(results)
 }
 
-/// Calculate a simple relevance score for LIKE-based search
 fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) -> Option<f64> {
     if search_term.trim().is_empty() {
         return None;
@@ -1719,7 +1692,6 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
     if score > 0.0 { Some(score) } else { None }
 }
 
-/// Filter stories by channel
 pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::types::Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1741,7 +1713,6 @@ pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::ty
     Ok(stories)
 }
 
-/// Get recently created stories (within N days)
 pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::types::Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
