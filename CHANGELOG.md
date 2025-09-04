@@ -5,6 +5,14 @@ All changes to this project will be documented in this file.
 ## [0.10.6] - 2025-09-03
 
 ### Added
+- **Visual Message Notifications and Indicators**: Comprehensive notification system for direct messages to improve user awareness and engagement
+  - **Color-coded Conversations**: Conversations with unread messages are highlighted in magenta in the conversation panel
+  - **Flash Indicators**: Brief visual flash (📳) in status bar when new messages arrive, with configurable 200ms duration
+  - **Enhanced Timestamps**: Relative time formatting (now, 5m ago, Mon 14:30, 12/25) in conversation views for better temporal context
+  - **Delivery Status Indicators**: Visual checkmarks (✓) for delivered outgoing messages when delivery status is enabled
+  - **Sound Notifications**: Optional audio alerts using system bell (configurable, disabled by default for non-intrusive experience)
+  - **Unread Message Counters**: Real-time unread message counts displayed in status bar with flash effects and conversation panel titles
+  - **Message Notification Configuration**: New `MessageNotificationConfig` structure with validation for customizing notification behavior
 - **Conversation-based Message Management**: Implemented conversation handling to change direct messaging from individual message display to threaded conversations
   - **Database Conversation Storage**: Added `get_conversations()` and `get_messages_for_conversation()` functions to retrieve and organize messages by peer relationships
   - **TUI Conversation Navigation**: Changed Messages panel to display conversations as interactive list with peer names and message counts (e.g., "alice (5 messages)")

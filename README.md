@@ -19,6 +19,14 @@ P2P-Play is a peer-to-peer story sharing application built with Rust using the [
 - **Ping Keep-Alive**: Configurable ping settings to maintain stable connections
 - **Direct Message Retry**: Automatic retry logic for failed direct messages
 
+### Message Notifications
+- **Visual Indicators**: Color-coded conversations show unread messages in magenta
+- **Flash Notifications**: Brief visual flash in status bar when new messages arrive
+- **Sound Alerts**: Optional audio notifications (configurable, disabled by default)
+- **Enhanced Timestamps**: Relative time display (now, 5m ago, Mon 14:30) in conversation views
+- **Delivery Status**: Visual checkmarks (✓) for delivered outgoing messages
+- **Unread Counters**: Real-time unread message counts in status bar and conversation panel
+
 ### User Interface
 - **Interactive Commands**: Full command-line interface for all operations
 - **Real-time Updates**: Live display of connected peers, local stories, and received messages

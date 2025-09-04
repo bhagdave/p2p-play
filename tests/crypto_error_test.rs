@@ -22,12 +22,14 @@ fn test_crypto_error_propagation() {
     let direct_msg = DirectMessage {
         from_peer_id: peer_id.to_string(),
         from_name: "test_user".to_string(),
+        to_peer_id: unknown_peer_id.to_string(),
         to_name: "offline_peer".to_string(),
         message: "Hello there".to_string(),
         timestamp: SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs(),
+        is_outgoing: true,
     };
 
     // This should fail with a crypto error about missing public key

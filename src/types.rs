@@ -255,6 +255,16 @@ pub struct ChannelAutoSubscriptionConfig {
     pub max_auto_subscriptions: usize,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MessageNotificationConfig {
+    pub enable_color_coding: bool,
+    pub enable_sound_notifications: bool,
+    pub enable_flash_indicators: bool,
+    pub flash_duration_ms: u64,
+    pub show_delivery_status: bool,
+    pub enhanced_timestamps: bool,
+}
+
 /// Configuration for automatic story sharing behavior
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AutoShareConfig {
@@ -287,6 +297,7 @@ pub struct UnifiedNetworkConfig {
     pub ping: PingConfig,
     pub direct_message: DirectMessageConfig,
     pub channel_auto_subscription: ChannelAutoSubscriptionConfig,
+    pub message_notifications: MessageNotificationConfig,
     pub relay: RelayConfig,
     pub auto_share: AutoShareConfig,
     pub circuit_breaker: NetworkCircuitBreakerConfig,
@@ -913,6 +924,39 @@ impl Default for ChannelAutoSubscriptionConfig {
     }
 }
 
+impl MessageNotificationConfig {
+    pub fn new() -> Self {
+        Self {
+            enable_color_coding: true,
+            enable_sound_notifications: false,
+            enable_flash_indicators: true,
+            flash_duration_ms: 200,
+            show_delivery_status: true,
+            enhanced_timestamps: true,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.flash_duration_ms == 0 {
+            return Err("flash_duration_ms must be greater than 0".to_string());
+        }
+
+        if self.flash_duration_ms > 5000 {
+            return Err(
+                "flash_duration_ms should not exceed 5000ms to avoid annoyance".to_string(),
+            );
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for MessageNotificationConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AutoShareConfig {
     pub fn new() -> Self {
         Self {
@@ -1071,6 +1115,7 @@ impl UnifiedNetworkConfig {
             ping: PingConfig::new(),
             direct_message: DirectMessageConfig::new(),
             channel_auto_subscription: ChannelAutoSubscriptionConfig::new(),
+            message_notifications: MessageNotificationConfig::new(),
             relay: RelayConfig::new(),
             auto_share: AutoShareConfig::new(),
             circuit_breaker: NetworkCircuitBreakerConfig::new(),
@@ -1084,6 +1129,7 @@ impl UnifiedNetworkConfig {
         self.ping.validate()?;
         self.direct_message.validate()?;
         self.channel_auto_subscription.validate()?;
+        self.message_notifications.validate()?;
         self.relay.validate()?;
         self.auto_share.validate()?;
         self.circuit_breaker.validate()?;

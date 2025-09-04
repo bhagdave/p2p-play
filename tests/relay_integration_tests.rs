@@ -38,12 +38,14 @@ async fn test_relay_message_creation_and_processing() {
     let direct_message = DirectMessage {
         from_peer_id: alice_peer_id.to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: bob_peer_id.to_string(),
         to_name: "Bob".to_string(),
         message: "Hello Bob! This is a secure relay message.".to_string(),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        is_outgoing: true,
     };
 
     // Alice creates a relay message
@@ -116,12 +118,14 @@ async fn test_relay_message_forwarding() {
     let direct_message = DirectMessage {
         from_peer_id: alice_peer_id.to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: charlie_peer_id.to_string(),
         to_name: "Charlie".to_string(),
         message: "Hello Charlie via relay!".to_string(),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        is_outgoing: true,
     };
 
     // Alice creates a relay message for Charlie
@@ -242,12 +246,14 @@ async fn test_relay_rate_limiting() {
     let direct_message = DirectMessage {
         from_peer_id: alice_peer_id.to_string(),
         from_name: "Alice".to_string(),
+        to_peer_id: bob_peer_id.to_string(),
         to_name: "Bob".to_string(),
         message: "Rate limit test message".to_string(),
         timestamp: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs(),
+        is_outgoing: true,
     };
 
     // First message should succeed

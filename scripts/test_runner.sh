@@ -49,6 +49,10 @@ echo "💬 Running Conversation Tests..."
 # Conversation database tests need database isolation  
 TEST_DATABASE_PATH="./test_stories.db" cargo test --test conversation_tests --quiet -- --test-threads=1
 
+echo "🔔 Running Message Notification Tests..."
+# Message notification tests
+cargo test --test message_notification_tests --quiet -- --test-threads=1
+
 echo "🔄 Running Conversation Integration Tests..."
 # Conversation integration tests need database isolation
 TEST_DATABASE_PATH="./test_stories.db" cargo test --test conversation_integration_tests --quiet -- --test-threads=1

@@ -72,10 +72,12 @@ pub struct App {
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub conversations: Vec<crate::types::Conversation>, // Store conversations with status
     pub unread_message_count: usize,                    // Track unread direct messages
-    // Enhanced input features
-    pub input_history: Vec<String>, // Command history for Up/Down navigation
-    pub history_index: Option<usize>, // Current position in history
-    pub last_message_sender: Option<String>, // Track last sender for quick reply
+    pub input_history: Vec<String>,
+    pub history_index: Option<usize>,
+    pub last_message_sender: Option<String>,
+    pub notification_config: crate::types::MessageNotificationConfig,
+    pub flash_active: bool,
+    pub flash_start_time: Option<std::time::Instant>,
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -176,6 +178,10 @@ impl App {
             input_history: Vec::new(),
             history_index: None,
             last_message_sender: None,
+            // Visual notification features
+            notification_config: crate::types::MessageNotificationConfig::new(),
+            flash_active: false,
+            flash_start_time: None,
         })
     }
 
@@ -941,15 +947,72 @@ impl App {
     }
 
     pub fn handle_direct_message(&mut self, dm: DirectMessage) {
-        self.last_message_sender = Some(dm.from_name);
+        self.last_message_sender = Some(dm.from_name.clone());
 
-        // Refresh conversations to show updated state
+        self.trigger_message_notification(&dm);
+
         if let Ok(conversations) = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
                 .block_on(crate::storage::get_conversations_with_status())
         }) {
             self.update_conversations(conversations);
         }
+    }
+
+    /// Trigger visual and audio notifications for new messages
+    pub fn trigger_message_notification(&mut self, dm: &DirectMessage) {
+        // Trigger flash indicator if enabled
+        if self.notification_config.enable_flash_indicators && !dm.is_outgoing {
+            self.flash_active = true;
+            self.flash_start_time = Some(std::time::Instant::now());
+        }
+
+        // Play sound notification if enabled
+        if self.notification_config.enable_sound_notifications && !dm.is_outgoing {
+            #[cfg(not(windows))]
+            {
+                // Simple bell sound for non-Windows systems
+                let _ = std::process::Command::new("printf").arg("\x07").output();
+            }
+            #[cfg(windows)]
+            {
+                // Windows bell sound
+                let _ = std::process::Command::new("cmd")
+                    .args(&["/C", "echo", "\x07"])
+                    .output();
+            }
+        }
+
+        // Log notification in output
+        let notification_text = format!(
+            "{} New message from {} {}",
+            Icons::envelope(),
+            dm.from_name,
+            if self.notification_config.enable_flash_indicators {
+                "📳"
+            } else {
+                ""
+            }
+        );
+        self.add_to_log(notification_text);
+    }
+
+    /// Update flash indicator state - should be called regularly to manage flash duration
+    pub fn update_flash_indicator(&mut self) {
+        if self.flash_active {
+            if let Some(start_time) = self.flash_start_time {
+                let elapsed = start_time.elapsed().as_millis() as u64;
+                if elapsed >= self.notification_config.flash_duration_ms {
+                    self.flash_active = false;
+                    self.flash_start_time = None;
+                }
+            }
+        }
+    }
+
+    /// Update notification configuration
+    pub fn update_notification_config(&mut self, config: crate::types::MessageNotificationConfig) {
+        self.notification_config = config;
     }
 
     pub fn update_conversations(&mut self, conversations: Vec<crate::types::Conversation>) {
@@ -983,14 +1046,27 @@ impl App {
                     let time_str = {
                         let datetime = UNIX_EPOCH + Duration::from_secs(msg.timestamp);
                         let local_datetime = DateTime::<Local>::from(datetime);
-                        local_datetime.format("%Y-%m-%d %H:%M").to_string()
+                        if self.notification_config.enhanced_timestamps {
+                            // Enhanced timestamp with seconds and better formatting
+                            local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                        } else {
+                            local_datetime.format("%Y-%m-%d %H:%M").to_string()
+                        }
                     };
 
                     let direction = if msg.is_outgoing { "→" } else { "←" };
                     let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
 
+                    // Add delivery status indicator for outgoing messages if enabled
+                    let status_indicator =
+                        if msg.is_outgoing && self.notification_config.show_delivery_status {
+                            format!(" {}", Icons::checkmark()) // Simple delivered indicator
+                        } else {
+                            String::new()
+                        };
+
                     self.add_to_log(format!(
-                        "{} [{}] {} {}",
+                        "{} [{}] {} {}{}",
                         direction,
                         time_str,
                         if msg.is_outgoing {
@@ -998,7 +1074,8 @@ impl App {
                         } else {
                             &conversation.peer_name
                         },
-                        sanitized_message
+                        sanitized_message,
+                        status_indicator
                     ));
                 }
                 self.add_to_log("".to_string());
@@ -1228,6 +1305,9 @@ impl App {
     }
 
     pub fn draw(&mut self) -> UIResult<()> {
+        // Update flash indicator state
+        self.update_flash_indicator();
+
         self.terminal.draw(|f| {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -1250,9 +1330,21 @@ impl App {
             } else {
                 format!("{} Network Status Unknown", Icons::network_unknown())
             };
+
+            // Add message notification indicator
+            let message_indicator = if self.unread_message_count > 0 {
+                if self.flash_active {
+                    format!(" | {} MSGS: {} 📳", Icons::envelope(), self.unread_message_count)
+                } else {
+                    format!(" | {} MSGS: {}", Icons::envelope(), self.unread_message_count)
+                }
+            } else {
+                String::new()
+            };
+
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play v{} | Peer: {} ({}) | Connected: {} | {} | Mode: {} | AUTO: {}",
+                    "P2P-Play v{} | Peer: {} ({}) | Connected: {} | {} | Mode: {} | AUTO: {}{}",
                     version,
                     name,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
@@ -1265,11 +1357,12 @@ impl App {
                         InputMode::QuickReply { .. } => "Quick Reply",
                         InputMode::MessageComposition { .. } => "Message Composition",
                     },
-                    if self.auto_scroll { "ON" } else { "OFF" }
+                    if self.auto_scroll { "ON" } else { "OFF" },
+                    message_indicator
                 )
             } else {
                 format!(
-                    "P2P-Play v{} | Peer ID: {} | Connected: {} | {} | Mode: {} | AUTO: {}",
+                    "P2P-Play v{} | Peer ID: {} | Connected: {} | {} | Mode: {} | AUTO: {}{}",
                     version,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
                     self.peers.len(),
@@ -1281,11 +1374,15 @@ impl App {
                         InputMode::QuickReply { .. } => "Quick Reply",
                         InputMode::MessageComposition { .. } => "Message Composition",
                     },
-                    if self.auto_scroll { "ON" } else { "OFF" }
+                    if self.auto_scroll { "ON" } else { "OFF" },
+                    message_indicator
                 )
             };
 
-            let status_bar_color = if let Some(ref health) = self.network_health {
+            let status_bar_color = if self.flash_active && self.notification_config.enable_flash_indicators {
+                // Flash between bright yellow and normal color
+                Color::LightYellow
+            } else if let Some(ref health) = self.network_health {
                 if health.overall_healthy {
                     Color::Green
                 } else {
@@ -1407,7 +1504,28 @@ impl App {
                     let time_str = if conv.last_activity > 0 {
                         let datetime = UNIX_EPOCH + Duration::from_secs(conv.last_activity);
                         let local_datetime = DateTime::<Local>::from(datetime);
-                        local_datetime.format("%H:%M").to_string()
+                        if self.notification_config.enhanced_timestamps {
+                            // Enhanced timestamp formatting with relative time
+                            let now = std::time::SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            let age_secs = now.saturating_sub(conv.last_activity);
+
+                            if age_secs < 60 {
+                                "now".to_string()
+                            } else if age_secs < 3600 {
+                                format!("{}m", age_secs / 60)
+                            } else if age_secs < 86400 {
+                                local_datetime.format("%H:%M").to_string()
+                            } else if age_secs < 604800 {
+                                local_datetime.format("%a %H:%M").to_string()
+                            } else {
+                                local_datetime.format("%m/%d").to_string()
+                            }
+                        } else {
+                            local_datetime.format("%H:%M").to_string()
+                        }
                     } else {
                         "--:--".to_string()
                     };
@@ -1418,13 +1536,20 @@ impl App {
                         String::new()
                     };
 
-                    ListItem::new(format!(
+                    let item_text = format!(
                         "{} {} [{}]{}",
                         Icons::speech(),
                         sanitized_peer_name,
                         time_str,
                         unread_indicator
-                    ))
+                    );
+
+                    // Apply color coding based on unread status and configuration
+                    if self.notification_config.enable_color_coding && conv.unread_count > 0 {
+                        ListItem::new(item_text).style(Style::default().fg(Color::Magenta))
+                    } else {
+                        ListItem::new(item_text)
+                    }
                 })
                 .collect();
 

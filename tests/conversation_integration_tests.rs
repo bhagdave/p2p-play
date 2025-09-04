@@ -1,10 +1,10 @@
+use libp2p::PeerId;
 use p2p_play::storage::core::*;
-use p2p_play::types::{DirectMessage};
+use p2p_play::types::DirectMessage;
 use p2p_play::ui::AppEvent;
 use std::collections::HashMap;
 use tokio;
 use uuid::Uuid;
-use libp2p::PeerId;
 
 async fn setup_integration_test_db() -> Result<String, Box<dyn std::error::Error>> {
     let unique_db_path = format!("/tmp/test_conversation_integration_{}.db", Uuid::new_v4());
@@ -24,12 +24,12 @@ async fn create_test_peer_names() -> (HashMap<PeerId, String>, PeerId, PeerId, P
     let peer1 = PeerId::random();
     let peer2 = PeerId::random();
     let peer3 = PeerId::random();
-    
+
     let mut peer_names = HashMap::new();
     peer_names.insert(peer1, "Alice".to_string());
     peer_names.insert(peer2, "Bob".to_string());
     peer_names.insert(peer3, "Charlie".to_string());
-    
+
     (peer_names, peer1, peer2, peer3)
 }
 
@@ -83,18 +83,20 @@ async fn test_complete_conversation_flow_with_multiple_participants() {
 
     // Save all messages
     for message in &messages {
-        save_direct_message(message, Some(&peer_names)).await.unwrap();
+        save_direct_message(message, Some(&peer_names))
+            .await
+            .unwrap();
     }
 
     // Test conversation list
     let conversations = get_conversations_with_status().await.unwrap();
     assert_eq!(conversations.len(), 2);
-    
+
     // Should be sorted by last activity (Alice conversation has latest activity)
     assert_eq!(conversations[0].peer_name, "Alice");
     assert_eq!(conversations[0].unread_count, 2); // 2 unread incoming messages
     assert_eq!(conversations[0].last_activity, 3500); // Last outgoing message
-    
+
     assert_eq!(conversations[1].peer_name, "Bob");
     assert_eq!(conversations[1].unread_count, 1); // 1 unread incoming message
     assert_eq!(conversations[1].last_activity, 2000);
@@ -102,31 +104,35 @@ async fn test_complete_conversation_flow_with_multiple_participants() {
     // Test getting messages for Alice's conversation
     let alice_messages = get_conversation_messages(&peer1_str).await.unwrap();
     assert_eq!(alice_messages.len(), 3); // 2 incoming + 1 outgoing
-    
+
     // Should be in chronological order
     assert_eq!(alice_messages[0].message, "Hello from Alice!");
     assert_eq!(alice_messages[0].timestamp, 1000);
     assert!(!alice_messages[0].is_outgoing);
-    
+
     assert_eq!(alice_messages[1].message, "How are you doing?");
     assert_eq!(alice_messages[1].timestamp, 3000);
     assert!(!alice_messages[1].is_outgoing);
-    
+
     assert_eq!(alice_messages[2].message, "I'm doing well, thanks!");
     assert_eq!(alice_messages[2].timestamp, 3500);
     assert!(alice_messages[2].is_outgoing);
 
     // Test marking conversation as read
-    mark_conversation_messages_as_read(&peer1_str).await.unwrap();
-    
+    mark_conversation_messages_as_read(&peer1_str)
+        .await
+        .unwrap();
+
     let updated_conversations = get_conversations_with_status().await.unwrap();
-    let alice_conversation = updated_conversations.iter()
+    let alice_conversation = updated_conversations
+        .iter()
         .find(|c| c.peer_name == "Alice")
         .unwrap();
     assert_eq!(alice_conversation.unread_count, 0);
-    
+
     // Bob's conversation should still have unread messages
-    let bob_conversation = updated_conversations.iter()
+    let bob_conversation = updated_conversations
+        .iter()
         .find(|c| c.peer_name == "Bob")
         .unwrap();
     assert_eq!(bob_conversation.unread_count, 1);
@@ -150,7 +156,9 @@ async fn test_conversation_view_event_processing() {
         timestamp: 1000,
         is_outgoing: false,
     };
-    save_direct_message(&message, Some(&peer_names)).await.unwrap();
+    save_direct_message(&message, Some(&peer_names))
+        .await
+        .unwrap();
 
     // Verify conversation has unread message
     let conversations_before = get_conversations_with_status().await.unwrap();
@@ -193,10 +201,14 @@ async fn test_conversation_persistence_across_sessions() {
         timestamp: 1000,
         is_outgoing: false,
     };
-    save_direct_message(&message1, Some(&peer_names)).await.unwrap();
+    save_direct_message(&message1, Some(&peer_names))
+        .await
+        .unwrap();
 
     // Mark as read
-    mark_conversation_messages_as_read(&peer1_str).await.unwrap();
+    mark_conversation_messages_as_read(&peer1_str)
+        .await
+        .unwrap();
 
     // Simulate second session - add more messages
     let message2 = DirectMessage {
@@ -208,7 +220,9 @@ async fn test_conversation_persistence_across_sessions() {
         timestamp: 2000,
         is_outgoing: false,
     };
-    save_direct_message(&message2, Some(&peer_names)).await.unwrap();
+    save_direct_message(&message2, Some(&peer_names))
+        .await
+        .unwrap();
 
     // Test that conversation persists with updated state
     let conversations = get_conversations_with_status().await.unwrap();
@@ -220,7 +234,7 @@ async fn test_conversation_persistence_across_sessions() {
     // Test that all messages are retrieved
     let all_messages = get_conversation_messages(&peer1_str).await.unwrap();
     assert_eq!(all_messages.len(), 2);
-    
+
     // Messages should be in chronological order
     assert_eq!(all_messages[0].message, "Message from session 1");
     assert_eq!(all_messages[1].message, "Message from session 2");
@@ -233,7 +247,7 @@ async fn test_peer_name_updates_in_conversations() {
     let db_path = setup_integration_test_db().await.unwrap();
     let peer1 = PeerId::random();
     let peer1_str = peer1.to_string();
-    
+
     // Initially save message without peer name
     let message1 = DirectMessage {
         from_peer_id: peer1_str.clone(),
@@ -253,7 +267,7 @@ async fn test_peer_name_updates_in_conversations() {
     // Add message with peer name mapping
     let mut peer_names = HashMap::new();
     peer_names.insert(peer1, "Alice".to_string());
-    
+
     let message2 = DirectMessage {
         from_peer_id: peer1_str.clone(),
         from_name: "Alice".to_string(),
@@ -263,7 +277,9 @@ async fn test_peer_name_updates_in_conversations() {
         timestamp: 2000,
         is_outgoing: false,
     };
-    save_direct_message(&message2, Some(&peer_names)).await.unwrap();
+    save_direct_message(&message2, Some(&peer_names))
+        .await
+        .unwrap();
 
     // Conversation should now use the friendly name
     let conversations_updated = get_conversations_with_status().await.unwrap();
@@ -281,7 +297,7 @@ async fn test_conversation_ordering_with_mixed_message_types() {
     let peer2_str = peer2.to_string();
 
     // Create conversations with different types of last activity
-    
+
     // Conversation 1: Last activity is incoming message
     let msg1 = DirectMessage {
         from_peer_id: peer1_str.clone(),
@@ -292,8 +308,8 @@ async fn test_conversation_ordering_with_mixed_message_types() {
         timestamp: 3000,
         is_outgoing: false,
     };
-    
-    // Conversation 2: Last activity is outgoing message  
+
+    // Conversation 2: Last activity is outgoing message
     let msg2_in = DirectMessage {
         from_peer_id: peer2_str.clone(),
         from_name: "Bob".to_string(),
@@ -314,20 +330,24 @@ async fn test_conversation_ordering_with_mixed_message_types() {
     };
 
     // Save messages
-    save_direct_message(&msg2_in, Some(&peer_names)).await.unwrap();
-    save_direct_message(&msg2_out, Some(&peer_names)).await.unwrap();
+    save_direct_message(&msg2_in, Some(&peer_names))
+        .await
+        .unwrap();
+    save_direct_message(&msg2_out, Some(&peer_names))
+        .await
+        .unwrap();
     save_direct_message(&msg1, Some(&peer_names)).await.unwrap();
 
     let conversations = get_conversations_with_status().await.unwrap();
     assert_eq!(conversations.len(), 2);
-    
+
     // Should be ordered by last activity (timestamp 3000 > 2000)
     assert_eq!(conversations[0].peer_name, "Alice"); // timestamp 3000
     assert_eq!(conversations[0].last_activity, 3000);
     assert_eq!(conversations[0].unread_count, 1); // One unread incoming
-    
+
     assert_eq!(conversations[1].peer_name, "Bob"); // timestamp 2000
-    assert_eq!(conversations[1].last_activity, 2000);  
+    assert_eq!(conversations[1].last_activity, 2000);
     assert_eq!(conversations[1].unread_count, 1); // One unread incoming (outgoing doesn't count)
 
     cleanup_integration_db(&db_path).await;
@@ -350,18 +370,20 @@ async fn test_large_conversation_performance() {
             timestamp: 1000 + i,
             is_outgoing: false,
         };
-        save_direct_message(&message, Some(&peer_names)).await.unwrap();
+        save_direct_message(&message, Some(&peer_names))
+            .await
+            .unwrap();
     }
 
     // Test conversation list performance
     let start = std::time::Instant::now();
     let conversations = get_conversations_with_status().await.unwrap();
     let list_duration = start.elapsed();
-    
+
     assert_eq!(conversations.len(), 1);
     assert_eq!(conversations[0].unread_count, 100);
     assert_eq!(conversations[0].last_activity, 1099);
-    
+
     // Should complete quickly (less than 100ms)
     assert!(list_duration.as_millis() < 100);
 
@@ -369,12 +391,12 @@ async fn test_large_conversation_performance() {
     let start = std::time::Instant::now();
     let messages = get_conversation_messages(&peer1_str).await.unwrap();
     let messages_duration = start.elapsed();
-    
+
     assert_eq!(messages.len(), 100);
     // Should be in chronological order
     assert_eq!(messages[0].message, "Message 0");
     assert_eq!(messages[99].message, "Message 99");
-    
+
     // Should complete quickly (less than 100ms)
     assert!(messages_duration.as_millis() < 100);
 
@@ -386,7 +408,7 @@ async fn test_conversation_with_no_peer_names_mapping() {
     let db_path = setup_integration_test_db().await.unwrap();
     let peer_id = PeerId::random();
     let peer_str = peer_id.to_string();
-    
+
     // Save messages without any peer names mapping
     let message = DirectMessage {
         from_peer_id: peer_str.clone(),
@@ -401,12 +423,12 @@ async fn test_conversation_with_no_peer_names_mapping() {
 
     let conversations = get_conversations_with_status().await.unwrap();
     assert_eq!(conversations.len(), 1);
-    
+
     // Should use the full peer_id as the display name
     assert_eq!(conversations[0].peer_name, peer_str);
     assert_eq!(conversations[0].peer_id, peer_str);
     assert_eq!(conversations[0].unread_count, 1);
-    
+
     let messages = get_conversation_messages(&peer_str).await.unwrap();
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].message, "Anonymous message");
