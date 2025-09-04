@@ -9,7 +9,6 @@ use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
 
-/// Direct message request/response types
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DirectMessageRequest {
     pub from_peer_id: String,
@@ -25,7 +24,6 @@ pub struct DirectMessageResponse {
     pub timestamp: u64,
 }
 
-/// Node description request/response types
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeDescriptionRequest {
     pub from_peer_id: String,
@@ -41,7 +39,6 @@ pub struct NodeDescriptionResponse {
     pub timestamp: u64,
 }
 
-/// Story sync request/response types for peer-to-peer story synchronization
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StorySyncRequest {
     pub from_peer_id: String,
@@ -62,12 +59,10 @@ pub struct StorySyncResponse {
     pub channels: Vec<crate::types::Channel>,
 }
 
-/// Application handshake protocol constants
 pub const APP_PROTOCOL: &str = "/p2p-play/handshake/1.0.0";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
-/// Handshake request/response types for peer validation
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HandshakeRequest {
     pub app_name: String,
@@ -248,12 +243,10 @@ pub fn create_swarm(ping_config: &PingConfig, network_config: &NetworkConfig) ->
         network_config.max_established_total
     );
 
-    // Create request-response protocol for direct messaging
     let protocol = request_response::ProtocolSupport::Full;
     let dm_protocol = StreamProtocol::new("/dm/1.0.0");
     let dm_protocols = iter::once((dm_protocol, protocol));
 
-    // Configure request-response protocol with timeouts and retry policies
     let cfg = request_response::Config::default()
         .with_request_timeout(std::time::Duration::from_secs(
             network_config.request_timeout_seconds,
@@ -262,21 +255,18 @@ pub fn create_swarm(ping_config: &PingConfig, network_config: &NetworkConfig) ->
 
     let request_response = request_response::cbor::Behaviour::new(dm_protocols, cfg.clone());
 
-    // Create request-response protocol for node descriptions
     let desc_protocol_support = request_response::ProtocolSupport::Full;
     let desc_protocol = StreamProtocol::new("/node-desc/1.0.0");
     let desc_protocols = iter::once((desc_protocol, desc_protocol_support));
 
     let node_description = request_response::cbor::Behaviour::new(desc_protocols, cfg.clone());
 
-    // Create request-response protocol for story synchronization
     let story_sync_protocol_support = request_response::ProtocolSupport::Full;
     let story_sync_protocol = StreamProtocol::new("/story-sync/1.0.0");
     let story_sync_protocols = iter::once((story_sync_protocol, story_sync_protocol_support));
 
     let story_sync = request_response::cbor::Behaviour::new(story_sync_protocols, cfg.clone());
 
-    // Create request-response protocol for handshake validation
     let handshake_protocol_support = request_response::ProtocolSupport::Full;
     let handshake_protocol = StreamProtocol::new(APP_PROTOCOL);
     let handshake_protocols = iter::once((handshake_protocol, handshake_protocol_support));
