@@ -161,3 +161,4 @@ Key dependencies from Cargo.toml:
 - **serde/serde_json**: Serialization for network messages and configuration
 - **chrono**: Timestamp handling with serde support
 - **log/env_logger**: Logging infrastructure
+- Always run tests using the script ./scripts/test_runner.sh

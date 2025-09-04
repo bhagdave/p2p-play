@@ -242,6 +242,12 @@ pub async fn init_test_database() -> StorageResult<()> {
         Ok(exists)
     };
 
+    if table_exists("direct_messages")? {
+        conn.execute("DELETE FROM direct_messages", [])?;
+    }
+    if table_exists("conversations")? {
+        conn.execute("DELETE FROM conversations", [])?;
+    }
     if table_exists("channel_subscriptions")? {
         conn.execute("DELETE FROM channel_subscriptions", [])?;
     }
@@ -251,8 +257,8 @@ pub async fn init_test_database() -> StorageResult<()> {
     if table_exists("stories")? {
         conn.execute("DELETE FROM stories", [])?;
     }
-    if table_exists("peer_names")? {
-        conn.execute("DELETE FROM peer_names", [])?;
+    if table_exists("peer_name")? {
+        conn.execute("DELETE FROM peer_name", [])?;
     }
     if table_exists("story_read_status")? {
         conn.execute("DELETE FROM story_read_status", [])?;
@@ -1163,10 +1169,12 @@ pub async fn clear_database_for_testing() -> StorageResult<()> {
     let conn = conn_arc.lock().await;
 
     // Clear all tables in correct order (respecting foreign key constraints)
-    conn.execute("DELETE FROM story_read_status", [])?; // Clear first - has FKs to stories and channels
-    conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear second - has FK to channels
-    conn.execute("DELETE FROM stories", [])?; // Clear third - referenced by story_read_status
-    conn.execute("DELETE FROM channels", [])?; // Clear fourth - referenced by subscriptions and read_status
+    conn.execute("DELETE FROM direct_messages", [])?; // Clear first - has FK to conversations
+    conn.execute("DELETE FROM conversations", [])?; // Clear second - referenced by direct_messages
+    conn.execute("DELETE FROM story_read_status", [])?; // Clear third - has FKs to stories and channels
+    conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear fourth - has FK to channels
+    conn.execute("DELETE FROM stories", [])?; // Clear fifth - referenced by story_read_status
+    conn.execute("DELETE FROM channels", [])?; // Clear sixth - referenced by subscriptions and read_status
     conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
 
     // Recreate the general channel to ensure consistent test state
