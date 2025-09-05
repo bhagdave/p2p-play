@@ -14,7 +14,7 @@ rm -f ./test_stories.db
 exit_code=0
 
 echo "📝 Running Unit Tests..."
-cargo test --lib --quiet
+TEST_DATABASE_PATH="./test_stories.db" cargo test --lib --quiet
 if [ $? -ne 0 ]; then
     echo "❌ Unit tests failed"
     exit_code=1
@@ -30,7 +30,7 @@ fi
 
 echo "🌐 Running Network Protocol Integration Tests..."
 # Network protocol tests - comprehensive P2P protocol testing
-cargo test --test network_protocol_integration_tests --quiet -- --test-threads=2
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test network_protocol_integration_tests --quiet -- --test-threads=2
 if [ $? -ne 0 ]; then
     echo "❌ Network protocol integration tests failed"
     exit_code=1
@@ -38,7 +38,7 @@ fi
 
 echo "👥 Running Multi-Peer Integration Tests..."
 # Multi-peer interaction scenarios
-cargo test --test multi_peer_integration_tests --quiet -- --test-threads=2
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test multi_peer_integration_tests --quiet -- --test-threads=2
 if [ $? -ne 0 ]; then
     echo "❌ Multi-peer integration tests failed"
     exit_code=1
@@ -46,7 +46,7 @@ fi
 
 echo "📦 Running Message Serialization Edge Case Tests..."
 # Message serialization robustness tests
-cargo test --test message_serialization_edge_cases_tests --quiet -- --test-threads=2
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test message_serialization_edge_cases_tests --quiet -- --test-threads=2
 if [ $? -ne 0 ]; then
     echo "❌ Message serialization edge case tests failed"
     exit_code=1
@@ -54,7 +54,7 @@ fi
 
 echo "🔄 Running Network Failure Recovery Tests..."
 # Network failure and recovery scenarios
-cargo test --test network_failure_recovery_tests --quiet -- --test-threads=2
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test network_failure_recovery_tests --quiet -- --test-threads=2
 if [ $? -ne 0 ]; then
     echo "❌ Network failure recovery tests failed"
     exit_code=1
@@ -62,7 +62,7 @@ fi
 
 echo "⚡ Running Performance and Load Tests..."
 # Performance testing under various load conditions
-cargo test --test performance_load_tests --quiet -- --test-threads=2
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test performance_load_tests --quiet -- --test-threads=2
 if [ $? -ne 0 ]; then
     echo "❌ Performance and load tests failed"
     exit_code=1
@@ -70,7 +70,7 @@ fi
 
 echo "📡 Running Network Reconnection Tests..."
 # Network tests don't need database isolation but use single thread for consistency
-cargo test --test network_reconnection_tests --quiet -- --test-threads=2
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test network_reconnection_tests --quiet -- --test-threads=2
 if [ $? -ne 0 ]; then
     echo "❌ Network reconnection tests failed"
     exit_code=1
@@ -94,7 +94,7 @@ fi
 
 echo "🔔 Running Message Notification Tests..."
 # Message notification tests
-cargo test --test message_notification_tests --quiet -- --test-threads=1
+TEST_DATABASE_PATH="./test_stories.db" cargo test --test message_notification_tests --quiet -- --test-threads=1
 if [ $? -ne 0 ]; then
     echo "❌ Message notification tests failed"
     exit_code=1
