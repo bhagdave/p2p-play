@@ -1,9 +1,8 @@
-use crate::crypto::{CryptoService, CryptoError, EncryptedPayload, MessageSignature};
+use crate::crypto::{CryptoService, CryptoError};
 use crate::errors::NetworkResult;
 use crate::types::{RelayMessage, RelayConfig, DirectMessage};
-use libp2p::{PeerId, floodsub::Topic};
+use libp2p::PeerId;
 use log::{debug, warn, error};
-use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -135,7 +134,7 @@ impl RelayService {
     /// Decrypt a relay message (only works if we're the target)
     fn decrypt_relay_message(&self, relay_msg: &RelayMessage) -> Result<DirectMessage, CryptoError> {
         // Extract the sender's peer ID from the encrypted payload
-        let sender_peer_id = PeerId::try_from(relay_msg.encrypted_payload.sender_public_key.clone())
+        let _sender_peer_id = PeerId::try_from(relay_msg.encrypted_payload.sender_public_key.clone())
             .map_err(|e| CryptoError::DecryptionFailed(format!("Invalid sender peer ID: {:?}", e)))?;
 
         // Decrypt the message

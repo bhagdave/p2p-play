@@ -87,7 +87,8 @@ async fn test_circuit_breaker_execute_success() {
     assert_eq!(result.unwrap(), "success");
 
     let info = cb.get_state().await;
-    assert_eq!(info.success_count, 1);
+    // success_count only increments in HalfOpen state, not in Closed state
+    assert_eq!(info.total_successes, 1);
 }
 
 #[tokio::test]
@@ -194,7 +195,8 @@ async fn test_circuit_breaker_statistics() {
 
     let info = cb.get_state().await;
     assert_eq!(info.failure_count, 1);
-    assert_eq!(info.success_count, 2);
+    // success_count only increments in HalfOpen state, in Closed state it remains 0
+    assert_eq!(info.total_successes, 2);
 }
 
 #[tokio::test]
