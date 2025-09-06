@@ -27,45 +27,32 @@ run_test_suite() {
     fi
 }
 
-run_test_suite "📝 Running Unit Tests..." "cargo test --lib" "1"
-
-run_test_suite "🔗 Running Core Integration Tests..." "cargo test --test integration_tests" "1"
-
-run_test_suite "🌐 Running Network Protocol Integration Tests..." "cargo test --test network_protocol_integration_tests" "2"
-
-run_test_suite "👥 Running Multi-Peer Integration Tests..." "cargo test --test multi_peer_integration_tests" "2"
-
-run_test_suite "📦 Running Message Serialization Edge Case Tests..." "cargo test --test message_serialization_edge_cases_tests" "2"
-
-run_test_suite "🔄 Running Network Failure Recovery Tests..." "cargo test --test network_failure_recovery_tests" "2"
-
-run_test_suite "⚡ Running Performance and Load Tests..." "cargo test --test performance_load_tests" "2"
-
-run_test_suite "📡 Running Network Reconnection Tests..." "cargo test --test network_reconnection_tests" "2"
-
-run_test_suite "🔄 Running Auto-Subscription Tests..." "cargo test --test auto_subscription_tests" "1"
-
-run_test_suite "💬 Running Conversation Tests..." "cargo test --test conversation_tests" "1"
-
-run_test_suite "🔔 Running Message Notification Tests..." "cargo test --test message_notification_tests" "1"
-
-run_test_suite "🔄 Running Conversation Integration Tests..." "cargo test --test conversation_integration_tests" "1"
-
-echo "🔧 Running Additional Unit and Integration Tests..."
-run_test_suite "📊 Running Bootstrap Logger Tests..." "cargo test --test bootstrap_logger_tests" "1"
-run_test_suite "🏓 Running Ping Config Tests..." "cargo test --test ping_config_tests" "1"
-run_test_suite "🔐 Running Crypto Integration Tests..." "cargo test --test crypto_integration_tests" "2"
-run_test_suite "📚 Running Chronological Stories Tests..." "cargo test --test chronological_stories_test" "1"
-run_test_suite "🔒 Running Scroll Lock Toggle Tests..." "cargo test --test scrolllock_toggle_tests" "1"
-run_test_suite "⚡ Running Circuit Breaker Tests..." "cargo test --test circuit_breaker_tests" "2"
-run_test_suite "🔍 Running Search Tests..." "cargo test --test search_tests" "1"
-run_test_suite "✨ Running Enhanced Messaging Tests..." "cargo test --test enhanced_messaging_tests" "1"
-run_test_suite "🔄 Running Story Sync Tests..." "cargo test --test story_sync_tests" "1"
-run_test_suite "💬 Running Simple Conversation Tests..." "cargo test --test conversation_simple_tests" "1"
-run_test_suite "❌ Running Crypto Error Tests..." "cargo test --test crypto_error_test" "1"
-run_test_suite "🖥️ Running UI Tests..." "cargo test --test ui_tests" "1"
-run_test_suite "🤝 Running Handshake Protocol Tests..." "cargo test --test handshake_protocol_tests" "1"
-run_test_suite "📋 Running Channel Sync Tests..." "cargo test --test channel_sync_tests" "1"
+run_test_suite "Running Unit Tests..." "cargo test --lib" "1"
+run_test_suite "Running Core Integration Tests..." "cargo test --test integration_tests" "1"
+run_test_suite "Running Network Protocol Integration Tests..." "cargo test --test network_protocol_integration_tests" "2"
+run_test_suite "Running Multi-Peer Integration Tests..." "cargo test --test multi_peer_integration_tests" "2"
+run_test_suite "Running Message Serialization Edge Case Tests..." "cargo test --test message_serialization_edge_cases_tests" "2"
+run_test_suite "Running Network Failure Recovery Tests..." "cargo test --test network_failure_recovery_tests" "2"
+run_test_suite "Running Performance and Load Tests..." "cargo test --test performance_load_tests" "2"
+run_test_suite "Running Network Reconnection Tests..." "cargo test --test network_reconnection_tests" "2"
+run_test_suite "Running Auto-Subscription Tests..." "cargo test --test auto_subscription_tests" "1"
+run_test_suite "Running Conversation Tests..." "cargo test --test conversation_tests" "1"
+run_test_suite "Running Message Notification Tests..." "cargo test --test message_notification_tests" "1"
+run_test_suite "Running Conversation Integration Tests..." "cargo test --test conversation_integration_tests" "1"
+run_test_suite "Running Bootstrap Logger Tests..." "cargo test --test bootstrap_logger_tests" "1"
+run_test_suite "Running Ping Config Tests..." "cargo test --test ping_config_tests" "1"
+run_test_suite "Running Crypto Integration Tests..." "cargo test --test crypto_integration_tests" "2"
+run_test_suite "Running Chronological Stories Tests..." "cargo test --test chronological_stories_test" "1"
+run_test_suite "Running Scroll Lock Toggle Tests..." "cargo test --test scrolllock_toggle_tests" "1"
+run_test_suite "Running Circuit Breaker Tests..." "cargo test --test circuit_breaker_tests" "2"
+run_test_suite "Running Search Tests..." "cargo test --test search_tests" "1"
+run_test_suite "Running Enhanced Messaging Tests..." "cargo test --test enhanced_messaging_tests" "1"
+run_test_suite "Running Story Sync Tests..." "cargo test --test story_sync_tests" "1"
+run_test_suite "Running Simple Conversation Tests..." "cargo test --test conversation_simple_tests" "1"
+run_test_suite "Running Crypto Error Tests..." "cargo test --test crypto_error_test" "1"
+run_test_suite "Running UI Tests..." "cargo test --test ui_tests" "1"
+run_test_suite "Running Handshake Protocol Tests..." "cargo test --test handshake_protocol_tests" "1"
+run_test_suite "Running Channel Sync Tests..." "cargo test --test channel_sync_tests" "1"
 
 # Clean up test database after tests
 rm -f ./test_stories.db
