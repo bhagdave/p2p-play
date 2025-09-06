@@ -117,8 +117,12 @@ async fn test_get_channels_for_stories_with_non_existent_channels() {
 
     let channels = get_channels_for_stories(&stories).await.unwrap();
 
-    // Should return empty since the channel doesn't exist in our database
-    assert!(channels.is_empty());
+    // Should return a default channel metadata for the "nonexistent" channel
+    // since the function creates default metadata for channels that don't exist in the database
+    assert_eq!(channels.len(), 1);
+    assert_eq!(channels[0].name, "nonexistent");
+    assert_eq!(channels[0].description, "Channel: nonexistent");
+    assert_eq!(channels[0].created_by, "unknown");
 
     cleanup_test_db();
 }

@@ -573,7 +573,7 @@ async fn test_bootstrap_config_default_creation() {
     let config = load_bootstrap_config_from_path(path).await.unwrap();
     assert_eq!(config.bootstrap_peers.len(), 2); // Default peers
     assert_eq!(config.retry_interval_ms, 5000);
-    assert_eq!(config.max_retry_attempts, 5);
+    assert_eq!(config.max_retry_attempts, 10);
 
     // File should now exist
     assert!(tokio::fs::metadata(path).await.is_ok());

@@ -656,8 +656,8 @@ fn test_bootstrap_config_new() {
     let config = BootstrapConfig::new();
     assert_eq!(config.bootstrap_peers.len(), 2);
     assert_eq!(config.retry_interval_ms, 5000);
-    assert_eq!(config.max_retry_attempts, 5);
-    assert_eq!(config.bootstrap_timeout_ms, 30000);
+    assert_eq!(config.max_retry_attempts, 10);
+    assert_eq!(config.bootstrap_timeout_ms, 60000);
     assert!(
         config.bootstrap_peers.contains(
             &"/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN"
@@ -781,7 +781,7 @@ fn test_channel_subscriptions_type_alias() {
 #[test]
 fn test_network_config_new() {
     let config = NetworkConfig::new();
-    assert_eq!(config.request_timeout_seconds, 60);
+    assert_eq!(config.request_timeout_seconds, 120);
     assert_eq!(config.max_concurrent_streams, 100);
 }
 
@@ -948,7 +948,7 @@ mod network_config_file_tests {
         // Load should create default config
         let loaded_config = NetworkConfig::load_from_file(temp_path).unwrap();
 
-        assert_eq!(loaded_config.request_timeout_seconds, 60);
+        assert_eq!(loaded_config.request_timeout_seconds, 120);
         assert_eq!(loaded_config.max_concurrent_streams, 100);
 
         // Verify file was created
