@@ -1,31 +1,24 @@
-mod bootstrap;
 mod bootstrap_logger;
-mod circuit_breaker;
-mod crypto;
 mod error_logger;
 mod errors;
 mod event_handlers;
 mod event_processor;
 mod handlers;
 mod migrations;
-mod network;
-mod network_circuit_breakers;
-mod relay;
 mod storage;
 mod types;
 mod ui;
-mod validation;
 
-use bootstrap::AutoBootstrap;
+// Use p2p-core for networking functionality
+use p2p_core::{
+    BootstrapService, CryptoService, RelayService, NetworkService,
+    P2PBehaviour, NetworkConfig, PingConfig, BootstrapConfig
+};
 use bootstrap_logger::BootstrapLogger;
-use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult};
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
-use network::{KEYS, PEER_ID, create_swarm};
-use network_circuit_breakers::NetworkCircuitBreakers;
-use relay::RelayService;
 use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
     load_unified_network_config,

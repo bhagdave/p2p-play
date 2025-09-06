@@ -1,16 +1,12 @@
-use crate::circuit_breaker;
-use crate::errors::ConfigResult;
-use crate::network::{
+use p2p_core::{
     DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
-    NodeDescriptionRequest, NodeDescriptionResponse,
+    NodeDescriptionRequest, NodeDescriptionResponse, types::RelayConfig,
+    EncryptedPayload, MessageSignature, ConfigResult, circuit_breaker,
 };
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
-
-// Import crypto types that will be used in RelayMessage
-use crate::crypto::{EncryptedPayload, MessageSignature};
 
 pub type Stories = Vec<Story>;
 
@@ -90,16 +86,6 @@ pub struct PeerName {
     pub name: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct DirectMessage {
-    pub from_peer_id: String,
-    pub from_name: String,
-    pub to_peer_id: String,
-    pub to_name: String,
-    pub message: String,
-    pub timestamp: u64,
-    pub is_outgoing: bool,
-}
 
 #[derive(Debug, Clone)]
 pub struct Conversation {
@@ -110,19 +96,6 @@ pub struct Conversation {
     pub last_activity: u64, // timestamp
 }
 
-/// Encrypted message for relay delivery
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-pub struct RelayMessage {
-    pub message_id: String,                  // Unique message identifier
-    pub target_peer_id: String,              // Intended recipient
-    pub target_name: String,                 // Recipient's alias
-    pub encrypted_payload: EncryptedPayload, // From crypto module
-    pub sender_signature: MessageSignature,  // Authentication
-    pub hop_count: u8,                       // Prevent infinite loops
-    pub max_hops: u8,                        // Maximum relay hops allowed
-    pub timestamp: u64,                      // For replay protection
-    pub relay_attempt: bool,                 // Distinguishes from direct attempts
-}
 
 /// Relay delivery confirmation
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -133,16 +106,6 @@ pub struct RelayConfirmation {
     pub delivery_timestamp: u64,
 }
 
-/// Configuration for relay behavior
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RelayConfig {
-    pub enable_relay: bool,       // Master relay switch
-    pub enable_forwarding: bool,  // Act as relay for others
-    pub max_hops: u8,             // Default: 3
-    pub relay_timeout_ms: u64,    // Default: 5000ms
-    pub prefer_direct: bool,      // Try direct first
-    pub rate_limit_per_peer: u32, // Messages per minute
-}
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Channel {
@@ -173,67 +136,8 @@ pub struct ChannelWithUnreadCount {
     pub unread_count: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct BootstrapConfig {
-    pub bootstrap_peers: Vec<String>,
-    pub retry_interval_ms: u64,
-    pub max_retry_attempts: u32,
-    pub bootstrap_timeout_ms: u64,
-}
-
-/// Configuration for network connectivity settings
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct NetworkConfig {
-    pub connection_maintenance_interval_seconds: u64,
-    pub request_timeout_seconds: u64,
-    pub max_concurrent_streams: usize,
-    /// Maximum number of established connections per peer (default: 1)
-    #[serde(default = "default_max_connections_per_peer")]
-    pub max_connections_per_peer: u32,
-    /// Maximum number of pending incoming connections (default: 10)
-    #[serde(default = "default_max_pending_incoming")]
-    pub max_pending_incoming: u32,
-    /// Maximum number of pending outgoing connections (default: 10)  
-    #[serde(default = "default_max_pending_outgoing")]
-    pub max_pending_outgoing: u32,
-    /// Maximum total number of established connections (default: 100)
-    #[serde(default = "default_max_established_total")]
-    pub max_established_total: u32,
-    /// Connection establishment timeout in seconds (default: 30)
-    #[serde(default = "default_connection_establishment_timeout_seconds")]
-    pub connection_establishment_timeout_seconds: u64,
-    /// Network health update interval in seconds (default: 15)
-    #[serde(default = "default_network_health_update_interval_seconds")]
-    pub network_health_update_interval_seconds: u64,
-}
-
-fn default_max_connections_per_peer() -> u32 {
-    1
-}
-fn default_max_pending_incoming() -> u32 {
-    10
-}
-fn default_max_pending_outgoing() -> u32 {
-    10
-}
-fn default_max_established_total() -> u32 {
-    100
-}
-fn default_connection_establishment_timeout_seconds() -> u64 {
-    30
-}
-fn default_network_health_update_interval_seconds() -> u64 {
-    15
-}
-
-/// Configuration for ping keep-alive settings
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct PingConfig {
-    /// Interval between ping messages in seconds (default: 30)
-    pub interval_secs: u64,
-    /// Timeout for ping responses in seconds (default: 20)  
-    pub timeout_secs: u64,
-}
+// Re-export types from p2p-core for convenience
+pub use p2p_core::{BootstrapConfig, NetworkConfig, PingConfig,  RelayMessage, DirectMessage};
 
 /// Configuration for direct message retry logic
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -609,44 +513,6 @@ impl RelayConfirmation {
     }
 }
 
-impl RelayConfig {
-    pub fn new() -> Self {
-        Self {
-            enable_relay: true,
-            enable_forwarding: true,
-            max_hops: 3,
-            relay_timeout_ms: 5000,
-            prefer_direct: true,
-            rate_limit_per_peer: 10,
-        }
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.max_hops == 0 {
-            return Err("max_hops must be greater than 0".to_string());
-        }
-
-        if self.max_hops > 10 {
-            return Err("max_hops should not exceed 10 to prevent network spam".to_string());
-        }
-
-        if self.relay_timeout_ms == 0 {
-            return Err("relay_timeout_ms must be greater than 0".to_string());
-        }
-
-        if self.rate_limit_per_peer == 0 {
-            return Err("rate_limit_per_peer must be greater than 0".to_string());
-        }
-
-        Ok(())
-    }
-}
-
-impl Default for RelayConfig {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl Channel {
     pub fn new(name: String, description: String, created_by: String) -> Self {

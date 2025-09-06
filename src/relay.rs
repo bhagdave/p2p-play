@@ -11,7 +11,7 @@
 //! - Automatic fallback from direct messaging to relay delivery
 
 use crate::crypto::{CryptoError, CryptoService};
-use crate::types::{DirectMessage, RelayConfig, RelayConfirmation, RelayMessage};
+use crate::types::{DirectMessage, types::RelayConfig, RelayConfirmation, RelayMessage};
 use libp2p::PeerId;
 use log::{debug, warn};
 use std::collections::HashMap;
