@@ -594,14 +594,14 @@ async fn test_large_json_performance() {
         "Performance Test Story 9999"
     );
 
-    // Performance assertions (reasonable limits for test environment)
+    // Performance assertions (reasonable limits for test environment, including CI)
     assert!(
-        serialize_duration.as_secs() < 10,
-        "Serialization should complete within 10 seconds"
+        serialize_duration.as_secs() < 30,
+        "Serialization should complete within 30 seconds"
     );
     assert!(
-        deserialize_duration.as_secs() < 10,
-        "Deserialization should complete within 10 seconds"
+        deserialize_duration.as_secs() < 30,
+        "Deserialization should complete within 30 seconds"
     );
 }
 

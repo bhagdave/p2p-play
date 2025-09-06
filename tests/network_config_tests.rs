@@ -1,5 +1,5 @@
-use p2p_play::storage::{load_network_config_from_path, save_network_config_to_path};
-use p2p_play::types::NetworkConfig;
+use p2p_play::storage::{load_unified_network_config_from_path, save_unified_network_config_to_path};
+use p2p_play::types::{NetworkConfig, UnifiedNetworkConfig};
 use std::fs;
 use tempfile::NamedTempFile;
 
@@ -7,7 +7,7 @@ use tempfile::NamedTempFile;
 async fn test_network_config_creation() {
     let config = NetworkConfig::new();
     assert_eq!(config.connection_maintenance_interval_seconds, 300);
-    assert_eq!(config.request_timeout_seconds, 60);
+    assert_eq!(config.request_timeout_seconds, 120);
     assert_eq!(config.max_concurrent_streams, 100);
 }
 
@@ -69,32 +69,35 @@ async fn test_save_and_load_network_config() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
 
-    let original_config = NetworkConfig {
-        connection_maintenance_interval_seconds: 600,
-        request_timeout_seconds: 120,
-        max_concurrent_streams: 50,
+    let original_unified_config = UnifiedNetworkConfig {
+        network: NetworkConfig {
+            connection_maintenance_interval_seconds: 600,
+            request_timeout_seconds: 120,
+            max_concurrent_streams: 50,
+            ..Default::default()
+        },
         ..Default::default()
     };
 
     // Save config
-    save_network_config_to_path(&original_config, path)
+    save_unified_network_config_to_path(&original_unified_config, path)
         .await
         .unwrap();
 
     // Load config
-    let loaded_config = load_network_config_from_path(path).await.unwrap();
+    let loaded_unified_config = load_unified_network_config_from_path(path).await.unwrap();
 
     assert_eq!(
-        loaded_config.connection_maintenance_interval_seconds,
-        original_config.connection_maintenance_interval_seconds
+        loaded_unified_config.network.connection_maintenance_interval_seconds,
+        original_unified_config.network.connection_maintenance_interval_seconds
     );
     assert_eq!(
-        loaded_config.request_timeout_seconds,
-        original_config.request_timeout_seconds
+        loaded_unified_config.network.request_timeout_seconds,
+        original_unified_config.network.request_timeout_seconds
     );
     assert_eq!(
-        loaded_config.max_concurrent_streams,
-        original_config.max_concurrent_streams
+        loaded_unified_config.network.max_concurrent_streams,
+        original_unified_config.network.max_concurrent_streams
     );
 }
 
@@ -107,12 +110,12 @@ async fn test_load_network_config_creates_default_if_missing() {
     fs::remove_file(path).unwrap();
 
     // Load config from non-existent file
-    let loaded_config = load_network_config_from_path(path).await.unwrap();
+    let loaded_unified_config = load_unified_network_config_from_path(path).await.unwrap();
 
     // Should be default config
-    assert_eq!(loaded_config.connection_maintenance_interval_seconds, 300);
-    assert_eq!(loaded_config.request_timeout_seconds, 60);
-    assert_eq!(loaded_config.max_concurrent_streams, 100);
+    assert_eq!(loaded_unified_config.network.connection_maintenance_interval_seconds, 300);
+    assert_eq!(loaded_unified_config.network.request_timeout_seconds, 120);
+    assert_eq!(loaded_unified_config.network.max_concurrent_streams, 100);
 
     // File should now exist
     assert!(fs::metadata(path).is_ok());
@@ -127,7 +130,7 @@ async fn test_load_network_config_invalid_json() {
     fs::write(path, "invalid json").unwrap();
 
     // Should fail to load
-    let result = load_network_config_from_path(path).await;
+    let result = load_unified_network_config_from_path(path).await;
     assert!(result.is_err());
 }
 
@@ -136,18 +139,76 @@ async fn test_load_network_config_invalid_values() {
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
 
-    // Write config with invalid value (too low)
-    let invalid_config = r#"{"connection_maintenance_interval_seconds": 5, "request_timeout_seconds": 60, "max_concurrent_streams": 100}"#;
+    // Write unified config with invalid network value (too low)
+    let invalid_config = r#"{
+        "bootstrap": {
+            "bootstrap_peers": ["/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN"],
+            "retry_interval_ms": 5000,
+            "max_retry_attempts": 10,
+            "bootstrap_timeout_ms": 60000
+        },
+        "network": {
+            "connection_maintenance_interval_seconds": 5,
+            "request_timeout_seconds": 120,
+            "max_concurrent_streams": 100,
+            "max_connections_per_peer": 1,
+            "max_pending_incoming": 10,
+            "max_pending_outgoing": 10,
+            "max_established_total": 100,
+            "connection_establishment_timeout_seconds": 45,
+            "network_health_update_interval_seconds": 15
+        },
+        "ping": {
+            "interval_secs": 50,
+            "timeout_secs": 45
+        },
+        "direct_message": {
+            "max_retry_attempts": 3,
+            "retry_interval_seconds": 30,
+            "enable_connection_retries": true,
+            "enable_timed_retries": true
+        },
+        "channel_auto_subscription": {
+            "auto_subscribe_to_new_channels": false,
+            "notify_new_channels": true,
+            "max_auto_subscriptions": 10
+        },
+        "message_notifications": {
+            "enable_color_coding": true,
+            "enable_sound_notifications": false,
+            "enable_flash_indicators": true,
+            "flash_duration_ms": 200,
+            "show_delivery_status": true,
+            "enhanced_timestamps": true
+        },
+        "relay": {
+            "enable_relay": true,
+            "enable_forwarding": true,
+            "max_hops": 3,
+            "relay_timeout_ms": 5000,
+            "prefer_direct": true,
+            "rate_limit_per_peer": 10
+        },
+        "auto_share": {
+            "global_auto_share": true,
+            "sync_days": 30
+        },
+        "circuit_breaker": {
+            "failure_threshold": 5,
+            "success_threshold": 3,
+            "timeout_secs": 60,
+            "operation_timeout_secs": 30,
+            "enabled": true
+        }
+    }"#;
     fs::write(path, invalid_config).unwrap();
 
     // Should fail validation
-    let result = load_network_config_from_path(path).await;
+    let result = load_unified_network_config_from_path(path).await;
     assert!(result.is_err());
+    let error_message = result.unwrap_err().to_string();
     assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("must be at least 10 seconds")
+        error_message.contains("connection_maintenance_interval_seconds must be at least 10 seconds")
     );
 }
 

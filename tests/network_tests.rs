@@ -62,7 +62,7 @@ async fn test_network_config_integration() {
     // Test that the network config can be loaded and used in create_swarm
     let config = NetworkConfig::new();
     assert_eq!(config.connection_maintenance_interval_seconds, 300);
-    assert_eq!(config.request_timeout_seconds, 60);
+    assert_eq!(config.request_timeout_seconds, 120);
     assert_eq!(config.max_concurrent_streams, 100);
 
     // Ensure create_swarm still works (it should use the config internally)
