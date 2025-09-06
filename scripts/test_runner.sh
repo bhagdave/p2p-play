@@ -13,100 +13,43 @@ rm -f ./test_stories.db
 # Track overall exit code
 exit_code=0
 
-echo "📝 Running Unit Tests..."
-TEST_DATABASE_PATH="./test_stories.db" cargo test --lib --quiet
-if [ $? -ne 0 ]; then
-    echo "❌ Unit tests failed"
-    exit_code=1
-fi
+# Function to run a test suite with consistent error handling
+run_test_suite() {
+    local test_name="$1"
+    local test_command="$2"
+    local thread_count="$3"
+    
+    echo "$test_name"
+    TEST_DATABASE_PATH="./test_stories.db" $test_command --quiet -- --test-threads="$thread_count"
+    if [ $? -ne 0 ]; then
+        echo "❌ ${test_name#* } failed"
+        exit_code=1
+    fi
+}
 
-echo "🔗 Running Core Integration Tests..."
-# Set test database path for integration tests
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test integration_tests --quiet -- --test-threads=1
-if [ $? -ne 0 ]; then
-    echo "❌ Core integration tests failed"
-    exit_code=1
-fi
+run_test_suite "📝 Running Unit Tests..." "cargo test --lib" "1"
 
-echo "🌐 Running Network Protocol Integration Tests..."
-# Network protocol tests - comprehensive P2P protocol testing
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test network_protocol_integration_tests --quiet -- --test-threads=2
-if [ $? -ne 0 ]; then
-    echo "❌ Network protocol integration tests failed"
-    exit_code=1
-fi
+run_test_suite "🔗 Running Core Integration Tests..." "cargo test --test integration_tests" "1"
 
-echo "👥 Running Multi-Peer Integration Tests..."
-# Multi-peer interaction scenarios
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test multi_peer_integration_tests --quiet -- --test-threads=2
-if [ $? -ne 0 ]; then
-    echo "❌ Multi-peer integration tests failed"
-    exit_code=1
-fi
+run_test_suite "🌐 Running Network Protocol Integration Tests..." "cargo test --test network_protocol_integration_tests" "2"
 
-echo "📦 Running Message Serialization Edge Case Tests..."
-# Message serialization robustness tests
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test message_serialization_edge_cases_tests --quiet -- --test-threads=2
-if [ $? -ne 0 ]; then
-    echo "❌ Message serialization edge case tests failed"
-    exit_code=1
-fi
+run_test_suite "👥 Running Multi-Peer Integration Tests..." "cargo test --test multi_peer_integration_tests" "2"
 
-echo "🔄 Running Network Failure Recovery Tests..."
-# Network failure and recovery scenarios
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test network_failure_recovery_tests --quiet -- --test-threads=2
-if [ $? -ne 0 ]; then
-    echo "❌ Network failure recovery tests failed"
-    exit_code=1
-fi
+run_test_suite "📦 Running Message Serialization Edge Case Tests..." "cargo test --test message_serialization_edge_cases_tests" "2"
 
-echo "⚡ Running Performance and Load Tests..."
-# Performance testing under various load conditions
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test performance_load_tests --quiet -- --test-threads=2
-if [ $? -ne 0 ]; then
-    echo "❌ Performance and load tests failed"
-    exit_code=1
-fi
+run_test_suite "🔄 Running Network Failure Recovery Tests..." "cargo test --test network_failure_recovery_tests" "2"
 
-echo "📡 Running Network Reconnection Tests..."
-# Network tests don't need database isolation but use single thread for consistency
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test network_reconnection_tests --quiet -- --test-threads=2
-if [ $? -ne 0 ]; then
-    echo "❌ Network reconnection tests failed"
-    exit_code=1
-fi
+run_test_suite "⚡ Running Performance and Load Tests..." "cargo test --test performance_load_tests" "2"
 
-echo "🔄 Running Auto-Subscription Tests..."
-# Auto-subscription tests need database isolation
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test auto_subscription_tests --quiet -- --test-threads=1
-if [ $? -ne 0 ]; then
-    echo "❌ Auto-subscription tests failed"
-    exit_code=1
-fi
+run_test_suite "📡 Running Network Reconnection Tests..." "cargo test --test network_reconnection_tests" "2"
 
-echo "💬 Running Conversation Tests..."
-# Conversation database tests need database isolation  
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test conversation_tests --quiet -- --test-threads=1
-if [ $? -ne 0 ]; then
-    echo "❌ Conversation tests failed"
-    exit_code=1
-fi
+run_test_suite "🔄 Running Auto-Subscription Tests..." "cargo test --test auto_subscription_tests" "1"
 
-echo "🔔 Running Message Notification Tests..."
-# Message notification tests
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test message_notification_tests --quiet -- --test-threads=1
-if [ $? -ne 0 ]; then
-    echo "❌ Message notification tests failed"
-    exit_code=1
-fi
+run_test_suite "💬 Running Conversation Tests..." "cargo test --test conversation_tests" "1"
 
-echo "🔄 Running Conversation Integration Tests..."
-# Conversation integration tests need database isolation
-TEST_DATABASE_PATH="./test_stories.db" cargo test --test conversation_integration_tests --quiet -- --test-threads=1
-if [ $? -ne 0 ]; then
-    echo "❌ Conversation integration tests failed"
-    exit_code=1
-fi
+run_test_suite "🔔 Running Message Notification Tests..." "cargo test --test message_notification_tests" "1"
+
+run_test_suite "🔄 Running Conversation Integration Tests..." "cargo test --test conversation_integration_tests" "1"
 
 # Clean up test database after tests
 rm -f ./test_stories.db
