@@ -1,3 +1,4 @@
+use p2p_core::types::DirectMessage;
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
@@ -16,7 +17,7 @@ use crate::network::{
 };
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
-    ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
+    ActionResult, p2p_core::types::irectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
     PublishedStory,
 };

@@ -1,7 +1,8 @@
 use p2p_core::{
     DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
     NodeDescriptionRequest, NodeDescriptionResponse, types::RelayConfig,
-    EncryptedPayload, MessageSignature, ConfigResult, circuit_breaker,
+    EncryptedPayload, MessageSignature, ConfigResult, circuit_breaker, 
+    BootstrapConfig, NetworkConfig, PingConfig, RelayMessage, DirectMessage
 };
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
@@ -135,9 +136,6 @@ pub struct ChannelWithUnreadCount {
     pub channel: Channel,
     pub unread_count: usize,
 }
-
-// Re-export types from p2p-core for convenience
-pub use p2p_core::{BootstrapConfig, NetworkConfig, PingConfig,  RelayMessage, DirectMessage};
 
 /// Configuration for direct message retry logic
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -429,73 +427,6 @@ impl PeerName {
     }
 }
 
-impl DirectMessage {
-    pub fn new(
-        from_peer_id: String,
-        from_name: String,
-        to_peer_id: String,
-        to_name: String,
-        message: String,
-    ) -> Self {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            from_peer_id,
-            from_name,
-            to_peer_id,
-            to_name,
-            message,
-            timestamp,
-            is_outgoing: false,
-        }
-    }
-}
-
-impl RelayMessage {
-    pub fn new(
-        message_id: String,
-        target_peer_id: String,
-        target_name: String,
-        encrypted_payload: EncryptedPayload,
-        sender_signature: MessageSignature,
-        max_hops: u8,
-    ) -> Self {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            message_id,
-            target_peer_id,
-            target_name,
-            encrypted_payload,
-            sender_signature,
-            hop_count: 0,
-            max_hops,
-            timestamp,
-            relay_attempt: true,
-        }
-    }
-
-    pub fn increment_hop_count(&mut self) -> Result<(), String> {
-        if self.hop_count >= self.max_hops {
-            return Err(format!(
-                "Max hops exceeded: {}/{}",
-                self.hop_count, self.max_hops
-            ));
-        }
-        self.hop_count += 1;
-        Ok(())
-    }
-
-    pub fn can_forward(&self) -> bool {
-        self.hop_count < self.max_hops
-    }
-}
 
 impl RelayConfirmation {
     pub fn new(message_id: String, delivered_to: String, relay_path_length: u8) -> Self {
@@ -570,168 +501,6 @@ impl ChannelWithUnreadCount {
     }
 }
 
-impl BootstrapConfig {
-    pub fn new() -> Self {
-        Self {
-            bootstrap_peers: vec![
-                "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN"
-                    .to_string(),
-                "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa"
-                    .to_string(),
-            ],
-            retry_interval_ms: 5000,
-            max_retry_attempts: 10, // Increased from 5 to 10 for internal network tolerance
-            bootstrap_timeout_ms: 60000, // Increased from 30s to 60s for slower connections
-        }
-    }
-
-    pub fn add_peer(&mut self, peer: String) -> bool {
-        if !self.bootstrap_peers.contains(&peer) {
-            self.bootstrap_peers.push(peer);
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn remove_peer(&mut self, peer: &str) -> bool {
-        let initial_len = self.bootstrap_peers.len();
-        self.bootstrap_peers.retain(|p| p != peer);
-        initial_len != self.bootstrap_peers.len()
-    }
-
-    pub fn clear_peers(&mut self) {
-        self.bootstrap_peers.clear();
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.bootstrap_peers.is_empty() {
-            return Err("No bootstrap peers configured".to_string());
-        }
-
-        for peer in &self.bootstrap_peers {
-            if let Err(e) = peer.parse::<libp2p::Multiaddr>() {
-                return Err(format!("Invalid multiaddr '{peer}': {e}"));
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl Default for BootstrapConfig {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl NetworkConfig {
-    pub fn new() -> Self {
-        Self {
-            connection_maintenance_interval_seconds: 300, // 5 minutes default
-            request_timeout_seconds: 120, // Increased from 60s to 120s for slower internal networks
-            max_concurrent_streams: 100,
-            max_connections_per_peer: 1, // Single connection per peer to avoid resource waste
-            max_pending_incoming: 10,    // Allow reasonable number of pending connections
-            max_pending_outgoing: 10,    // Balance connectivity with resource usage
-            max_established_total: 100,  // Total connection pool size
-            connection_establishment_timeout_seconds: 30, // 30 second connection timeout
-            network_health_update_interval_seconds: 15, // Update network health every 15 seconds
-        }
-    }
-
-    pub fn load_from_file(path: &str) -> ConfigResult<Self> {
-        match std::fs::read_to_string(path) {
-            Ok(content) => {
-                let config: NetworkConfig = serde_json::from_str(&content)?;
-                config.validate()?;
-                Ok(config)
-            }
-            Err(_) => {
-                // File doesn't exist, create with defaults
-                let config = Self::new();
-                config.save_to_file(path)?;
-                Ok(config)
-            }
-        }
-    }
-
-    pub fn save_to_file(&self, path: &str) -> ConfigResult<()> {
-        let content = serde_json::to_string_pretty(self)?;
-        std::fs::write(path, content)?;
-        Ok(())
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.connection_maintenance_interval_seconds < 10 {
-            return Err("connection_maintenance_interval_seconds must be at least 10 seconds to avoid excessive connection churn".to_string());
-        }
-
-        if self.connection_maintenance_interval_seconds > 3600 {
-            return Err("connection_maintenance_interval_seconds must be at most 3600 seconds (1 hour) to maintain network responsiveness".to_string());
-        }
-
-        if self.request_timeout_seconds < 10 {
-            return Err("request_timeout_seconds must be at least 10 seconds".to_string());
-        }
-
-        if self.request_timeout_seconds > 300 {
-            return Err(
-                "request_timeout_seconds must not exceed 300 seconds (5 minutes)".to_string(),
-            );
-        }
-
-        if self.max_concurrent_streams == 0 {
-            return Err("max_concurrent_streams must be greater than 0".to_string());
-        }
-
-        if self.max_concurrent_streams > 1000 {
-            return Err("max_concurrent_streams must not exceed 1000".to_string());
-        }
-
-        if self.max_connections_per_peer == 0 {
-            return Err("max_connections_per_peer must be greater than 0".to_string());
-        }
-
-        if self.max_connections_per_peer > 10 {
-            return Err(
-                "max_connections_per_peer should not exceed 10 to avoid resource waste".to_string(),
-            );
-        }
-
-        if self.max_pending_incoming == 0 {
-            return Err("max_pending_incoming must be greater than 0".to_string());
-        }
-
-        if self.max_pending_outgoing == 0 {
-            return Err("max_pending_outgoing must be greater than 0".to_string());
-        }
-
-        if self.max_established_total == 0 {
-            return Err("max_established_total must be greater than 0".to_string());
-        }
-
-        if self.connection_establishment_timeout_seconds < 5 {
-            return Err(
-                "connection_establishment_timeout_seconds must be at least 5 seconds".to_string(),
-            );
-        }
-
-        if self.connection_establishment_timeout_seconds > 300 {
-            return Err(
-                "connection_establishment_timeout_seconds must not exceed 300 seconds".to_string(),
-            );
-        }
-
-        Ok(())
-    }
-}
-
-impl Default for NetworkConfig {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl DirectMessageConfig {
     pub fn new() -> Self {
@@ -917,60 +686,6 @@ impl Default for NetworkCircuitBreakerConfig {
     }
 }
 
-impl PingConfig {
-    /// Create a new PingConfig with lenient default values
-    pub fn new() -> Self {
-        Self {
-            interval_secs: 30, // Ping every 30s instead of default 15s
-            timeout_secs: 20,  // 20s timeout instead of default 10s
-        }
-    }
-
-    /// Load ping configuration from a file, falling back to defaults if file doesn't exist
-    pub fn load_from_file(path: &str) -> ConfigResult<Self> {
-        match std::fs::read_to_string(path) {
-            Ok(content) => {
-                let config: PingConfig = serde_json::from_str(&content)?;
-                config.validate()?;
-                Ok(config)
-            }
-            Err(_) => {
-                // File doesn't exist, use defaults
-                Ok(Self::new())
-            }
-        }
-    }
-
-    /// Validate the configuration values
-    pub fn validate(&self) -> Result<(), String> {
-        if self.interval_secs == 0 {
-            return Err("interval_secs must be greater than 0".to_string());
-        }
-        if self.timeout_secs == 0 {
-            return Err("timeout_secs must be greater than 0".to_string());
-        }
-        if self.timeout_secs >= self.interval_secs {
-            return Err("timeout_secs should be less than interval_secs".to_string());
-        }
-        Ok(())
-    }
-
-    /// Convert to libp2p Duration for interval
-    pub fn interval_duration(&self) -> Duration {
-        Duration::from_secs(self.interval_secs)
-    }
-
-    /// Convert to libp2p Duration for timeout
-    pub fn timeout_duration(&self) -> Duration {
-        Duration::from_secs(self.timeout_secs)
-    }
-}
-
-impl Default for PingConfig {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 impl UnifiedNetworkConfig {
     /// Create a new UnifiedNetworkConfig with all default values

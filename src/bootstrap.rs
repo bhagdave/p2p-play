@@ -1,7 +1,7 @@
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::handlers::extract_peer_id_from_multiaddr;
 use crate::network::StoryBehaviour;
-use crate::types::BootstrapConfig;
+use p2p_core::bootstrap::BootstrapConfig;
 use libp2p::swarm::Swarm;
 use log::{debug, warn};
 use std::sync::{Arc, Mutex};
