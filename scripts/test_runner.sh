@@ -51,6 +51,22 @@ run_test_suite "🔔 Running Message Notification Tests..." "cargo test --test m
 
 run_test_suite "🔄 Running Conversation Integration Tests..." "cargo test --test conversation_integration_tests" "1"
 
+echo "🔧 Running Additional Unit and Integration Tests..."
+run_test_suite "📊 Running Bootstrap Logger Tests..." "cargo test --test bootstrap_logger_tests" "1"
+run_test_suite "🏓 Running Ping Config Tests..." "cargo test --test ping_config_tests" "1"
+run_test_suite "🔐 Running Crypto Integration Tests..." "cargo test --test crypto_integration_tests" "2"
+run_test_suite "📚 Running Chronological Stories Tests..." "cargo test --test chronological_stories_test" "1"
+run_test_suite "🔒 Running Scroll Lock Toggle Tests..." "cargo test --test scrolllock_toggle_tests" "1"
+run_test_suite "⚡ Running Circuit Breaker Tests..." "cargo test --test circuit_breaker_tests" "2"
+run_test_suite "🔍 Running Search Tests..." "cargo test --test search_tests" "1"
+run_test_suite "✨ Running Enhanced Messaging Tests..." "cargo test --test enhanced_messaging_tests" "1"
+run_test_suite "🔄 Running Story Sync Tests..." "cargo test --test story_sync_tests" "1"
+run_test_suite "💬 Running Simple Conversation Tests..." "cargo test --test conversation_simple_tests" "1"
+run_test_suite "❌ Running Crypto Error Tests..." "cargo test --test crypto_error_test" "1"
+run_test_suite "🖥️ Running UI Tests..." "cargo test --test ui_tests" "1"
+run_test_suite "🤝 Running Handshake Protocol Tests..." "cargo test --test handshake_protocol_tests" "1"
+run_test_suite "📋 Running Channel Sync Tests..." "cargo test --test channel_sync_tests" "1"
+
 # Clean up test database after tests
 rm -f ./test_stories.db
 
