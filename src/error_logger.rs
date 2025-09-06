@@ -3,7 +3,6 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
-/// Error logger that writes errors to a file instead of the UI
 pub struct ErrorLogger {
     file_path: String,
 }
@@ -26,7 +25,6 @@ impl ErrorLogger {
         }
     }
 
-    /// Log network/connection errors that should be hidden from UI but preserved in logs
     pub fn log_network_error(&self, source: &str, error_message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{timestamp}] NETWORK_ERROR [{source}]: {error_message}\n");
@@ -37,7 +35,6 @@ impl ErrorLogger {
         }
     }
 
-    /// Log network errors with lazy formatting to avoid unnecessary string allocation
     pub fn log_network_error_fmt(&self, source: &str, args: std::fmt::Arguments) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{timestamp}] NETWORK_ERROR [{source}]: {args}\n");
@@ -66,7 +63,6 @@ impl ErrorLogger {
     }
 }
 
-/// Macro for logging network errors with lazy formatting
 #[macro_export]
 macro_rules! log_network_error {
     ($logger:expr, $source:expr, $($arg:tt)*) => {

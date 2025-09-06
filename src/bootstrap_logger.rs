@@ -16,7 +16,6 @@ impl BootstrapLogger {
         }
     }
 
-    /// Log bootstrap-related messages to file
     pub fn log(&self, message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{timestamp}] BOOTSTRAP: {message}\n");
@@ -31,7 +30,6 @@ impl BootstrapLogger {
         }
     }
 
-    /// Log bootstrap initialization and configuration messages
     pub fn log_init(&self, message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{timestamp}] BOOTSTRAP_INIT: {message}\n");
@@ -43,7 +41,6 @@ impl BootstrapLogger {
         }
     }
 
-    /// Log bootstrap attempt messages
     pub fn log_attempt(&self, message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{timestamp}] BOOTSTRAP_ATTEMPT: {message}\n");
@@ -55,7 +52,6 @@ impl BootstrapLogger {
         }
     }
 
-    /// Log bootstrap status updates
     pub fn log_status(&self, message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{timestamp}] BOOTSTRAP_STATUS: {message}\n");
@@ -67,7 +63,6 @@ impl BootstrapLogger {
         }
     }
 
-    /// Log bootstrap errors
     pub fn log_error(&self, message: &str) {
         let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
         let log_entry = format!("[{timestamp}] BOOTSTRAP_ERROR: {message}\n");
@@ -90,7 +85,6 @@ impl BootstrapLogger {
         Ok(())
     }
 
-    /// Clear the bootstrap log file
     pub fn clear_log(&self) -> std::io::Result<()> {
         if Path::new(&self.file_path).exists() {
             std::fs::remove_file(&self.file_path)?;
