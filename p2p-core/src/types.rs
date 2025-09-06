@@ -154,12 +154,60 @@ pub struct DirectMessage {
 /// Encrypted message for relay
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RelayMessage {
-    pub target_peer_id: String,
-    pub encrypted_payload: EncryptedPayload,
-    pub signature: MessageSignature,
-    pub timestamp: u64,
     pub message_type: String,
     pub relay_ttl: u8,
+    pub message_id: String,                  // Unique message identifier
+    pub target_peer_id: String,              // Intended recipient
+    pub target_name: String,                 // Recipient's alias
+    pub encrypted_payload: EncryptedPayload, // From crypto module
+    pub sender_signature: MessageSignature,  // Authentication
+    pub hop_count: u8,                       // Prevent infinite loops
+    pub max_hops: u8,                        // Maximum relay hops allowed
+    pub timestamp: u64,                      // For replay protection
+    pub relay_attempt: bool,                 // Distinguishes from direct attempts
+}
+
+impl RelayMessage {
+    pub fn new(
+        message_id: String,
+        target_peer_id: String,
+        target_name: String,
+        encrypted_payload: EncryptedPayload,
+        sender_signature: MessageSignature,
+        max_hops: u8,
+    ) -> Self {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            message_id,
+            target_peer_id,
+            target_name,
+            encrypted_payload,
+            sender_signature,
+            hop_count: 0,
+            max_hops,
+            timestamp,
+            relay_attempt: true,
+        }
+    }
+
+    pub fn increment_hop_count(&mut self) -> Result<(), String> {
+        if self.hop_count >= self.max_hops {
+            return Err(format!(
+                "Max hops exceeded: {}/{}",
+                self.hop_count, self.max_hops
+            ));
+        }
+        self.hop_count += 1;
+        Ok(())
+    }
+
+    pub fn can_forward(&self) -> bool {
+        self.hop_count < self.max_hops
+    }
 }
 
 /// Relay configuration

@@ -14,7 +14,7 @@ use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
 use crate::types::{
-    ActionResult, DirectMessageConfig, EventType, p2p_core::types::NetworkConfig, PendingDirectMessage,
+    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PendingDirectMessage,
     PendingHandshakePeer,
 };
 use crate::ui::{App, AppEvent, handle_ui_events};

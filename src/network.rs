@@ -1,6 +1,6 @@
 use crate::errors::NetworkResult;
-use p2p_core::types::NetworkConfig;
-use p2p_core::types::PingConfig;
+use crate::types::NetworkConfig;
+use crate::types::PingConfig;
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, StreamProtocol, identity, kad, mdns, ping, request_response};

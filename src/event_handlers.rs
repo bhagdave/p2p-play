@@ -1,4 +1,3 @@
-use p2p_core::types::DirectMessage;
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
@@ -17,7 +16,7 @@ use crate::network::{
 };
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
-    ActionResult, p2p_core::types::irectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
+    ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
     PublishedStory,
 };
@@ -32,7 +31,6 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
-/// Handle auto-subscription to a channel with error handling and limits checking
 async fn handle_auto_subscription(
     peer_id: &str,
     channel_name: &str,
@@ -83,7 +81,6 @@ pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBe
         .publish(TOPIC.clone(), json_bytes);
 }
 
-/// Handle story publishing events
 pub async fn handle_publish_story_event(
     story: crate::types::Story,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -168,7 +165,6 @@ pub async fn handle_publish_story_event(
     }
 }
 
-/// Handle user input events
 pub async fn handle_input_event(
     line: String,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -322,7 +318,6 @@ pub async fn handle_input_event(
     None
 }
 
-/// Handle mDNS discovery events with peer validation
 pub async fn handle_mdns_event(
     mdns_event: libp2p::mdns::Event,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -369,7 +364,6 @@ pub async fn handle_mdns_event(
     }
 }
 
-/// Handle floodsub message events
 pub async fn handle_floodsub_event(
     floodsub_event: libp2p::floodsub::Event,
     response_sender: mpsc::UnboundedSender<ListResponse>,
@@ -761,7 +755,6 @@ pub async fn handle_floodsub_event(
     None
 }
 
-/// Handle DHT bootstrap command
 pub async fn handle_dht_bootstrap(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -770,7 +763,6 @@ pub async fn handle_dht_bootstrap(
     crate::handlers::handle_dht_bootstrap(cmd, swarm, ui_logger).await;
 }
 
-/// Handle DHT get closest peers command
 pub async fn handle_dht_get_peers(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -779,7 +771,6 @@ pub async fn handle_dht_get_peers(
     crate::handlers::handle_dht_get_peers(cmd, swarm, ui_logger).await;
 }
 
-/// Handle Kademlia DHT events for peer discovery
 pub async fn handle_kad_event(
     kad_event: libp2p::kad::Event,
     _swarm: &mut Swarm<StoryBehaviour>,
@@ -860,7 +851,6 @@ pub async fn handle_kad_event(
     }
 }
 
-/// Handle ping events for connection monitoring
 pub async fn handle_ping_event(ping_event: libp2p::ping::Event, error_logger: &ErrorLogger) {
     match ping_event {
         libp2p::ping::Event {
@@ -880,7 +870,6 @@ pub async fn handle_ping_event(ping_event: libp2p::ping::Event, error_logger: &E
     }
 }
 
-/// Handle peer name events
 pub async fn handle_peer_name_event(peer_name: PeerName) {
     // This shouldn't happen since PeerName events are created from floodsub messages
     // but we'll handle it just in case
@@ -890,7 +879,6 @@ pub async fn handle_peer_name_event(peer_name: PeerName) {
     );
 }
 
-/// Handle request-response events for direct messaging
 pub async fn handle_request_response_event(
     event: request_response::Event<DirectMessageRequest, DirectMessageResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1073,7 +1061,6 @@ pub async fn handle_request_response_event(
     None
 }
 
-/// Handle direct message events
 pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
     // This shouldn't happen since DirectMessage events are processed in floodsub handler
     // but we'll handle it just in case
@@ -1083,7 +1070,6 @@ pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
     );
 }
 
-/// Handle channel events
 pub async fn handle_channel_event(channel: crate::types::Channel) {
     debug!(
         "Received Channel event: {} - {}",
@@ -1091,7 +1077,6 @@ pub async fn handle_channel_event(channel: crate::types::Channel) {
     );
 }
 
-/// Handle channel subscription events
 pub async fn handle_channel_subscription_event(subscription: crate::types::ChannelSubscription) {
     debug!(
         "Received ChannelSubscription event: {} subscribed to {}",
@@ -1099,7 +1084,6 @@ pub async fn handle_channel_subscription_event(subscription: crate::types::Chann
     );
 }
 
-/// Handle node description request-response events
 pub async fn handle_node_description_event(
     event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1274,7 +1258,6 @@ pub async fn handle_node_description_event(
     }
 }
 
-/// Handle story synchronization events
 pub async fn handle_story_sync_event(
     event: request_response::Event<
         crate::network::StorySyncRequest,
@@ -1617,7 +1600,6 @@ pub async fn handle_story_sync_event(
     }
 }
 
-/// Initiate story synchronization with a newly connected peer
 pub async fn initiate_story_sync_with_peer(
     peer_id: PeerId,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1679,7 +1661,6 @@ pub async fn initiate_story_sync_with_peer(
     }
 }
 
-/// Execute deferred operations for a peer after successful handshake
 pub async fn execute_deferred_peer_operations(
     peer_id: PeerId,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1722,7 +1703,6 @@ pub async fn execute_deferred_peer_operations(
     );
 }
 
-/// Handle handshake protocol events for peer validation
 pub async fn handle_handshake_event(
     event: request_response::Event<HandshakeRequest, HandshakeResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1902,7 +1882,6 @@ pub async fn handle_handshake_event(
     }
 }
 
-/// Main event dispatcher that routes events to appropriate handlers
 #[allow(clippy::too_many_arguments)]
 pub async fn handle_event(
     event: EventType,
@@ -2150,7 +2129,6 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
     }
 }
 
-/// Track successful connection for improved reconnect timing
 pub fn track_successful_connection(peer_id: PeerId) {
     if let Ok(mut connections) = LAST_SUCCESSFUL_CONNECTIONS.try_lock() {
         connections.insert(peer_id, Instant::now());
@@ -2158,7 +2136,6 @@ pub fn track_successful_connection(peer_id: PeerId) {
     }
 }
 
-/// Trigger immediate connection maintenance (useful after connection drops)
 pub async fn trigger_immediate_connection_maintenance(
     swarm: &mut Swarm<StoryBehaviour>,
     error_logger: &ErrorLogger,
@@ -2232,7 +2209,6 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
     });
 }
 
-/// Process pending direct messages and retry failed ones
 pub async fn process_pending_messages(
     swarm: &mut Swarm<StoryBehaviour>,
     dm_config: &DirectMessageConfig,
@@ -2326,7 +2302,6 @@ pub async fn process_pending_messages(
     }
 }
 
-/// Process pending messages when new connections are established
 pub async fn retry_messages_for_peer(
     peer_id: PeerId,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -2386,7 +2361,6 @@ pub async fn retry_messages_for_peer(
     }
 }
 
-/// Broadcast a relay message via floodsub
 pub async fn broadcast_relay_message(
     swarm: &mut Swarm<StoryBehaviour>,
     relay_msg: &crate::types::RelayMessage,
@@ -2403,27 +2377,6 @@ pub async fn broadcast_relay_message(
     debug!(
         "Broadcasted relay message with ID: {}",
         relay_msg.message_id
-    );
-    Ok(())
-}
-
-/// Broadcast a relay confirmation via floodsub
-pub async fn broadcast_relay_confirmation(
-    swarm: &mut Swarm<StoryBehaviour>,
-    confirmation: &crate::types::RelayConfirmation,
-) -> Result<(), String> {
-    let json = serde_json::to_string(confirmation)
-        .map_err(|e| format!("Failed to serialize relay confirmation: {e}"))?;
-
-    let json_bytes = Bytes::from(json.into_bytes());
-    swarm
-        .behaviour_mut()
-        .floodsub
-        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
-
-    debug!(
-        "Broadcasted relay confirmation for message: {}",
-        confirmation.message_id
     );
     Ok(())
 }
