@@ -1,0 +1,38 @@
+[tool.tarpaulin]
+# Configuration for test coverage reporting for p2p-core
+
+# Output format and location
+out = ["Html", "Lcov", "Xml"]
+output-dir = "./coverage/"
+
+# Test execution settings
+timeout = 300
+jobs = 1  # Single job to avoid conflicts with network tests
+follow-exec = true
+post-args = ["--", "--test-threads=1"]
+
+# Coverage reporting options
+skip-clean = false
+ignore-panics = true
+count = true
+line = true
+branch = true
+
+# Files and directories to include/exclude
+include-tests = true
+exclude-files = [
+    "tests/",
+    "*/target/*",
+    "*/build.rs"
+]
+
+# Test configuration
+[tool.tarpaulin.coverage]
+# Don't fail on coverage percentage for now
+fail-under = 0
+
+# Run configuration
+[tool.tarpaulin.run]
+# Run only p2p-core specific tests
+test-command = "cargo"
+test-args = ["test", "--lib"]
