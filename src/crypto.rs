@@ -15,7 +15,6 @@ const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB limit
 const REPLAY_PROTECTION_WINDOW_SECS: u64 = 300; // 5 minutes
 const MIN_PUBLIC_KEY_SIZE: usize = 32; // Minimum expected public key size
 
-/// Secure wrapper for encryption keys that zeros memory on drop
 #[derive(ZeroizeOnDrop)]
 struct SecureKey([u8; 32]);
 
@@ -29,7 +28,6 @@ impl SecureKey {
     }
 }
 
-/// Encrypted message envelope
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct EncryptedPayload {
     pub encrypted_data: Vec<u8>,
@@ -37,7 +35,6 @@ pub struct EncryptedPayload {
     pub sender_public_key: Vec<u8>, // For key verification
 }
 
-/// Digital signature container
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct MessageSignature {
     pub signature: Vec<u8>,
@@ -45,7 +42,6 @@ pub struct MessageSignature {
     pub timestamp: u64,
 }
 
-/// Crypto service for message encryption/decryption
 #[derive(Clone)]
 pub struct CryptoService {
     local_keypair: Keypair,
@@ -79,7 +75,6 @@ impl std::fmt::Display for CryptoError {
 impl std::error::Error for CryptoError {}
 
 impl CryptoService {
-    /// Create a new CryptoService with the given keypair
     pub fn new(keypair: Keypair) -> Self {
         Self {
             local_keypair: keypair,
@@ -116,18 +111,15 @@ impl CryptoService {
         Ok(())
     }
 
-    /// Get our local peer ID
     pub fn local_peer_id(&self) -> PeerId {
         PeerId::from(self.local_keypair.public())
     }
 
-    /// Encrypt message for specific recipient
     pub fn encrypt_message(
         &self,
         message: &[u8],
         recipient_peer_id: &PeerId,
     ) -> Result<EncryptedPayload, CryptoError> {
-        // Validate message size
         if message.is_empty() {
             return Err(CryptoError::InvalidInput(
                 "Message cannot be empty".to_string(),
@@ -142,7 +134,6 @@ impl CryptoService {
             )));
         }
 
-        // Get recipient's public key from cache
         let recipient_public_key =
             self.peer_public_keys
                 .get(recipient_peer_id)
@@ -152,29 +143,16 @@ impl CryptoService {
                     ))
                 })?;
 
-        // Get our public key
         let our_public_key = self.get_our_public_key()?;
 
-        // Create shared secret by combining both public keys
         let shared_secret = self.derive_shared_secret(&our_public_key, recipient_public_key)?;
 
-        // Derive encryption key using HKDF with secure key handling
-        let hk = Hkdf::<Sha256>::new(None, &shared_secret);
-        let mut encryption_key_data = [0u8; 32];
-        hk.expand(ENCRYPTION_CONTEXT, &mut encryption_key_data)
-            .map_err(|e| CryptoError::EncryptionFailed(format!("Key derivation failed: {e}")))?;
+        let secure_key = self.derive_encryption_key(&shared_secret)?;
+        
+        let cipher = self.create_cipher(&secure_key);
 
-        let secure_key = SecureKey::new(encryption_key_data);
-        // Zero the temporary array
-        encryption_key_data.zeroize();
-
-        // Create cipher instance
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(secure_key.as_slice()));
-
-        // Generate random nonce
         let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
 
-        // Encrypt the message
         let encrypted_data = cipher
             .encrypt(&nonce, message)
             .map_err(|e| CryptoError::EncryptionFailed(format!("Encryption failed: {e}")))?;
@@ -186,16 +164,13 @@ impl CryptoService {
         })
     }
 
-    /// Decrypt message intended for local peer
     pub fn decrypt_message(&self, encrypted: &EncryptedPayload) -> Result<Vec<u8>, CryptoError> {
-        // Validate encrypted payload
         if encrypted.encrypted_data.is_empty() {
             return Err(CryptoError::DecryptionFailed(
                 "Encrypted data cannot be empty".to_string(),
             ));
         }
 
-        // Validate nonce size
         if encrypted.nonce.len() != 12 {
             return Err(CryptoError::DecryptionFailed(format!(
                 "Invalid nonce size: {} (expected: 12)",
@@ -203,7 +178,6 @@ impl CryptoService {
             )));
         }
 
-        // Validate sender public key
         if encrypted.sender_public_key.len() < MIN_PUBLIC_KEY_SIZE {
             return Err(CryptoError::DecryptionFailed(format!(
                 "Sender public key too small: {} bytes",
@@ -211,35 +185,21 @@ impl CryptoService {
             )));
         }
 
-        // Get our public key
         let our_public_key = self.get_our_public_key()?;
 
-        // Create shared secret by combining both public keys
         let shared_secret =
             self.derive_shared_secret(&encrypted.sender_public_key, &our_public_key)?;
 
-        // Derive decryption key using HKDF with secure key handling
-        let hk = Hkdf::<Sha256>::new(None, &shared_secret);
-        let mut decryption_key_data = [0u8; 32];
-        hk.expand(ENCRYPTION_CONTEXT, &mut decryption_key_data)
-            .map_err(|e| CryptoError::DecryptionFailed(format!("Key derivation failed: {e}")))?;
+        let secure_key = self.derive_decryption_key(&shared_secret)?;
 
-        let secure_key = SecureKey::new(decryption_key_data);
-        // Zero the temporary array
-        decryption_key_data.zeroize();
+        let cipher = self.create_cipher(&secure_key);
 
-        // Create cipher instance
-        let cipher = ChaCha20Poly1305::new(Key::from_slice(secure_key.as_slice()));
-
-        // Create nonce from encrypted payload
         let nonce = Nonce::from_slice(&encrypted.nonce);
 
-        // Decrypt the message
         let decrypted_data = cipher
             .decrypt(nonce, encrypted.encrypted_data.as_ref())
             .map_err(|e| CryptoError::DecryptionFailed(format!("Decryption failed: {e}")))?;
 
-        // Check decrypted message size
         if decrypted_data.len() > MAX_MESSAGE_SIZE {
             return Err(CryptoError::DecryptionFailed(
                 "Decrypted message exceeds size limit".to_string(),
@@ -249,9 +209,7 @@ impl CryptoService {
         Ok(decrypted_data)
     }
 
-    /// Sign message with local private key
     pub fn sign_message(&self, message: &[u8]) -> Result<MessageSignature, CryptoError> {
-        // Validate message
         if message.is_empty() {
             return Err(CryptoError::SignatureFailed(
                 "Message cannot be empty".to_string(),
@@ -266,23 +224,19 @@ impl CryptoService {
             )));
         }
 
-        // Get current timestamp
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|e| CryptoError::SignatureFailed(format!("Timestamp generation failed: {e}")))?
             .as_secs();
 
-        // Create message to sign (message + timestamp for replay protection)
         let mut message_to_sign = message.to_vec();
         message_to_sign.extend_from_slice(&timestamp.to_be_bytes());
 
-        // Sign with our keypair
         let signature = self
             .local_keypair
             .sign(&message_to_sign)
             .map_err(|e| CryptoError::SignatureFailed(format!("Signing failed: {e}")))?;
 
-        // Get our public key
         let public_key = self.get_our_public_key()?;
 
         Ok(MessageSignature {
@@ -292,13 +246,11 @@ impl CryptoService {
         })
     }
 
-    /// Verify message signature with replay protection
     pub fn verify_signature(
         &self,
         message: &[u8],
         signature: &MessageSignature,
     ) -> Result<bool, CryptoError> {
-        // Validate inputs
         if message.is_empty() {
             return Err(CryptoError::VerificationFailed(
                 "Message cannot be empty".to_string(),
@@ -356,9 +308,7 @@ impl CryptoService {
         Ok(is_valid)
     }
 
-    /// Extract public key from PeerId for encryption
     pub fn public_key_from_peer_id(&self, peer_id: &PeerId) -> Result<Vec<u8>, CryptoError> {
-        // Check if we have the public key in our cache
         if let Some(public_key) = self.peer_public_keys.get(peer_id) {
             Ok(public_key.clone())
         } else {
@@ -368,12 +318,10 @@ impl CryptoService {
         }
     }
 
-    /// Get our own public key in encoded format
     fn get_our_public_key(&self) -> Result<Vec<u8>, CryptoError> {
         Ok(self.local_keypair.public().encode_protobuf())
     }
 
-    /// Derive a shared secret from two public keys using a simple hash-based approach
     fn derive_shared_secret(
         &self,
         pub_key1: &[u8],
@@ -396,6 +344,36 @@ impl CryptoService {
         hasher.update(SHARED_SECRET_CONTEXT);
         let result = hasher.finalize();
         Ok(result.to_vec())
+    }
+
+    fn derive_encryption_key(&self, shared_secret: &[u8]) -> Result<SecureKey, CryptoError> {
+        let hk = Hkdf::<Sha256>::new(None, shared_secret);
+        let mut key_data = [0u8; 32];
+        hk.expand(ENCRYPTION_CONTEXT, &mut key_data)
+            .map_err(|e| CryptoError::EncryptionFailed(format!("Key derivation failed: {e}")))?;
+
+        let secure_key = SecureKey::new(key_data);
+        // Zero the temporary array
+        key_data.zeroize();
+        
+        Ok(secure_key)
+    }
+
+    fn derive_decryption_key(&self, shared_secret: &[u8]) -> Result<SecureKey, CryptoError> {
+        let hk = Hkdf::<Sha256>::new(None, shared_secret);
+        let mut key_data = [0u8; 32];
+        hk.expand(ENCRYPTION_CONTEXT, &mut key_data)
+            .map_err(|e| CryptoError::DecryptionFailed(format!("Key derivation failed: {e}")))?;
+
+        let secure_key = SecureKey::new(key_data);
+        // Zero the temporary array
+        key_data.zeroize();
+        
+        Ok(secure_key)
+    }
+
+    fn create_cipher(&self, key: &SecureKey) -> ChaCha20Poly1305 {
+        ChaCha20Poly1305::new(Key::from_slice(key.as_slice()))
     }
 }
 
