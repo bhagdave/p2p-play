@@ -1,31 +1,21 @@
-use log::{debug, warn};
+use log::warn;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
-/// Circuit breaker states
 #[derive(Debug, Clone, PartialEq)]
 pub enum CircuitState {
-    /// Normal operation - requests are allowed through
     Closed,
-    /// Failure threshold exceeded - requests are blocked
     Open { opened_at: Instant },
-    /// Testing if service has recovered - limited requests allowed
     HalfOpen,
 }
 
-/// Configuration for circuit breaker behavior
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerConfig {
-    /// Number of failures before opening the circuit
     pub failure_threshold: u32,
-    /// Number of successes needed to close from half-open state
     pub success_threshold: u32,
-    /// Time to wait before transitioning from open to half-open
     pub timeout: Duration,
-    /// Maximum time to wait for an operation
     pub operation_timeout: Duration,
-    /// Name for logging and identification
     pub name: String,
 }
 
@@ -41,7 +31,6 @@ impl Default for CircuitBreakerConfig {
     }
 }
 
-/// Circuit breaker implementation for network operations
 #[derive(Debug)]
 pub struct CircuitBreaker {
     config: CircuitBreakerConfig,
@@ -60,9 +49,7 @@ struct CircuitBreakerState {
 }
 
 impl CircuitBreaker {
-    /// Create a new circuit breaker with the given configuration
     pub fn new(config: CircuitBreakerConfig) -> Self {
-        debug!("Creating circuit breaker: {}", config.name);
         Self {
             config,
             state: Arc::new(Mutex::new(CircuitBreakerState {
@@ -77,7 +64,6 @@ impl CircuitBreaker {
         }
     }
 
-    /// Check if the circuit breaker allows the operation to proceed
     pub async fn can_execute(&self) -> bool {
         let mut state = self.state.lock().await;
         state.total_requests += 1;
@@ -86,18 +72,10 @@ impl CircuitBreaker {
             CircuitState::Closed => true,
             CircuitState::Open { opened_at } => {
                 if opened_at.elapsed() >= self.config.timeout {
-                    debug!(
-                        "Circuit breaker {} transitioning from Open to HalfOpen",
-                        self.config.name
-                    );
                     state.state = CircuitState::HalfOpen;
                     state.success_count = 0;
                     true
                 } else {
-                    debug!(
-                        "Circuit breaker {} is open, blocking request",
-                        self.config.name
-                    );
                     false
                 }
             }
@@ -105,7 +83,6 @@ impl CircuitBreaker {
         }
     }
 
-    /// Record a successful operation
     pub async fn on_success(&self) {
         let mut state = self.state.lock().await;
         state.total_successes += 1;
@@ -118,10 +95,6 @@ impl CircuitBreaker {
             CircuitState::HalfOpen => {
                 state.success_count += 1;
                 if state.success_count >= self.config.success_threshold {
-                    debug!(
-                        "Circuit breaker {} transitioning from HalfOpen to Closed",
-                        self.config.name
-                    );
                     state.state = CircuitState::Closed;
                     state.failure_count = 0;
                     state.success_count = 0;
@@ -137,7 +110,6 @@ impl CircuitBreaker {
         }
     }
 
-    /// Record a failed operation
     pub async fn on_failure(&self, error: &str) {
         let mut state = self.state.lock().await;
         state.total_failures += 1;
@@ -172,14 +144,8 @@ impl CircuitBreaker {
                 state.failure_count += 1;
             }
         }
-
-        debug!(
-            "Circuit breaker {} recorded failure: {}",
-            self.config.name, error
-        );
     }
 
-    /// Get current circuit breaker state information
     pub async fn get_state(&self) -> CircuitBreakerInfo {
         let state = self.state.lock().await;
         CircuitBreakerInfo {
@@ -199,7 +165,6 @@ impl CircuitBreaker {
         }
     }
 
-    /// Execute an operation with circuit breaker protection
     pub async fn execute<T, E, F, Fut>(&self, operation: F) -> Result<T, CircuitBreakerError<E>>
     where
         F: FnOnce() -> Fut,
@@ -212,7 +177,6 @@ impl CircuitBreaker {
             });
         }
 
-        // Execute the operation with timeout
         let result = tokio::time::timeout(self.config.operation_timeout, operation()).await;
 
         match result {
@@ -239,7 +203,6 @@ impl CircuitBreaker {
     }
 }
 
-/// Information about the current state of a circuit breaker
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerInfo {
     pub name: String,
@@ -254,12 +217,10 @@ pub struct CircuitBreakerInfo {
 }
 
 impl CircuitBreakerInfo {
-    /// Check if the circuit breaker is healthy (closed state with low failure rate)
     pub fn is_healthy(&self) -> bool {
         matches!(self.state, CircuitState::Closed) && self.failure_rate < 0.5
     }
 
-    /// Get a human-readable status string
     pub fn status_string(&self) -> String {
         match &self.state {
             CircuitState::Closed => {
@@ -289,7 +250,6 @@ impl CircuitBreakerInfo {
     }
 }
 
-/// Errors that can occur when using the circuit breaker
 #[derive(Debug, thiserror::Error)]
 pub enum CircuitBreakerError<E> {
     #[error("Circuit breaker '{circuit_name}' is open")]
