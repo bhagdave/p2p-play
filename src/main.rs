@@ -3,6 +3,7 @@ mod bootstrap_logger;
 mod circuit_breaker;
 mod crypto;
 mod error_logger;
+mod file_logger;
 mod errors;
 mod event_handlers;
 mod event_processor;

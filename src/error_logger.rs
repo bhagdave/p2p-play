@@ -1,65 +1,35 @@
+use crate::file_logger::FileLogger;
 use log::warn;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::Path;
 
 pub struct ErrorLogger {
-    file_path: String,
+    logger: FileLogger,
 }
 
 impl ErrorLogger {
     pub fn new(file_path: &str) -> Self {
         Self {
-            file_path: file_path.to_string(),
+            logger: FileLogger::new(file_path),
         }
+    }
+
+    pub fn file_path(&self) -> &str {
+        self.logger.file_path()
     }
 
     pub fn log_error(&self, error_message: &str) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] ERROR: {error_message}\n");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            // If file writing fails, fall back to warn logging (shows in TUI)
-            warn!("Failed to write to error log file: {e}");
-            warn!("{}", log_entry.trim());
-        }
+        self.logger.log_with_category("ERROR", error_message);
     }
 
     pub fn log_network_error(&self, source: &str, error_message: &str) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] NETWORK_ERROR [{source}]: {error_message}\n");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            // If file writing fails, use warn instead of error to avoid console spam
-            warn!("Failed to write network error to log file: {e}");
-        }
+        self.logger.log_with_category(&format!("NETWORK_ERROR [{}]", source), error_message);
     }
 
     pub fn log_network_error_fmt(&self, source: &str, args: std::fmt::Arguments) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] NETWORK_ERROR [{source}]: {args}\n");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            // If file writing fails, use warn instead of error to avoid console spam
-            warn!("Failed to write network error to log file: {e}");
-        }
-    }
-
-    fn write_to_file(&self, content: &str) -> std::io::Result<()> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.file_path)?;
-        file.write_all(content.as_bytes())?;
-        file.flush()?;
-        Ok(())
+        self.logger.log_with_category_fmt(&format!("NETWORK_ERROR [{}]", source), args);
     }
 
     pub fn clear_log(&self) -> std::io::Result<()> {
-        if Path::new(&self.file_path).exists() {
-            std::fs::remove_file(&self.file_path)?;
-        }
-        Ok(())
+        self.logger.clear_log()
     }
 }
 
@@ -78,7 +48,7 @@ mod tests {
     #[test]
     fn test_error_logger_creation() {
         let error_logger = ErrorLogger::new("test.log");
-        assert_eq!(error_logger.file_path, "test.log");
+        assert_eq!(error_logger.file_path(), "test.log");
     }
 
     #[test]

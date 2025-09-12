@@ -1,81 +1,43 @@
+use crate::file_logger::FileLogger;
 use log::warn;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::Path;
 
 pub struct BootstrapLogger {
-    pub file_path: String,
+    logger: FileLogger,
 }
 
 impl BootstrapLogger {
     pub fn new(file_path: &str) -> Self {
         Self {
-            file_path: file_path.to_string(),
+            logger: FileLogger::new(file_path),
         }
+    }
+
+    pub fn file_path(&self) -> &str {
+        self.logger.file_path()
     }
 
     pub fn log(&self, message: &str) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] BOOTSTRAP: {message}\n");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            warn!("Failed to write to bootstrap log file: {e}");
-        }
+        self.logger.log_with_category("BOOTSTRAP", message);
     }
 
     pub fn log_init(&self, message: &str) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] BOOTSTRAP_INIT: {message}\n");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            warn!("Failed to write bootstrap init to log file: {e}");
-        }
+        self.logger.log_with_category("BOOTSTRAP_INIT", message);
     }
 
     pub fn log_attempt(&self, message: &str) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] BOOTSTRAP_ATTEMPT: {message}\n");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            warn!("Failed to write bootstrap attempt to log file: {e}");
-        }
+        self.logger.log_with_category("BOOTSTRAP_ATTEMPT", message);
     }
 
     pub fn log_status(&self, message: &str) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] BOOTSTRAP_STATUS: {message}\n");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            warn!("Failed to write bootstrap status to log file: {e}");
-        }
+        self.logger.log_with_category("BOOTSTRAP_STATUS", message);
     }
 
     pub fn log_error(&self, message: &str) {
-        let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC");
-        let log_entry = format!("[{timestamp}] BOOTSTRAP_ERROR: {message}\n");
-
-        // Bootstrap errors should still be visible via warn level
         warn!("Bootstrap Error: {message}");
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            warn!("Failed to write bootstrap error to log file: {e}");
-        }
-    }
-
-    fn write_to_file(&self, content: &str) -> std::io::Result<()> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.file_path)?;
-        file.write_all(content.as_bytes())?;
-        file.flush()?;
-        Ok(())
+        self.logger.log_with_category("BOOTSTRAP_ERROR", message);
     }
 
     pub fn clear_log(&self) -> std::io::Result<()> {
-        if Path::new(&self.file_path).exists() {
-            std::fs::remove_file(&self.file_path)?;
-        }
-        Ok(())
+        self.logger.clear_log()
     }
 }
