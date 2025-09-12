@@ -3,7 +3,7 @@ use crate::handlers::extract_peer_id_from_multiaddr;
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
 use libp2p::swarm::Swarm;
-use log::{debug, warn};
+use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 

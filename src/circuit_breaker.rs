@@ -1,4 +1,4 @@
-use log::{debug, warn};
+use log::warn;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
@@ -72,18 +72,10 @@ impl CircuitBreaker {
             CircuitState::Closed => true,
             CircuitState::Open { opened_at } => {
                 if opened_at.elapsed() >= self.config.timeout {
-                    debug!(
-                        "Circuit breaker {} transitioning from Open to HalfOpen",
-                        self.config.name
-                    );
                     state.state = CircuitState::HalfOpen;
                     state.success_count = 0;
                     true
                 } else {
-                    debug!(
-                        "Circuit breaker {} is open, blocking request",
-                        self.config.name
-                    );
                     false
                 }
             }
@@ -102,10 +94,6 @@ impl CircuitBreaker {
             CircuitState::HalfOpen => {
                 state.success_count += 1;
                 if state.success_count >= self.config.success_threshold {
-                    debug!(
-                        "Circuit breaker {} transitioning from HalfOpen to Closed",
-                        self.config.name
-                    );
                     state.state = CircuitState::Closed;
                     state.failure_count = 0;
                     state.success_count = 0;
@@ -155,11 +143,6 @@ impl CircuitBreaker {
                 state.failure_count += 1;
             }
         }
-
-        debug!(
-            "Circuit breaker {} recorded failure: {}",
-            self.config.name, error
-        );
     }
 
     pub async fn get_state(&self) -> CircuitBreakerInfo {
@@ -193,7 +176,6 @@ impl CircuitBreaker {
             });
         }
 
-        // Execute the operation with timeout
         let result = tokio::time::timeout(self.config.operation_timeout, operation()).await;
 
         match result {
