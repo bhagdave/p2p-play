@@ -1,4 +1,6 @@
-use p2p_play::storage::{load_unified_network_config_from_path, save_unified_network_config_to_path};
+use p2p_play::storage::{
+    load_unified_network_config_from_path, save_unified_network_config_to_path,
+};
 use p2p_play::types::{NetworkConfig, UnifiedNetworkConfig};
 use std::fs;
 use tempfile::NamedTempFile;
@@ -88,8 +90,12 @@ async fn test_save_and_load_network_config() {
     let loaded_unified_config = load_unified_network_config_from_path(path).await.unwrap();
 
     assert_eq!(
-        loaded_unified_config.network.connection_maintenance_interval_seconds,
-        original_unified_config.network.connection_maintenance_interval_seconds
+        loaded_unified_config
+            .network
+            .connection_maintenance_interval_seconds,
+        original_unified_config
+            .network
+            .connection_maintenance_interval_seconds
     );
     assert_eq!(
         loaded_unified_config.network.request_timeout_seconds,
@@ -113,7 +119,12 @@ async fn test_load_network_config_creates_default_if_missing() {
     let loaded_unified_config = load_unified_network_config_from_path(path).await.unwrap();
 
     // Should be default config
-    assert_eq!(loaded_unified_config.network.connection_maintenance_interval_seconds, 300);
+    assert_eq!(
+        loaded_unified_config
+            .network
+            .connection_maintenance_interval_seconds,
+        300
+    );
     assert_eq!(loaded_unified_config.network.request_timeout_seconds, 120);
     assert_eq!(loaded_unified_config.network.max_concurrent_streams, 100);
 
@@ -208,7 +219,8 @@ async fn test_load_network_config_invalid_values() {
     assert!(result.is_err());
     let error_message = result.unwrap_err().to_string();
     assert!(
-        error_message.contains("connection_maintenance_interval_seconds must be at least 10 seconds")
+        error_message
+            .contains("connection_maintenance_interval_seconds must be at least 10 seconds")
     );
 }
 

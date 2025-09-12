@@ -204,7 +204,10 @@ impl From<kad::Event> for StoryBehaviourEvent {
     }
 }
 
-pub fn create_swarm(ping_config: &PingConfig, network_config: &NetworkConfig) -> NetworkResult<Swarm<StoryBehaviour>> {
+pub fn create_swarm(
+    ping_config: &PingConfig,
+    network_config: &NetworkConfig,
+) -> NetworkResult<Swarm<StoryBehaviour>> {
     use libp2p::tcp::Config;
     use libp2p::{Transport, core::upgrade, dns, noise, swarm::Config as SwarmConfig, tcp, yamux};
     use std::num::NonZeroU8;

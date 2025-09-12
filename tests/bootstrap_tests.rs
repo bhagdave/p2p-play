@@ -62,7 +62,8 @@ async fn test_attempt_bootstrap_no_config() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -79,7 +80,8 @@ async fn test_attempt_bootstrap_empty_peers() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -116,7 +118,8 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -158,7 +161,8 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -210,7 +214,8 @@ async fn test_attempt_bootstrap_valid_peer() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -258,7 +263,8 @@ async fn test_attempt_bootstrap_mixed_peers() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -307,7 +313,8 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 
@@ -373,7 +380,8 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
-    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
     let bootstrap_logger = create_test_bootstrap_logger();
     let error_logger = create_test_error_logger();
 

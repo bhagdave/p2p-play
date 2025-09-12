@@ -148,7 +148,7 @@ impl CryptoService {
         let shared_secret = self.derive_shared_secret(&our_public_key, recipient_public_key)?;
 
         let secure_key = self.derive_encryption_key(&shared_secret)?;
-        
+
         let cipher = self.create_cipher(&secure_key);
 
         let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
@@ -355,7 +355,7 @@ impl CryptoService {
         let secure_key = SecureKey::new(key_data);
         // Zero the temporary array
         key_data.zeroize();
-        
+
         Ok(secure_key)
     }
 
@@ -368,7 +368,7 @@ impl CryptoService {
         let secure_key = SecureKey::new(key_data);
         // Zero the temporary array
         key_data.zeroize();
-        
+
         Ok(secure_key)
     }
 

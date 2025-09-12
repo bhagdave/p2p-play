@@ -3,10 +3,10 @@ mod bootstrap_logger;
 mod circuit_breaker;
 mod crypto;
 mod error_logger;
-mod file_logger;
 mod errors;
 mod event_handlers;
 mod event_processor;
+mod file_logger;
 mod handlers;
 mod migrations;
 mod network;
@@ -87,7 +87,8 @@ async fn run_app() -> AppResult<()> {
     let network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
 
-    let mut swarm = create_swarm(&unified_config.ping, &unified_config.network).expect("Failed to create swarm");
+    let mut swarm = create_swarm(&unified_config.ping, &unified_config.network)
+        .expect("Failed to create swarm");
 
     let mut peer_names: HashMap<PeerId, String> = HashMap::new();
 

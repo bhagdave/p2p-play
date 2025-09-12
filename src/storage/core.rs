@@ -1329,7 +1329,6 @@ pub async fn ensure_direct_message_config_exists() -> StorageResult<()> {
     Ok(())
 }
 
-
 pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
     save_unified_network_config_to_path(config, "unified_network_config.json").await
 }

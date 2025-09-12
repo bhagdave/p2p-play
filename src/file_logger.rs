@@ -61,7 +61,9 @@ impl FileLogger {
     }
 
     fn format_timestamp() -> String {
-        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S UTC").to_string()
+        chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S UTC")
+            .to_string()
     }
 
     pub fn file_path(&self) -> &str {
@@ -99,7 +101,10 @@ mod tests {
         let path = temp_file.path().to_str().unwrap();
         let logger = FileLogger::new(path);
 
-        logger.log_with_category_fmt("TEST", format_args!("Error {} with code {}", "connection", 404));
+        logger.log_with_category_fmt(
+            "TEST",
+            format_args!("Error {} with code {}", "connection", 404),
+        );
 
         let content = std::fs::read_to_string(path).unwrap();
         assert!(content.contains("TEST: Error connection with code 404"));

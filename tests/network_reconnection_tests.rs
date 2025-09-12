@@ -12,7 +12,8 @@ const MIN_RECONNECT_INTERVAL_RECENT: Duration = Duration::from_secs(5);
 #[tokio::test]
 async fn test_reconnection_speed_measurement() {
     // Skip this test in CI environments where the config file may not exist
-    if std::env::var("CI").is_ok() || !std::path::Path::new("unified_network_config.json").exists() {
+    if std::env::var("CI").is_ok() || !std::path::Path::new("unified_network_config.json").exists()
+    {
         // Test the default configuration values instead
         let default_config = NetworkConfig::default();
         assert_eq!(default_config.connection_maintenance_interval_seconds, 300);

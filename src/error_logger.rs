@@ -21,11 +21,13 @@ impl ErrorLogger {
     }
 
     pub fn log_network_error(&self, source: &str, error_message: &str) {
-        self.logger.log_with_category(&format!("NETWORK_ERROR [{}]", source), error_message);
+        self.logger
+            .log_with_category(&format!("NETWORK_ERROR [{}]", source), error_message);
     }
 
     pub fn log_network_error_fmt(&self, source: &str, args: std::fmt::Arguments) {
-        self.logger.log_with_category_fmt(&format!("NETWORK_ERROR [{}]", source), args);
+        self.logger
+            .log_with_category_fmt(&format!("NETWORK_ERROR [{}]", source), args);
     }
 
     pub fn clear_log(&self) -> std::io::Result<()> {
