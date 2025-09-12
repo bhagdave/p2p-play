@@ -3,7 +3,7 @@ use crate::handlers::extract_peer_id_from_multiaddr;
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
 use libp2p::swarm::Swarm;
-use log::{debug, warn};
+use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -42,7 +42,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Initialize the auto bootstrap with config
     pub async fn initialize(
         &mut self,
         bootstrap_config: &BootstrapConfig,
@@ -50,17 +49,12 @@ impl AutoBootstrap {
         _error_logger: &crate::error_logger::ErrorLogger,
     ) {
         self.config = Some(bootstrap_config.clone());
-        debug!(
-            "AutoBootstrap initialized with {} peers",
-            bootstrap_config.bootstrap_peers.len()
-        );
         bootstrap_logger.log_init(&format!(
             "Bootstrap initialized with {} configured peers",
             bootstrap_config.bootstrap_peers.len()
         ));
     }
 
-    /// Attempt automatic bootstrap with all configured peers
     pub async fn attempt_bootstrap(
         &mut self,
         swarm: &mut Swarm<StoryBehaviour>,
@@ -113,7 +107,6 @@ impl AutoBootstrap {
                             .kad
                             .add_address(&peer_id, addr.clone());
                         peers_added += 1;
-                        debug!("Added bootstrap peer to DHT: {peer_addr}");
                     } else {
                         warn!("Failed to extract peer ID from: {peer_addr}");
                     }
@@ -163,7 +156,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Check if we should retry bootstrap
     pub fn should_retry(&self) -> bool {
         let config = match &self.config {
             Some(config) => config,
@@ -179,7 +171,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Check if it's time for the next retry
     pub fn is_retry_time(&self) -> bool {
         let next_retry_time = self.next_retry_time.lock().unwrap();
         match *next_retry_time {
@@ -188,7 +179,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Schedule the next retry with exponential backoff
     pub fn schedule_next_retry(&mut self) {
         let config = match &self.config {
             Some(config) => config,
@@ -210,13 +200,8 @@ impl AutoBootstrap {
             *next_retry_time = Some(Instant::now() + retry_delay);
         }
 
-        debug!(
-            "Scheduled next bootstrap retry in {} seconds",
-            retry_delay.as_secs()
-        );
     }
 
-    /// Handle bootstrap success
     pub fn mark_connected(&mut self, peer_count: usize) {
         {
             let mut status = self.status.lock().unwrap();
@@ -233,10 +218,8 @@ impl AutoBootstrap {
             let mut next_retry_time = self.next_retry_time.lock().unwrap();
             *next_retry_time = None;
         }
-        debug!("Bootstrap marked as connected with {peer_count} peers");
     }
 
-    /// Handle bootstrap failure
     pub fn mark_failed(&mut self, error: String) {
         {
             let retry_count = *self.retry_count.lock().unwrap();
@@ -249,7 +232,6 @@ impl AutoBootstrap {
         self.schedule_next_retry();
     }
 
-    /// Get the current status for display
     pub fn get_status_string(&self) -> String {
         let status = self.status.lock().unwrap();
         match &*status {
@@ -277,7 +259,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Reset the bootstrap state (useful for manual retry)
     pub fn reset(&mut self) {
         {
             let mut status = self.status.lock().unwrap();
@@ -300,7 +281,6 @@ impl Default for AutoBootstrap {
     }
 }
 
-/// Utility function for running automatic bootstrap with retry logic
 pub async fn run_auto_bootstrap_with_retry(
     auto_bootstrap: &mut AutoBootstrap,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -315,7 +295,6 @@ pub async fn run_auto_bootstrap_with_retry(
         return;
     }
 
-    // Attempt bootstrap
     if auto_bootstrap
         .attempt_bootstrap(swarm, bootstrap_logger, error_logger)
         .await
