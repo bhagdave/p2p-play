@@ -43,6 +43,7 @@ macro_rules! log_network_error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use tempfile::NamedTempFile;
 
     #[test]
