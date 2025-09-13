@@ -24,7 +24,80 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
-/// Simple UI logger that can be passed around
+fn validate_and_log<T>(
+    validator_result: Result<T, crate::validation::ValidationError>,
+    error_type: &str,
+    ui_logger: &UILogger,
+) -> Option<T> {
+    match validator_result {
+        Ok(validated) => Some(validated),
+        Err(e) => {
+            ui_logger.log(format!("Invalid {error_type}: {e}"));
+            None
+        }
+    }
+}
+
+async fn modify_config<F>(
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+    operation_name: &str,
+    modifier: F,
+) -> bool
+where
+    F: FnOnce(&mut crate::types::UnifiedNetworkConfig),
+{
+    use crate::storage::{load_unified_network_config, save_unified_network_config};
+    
+    match load_unified_network_config().await {
+        Ok(mut config) => {
+            modifier(&mut config);
+            match save_unified_network_config(&config).await {
+                Ok(_) => true,
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to save {operation_name} config: {e}"));
+                    ui_logger.log(format!("{} Failed to save {operation_name} configuration", Icons::cross()));
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            error_logger.log_error(&format!("Failed to load config for {operation_name} update: {e}"));
+            ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+            false
+        }
+    }
+}
+
+async fn modify_bootstrap_config<F>(
+    ui_logger: &UILogger,
+    operation_name: &str,
+    modifier: F,
+) -> bool
+where
+    F: FnOnce(&mut crate::types::BootstrapConfig) -> bool,
+{
+    match load_bootstrap_config().await {
+        Ok(mut config) => {
+            if modifier(&mut config) {
+                match save_bootstrap_config(&config).await {
+                    Ok(_) => true,
+                    Err(e) => {
+                        ui_logger.log(format!("Failed to save bootstrap config: {e}"));
+                        false
+                    }
+                }
+            } else {
+                false
+            }
+        }
+        Err(e) => {
+            ui_logger.log(format!("Failed to load bootstrap config: {e}"));
+            false
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct UILogger {
     pub sender: mpsc::UnboundedSender<String>,
@@ -40,11 +113,8 @@ impl UILogger {
     }
 }
 
-/// Cache for sorted peer names to avoid repeated sorting on every direct message
 pub struct SortedPeerNamesCache {
-    /// The sorted peer names by length (descending)
     sorted_names: Vec<String>,
-    /// Version counter to track changes
     version: u64,
 }
 
@@ -62,7 +132,6 @@ impl SortedPeerNamesCache {
         }
     }
 
-    /// Update the cache with new peer names
     pub fn update(&mut self, peer_names: &HashMap<PeerId, String>) {
         let mut names: Vec<String> = peer_names.values().cloned().collect();
         names.sort_by_key(|b| std::cmp::Reverse(b.len()));
@@ -70,12 +139,10 @@ impl SortedPeerNamesCache {
         self.version += 1;
     }
 
-    /// Get the sorted peer names
     pub fn get_sorted_names(&self) -> &[String] {
         &self.sorted_names
     }
 
-    /// Check if the cache is empty
     pub fn is_empty(&self) -> bool {
         self.sorted_names.is_empty()
     }
@@ -95,18 +162,11 @@ pub async fn handle_list_stories(
                 mode: ListMode::ALL,
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            debug!("JSON od request: {json}");
             let json_bytes = Bytes::from(json.into_bytes());
-            debug!(
-                "Publishing to topic: {:?} from peer:{:?}",
-                TOPIC.clone(),
-                PEER_ID.clone()
-            );
             swarm
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), json_bytes);
-            debug!("Published request");
         }
         Some(story_peer_id) => {
             ui_logger.log(format!("Requesting all stories from peer: {story_peer_id}"));
@@ -114,7 +174,6 @@ pub async fn handle_list_stories(
                 mode: ListMode::One(story_peer_id.to_owned()),
             };
             let json = serde_json::to_string(&req).expect("can jsonify request");
-            debug!("JSON od request: {json}");
             let json_bytes = Bytes::from(json.into_bytes());
             swarm
                 .behaviour_mut()
@@ -161,7 +220,6 @@ pub async fn handle_create_stories_with_sender(
     if let Some(rest) = cmd.strip_prefix("create s") {
         let rest = rest.trim();
 
-        // Check if user wants interactive mode (no arguments provided)
         if rest.is_empty() {
             ui_logger.log(format!(
                 "{} Starting interactive story creation...",
@@ -174,7 +232,6 @@ pub async fn handle_create_stories_with_sender(
             ui_logger.log(format!("{} Use Esc at any time to cancel.", Icons::pin()));
             return Some(ActionResult::StartStoryCreation);
         } else {
-            // Parse pipe-separated arguments
             let elements: Vec<&str> = rest.split('|').collect();
             if elements.len() < 3 {
                 ui_logger.log(
@@ -187,38 +244,10 @@ pub async fn handle_create_stories_with_sender(
                 let body = elements.get(2).expect("body is there");
                 let channel = elements.get(3).unwrap_or(&"general");
 
-                // Validate and sanitize story inputs
-                let validated_name = match ContentValidator::validate_story_name(name) {
-                    Ok(validated) => validated,
-                    Err(e) => {
-                        ui_logger.log(format!("Invalid story name: {e}"));
-                        return None;
-                    }
-                };
-
-                let validated_header = match ContentValidator::validate_story_header(header) {
-                    Ok(validated) => validated,
-                    Err(e) => {
-                        ui_logger.log(format!("Invalid story header: {e}"));
-                        return None;
-                    }
-                };
-
-                let validated_body = match ContentValidator::validate_story_body(body) {
-                    Ok(validated) => validated,
-                    Err(e) => {
-                        ui_logger.log(format!("Invalid story body: {e}"));
-                        return None;
-                    }
-                };
-
-                let validated_channel = match ContentValidator::validate_channel_name(channel) {
-                    Ok(validated) => validated,
-                    Err(e) => {
-                        ui_logger.log(format!("Invalid channel name: {e}"));
-                        return None;
-                    }
-                };
+                let validated_name = validate_and_log(ContentValidator::validate_story_name(name), "story name", ui_logger)?;
+                let validated_header = validate_and_log(ContentValidator::validate_story_header(header), "story header", ui_logger)?;
+                let validated_body = validate_and_log(ContentValidator::validate_story_body(body), "story body", ui_logger)?;
+                let validated_channel = validate_and_log(ContentValidator::validate_channel_name(channel), "channel name", ui_logger)?;
 
                 if let Err(e) = create_new_story_with_channel(
                     &validated_name,
@@ -234,12 +263,9 @@ pub async fn handle_create_stories_with_sender(
                         "Story created and auto-published to channel '{validated_channel}'"
                     ));
 
-                    // Auto-broadcast the newly created story to connected peers
                     if let Some(sender) = story_sender {
-                        // Read the stories to find the one we just created
                         match read_local_stories().await {
                             Ok(stories) => {
-                                // Find the most recently created story by name
                                 if let Some(created_story) = stories.iter().find(|s| {
                                     s.name == validated_name
                                         && s.header == validated_header
@@ -297,7 +323,6 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
     if let Some(rest) = cmd.strip_prefix("show story ") {
         match ContentValidator::validate_story_id(rest) {
             Ok(id) => {
-                // Read local stories to find the story with the given ID
                 match read_local_stories().await {
                     Ok(stories) => {
                         if let Some(story) = stories.iter().find(|s| s.id == id) {
@@ -315,7 +340,6 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                                 if story.public { "Yes" } else { "No" }
                             ));
 
-                            // Mark the story as read
                             mark_story_as_read_for_peer(story.id, peer_id, &story.channel).await;
                         } else {
                             ui_logger.log(format!("Story with id {id} not found"));
@@ -341,12 +365,10 @@ pub async fn handle_delete_story(
     error_logger: &ErrorLogger,
 ) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("delete s ") {
-        // Split by comma and process each ID
         let id_strings: Vec<&str> = rest.split(',').map(|s| s.trim()).collect();
         let mut successful_deletions = 0;
         let mut failed_deletions = Vec::new();
 
-        // Skip empty strings that might result from trailing commas or double commas
         let valid_id_strings: Vec<&str> =
             id_strings.into_iter().filter(|s| !s.is_empty()).collect();
 
@@ -362,30 +384,29 @@ pub async fn handle_delete_story(
                 Ok(id) => match delete_local_story(id).await {
                     Ok(deleted) => {
                         if deleted {
-                            ui_logger.log(format!("✅ Story {id} deleted successfully"));
+                            ui_logger.log(format!("Story {id} deleted successfully"));
                             successful_deletions += 1;
                         } else {
                             let failure_msg = format!("Story {id} not found");
-                            ui_logger.log(format!("❌ {failure_msg}"));
+                            ui_logger.log(format!("{failure_msg}"));
                             failed_deletions.push(failure_msg);
                         }
                     }
                     Err(e) => {
                         let failure_msg = format!("Failed to delete story {id}: {e}");
-                        ui_logger.log(format!("❌ {failure_msg}"));
+                        ui_logger.log(format!("{failure_msg}"));
                         error_logger.log_error(&failure_msg);
                         failed_deletions.push(failure_msg);
                     }
                 },
                 Err(e) => {
                     let failure_msg = format!("Invalid story ID: {e}");
-                    ui_logger.log(format!("❌ {failure_msg}"));
+                    ui_logger.log(format!("{failure_msg}"));
                     failed_deletions.push(failure_msg);
                 }
             }
         }
 
-        // Report batch operation summary only if there were failures and multiple operations
         if is_batch_operation && !failed_deletions.is_empty() {
             let total_failed = failed_deletions.len();
             use crate::errors::StorageError;
@@ -394,13 +415,12 @@ pub async fn handle_delete_story(
                 total_failed,
                 failed_deletions,
             );
-            ui_logger.log(format!("📊 Batch deletion summary: {batch_error}"));
+            ui_logger.log(format!("Batch deletion summary: {batch_error}"));
             error_logger.log_error(&format!(
                 "Batch delete operation completed with errors: {batch_error}"
             ));
         }
 
-        // Return RefreshStories if any story was successfully deleted
         if successful_deletions > 0 {
             return Some(ActionResult::RefreshStories);
         }
@@ -458,7 +478,6 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
 
     match load_unified_network_config().await {
         Ok(config) => {
-            // For now, just validate and log success
             if let Err(e) = config.validate() {
                 ui_logger.log(format!(
                     "{} Configuration validation failed: {}",
@@ -511,56 +530,24 @@ pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_log
 
     if let Some(setting) = cmd.strip_prefix("config auto-share ").map(|s| s.trim()) {
         match setting {
-            "on" => match load_unified_network_config().await {
-                Ok(mut config) => {
+            "on" => {
+                if modify_config(ui_logger, error_logger, "auto-share", |config| {
                     config.auto_share.global_auto_share = true;
-                    match save_unified_network_config(&config).await {
-                        Ok(_) => {
-                            ui_logger.log(format!(
-                                "{} Auto-share enabled - new stories will be shared automatically",
-                                Icons::check()
-                            ));
-                        }
-                        Err(e) => {
-                            error_logger
-                                .log_error(&format!("Failed to save auto-share config: {e}"));
-                            ui_logger.log(format!(
-                                "{} Failed to save auto-share configuration",
-                                Icons::cross()
-                            ));
-                        }
-                    }
-                }
-                Err(e) => {
-                    error_logger
-                        .log_error(&format!("Failed to load config for auto-share update: {e}"));
-                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+                }).await {
+                    ui_logger.log(format!(
+                        "{} Auto-share enabled - new stories will be shared automatically",
+                        Icons::check()
+                    ));
                 }
             },
-            "off" => match load_unified_network_config().await {
-                Ok(mut config) => {
+            "off" => {
+                if modify_config(ui_logger, error_logger, "auto-share", |config| {
                     config.auto_share.global_auto_share = false;
-                    match save_unified_network_config(&config).await {
-                        Ok(_) => {
-                            ui_logger.log(format!(
-                                "{} Auto-share disabled - stories will not be shared automatically",
-                                Icons::check()
-                            ));
-                        }
-                        Err(e) => {
-                            error_logger
-                                .log_error(&format!("Failed to save auto-share config: {e}"));
-                            ui_logger.log(format!(
-                                "{} Failed to save auto-share configuration",
-                                Icons::cross()
-                            ));
-                        }
-                    }
-                }
-                Err(e) => {
-                    error_logger
-                        .log_error(&format!("Failed to load config for auto-share update: {e}"));
-                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+                }).await {
+                    ui_logger.log(format!(
+                        "{} Auto-share disabled - stories will not be shared automatically",
+                        Icons::check()
+                    ));
                 }
             },
             "status" => match load_unified_network_config().await {
@@ -612,32 +599,14 @@ pub async fn handle_config_sync_days(cmd: &str, ui_logger: &UILogger, error_logg
                     return;
                 }
 
-                match load_unified_network_config().await {
-                    Ok(mut config) => {
-                        config.auto_share.sync_days = days;
-                        match save_unified_network_config(&config).await {
-                            Ok(_) => {
-                                ui_logger.log(format!(
-                                    "{} Story sync timeframe set to {} days",
-                                    Icons::check(),
-                                    days
-                                ));
-                            }
-                            Err(e) => {
-                                error_logger
-                                    .log_error(&format!("Failed to save sync-days config: {e}"));
-                                ui_logger.log(format!(
-                                    "{} Failed to save sync days configuration",
-                                    Icons::cross()
-                                ));
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error_logger
-                            .log_error(&format!("Failed to load config for sync-days update: {e}"));
-                        ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                    }
+                if modify_config(ui_logger, error_logger, "sync-days", |config| {
+                    config.auto_share.sync_days = days;
+                }).await {
+                    ui_logger.log(format!(
+                        "{} Story sync timeframe set to {} days",
+                        Icons::check(),
+                        days
+                    ));
                 }
             }
             Err(_) => {
@@ -659,23 +628,14 @@ pub async fn handle_set_name(
     if let Some(name) = cmd.strip_prefix("name ") {
         let name = name.trim();
 
-        // Validate and sanitize peer name
-        let validated_name = match ContentValidator::validate_peer_name(name) {
-            Ok(validated) => validated,
-            Err(e) => {
-                ui_logger.log(format!("Invalid peer name: {e}"));
-                return None;
-            }
-        };
+        let validated_name = validate_and_log(ContentValidator::validate_peer_name(name), "peer name", ui_logger)?;
 
         *local_peer_name = Some(validated_name.clone());
 
-        // Save the peer name to storage for persistence across restarts
         if let Err(e) = save_local_peer_name(&validated_name).await {
             ui_logger.log(format!("Warning: Failed to save peer name: {e}"));
         }
 
-        // Return a PeerName message to broadcast to connected peers
         Some(PeerName::new(PEER_ID.to_string(), validated_name))
     } else {
         ui_logger.log("Usage: name <alias>".to_string());
@@ -683,41 +643,33 @@ pub async fn handle_set_name(
     }
 }
 
-/// Parse a direct message command that may contain peer names with spaces
 pub fn parse_direct_message_command(
     rest: &str,
     sorted_peer_names: &[String],
 ) -> Option<(String, String)> {
-    // Try to match against sorted peer names first (handles names with spaces)
-    // Names are already sorted by length in descending order to prioritize longer names
     for peer_name in sorted_peer_names {
-        // Check if the rest starts with this peer name
         if rest.starts_with(peer_name) {
             let remaining = &rest[peer_name.len()..];
 
-            // If we have an exact match (peer name with no message)
             if remaining.is_empty() {
-                return None; // No message provided
+                return None; 
             }
 
-            // If the peer name is followed by a space
             if let Some(stripped) = remaining.strip_prefix(' ') {
                 let message = stripped.trim();
                 if !message.is_empty() {
                     return Some((peer_name.clone(), message.to_string()));
                 } else {
-                    return None; // Empty message after space
+                    return None; 
                 }
             }
 
-            // If it's not followed by a space, this is an invalid command
-            // because the peer name should be followed by a space and then a message
+            // If not followed by a space, then is invalid command
+            // because peer name should be followed by a space and a message
             return None;
         }
     }
 
-    // Fallback to original parsing for backward compatibility
-    // This handles simple names without spaces that are not in the known peer list
     let parts: Vec<&str> = rest.splitn(2, ' ').collect();
     if parts.len() >= 2 {
         let to_name = parts[0].trim();
@@ -751,22 +703,13 @@ pub async fn handle_direct_message(
                 }
             };
 
-        // Validate and sanitize peer name
-        let validated_to_name = match ContentValidator::validate_peer_name(&to_name) {
-            Ok(validated) => validated,
-            Err(e) => {
-                ui_logger.log(format!("Invalid peer name: {e}"));
-                return;
-            }
+        let validated_to_name = match validate_and_log(ContentValidator::validate_peer_name(&to_name), "peer name", ui_logger) {
+            Some(name) => name,
+            None => return,
         };
-
-        // Validate message content
-        let validated_message = match ContentValidator::validate_direct_message(&message) {
-            Ok(validated) => validated,
-            Err(e) => {
-                ui_logger.log(format!("Invalid message: {e}"));
-                return;
-            }
+        let validated_message = match validate_and_log(ContentValidator::validate_direct_message(&message), "message", ui_logger) {
+            Some(msg) => msg,
+            None => return,
         };
 
         let from_name = match local_peer_name {
@@ -876,15 +819,10 @@ pub async fn handle_direct_message_with_relay(
             }
         };
 
-        if to_name.trim().is_empty() {
-            ui_logger.log("Peer name cannot be empty".to_string());
-            return;
-        }
-
-        if to_name.len() > 50 {
-            ui_logger.log("Peer name too long (max 50 characters)".to_string());
-            return;
-        }
+        let _validated_to_name = match validate_and_log(ContentValidator::validate_peer_name(&to_name), "peer name", ui_logger) {
+            Some(name) => name,
+            None => return,
+        };
 
         // Try to find current peer ID
         let target_peer_info = peer_names
@@ -1154,22 +1092,8 @@ pub async fn handle_create_channel(
         let description = elements[1].trim();
 
         // Validate and sanitize channel inputs
-        let validated_name = match ContentValidator::validate_channel_name(name) {
-            Ok(validated) => validated,
-            Err(e) => {
-                ui_logger.log(format!("Invalid channel name: {e}"));
-                return None;
-            }
-        };
-
-        let validated_description =
-            match ContentValidator::validate_channel_description(description) {
-                Ok(validated) => validated,
-                Err(e) => {
-                    ui_logger.log(format!("Invalid channel description: {e}"));
-                    return None;
-                }
-            };
+        let validated_name = validate_and_log(ContentValidator::validate_channel_name(name), "channel name", ui_logger)?;
+        let validated_description = validate_and_log(ContentValidator::validate_channel_description(description), "channel description", ui_logger)?;
 
         let creator = match local_peer_name {
             Some(peer_name) => peer_name.clone(),
@@ -1528,12 +1452,9 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     let description = parts[2].trim();
 
     // Validate and sanitize node description
-    let validated_description = match ContentValidator::validate_node_description(description) {
-        Ok(validated) => validated,
-        Err(e) => {
-            ui_logger.log(format!("Invalid node description: {e}"));
-            return;
-        }
+    let validated_description = match validate_and_log(ContentValidator::validate_node_description(description), "node description", ui_logger) {
+        Some(desc) => desc,
+        None => return,
     };
 
     match save_node_description(&validated_description).await {
@@ -1686,25 +1607,19 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
     }
 
     // Load current config, add peer, and save
-    match load_bootstrap_config().await {
-        Ok(mut config) => {
-            if config.add_peer(multiaddr.clone()) {
-                match save_bootstrap_config(&config).await {
-                    Ok(_) => {
-                        ui_logger.log(format!("Added bootstrap peer: {multiaddr}"));
-                        ui_logger.log(format!(
-                            "Total bootstrap peers: {}",
-                            config.bootstrap_peers.len()
-                        ));
-                    }
-                    Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {e}")),
-                }
-            } else {
-                ui_logger.log(format!("Bootstrap peer already exists: {multiaddr}"));
-            }
+    if modify_bootstrap_config(ui_logger, "bootstrap add", |config| {
+        if config.add_peer(multiaddr.clone()) {
+            ui_logger.log(format!("Added bootstrap peer: {multiaddr}"));
+            ui_logger.log(format!(
+                "Total bootstrap peers: {}",
+                config.bootstrap_peers.len()
+            ));
+            true
+        } else {
+            ui_logger.log(format!("Bootstrap peer already exists: {multiaddr}"));
+            false
         }
-        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {e}")),
-    }
+    }).await {}
 }
 
 async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
@@ -1766,20 +1681,13 @@ async fn handle_bootstrap_list(ui_logger: &UILogger) {
 }
 
 async fn handle_bootstrap_clear(ui_logger: &UILogger) {
-    match load_bootstrap_config().await {
-        Ok(mut config) => {
-            let peer_count = config.bootstrap_peers.len();
-            config.clear_peers();
-            match save_bootstrap_config(&config).await {
-                Ok(_) => {
-                    ui_logger.log(format!("Cleared {peer_count} bootstrap peers"));
-                    ui_logger.log("Warning: No bootstrap peers configured. Add peers to enable DHT connectivity.".to_string());
-                }
-                Err(e) => ui_logger.log(format!("Failed to save bootstrap config: {e}")),
-            }
-        }
-        Err(e) => ui_logger.log(format!("Failed to load bootstrap config: {e}")),
-    }
+    if modify_bootstrap_config(ui_logger, "bootstrap clear", |config| {
+        let peer_count = config.bootstrap_peers.len();
+        config.clear_peers();
+        ui_logger.log(format!("Cleared {peer_count} bootstrap peers"));
+        ui_logger.log("Warning: No bootstrap peers configured. Add peers to enable DHT connectivity.".to_string());
+        true
+    }).await {}
 }
 
 async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
