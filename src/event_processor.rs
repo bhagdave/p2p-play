@@ -28,13 +28,11 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
 
-// Configuration constants for event processing intervals
 const CONNECTION_MAINTENANCE_INTERVAL_SECS: u64 = 30;
 const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
 const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
 
-// Handshake timeout - if no response received within this time, disconnect peer
 const HANDSHAKE_TIMEOUT_SECS: u64 = 60;
 
 pub struct EventProcessor {
@@ -110,7 +108,7 @@ impl EventProcessor {
             network_health_update_interval: interval(Duration::from_secs(
                 network_config.network_health_update_interval_seconds,
             )),
-            handshake_timeout_interval: interval(Duration::from_secs(HANDSHAKE_TIMEOUT_SECS / 2)), // Check every 30s for 60s timeout
+            handshake_timeout_interval: interval(Duration::from_secs(HANDSHAKE_TIMEOUT_SECS / 2)),
             dm_config,
             pending_messages,
             ui_logger,
@@ -123,7 +121,7 @@ impl EventProcessor {
         }
     }
 
-    /// Main event loop processing
+    /// Main event loop 
     #[allow(clippy::too_many_arguments)]
     pub async fn run(
         &mut self,
@@ -209,18 +207,16 @@ impl EventProcessor {
                 }
                 None
             }
-            // UI events have higher priority - they are processed immediately
             ui_event = self.ui_rcv.recv() => {
                 if let Some(event) = ui_event {
                     match event {
                         AppEvent::Input(line) => Some(EventType::Input(line)),
                         AppEvent::Quit => {
-                            debug!("Quit event received in main loop");
                             app.should_quit = true;
                             None
                         }
                         AppEvent::StoryViewed { story_id, channel } => {
-                            mark_story_as_read(story_id, &PEER_ID.to_string(), &channel).await;
+                            let _result = mark_story_as_read(story_id, &PEER_ID.to_string(), &channel).await;
                             refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                             None
                         }
@@ -296,7 +292,6 @@ impl EventProcessor {
                 self.cleanup_timed_out_handshakes(swarm).await;
                 None
             },
-            // Network events are processed with heavy operations spawned to background
             event = swarm.select_next_some() => {
                 self.handle_swarm_event(event, swarm, peer_names, sorted_peer_names_cache, local_peer_name, app, auto_bootstrap).await
             },
@@ -402,11 +397,9 @@ impl EventProcessor {
                 connection_id,
                 ..
             } => {
-                debug!("Dialing peer: {peer_id:?} (connection id: {connection_id:?})");
                 None
             }
             _ => {
-                debug!("Unhandled Swarm Event: {event:?}");
                 None
             }
         }
@@ -422,12 +415,6 @@ impl EventProcessor {
         _sorted_peer_names_cache: &mut SortedPeerNamesCache,
         _local_peer_name: &Option<String>,
     ) {
-        debug!("Connection established to {peer_id} via {endpoint:?}");
-
-        debug!(
-            "Successful connection to peer {} - initiating handshake verification",
-            peer_id
-        );
 
         let pending_peer = PendingHandshakePeer {
             peer_id,
@@ -438,13 +425,8 @@ impl EventProcessor {
         {
             let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
             pending_peers.insert(peer_id, pending_peer);
-            debug!("Added peer {} to pending handshake list", peer_id);
         }
 
-        debug!(
-            "Initiating handshake with newly connected peer: {}",
-            peer_id
-        );
         let handshake_request = HandshakeRequest {
             app_name: APP_NAME.to_string(),
             app_version: APP_VERSION.to_string(),
@@ -455,18 +437,9 @@ impl EventProcessor {
             .behaviour_mut()
             .handshake
             .send_request(&peer_id, handshake_request);
-        debug!(
-            "Handshake request sent to {} (request_id: {:?})",
-            peer_id, request_id
-        );
 
-        // Track successful connection for improved reconnect timing
         track_successful_connection(peer_id);
 
-        debug!(
-            "Peer {} awaiting handshake verification before UI display",
-            peer_id
-        );
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -479,16 +452,7 @@ impl EventProcessor {
         sorted_peer_names_cache: &mut SortedPeerNamesCache,
         app: &mut App,
     ) {
-        debug!("Connection closed to {peer_id}: {cause:?}");
 
-        let error_msg = format!("{:?}", cause);
-        if error_msg.contains("Connection refused") || error_msg.contains("os error 111") {
-            debug!("Connection refused to {peer_id} - peer may still be starting up, will retry");
-        } else {
-            debug!("Connection lost to {peer_id}: {cause:?}");
-        }
-
-        debug!("Removing peer {peer_id} from floodsub partial view");
         swarm
             .behaviour_mut()
             .floodsub
@@ -510,7 +474,6 @@ impl EventProcessor {
         };
 
         if let Some(name) = peer_names.remove(&peer_id) {
-            debug!("Removed verified peer name '{name}' for disconnected peer {peer_id}");
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
         } else if was_verified {
@@ -534,7 +497,6 @@ impl EventProcessor {
         // Filter out common connection timeout/refused errors to reduce noise
         let _should_log_to_ui = match error {
             libp2p::swarm::DialError::Transport(transport_errors) => {
-                // Only log to UI for unexpected transport errors, not common connectivity issues
                 !transport_errors.iter().any(|(_, e)| {
                     let error_str = e.to_string();
                     error_str.contains("Connection refused")
@@ -545,14 +507,12 @@ impl EventProcessor {
                         || error_str.contains("Connection reset")
                 })
             }
-            // Filter out other common dial errors that clutter the UI
             libp2p::swarm::DialError::NoAddresses => false,
             libp2p::swarm::DialError::LocalPeerId { address: _ } => false,
             libp2p::swarm::DialError::WrongPeerId { .. } => false,
             libp2p::swarm::DialError::Aborted => false,
             libp2p::swarm::DialError::Denied { .. } => false,
             _ => {
-                // For other dial errors, check if they contain common noisy patterns
                 let error_str = error.to_string();
                 !(error_str.contains("Multiple dial errors occurred")
                     || error_str.contains("Failed to negotiate transport protocol")
@@ -577,7 +537,6 @@ impl EventProcessor {
         error: &libp2p::swarm::ListenError,
         connection_id: &libp2p::swarm::ConnectionId,
     ) {
-        // Filter out common connection errors to reduce noise
         let _should_log_to_ui = {
             let error_str = error.to_string();
             !(error_str.contains("Connection reset")
@@ -653,7 +612,6 @@ impl EventProcessor {
         let timed_out_count = timed_out_peers.len();
 
         for peer_id in &timed_out_peers {
-            // Check if this is a bootstrap peer - be more lenient for bootstrap connections
             let is_bootstrap_peer = {
                 let pending_peers = self.pending_handshake_peers.lock().unwrap();
                 if let Some(pending_peer) = pending_peers.get(peer_id) {
@@ -667,11 +625,6 @@ impl EventProcessor {
             };
 
             if is_bootstrap_peer {
-                debug!(
-                    "Bootstrap peer {} handshake timeout after {}s, allowing extra time",
-                    peer_id, HANDSHAKE_TIMEOUT_SECS
-                );
-                // For bootstrap peers, give extra time but log the delay
                 self.error_logger.log_error(&format!(
                     "Bootstrap handshake slow with peer {}: {}s elapsed, monitoring...",
                     peer_id, HANDSHAKE_TIMEOUT_SECS
@@ -679,10 +632,6 @@ impl EventProcessor {
                 continue; // Don't disconnect bootstrap peers on first timeout
             }
 
-            debug!(
-                "Handshake with peer {} timed out after {}s, disconnecting",
-                peer_id, HANDSHAKE_TIMEOUT_SECS
-            );
 
             let _ = swarm.disconnect_peer_id(*peer_id);
 
