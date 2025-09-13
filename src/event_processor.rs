@@ -21,7 +21,6 @@ use crate::types::{
 use crate::ui::{App, AppEvent, handle_ui_events};
 
 use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
-use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -433,7 +432,7 @@ impl EventProcessor {
             peer_id: PEER_ID.to_string(),
         };
 
-        let request_id = swarm
+        let _ = swarm
             .behaviour_mut()
             .handshake
             .send_request(&peer_id, handshake_request);
@@ -460,29 +459,15 @@ impl EventProcessor {
 
         {
             let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
-            if pending_peers.remove(&peer_id).is_some() {
-                debug!(
-                    "Removed peer {} from pending handshake list due to disconnection",
-                    peer_id
-                );
-            }
+            pending_peers.remove(&peer_id);
         }
 
-        let was_verified = {
-            let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
-            verified_peers.remove(&peer_id).is_some()
-        };
+        let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
+        verified_peers.remove(&peer_id);
 
-        if let Some(name) = peer_names.remove(&peer_id) {
+        if let Some(_name) = peer_names.remove(&peer_id) {
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
-        } else if was_verified {
-            debug!(
-                "Verified peer {} disconnected but already removed from UI",
-                peer_id
-            );
-        } else {
-            debug!("Unverified peer {} disconnected (was not in UI)", peer_id);
         }
 
         trigger_immediate_connection_maintenance(swarm, &self.error_logger).await;
@@ -494,7 +479,6 @@ impl EventProcessor {
         error: &libp2p::swarm::DialError,
         connection_id: &libp2p::swarm::ConnectionId,
     ) {
-        // Filter out common connection timeout/refused errors to reduce noise
         let _should_log_to_ui = match error {
             libp2p::swarm::DialError::Transport(transport_errors) => {
                 !transport_errors.iter().any(|(_, e)| {
@@ -609,8 +593,6 @@ impl EventProcessor {
             }
         }
 
-        let timed_out_count = timed_out_peers.len();
-
         for peer_id in &timed_out_peers {
             let is_bootstrap_peer = {
                 let pending_peers = self.pending_handshake_peers.lock().unwrap();
@@ -632,7 +614,6 @@ impl EventProcessor {
                 continue; // Don't disconnect bootstrap peers on first timeout
             }
 
-
             let _ = swarm.disconnect_peer_id(*peer_id);
 
             {
@@ -646,9 +627,6 @@ impl EventProcessor {
             ));
         }
 
-        if timed_out_count > 0 {
-            debug!("Cleaned up {} timed-out handshakes", timed_out_count);
-        }
     }
 
     async fn handle_action_result(
@@ -682,20 +660,13 @@ impl EventProcessor {
                     }
                 }
             }
-            ActionResult::RebroadcastRelayMessage(_) => {
-                debug!("Unexpected RebroadcastRelayMessage action result in handle_action_result");
-            }
+            ActionResult::RebroadcastRelayMessage(_) => {}
             ActionResult::DirectMessageReceived(direct_message) => {
                 if let Err(e) =
                     crate::storage::save_direct_message(&direct_message, Some(peer_names)).await
                 {
                     self.error_logger
                         .log_error(&format!("Failed to save received direct message: {e}"));
-                } else {
-                    debug!(
-                        "Saved received direct message from {}",
-                        direct_message.from_peer_id
-                    );
                 }
                 if let Err(e) = self.ui_sender.send(AppEvent::DirectMessage(direct_message)) {
                     self.error_logger
@@ -724,10 +695,7 @@ fn update_bootstrap_status(
     match kad_event {
         libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
             match result {
-                libp2p::kad::QueryResult::Bootstrap(Ok(_)) => {
-                    // Bootstrap query succeeded - we'll wait for routing table updates to confirm connectivity
-                    debug!("Bootstrap query succeeded");
-                }
+                libp2p::kad::QueryResult::Bootstrap(Ok(_)) => {}
                 libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
                     auto_bootstrap.mark_failed(format!("Bootstrap query failed: {e:?}"));
                 }
@@ -746,7 +714,6 @@ fn update_bootstrap_status(
 
             if is_in_progress {
                 let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
-                debug!("Bootstrap marked as connected with {peer_count} peers in routing table");
                 auto_bootstrap.mark_connected(peer_count);
             }
         }
