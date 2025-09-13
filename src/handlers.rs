@@ -203,14 +203,6 @@ pub async fn handle_list_stories(
     };
 }
 
-pub async fn handle_create_stories(
-    cmd: &str,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) -> Option<ActionResult> {
-    handle_create_stories_with_sender(cmd, ui_logger, error_logger, None).await
-}
-
 pub async fn handle_create_stories_with_sender(
     cmd: &str,
     ui_logger: &UILogger,

@@ -156,7 +156,7 @@ fn test_handle_create_stories_interactive() {
 
     rt.block_on(async {
         // Test empty create s command should trigger interactive mode
-        let result = handle_create_stories("create s", &ui_logger, &error_logger).await;
+        let result = handle_create_stories_with_sender("create s", &ui_logger, &error_logger, None).await;
         assert_eq!(result, Some(ActionResult::StartStoryCreation));
 
         // Check that appropriate messages were logged
@@ -181,10 +181,11 @@ fn test_handle_create_stories_pipe_format() {
 
     rt.block_on(async {
         // Test pipe-separated format still works but may fail due to file system
-        let result = handle_create_stories(
+        let result = handle_create_stories_with_sender(
             "create s Test|Header|Body|general",
             &ui_logger,
             &error_logger,
+            None,
         )
         .await;
         // The result depends on whether the storage operation succeeds
@@ -202,10 +203,10 @@ fn test_handle_create_stories_invalid() {
 
     rt.block_on(async {
         // Test invalid format (too few arguments)
-        handle_create_stories("create sTest|Header", &ui_logger, &error_logger).await;
+        handle_create_stories_with_sender("create sTest|Header", &ui_logger, &error_logger, None).await;
 
         // Test completely invalid format
-        handle_create_stories("invalid command", &ui_logger, &error_logger).await;
+        handle_create_stories_with_sender("invalid command", &ui_logger, &error_logger, None).await;
     });
 }
 
@@ -1033,7 +1034,7 @@ async fn test_story_creation_broadcasts_to_peers() {
     let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
 
     use p2p_play::error_logger::ErrorLogger;
-    use p2p_play::handlers::{UILogger, handle_create_stories};
+    use p2p_play::handlers::{UILogger, handle_create_stories_with_sender};
     use p2p_play::storage::clear_database_for_testing;
     use tokio::sync::mpsc;
 
@@ -1045,10 +1046,11 @@ async fn test_story_creation_broadcasts_to_peers() {
     let error_logger = ErrorLogger::new("test_errors.log");
 
     // Test story creation with pipe format (non-interactive)
-    let result = handle_create_stories(
+    let result = handle_create_stories_with_sender(
         "create s AutoBroadcast|Header|Body|general",
         &ui_logger,
         &error_logger,
+        None,
     )
     .await;
 
