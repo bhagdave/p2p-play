@@ -6,7 +6,7 @@ use tempfile::NamedTempFile;
 #[test]
 fn test_bootstrap_logger_creation() {
     let logger = BootstrapLogger::new("bootstrap.log");
-    assert_eq!(logger.file_path, "bootstrap.log");
+    assert_eq!(logger.file_path(), "bootstrap.log");
 }
 
 #[test]
