@@ -340,7 +340,7 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                                 if story.public { "Yes" } else { "No" }
                             ));
 
-                            mark_story_as_read_for_peer(story.id, peer_id, &story.channel).await;
+                            mark_story_as_read(story.id, peer_id, &story.channel).await;
                         } else {
                             ui_logger.log(format!("Story with id {id} not found"));
                         }
@@ -1218,7 +1218,7 @@ pub async fn handle_subscribe_channel(
     if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), channel_name).await {
         error_logger.log_error(&format!("Failed to subscribe to channel: {e}"));
         ui_logger.log(format!(
-            "❌ Failed to subscribe to channel '{channel_name}': {e}"
+            "Failed to subscribe to channel '{channel_name}': {e}"
         ));
         None
     } else {
@@ -1249,7 +1249,7 @@ pub async fn handle_unsubscribe_channel(
     if let Err(e) = unsubscribe_from_channel(&PEER_ID.to_string(), channel_name).await {
         error_logger.log_error(&format!("Failed to unsubscribe from channel: {e}"));
         ui_logger.log(format!(
-            "❌ Failed to unsubscribe from channel '{channel_name}': {e}"
+            "Failed to unsubscribe from channel '{channel_name}': {e}"
         ));
         None
     } else {
@@ -1274,7 +1274,6 @@ pub async fn handle_list_subscriptions(ui_logger: &UILogger, error_logger: &Erro
     }
 }
 
-/// Handle setting auto-subscription configuration
 pub async fn handle_set_auto_subscription(
     cmd: &str,
     ui_logger: &UILogger,
@@ -1347,21 +1346,9 @@ pub async fn handle_set_auto_subscription(
     }
 }
 
-/// Mark a story as read (should be called after displaying it)
-pub async fn mark_story_as_read_for_peer(story_id: usize, peer_id: &str, channel_name: &str) {
-    if let Err(e) = mark_story_as_read(story_id, peer_id, channel_name).await {
-        debug!("Failed to mark story {story_id} as read: {e}");
-    }
-}
-
-/// Helper function to refresh unread counts and update UI
 pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &str) {
     match crate::storage::get_unread_counts_by_channel(peer_id).await {
         Ok(unread_counts) => {
-            debug!(
-                "Refreshed unread counts for {} channels",
-                unread_counts.len()
-            );
             app.update_unread_counts(unread_counts);
         }
         Err(e) => {
@@ -1383,12 +1370,8 @@ pub async fn establish_direct_connection(
                     ui_logger.log("Dialing initiated successfully".to_string());
 
                     let connected_peers: Vec<_> = swarm.connected_peers().cloned().collect();
-                    debug!("Number of connected peers: {}", connected_peers.len());
 
-                    // Add existing connected peers to floodsub immediately
                     for peer in connected_peers {
-                        debug!("Connected to peer: {peer}");
-                        debug!("Adding peer to floodsub: {peer}");
                         swarm
                             .behaviour_mut()
                             .floodsub
@@ -1402,7 +1385,6 @@ pub async fn establish_direct_connection(
     }
 }
 
-/// Handle creating node description
 pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
     if parts.len() < 3 {
@@ -1412,7 +1394,6 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
 
     let description = parts[2].trim();
 
-    // Validate and sanitize node description
     let validated_description = match validate_and_log(ContentValidator::validate_node_description(description), "node description", ui_logger) {
         Some(desc) => desc,
         None => return,
@@ -1431,7 +1412,6 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     }
 }
 
-/// Handle requesting node description from a peer
 pub async fn handle_get_description(
     cmd: &str,
     ui_logger: &UILogger,
@@ -1447,7 +1427,6 @@ pub async fn handle_get_description(
 
     let peer_alias = parts[2];
 
-    // Find the peer by their alias
     let target_peer = peer_names
         .iter()
         .find(|(_, name)| name.as_str() == peer_alias)
@@ -1461,7 +1440,6 @@ pub async fn handle_get_description(
         }
     };
 
-    // Check if we're connected to this peer
     if !swarm.is_connected(&target_peer) {
         ui_logger.log(format!(
             "Not connected to peer '{peer_alias}'. Use 'connect' to establish connection."
@@ -1469,7 +1447,6 @@ pub async fn handle_get_description(
         return;
     }
 
-    // Send a node description request using the dedicated protocol
     let from_name = local_peer_name.as_deref().unwrap_or("Unknown");
 
     let description_request = NodeDescriptionRequest {
@@ -1489,7 +1466,6 @@ pub async fn handle_get_description(
     ui_logger.log(format!("Requesting description from '{peer_alias}'..."));
 }
 
-/// Handle showing local node description
 pub async fn handle_show_description(ui_logger: &UILogger) {
     match load_node_description().await {
         Ok(Some(description)) => {
@@ -1511,7 +1487,6 @@ pub async fn handle_show_description(ui_logger: &UILogger) {
     }
 }
 
-/// Handle DHT bootstrap command with subcommands
 pub async fn handle_dht_bootstrap(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1561,13 +1536,11 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
 
     let multiaddr = args.join(" ");
 
-    // Validate the multiaddr format
     if let Err(e) = multiaddr.parse::<libp2p::Multiaddr>() {
         ui_logger.log(format!("Invalid multiaddr '{multiaddr}': {e}"));
         return;
     }
 
-    // Load current config, add peer, and save
     if modify_bootstrap_config(ui_logger, "bootstrap add", |config| {
         if config.add_peer(multiaddr.clone()) {
             ui_logger.log(format!("Added bootstrap peer: {multiaddr}"));
@@ -1591,10 +1564,8 @@ async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
 
     let multiaddr = args.join(" ");
 
-    // Load current config, remove peer, and save
     match load_bootstrap_config().await {
         Ok(mut config) => {
-            // Check if this would remove the last bootstrap peer
             if config.bootstrap_peers.len() <= 1 && config.bootstrap_peers.contains(&multiaddr) {
                 ui_logger.log("Warning: Cannot remove the last bootstrap peer. At least one peer is required for DHT connectivity.".to_string());
                 ui_logger.log("Use 'dht bootstrap add <multiaddr>' to add another peer first, or 'dht bootstrap clear' to remove all peers.".to_string());
@@ -1683,7 +1654,6 @@ async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &U
                 }
             }
 
-            // Start bootstrap process
             if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
                 ui_logger.log(format!("Failed to start DHT bootstrap: {e:?}"));
             } else {
@@ -1710,14 +1680,12 @@ async fn handle_direct_bootstrap(
         Ok(addr) => {
             ui_logger.log(format!("Attempting to bootstrap DHT with peer at: {addr}"));
 
-            // Add the address as a bootstrap peer in the DHT
             if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
                 swarm
                     .behaviour_mut()
                     .kad
                     .add_address(&peer_id, addr.clone());
 
-                // Start bootstrap process (this will handle dialing the peer internally)
                 if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
                     ui_logger.log(format!("Failed to start DHT bootstrap: {e:?}"));
                 } else {
@@ -1731,7 +1699,6 @@ async fn handle_direct_bootstrap(
     }
 }
 
-/// Handle DHT get closest peers command
 pub async fn handle_dht_get_peers(
     _cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1744,8 +1711,6 @@ pub async fn handle_dht_get_peers(
     ui_logger.log("DHT peer search started (results will appear in events)".to_string());
 }
 
-/// Handle search command - supports text search with optional filters
-/// Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]
 pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if let Some(rest) = cmd.strip_prefix("search ") {
         let parts: Vec<&str> = rest.split_whitespace().collect();
@@ -1757,7 +1722,6 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
         let mut query = SearchQuery::new(String::new());
         let mut search_terms = Vec::new();
 
-        // Parse the search command parts
         for part in parts {
             if let Some(channel) = part.strip_prefix("channel:") {
                 query = query.with_channel(channel.to_string());
@@ -1781,16 +1745,13 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
             }
         }
 
-        // Combine search terms into a single query
         query.text = search_terms.join(" ");
 
-        // Validate that we have at least something to search for
         if query.is_empty() {
             ui_logger.log("Please provide a search query or filter criteria".to_string());
             return;
         }
 
-        // Perform the search
         match search_stories(&query).await {
             Ok(results) => {
                 if results.is_empty() {
@@ -1828,8 +1789,6 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
     }
 }
 
-/// Handle filter command for channel filtering
-/// Usage: filter channel <channel_name>
 pub async fn handle_filter_stories(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if let Some(rest) = cmd.strip_prefix("filter ") {
         if let Some(channel) = rest.strip_prefix("channel ") {
@@ -1909,7 +1868,6 @@ pub async fn handle_filter_stories(cmd: &str, ui_logger: &UILogger, error_logger
     }
 }
 
-/// Extract peer ID from a multiaddr if it contains one
 pub fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
     for protocol in addr.iter() {
         if let libp2p::multiaddr::Protocol::P2p(peer_id) = protocol {

@@ -1,3 +1,4 @@
+use crate::storage::mark_story_as_read;
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::error_logger::ErrorLogger;
@@ -5,7 +6,7 @@ use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
 use crate::handlers::{
-    SortedPeerNamesCache, UILogger, mark_story_as_read_for_peer, refresh_unread_counts_for_ui,
+    SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui,
 };
 use crate::network::{
     APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
@@ -219,7 +220,7 @@ impl EventProcessor {
                             None
                         }
                         AppEvent::StoryViewed { story_id, channel } => {
-                            mark_story_as_read_for_peer(story_id, &PEER_ID.to_string(), &channel).await;
+                            mark_story_as_read(story_id, &PEER_ID.to_string(), &channel).await;
                             refresh_unread_counts_for_ui(app, &PEER_ID.to_string()).await;
                             None
                         }
