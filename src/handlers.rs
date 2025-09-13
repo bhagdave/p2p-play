@@ -720,7 +720,6 @@ pub async fn handle_direct_message(
             }
         };
 
-        // Try to find current peer ID, but don't require it
         let (target_peer_id, is_placeholder) = peer_names
             .iter()
             .find(|(_, name)| name == &&validated_to_name)
@@ -737,7 +736,6 @@ pub async fn handle_direct_message(
                 (placeholder_id, true)
             });
 
-        // Create a direct message request with validated sender identity
         let direct_msg_request = DirectMessageRequest {
             from_peer_id: PEER_ID.to_string(),
             from_name: from_name.clone(),
@@ -749,7 +747,6 @@ pub async fn handle_direct_message(
                 .as_secs(),
         };
 
-        // Add message to retry queue instead of sending immediately
         let pending_msg = PendingDirectMessage::new(
             target_peer_id,
             validated_to_name.clone(),
@@ -758,13 +755,11 @@ pub async fn handle_direct_message(
             is_placeholder,
         );
 
-        // Try to send immediately, but queue for retry if it fails
-        let request_id = swarm
+        let _request_id = swarm
             .behaviour_mut()
             .request_response
             .send_request(&target_peer_id, direct_msg_request);
 
-        // Add to pending queue regardless - will be removed on successful delivery
         if let Ok(mut queue) = pending_messages.lock() {
             queue.push(pending_msg.clone());
             ui_logger.log(format!(
@@ -776,15 +771,11 @@ pub async fn handle_direct_message(
         ui_logger.log(format!(
             "Direct message queued for {validated_to_name}: {validated_message}"
         ));
-        debug!(
-            "Queued direct message to {validated_to_name} from {from_name} (request_id: {request_id:?})"
-        );
     } else {
         ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
     }
 }
 
-/// Enhanced direct message handler with relay support as fallback
 pub async fn handle_direct_message_with_relay(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -824,14 +815,12 @@ pub async fn handle_direct_message_with_relay(
             None => return,
         };
 
-        // Try to find current peer ID
         let target_peer_info = peer_names
             .iter()
             .find(|(_, name)| name == &&to_name)
             .map(|(peer_id, _)| (*peer_id, false));
 
         if let Some((target_peer_id, _)) = target_peer_info {
-            // Check relay configuration to see if we should prefer direct or always use relay
             let prefer_direct = relay_service
                 .as_ref()
                 .map(|rs| rs.config().prefer_direct)
@@ -839,7 +828,7 @@ pub async fn handle_direct_message_with_relay(
 
             if prefer_direct {
                 // 1. Try direct connection first if peer is known and connected
-                ui_logger.log(format!("⏳ Attempting direct message to {to_name}..."));
+                ui_logger.log(format!("Attempting direct message to {to_name}..."));
 
                 let direct_msg_request = DirectMessageRequest {
                     from_peer_id: PEER_ID.to_string(),
@@ -858,7 +847,6 @@ pub async fn handle_direct_message_with_relay(
                     .request_response
                     .send_request(&target_peer_id, direct_msg_request.clone());
 
-                // Save the outgoing message immediately
                 let outgoing_message = crate::types::DirectMessage {
                     from_peer_id: direct_msg_request.from_peer_id.clone(),
                     from_name: direct_msg_request.from_name.clone(),
@@ -878,9 +866,8 @@ pub async fn handle_direct_message_with_relay(
                 }
 
                 ui_logger.log(format!(
-                    "📨 Direct message sent to {to_name} (request_id: {request_id:?})"
+                    "Direct message sent to {to_name} (request_id: {request_id:?})"
                 ));
-                debug!("Direct message sent to {to_name} with request_id {request_id:?}");
 
                 // When prefer_direct=true, don't attempt relay backup for successful direct sends
                 return;
@@ -895,11 +882,10 @@ pub async fn handle_direct_message_with_relay(
                 } else {
                     // For unknown peers, we can't encrypt directly to them yet
                     ui_logger.log(format!(
-                        "❌ Cannot relay to unknown peer '{to_name}' - peer not in network"
+                        "Cannot relay to unknown peer '{to_name}' - peer not in network"
                     ));
-                    // Fall through to queuing system
                     ui_logger.log(format!(
-                        "📥 Queueing message for {to_name} - will retry when peer connects"
+                        "Queueing message for {to_name} - will retry when peer connects"
                     ));
                     queue_message_for_retry(
                         &from_name,
@@ -925,14 +911,14 @@ pub async fn handle_direct_message_with_relay(
                 )
                 .await
                 {
-                    return; // Successfully sent via relay
+                    return;
                 }
             }
         }
 
         // 3. Fall back to traditional queuing system for retry
         ui_logger.log(format!(
-            "📥 Queueing message for {to_name} - will retry when peer connects"
+            "Queueing message for {to_name} - will retry when peer connects"
         ));
         queue_message_for_retry(
             &from_name,
@@ -948,7 +934,6 @@ pub async fn handle_direct_message_with_relay(
     }
 }
 
-/// Helper function to attempt relay delivery
 async fn try_relay_delivery(
     swarm: &mut Swarm<StoryBehaviour>,
     relay_service: &mut RelayService,
@@ -960,7 +945,6 @@ async fn try_relay_delivery(
 ) -> bool {
     ui_logger.log(format!("📡 Trying relay delivery to {to_name}..."));
 
-    // Create DirectMessage struct for relay
     let direct_msg = DirectMessage {
         from_peer_id: PEER_ID.to_string(),
         from_name: from_name.to_string(),
@@ -974,28 +958,22 @@ async fn try_relay_delivery(
         is_outgoing: true,
     };
 
-    // Create and broadcast relay message
     match relay_service.create_relay_message(&direct_msg, target_peer_id) {
         Ok(relay_msg) => {
-            // Broadcast the relay message via floodsub
             match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
                 Ok(()) => {
-                    ui_logger.log(format!("✅ Message sent to {to_name} via relay network"));
-                    debug!("Relay message broadcasted successfully for {to_name}");
+                    ui_logger.log(format!("Message sent to {to_name} via relay network"));
                     true
                 }
                 Err(e) => {
-                    ui_logger.log(format!("❌ Failed to broadcast relay message: {e}"));
-                    debug!("Relay broadcast failed: {e}");
+                    ui_logger.log(format!("Failed to broadcast relay message: {e}"));
                     false
                 }
             }
         }
         Err(e) => {
-            // Check if this is a missing public key error (offline peer scenario)
             if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e {
                 if msg.contains("Public key not found") {
-                    // User-friendly message for offline peer without public key
                     ui_logger.log(format!(
                         "{} Cannot send secure message to offline peer '{to_name}'",
                         Icons::warning()
@@ -1008,22 +986,16 @@ async fn try_relay_delivery(
                         "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
                         Icons::memo()
                     ));
-                    debug!(
-                        "Relay message creation failed due to missing public key for {to_name}: {e}"
-                    );
                     return false;
                 }
             }
 
-            // Fallback to technical error for other issues
-            ui_logger.log(format!("❌ Failed to create relay message: {e}"));
-            debug!("Relay message creation failed: {e}");
+            ui_logger.log(format!("Failed to create relay message: {e}"));
             false
         }
     }
 }
 
-/// Helper function to queue message for retry
 fn queue_message_for_retry(
     from_name: &str,
     to_name: &str,
@@ -1034,7 +1006,6 @@ fn queue_message_for_retry(
     ui_logger: &UILogger,
 ) {
     let (target_peer_id, is_placeholder) = target_peer_info.unwrap_or_else(|| {
-        // Generate a placeholder PeerId for queueing
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         let mut hasher = DefaultHasher::new();
@@ -1066,7 +1037,6 @@ fn queue_message_for_retry(
     if let Ok(mut queue) = pending_messages.lock() {
         queue.push(pending_msg);
         ui_logger.log(format!("Message for {to_name} added to retry queue"));
-        debug!("Message queued for {to_name} with fallback to retry system");
     } else {
         ui_logger.log("Failed to queue message - retry system unavailable".to_string());
     }
@@ -1091,7 +1061,6 @@ pub async fn handle_create_channel(
         let name = elements[0].trim();
         let description = elements[1].trim();
 
-        // Validate and sanitize channel inputs
         let validated_name = validate_and_log(ContentValidator::validate_channel_name(name), "channel name", ui_logger)?;
         let validated_description = validate_and_log(ContentValidator::validate_channel_description(description), "channel description", ui_logger)?;
 
@@ -1105,13 +1074,11 @@ pub async fn handle_create_channel(
         } else {
             ui_logger.log(format!("Channel '{validated_name}' created successfully"));
 
-            // Auto-subscribe to the channel we created
             if let Err(e) = subscribe_to_channel(&PEER_ID.to_string(), &validated_name).await {
                 error_logger
                     .log_error(&format!("Failed to auto-subscribe to created channel: {e}"));
             }
 
-            // Broadcast the channel to other peers
             let channel = crate::types::Channel::new(
                 validated_name.clone(),
                 validated_description,
@@ -1119,8 +1086,6 @@ pub async fn handle_create_channel(
             );
             let published_channel = crate::types::PublishedChannel::new(channel.clone(), creator);
 
-            // Broadcast both formats for backward compatibility
-            // 1. Broadcast PublishedChannel for new nodes (preferred format)
             let published_json = match serde_json::to_string(&published_channel) {
                 Ok(json) => json,
                 Err(e) => {
@@ -1133,9 +1098,7 @@ pub async fn handle_create_channel(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), published_json_bytes);
-            debug!("Broadcasted published channel '{validated_name}' to connected peers");
 
-            // 2. Broadcast legacy Channel format for backward compatibility with older nodes
             let legacy_json = match serde_json::to_string(&channel) {
                 Ok(json) => json,
                 Err(e) => {
@@ -1148,7 +1111,6 @@ pub async fn handle_create_channel(
                 .behaviour_mut()
                 .floodsub
                 .publish(TOPIC.clone(), legacy_json_bytes);
-            debug!("Broadcasted legacy channel '{validated_name}' for backward compatibility");
 
             ui_logger.log(format!("Channel '{validated_name}' shared with network"));
 
@@ -1162,7 +1124,6 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
     let rest = cmd.strip_prefix("ls ch");
     match rest {
         Some(" available") => {
-            // List all discovered channels (subscribed + unsubscribed)
             match read_channels().await {
                 Ok(channels) => {
                     ui_logger.log("Available channels:".to_string());
@@ -1180,7 +1141,6 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
             }
         }
         Some(" unsubscribed") => {
-            // List channels available but not subscribed to
             match read_unsubscribed_channels(&PEER_ID.to_string()).await {
                 Ok(channels) => {
                     ui_logger.log("Unsubscribed channels:".to_string());
@@ -1198,7 +1158,6 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
             }
         }
         Some("") | None => {
-            // Default behavior - list all channels
             match read_channels().await {
                 Ok(channels) => {
                     ui_logger.log("Available channels:".to_string());
@@ -1238,7 +1197,6 @@ pub async fn handle_subscribe_channel(
         return None;
     }
 
-    // First check if the channel exists in the channels table
     match read_channels().await {
         Ok(channels) => {
             let channel_exists = channels.iter().any(|c| c.name == channel_name);
