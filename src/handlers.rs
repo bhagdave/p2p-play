@@ -828,7 +828,7 @@ pub async fn handle_direct_message_with_relay(
 
             if prefer_direct {
                 // 1. Try direct connection first if peer is known and connected
-                ui_logger.log(format!("Attempting direct message to {to_name}..."));
+                ui_logger.log(format!("{} Attempting direct message to {to_name}...", Icons::speech()));
 
                 let direct_msg_request = DirectMessageRequest {
                     from_peer_id: PEER_ID.to_string(),
@@ -882,10 +882,12 @@ pub async fn handle_direct_message_with_relay(
                 } else {
                     // For unknown peers, we can't encrypt directly to them yet
                     ui_logger.log(format!(
-                        "Cannot relay to unknown peer '{to_name}' - peer not in network"
+                        "{} Cannot relay to unknown peer '{to_name}' - peer not in network",
+                        Icons::cross()
                     ));
                     ui_logger.log(format!(
-                        "Queueing message for {to_name} - will retry when peer connects"
+                        "{} Queueing message for {to_name} - will retry when peer connects",
+                        Icons::envelope()
                     ));
                     queue_message_for_retry(
                         &from_name,
@@ -918,7 +920,8 @@ pub async fn handle_direct_message_with_relay(
 
         // 3. Fall back to traditional queuing system for retry
         ui_logger.log(format!(
-            "Queueing message for {to_name} - will retry when peer connects"
+            "{} Queueing message for {to_name} - will retry when peer connects",
+            Icons::envelope()
         ));
         queue_message_for_retry(
             &from_name,
@@ -943,7 +946,7 @@ async fn try_relay_delivery(
     target_peer_id: &PeerId,
     ui_logger: &UILogger,
 ) -> bool {
-    ui_logger.log(format!("📡 Trying relay delivery to {to_name}..."));
+    ui_logger.log(format!("{} Trying relay delivery to {to_name}...", Icons::speech()));
 
     let direct_msg = DirectMessage {
         from_peer_id: PEER_ID.to_string(),
@@ -962,11 +965,11 @@ async fn try_relay_delivery(
         Ok(relay_msg) => {
             match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
                 Ok(()) => {
-                    ui_logger.log(format!("Message sent to {to_name} via relay network"));
+                    ui_logger.log(format!("{} Message sent to {to_name} via relay network", Icons::check()));
                     true
                 }
                 Err(e) => {
-                    ui_logger.log(format!("Failed to broadcast relay message: {e}"));
+                    ui_logger.log(format!("{} Failed to broadcast relay message: {e}", Icons::cross()));
                     false
                 }
             }
@@ -990,7 +993,7 @@ async fn try_relay_delivery(
                 }
             }
 
-            ui_logger.log(format!("Failed to create relay message: {e}"));
+            ui_logger.log(format!("{} Failed to create relay message: {e}", Icons::cross()));
             false
         }
     }
@@ -1201,13 +1204,13 @@ pub async fn handle_subscribe_channel(
         Ok(channels) => {
             let channel_exists = channels.iter().any(|c| c.name == channel_name);
             if !channel_exists {
-                ui_logger.log(format!("❌ Channel '{channel_name}' not found in available channels. Use 'ls ch available' to see all discovered channels."));
+                ui_logger.log(format!("{} Channel '{channel_name}' not found in available channels. Use 'ls ch available' to see all discovered channels.", Icons::cross()));
                 return None;
             }
         }
         Err(e) => {
             error_logger.log_error(&format!("Failed to check available channels: {e}"));
-            ui_logger.log("❌ Could not verify channel exists. Please try again.".to_string());
+            ui_logger.log(format!("{} Could not verify channel exists. Please try again.", Icons::cross()));
             return None;
         }
     }
@@ -1219,7 +1222,7 @@ pub async fn handle_subscribe_channel(
         ));
         None
     } else {
-        ui_logger.log(format!("✅ Subscribed to channel '{channel_name}'"));
+        ui_logger.log(format!("{} Subscribed to channel '{channel_name}'", Icons::check()));
         Some(crate::types::ActionResult::RefreshChannels)
     }
 }
@@ -1250,7 +1253,7 @@ pub async fn handle_unsubscribe_channel(
         ));
         None
     } else {
-        ui_logger.log(format!("✅ Unsubscribed from channel '{channel_name}'"));
+        ui_logger.log(format!("{} Unsubscribed from channel '{channel_name}'", Icons::check()));
         Some(crate::types::ActionResult::RefreshChannels)
     }
 }
@@ -1287,7 +1290,7 @@ pub async fn handle_set_auto_subscription(
                         .channel_auto_subscription
                         .auto_subscribe_to_new_channels = true;
                     match crate::storage::save_unified_network_config(&config).await {
-                        Ok(_) => ui_logger.log("✅ Auto-subscription enabled".to_string()),
+                        Ok(_) => ui_logger.log(format!("{} Auto-subscription enabled", Icons::check())),
                         Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                     }
                 }
@@ -1302,7 +1305,7 @@ pub async fn handle_set_auto_subscription(
                         .channel_auto_subscription
                         .auto_subscribe_to_new_channels = false;
                     match crate::storage::save_unified_network_config(&config).await {
-                        Ok(_) => ui_logger.log("❌ Auto-subscription disabled".to_string()),
+                        Ok(_) => ui_logger.log(format!("{} Auto-subscription disabled", Icons::cross())),
                         Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                     }
                 }
