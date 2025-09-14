@@ -514,7 +514,7 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
 }
 
 pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    use crate::storage::{load_unified_network_config, save_unified_network_config};
+    use crate::storage::load_unified_network_config;
 
     if let Some(setting) = cmd.strip_prefix("config auto-share ").map(|s| s.trim()) {
         match setting {
@@ -570,8 +570,6 @@ pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_log
 }
 
 pub async fn handle_config_sync_days(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    use crate::storage::{load_unified_network_config, save_unified_network_config};
-
     if let Some(days_str) = cmd.strip_prefix("config sync-days ").map(|s| s.trim()) {
         match days_str.parse::<u32>() {
             Ok(days) => {
