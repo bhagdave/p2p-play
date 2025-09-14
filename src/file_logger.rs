@@ -23,17 +23,6 @@ impl FileLogger {
         }
     }
 
-    pub fn log_with_category_and_warn(&self, category: &str, message: &str) {
-        let timestamp = Self::format_timestamp();
-        let log_entry = format!("[{timestamp}] {category}: {message}\n");
-
-        warn!("{}: {message}", category);
-
-        if let Err(e) = self.write_to_file(&log_entry) {
-            warn!("Failed to write to log file: {e}");
-        }
-    }
-
     pub fn log_with_category_fmt(&self, category: &str, args: std::fmt::Arguments) {
         let timestamp = Self::format_timestamp();
         let log_entry = format!("[{timestamp}] {category}: {args}\n");
