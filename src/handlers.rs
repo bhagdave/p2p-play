@@ -19,7 +19,6 @@ use crate::validation::ContentValidator;
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
-use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
