@@ -4,7 +4,7 @@ use crate::handlers::{
     handle_config_sync_days, handle_create_channel, handle_create_description,
     handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
     handle_filter_stories, handle_get_description, handle_help, handle_list_channels,
-    handle_list_stories, handle_list_subscriptions, handle_peer_id, handle_publish_story,
+    handle_list_stories, handle_list_subscriptions, handle_publish_story,
     handle_reload_config, handle_search_stories, handle_set_auto_subscription, handle_set_name,
     handle_show_description, handle_show_story, handle_subscribe_channel,
     handle_unsubscribe_channel,
@@ -229,7 +229,7 @@ pub async fn handle_input_event(
             return handle_delete_story(cmd, ui_logger, error_logger).await;
         }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
-        cmd if cmd.starts_with("peer id") => handle_peer_id(cmd, ui_logger).await,
+        cmd if cmd.starts_with("peer id") => ui_logger.log(format!("Local Peer ID: {}", *PEER_ID)),
         cmd if cmd.starts_with("reload config") => handle_reload_config(cmd, ui_logger).await,
         cmd if cmd.starts_with("config auto-share") => {
             handle_config_auto_share(cmd, ui_logger, error_logger).await

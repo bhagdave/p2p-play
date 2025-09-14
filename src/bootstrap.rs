@@ -42,7 +42,7 @@ impl AutoBootstrap {
         }
     }
 
-    pub async fn initialize(
+    pub async fn initialise(
         &mut self,
         bootstrap_config: &BootstrapConfig,
         bootstrap_logger: &BootstrapLogger,
@@ -50,7 +50,7 @@ impl AutoBootstrap {
     ) {
         self.config = Some(bootstrap_config.clone());
         bootstrap_logger.log_init(&format!(
-            "Bootstrap initialized with {} configured peers",
+            "Bootstrap initialised with {} configured peers",
             bootstrap_config.bootstrap_peers.len()
         ));
     }
@@ -513,16 +513,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_without_config_file() {
+    async fn test_initialise_without_config_file() {
         let mut bootstrap = AutoBootstrap::new();
         let bootstrap_logger = create_test_bootstrap_logger();
         let error_logger = crate::error_logger::ErrorLogger::new("test_errors.log");
         let test_config = BootstrapConfig::new();
 
         bootstrap
-            .initialize(&test_config, &bootstrap_logger, &error_logger)
+            .initialise(&test_config, &bootstrap_logger, &error_logger)
             .await;
 
-        // The test just ensures initialization doesn't panic
     }
 }

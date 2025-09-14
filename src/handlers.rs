@@ -19,7 +19,6 @@ use crate::validation::ContentValidator;
 use bytes::Bytes;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
-use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -332,7 +331,7 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                                 if story.public { "Yes" } else { "No" }
                             ));
 
-                            mark_story_as_read(story.id, peer_id, &story.channel).await;
+                            let _ = mark_story_as_read(story.id, peer_id, &story.channel).await;
                         } else {
                             ui_logger.log(format!("Story with id {id} not found"));
                         }
@@ -420,10 +419,6 @@ pub async fn handle_delete_story(
         ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
     }
     None
-}
-
-pub async fn handle_peer_id(_cmd: &str, ui_logger: &UILogger) {
-    ui_logger.log(format!("Local Peer ID: {}", *PEER_ID));
 }
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
@@ -518,7 +513,7 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
 }
 
 pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    use crate::storage::{load_unified_network_config, save_unified_network_config};
+    use crate::storage::load_unified_network_config;
 
     if let Some(setting) = cmd.strip_prefix("config auto-share ").map(|s| s.trim()) {
         match setting {
@@ -574,8 +569,6 @@ pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_log
 }
 
 pub async fn handle_config_sync_days(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    use crate::storage::{load_unified_network_config, save_unified_network_config};
-
     if let Some(days_str) = cmd.strip_prefix("config sync-days ").map(|s| s.trim()) {
         match days_str.parse::<u32>() {
             Ok(days) => {
@@ -1182,7 +1175,6 @@ pub async fn handle_set_auto_subscription(
     let rest = cmd.strip_prefix("set auto-sub ");
     match rest {
         Some("on") => {
-            // Enable auto-subscription
             match crate::storage::load_unified_network_config().await {
                 Ok(mut config) => {
                     config
@@ -1197,7 +1189,6 @@ pub async fn handle_set_auto_subscription(
             }
         }
         Some("off") => {
-            // Disable auto-subscription
             match crate::storage::load_unified_network_config().await {
                 Ok(mut config) => {
                     config
@@ -1212,7 +1203,6 @@ pub async fn handle_set_auto_subscription(
             }
         }
         Some("status") | None => {
-            // Show current status
             match crate::storage::load_unified_network_config().await {
                 Ok(config) => {
                     let status = if config
@@ -1251,9 +1241,7 @@ pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &st
         Ok(unread_counts) => {
             app.update_unread_counts(unread_counts);
         }
-        Err(e) => {
-            debug!("Failed to refresh unread counts: {e}");
-        }
+        Err(_) => {}
     }
 }
 
