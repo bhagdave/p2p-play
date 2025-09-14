@@ -351,7 +351,12 @@ fn test_parse_direct_message_command() {
 
 #[tokio::test]
 async fn test_handle_direct_message_no_local_name() {
+    use libp2p::identity::Keypair;
+    use p2p_play::crypto::CryptoService;
+    use p2p_play::relay::RelayService;
+    use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
+    
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
@@ -367,8 +372,14 @@ async fn test_handle_direct_message_no_local_name() {
     let dm_config = DirectMessageConfig::new();
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
+    // Setup relay service
+    let relay_config = RelayConfig::new();
+    let keypair = Keypair::generate_ed25519();
+    let crypto_service = CryptoService::new(keypair);
+    let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
+
     // This should print an error message about needing to set name first
-    handle_direct_message(
+    handle_direct_message_with_relay(
         "msg Alice Hello",
         &mut swarm,
         &peer_names,
@@ -376,6 +387,7 @@ async fn test_handle_direct_message_no_local_name() {
         &cache,
         &ui_logger,
         &dm_config,
+        &mut relay_service,
         &pending_messages,
     )
     .await;
@@ -384,7 +396,12 @@ async fn test_handle_direct_message_no_local_name() {
 
 #[tokio::test]
 async fn test_handle_direct_message_invalid_format() {
+    use libp2p::identity::Keypair;
+    use p2p_play::crypto::CryptoService;
+    use p2p_play::relay::RelayService;
+    use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
+    
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
@@ -400,8 +417,14 @@ async fn test_handle_direct_message_invalid_format() {
     let dm_config = DirectMessageConfig::new();
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
+    // Setup relay service
+    let relay_config = RelayConfig::new();
+    let keypair = Keypair::generate_ed25519();
+    let crypto_service = CryptoService::new(keypair);
+    let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
+
     // Test invalid command formats
-    handle_direct_message(
+    handle_direct_message_with_relay(
         "msg Alice",
         &mut swarm,
         &peer_names,
@@ -409,10 +432,11 @@ async fn test_handle_direct_message_invalid_format() {
         &cache,
         &ui_logger,
         &dm_config,
+        &mut relay_service,
         &pending_messages,
     )
     .await;
-    handle_direct_message(
+    handle_direct_message_with_relay(
         "msg",
         &mut swarm,
         &peer_names,
@@ -420,10 +444,11 @@ async fn test_handle_direct_message_invalid_format() {
         &cache,
         &ui_logger,
         &dm_config,
+        &mut relay_service,
         &pending_messages,
     )
     .await;
-    handle_direct_message(
+    handle_direct_message_with_relay(
         "invalid command",
         &mut swarm,
         &peer_names,
@@ -431,6 +456,7 @@ async fn test_handle_direct_message_invalid_format() {
         &cache,
         &ui_logger,
         &dm_config,
+        &mut relay_service,
         &pending_messages,
     )
     .await;
@@ -439,7 +465,12 @@ async fn test_handle_direct_message_invalid_format() {
 
 #[tokio::test]
 async fn test_handle_direct_message_with_spaces_in_names() {
+    use libp2p::identity::Keypair;
+    use p2p_play::crypto::CryptoService;
+    use p2p_play::relay::RelayService;
+    use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
+    
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
@@ -458,8 +489,14 @@ async fn test_handle_direct_message_with_spaces_in_names() {
     let dm_config = DirectMessageConfig::new();
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
+    // Setup relay service
+    let relay_config = RelayConfig::new();
+    let keypair = Keypair::generate_ed25519();
+    let crypto_service = CryptoService::new(keypair);
+    let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
+
     // Test message to peer with spaces in name
-    handle_direct_message(
+    handle_direct_message_with_relay(
         "msg Alice Smith Hello world",
         &mut swarm,
         &peer_names,
@@ -467,6 +504,7 @@ async fn test_handle_direct_message_with_spaces_in_names() {
         &cache,
         &ui_logger,
         &dm_config,
+        &mut relay_service,
         &pending_messages,
     )
     .await;
