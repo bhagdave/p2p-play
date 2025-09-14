@@ -1268,7 +1268,6 @@ pub async fn handle_set_auto_subscription(
     let rest = cmd.strip_prefix("set auto-sub ");
     match rest {
         Some("on") => {
-            // Enable auto-subscription
             match crate::storage::load_unified_network_config().await {
                 Ok(mut config) => {
                     config
@@ -1283,7 +1282,6 @@ pub async fn handle_set_auto_subscription(
             }
         }
         Some("off") => {
-            // Disable auto-subscription
             match crate::storage::load_unified_network_config().await {
                 Ok(mut config) => {
                     config
@@ -1298,7 +1296,6 @@ pub async fn handle_set_auto_subscription(
             }
         }
         Some("status") | None => {
-            // Show current status
             match crate::storage::load_unified_network_config().await {
                 Ok(config) => {
                     let status = if config
@@ -1337,9 +1334,7 @@ pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &st
         Ok(unread_counts) => {
             app.update_unread_counts(unread_counts);
         }
-        Err(e) => {
-            debug!("Failed to refresh unread counts: {e}");
-        }
+        Err(_) => {}
     }
 }
 
