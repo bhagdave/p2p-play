@@ -332,7 +332,7 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
                                 if story.public { "Yes" } else { "No" }
                             ));
 
-                            mark_story_as_read(story.id, peer_id, &story.channel).await;
+                            let _ = mark_story_as_read(story.id, peer_id, &story.channel).await;
                         } else {
                             ui_logger.log(format!("Story with id {id} not found"));
                         }
@@ -420,10 +420,6 @@ pub async fn handle_delete_story(
         ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
     }
     None
-}
-
-pub async fn handle_peer_id(_cmd: &str, ui_logger: &UILogger) {
-    ui_logger.log(format!("Local Peer ID: {}", *PEER_ID));
 }
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
