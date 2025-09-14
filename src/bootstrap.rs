@@ -523,6 +523,5 @@ mod tests {
             .initialise(&test_config, &bootstrap_logger, &error_logger)
             .await;
 
-        // The test just ensures initialization doesn't panic
     }
 }
