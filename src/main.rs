@@ -58,24 +58,29 @@ async fn main() {
     }
 }
 
-async fn run_app() -> AppResult<()> {
-    initialize_logging();
 
-    // Initialize the UI
-    let mut app = match App::new() {
+fn initialise_ui() -> AppResult<App> {
+    let app = match App::new() {
         Ok(mut app) => {
             app.update_local_peer_id(PEER_ID.to_string());
-            app.refresh_conversations().await;
             app
         }
         Err(e) => {
-            error!("Failed to initialize UI: {e}");
+            error!("Failed to initialise UI: {e}");
             process::exit(1);
         }
     };
+    Ok(app)
+}
+
+async fn run_app() -> AppResult<()> {
+    initialise_logging();
+
+    let mut app = initialise_ui()?;
+    app.refresh_conversations().await;
 
     if let Err(e) = ensure_stories_file_exists().await {
-        error!("Failed to initialize stories file: {e}");
+        error!("Failed to initialise stories file: {e}");
         let _ = app.cleanup();
         process::exit(1);
     }
@@ -94,7 +99,7 @@ async fn run_app() -> AppResult<()> {
 
     let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
-    // Initialize direct message retry queue using config from unified_config
+    // Initialise direct message retry queue using config from unified_config
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Load saved peer name if it exists
@@ -113,10 +118,9 @@ async fn run_app() -> AppResult<()> {
         }
     };
 
-    // Initialize automatic bootstrap
     let mut auto_bootstrap = AutoBootstrap::new();
     auto_bootstrap
-        .initialize(
+        .initialise(
             &unified_config.bootstrap,
             &loggers.bootstrap_logger,
             &loggers.error_logger,
@@ -227,7 +231,7 @@ async fn run_app() -> AppResult<()> {
     Ok(())
 }
 
-fn initialize_logging() {
+fn initialise_logging() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
         .filter_module("p2p_play", log::LevelFilter::Info)
@@ -267,8 +271,8 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
     if let Err(e) = ensure_unified_network_config_exists().await {
-        error!("Failed to initialize unified network config: {e}");
-        app.add_to_log(format!("Failed to initialize unified network config: {e}"));
+        error!("Failed to initialise unified network config: {e}");
+        app.add_to_log(format!("Failed to initialise unified network config: {e}"));
     }
 
     match load_unified_network_config().await {
