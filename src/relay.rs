@@ -1,24 +1,11 @@
-//! Application-level message relay service for P2P-Play
-//!
-//! This module implements application-level message relaying through intermediate peers
-//! for the P2P-Play story sharing application. This is different from libp2p's relay
-//! protocol - it operates at the application message level using floodsub for transport.
-//!
-//! Key features:
-//! - End-to-end encryption of relayed messages using ChaCha20Poly1305
-//! - Digital signature authentication using Ed25519
-//! - Rate limiting and hop count controls to prevent network abuse
-//! - Automatic fallback from direct messaging to relay delivery
-
 use crate::crypto::{CryptoError, CryptoService};
 use crate::types::{DirectMessage, RelayConfig, RelayConfirmation, RelayMessage};
 use libp2p::PeerId;
-use log::{debug, warn};
+use log::warn;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-/// Service for handling message relay operations
 pub struct RelayService {
     config: RelayConfig,
     crypto: CryptoService,
@@ -26,12 +13,11 @@ pub struct RelayService {
     rate_limits: HashMap<PeerId, Vec<Instant>>,      // Rate limiting per peer
 }
 
-/// Actions to take after processing relay message
 #[derive(Debug)]
 pub enum RelayAction {
-    DeliverLocally(DirectMessage), // Message is for us
-    ForwardMessage(RelayMessage),  // Forward to other peers
-    DropMessage(String),           // Drop with reason
+    DeliverLocally(DirectMessage),
+    ForwardMessage(RelayMessage), 
+    DropMessage(String),        
 }
 
 #[derive(Debug)]
@@ -66,7 +52,6 @@ impl From<CryptoError> for RelayError {
 }
 
 impl RelayService {
-    /// Create a new RelayService with the given configuration and crypto service
     pub fn new(config: RelayConfig, crypto: CryptoService) -> Self {
         Self {
             config,
@@ -76,30 +61,24 @@ impl RelayService {
         }
     }
 
-    /// Create relay message from direct message
     pub fn create_relay_message(
         &mut self,
         direct_msg: &DirectMessage,
         target_peer_id: &PeerId,
     ) -> Result<RelayMessage, RelayError> {
-        // Check rate limiting first
         if !self.check_rate_limit(&self.crypto.local_peer_id()) {
             return Err(RelayError::RateLimitExceeded);
         }
 
-        // Generate unique message ID
         let message_id = Uuid::new_v4().to_string();
 
-        // Serialize the direct message for encryption
         let message_bytes = serde_json::to_vec(direct_msg)
             .map_err(|e| RelayError::InvalidMessage(format!("Failed to serialize message: {e}")))?;
 
-        // Encrypt the message for the target recipient
         let encrypted_payload = self
             .crypto
             .encrypt_message(&message_bytes, target_peer_id)?;
 
-        // Sign the message with our private key
         let sender_signature = self.crypto.sign_message(&message_bytes)?;
 
         let relay_message = RelayMessage::new(
@@ -111,28 +90,19 @@ impl RelayService {
             self.config.max_hops,
         );
 
-        // Track the message for confirmation
         self.pending_confirmations
             .insert(message_id, Instant::now());
 
-        // Update rate limiting
         self.update_rate_limit(&self.crypto.local_peer_id());
 
-        debug!(
-            "Created relay message with ID: {}",
-            relay_message.message_id
-        );
         Ok(relay_message)
     }
 
-    /// Process incoming relay message (decrypt if for us, forward if not)
     pub fn process_relay_message(
         &mut self,
         relay_msg: &RelayMessage,
     ) -> Result<RelayAction, RelayError> {
-        debug!("Processing relay message ID: {}", relay_msg.message_id);
 
-        // Check if message has exceeded maximum hops
         if relay_msg.hop_count >= relay_msg.max_hops {
             return Ok(RelayAction::DropMessage(format!(
                 "Max hops exceeded: {}/{}",
@@ -140,30 +110,24 @@ impl RelayService {
             )));
         }
 
-        // Check if message is too old (basic replay protection)
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
         if current_time.saturating_sub(relay_msg.timestamp) > 300 {
-            // 5 minutes
             return Ok(RelayAction::DropMessage("Message too old".to_string()));
         }
 
-        // Try to decrypt the message to see if it's intended for us
         match self.crypto.decrypt_message(&relay_msg.encrypted_payload) {
             Ok(decrypted_bytes) => {
-                // Successfully decrypted - this message is for us
                 match serde_json::from_slice::<DirectMessage>(&decrypted_bytes) {
                     Ok(direct_msg) => {
-                        // Verify the signature to ensure authenticity
                         match self
                             .crypto
                             .verify_signature(&decrypted_bytes, &relay_msg.sender_signature)
                         {
                             Ok(true) => {
-                                debug!("Successfully decrypted relay message for local delivery");
                                 Ok(RelayAction::DeliverLocally(direct_msg))
                             }
                             Ok(false) => {
@@ -185,19 +149,11 @@ impl RelayService {
                 }
             }
             Err(_) => {
-                // Failed to decrypt - this message is not for us
-                // Check if we should forward it
                 if self.should_forward(relay_msg) {
-                    // Create forwarded message with incremented hop count
                     let mut forwarded_msg = relay_msg.clone();
                     if let Err(e) = forwarded_msg.increment_hop_count() {
                         return Ok(RelayAction::DropMessage(e));
                     }
-
-                    debug!(
-                        "Forwarding relay message (hop: {})",
-                        forwarded_msg.hop_count
-                    );
                     Ok(RelayAction::ForwardMessage(forwarded_msg))
                 } else {
                     Ok(RelayAction::DropMessage("Forwarding disabled".to_string()))
@@ -206,49 +162,37 @@ impl RelayService {
         }
     }
 
-    /// Check if we should forward a message
     pub fn should_forward(&self, relay_msg: &RelayMessage) -> bool {
-        // Don't forward if forwarding is disabled
         if !self.config.enable_forwarding {
             return false;
         }
 
-        // Don't forward if message has reached max hops
         if !relay_msg.can_forward() {
             return false;
         }
 
-        // Basic rate limiting for forwarding (could be more sophisticated)
-        // For now, we allow forwarding if the service is configured to do so
         true
     }
 
-    /// Apply rate limiting checks
     pub fn check_rate_limit(&mut self, peer_id: &PeerId) -> bool {
         let now = Instant::now();
         let window = Duration::from_secs(60); // 1 minute window
 
-        // Clean up old entries
         self.cleanup_rate_limits(now, window);
 
-        // Get or create entry for this peer
         let entries = self.rate_limits.entry(*peer_id).or_default();
 
-        // Remove entries outside the time window
         entries.retain(|&timestamp| now.duration_since(timestamp) < window);
 
-        // Check if under the limit
         entries.len() < self.config.rate_limit_per_peer as usize
     }
 
-    /// Update rate limiting for a peer
     fn update_rate_limit(&mut self, peer_id: &PeerId) {
         let now = Instant::now();
         let entries = self.rate_limits.entry(*peer_id).or_default();
         entries.push(now);
     }
 
-    /// Clean up old rate limiting entries
     fn cleanup_rate_limits(&mut self, now: Instant, window: Duration) {
         self.rate_limits.retain(|_, entries| {
             entries.retain(|&timestamp| now.duration_since(timestamp) < window);
@@ -256,16 +200,6 @@ impl RelayService {
         });
     }
 
-    /// Generate delivery confirmation
-    pub fn create_confirmation(&self, message_id: &str, hop_count: u8) -> RelayConfirmation {
-        RelayConfirmation::new(
-            message_id.to_string(),
-            self.crypto.local_peer_id().to_string(),
-            hop_count,
-        )
-    }
-
-    /// Clean up pending confirmations that have timed out
     pub fn cleanup_pending_confirmations(&mut self) {
         let timeout = Duration::from_millis(self.config.relay_timeout_ms);
         let now = Instant::now();
@@ -274,33 +208,19 @@ impl RelayService {
             .retain(|_, &mut timestamp| now.duration_since(timestamp) < timeout);
     }
 
-    /// Get current configuration
     pub fn config(&self) -> &RelayConfig {
         &self.config
     }
 
-    /// Update configuration
-    pub fn update_config(&mut self, new_config: RelayConfig) -> Result<(), String> {
-        // Validate the new configuration
-        new_config.validate()?;
-
-        self.config = new_config;
-        debug!("Updated relay configuration");
-        Ok(())
-    }
-
-    /// Get access to the crypto service
     pub fn crypto_service(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }
 
-    /// Get access to the crypto service for testing
     #[cfg(test)]
     pub fn crypto_service_for_testing(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }
 
-    /// Update rate limiting for testing
     #[cfg(test)]
     pub fn test_update_rate_limit(&mut self, peer_id: &PeerId) {
         self.update_rate_limit(peer_id);
