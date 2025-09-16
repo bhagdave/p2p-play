@@ -1,5 +1,5 @@
 use crate::crypto::{CryptoError, CryptoService};
-use crate::types::{DirectMessage, RelayConfig, RelayConfirmation, RelayMessage};
+use crate::types::{DirectMessage, RelayConfig, RelayMessage};
 use libp2p::PeerId;
 use log::warn;
 use std::collections::HashMap;
