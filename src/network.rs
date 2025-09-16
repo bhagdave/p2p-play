@@ -4,7 +4,7 @@ use crate::types::PingConfig;
 use libp2p::floodsub::{Behaviour, Event, Topic};
 use libp2p::swarm::{NetworkBehaviour, Swarm};
 use libp2p::{PeerId, StreamProtocol, identity, kad, mdns, ping, request_response};
-use log::{debug, warn};
+use log::warn;
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
@@ -79,11 +79,8 @@ pub struct HandshakeResponse {
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
     Ok(bytes) => {
-        debug!("Found existing peer key file, attempting to load");
         match identity::Keypair::from_protobuf_encoding(&bytes) {
             Ok(keypair) => {
-                let peer_id = PeerId::from(keypair.public());
-                debug!("Successfully loaded keypair with PeerId: {peer_id}");
                 keypair
             }
             Err(e) => {
@@ -92,8 +89,7 @@ pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key
             }
         }
     }
-    Err(e) => {
-        debug!("No existing key file found ({e}), generating new one");
+    Err(_) => {
         generate_and_save_keypair()
     }
 });
@@ -104,12 +100,10 @@ pub static RELAY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("relay"));
 
 fn generate_and_save_keypair() -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
-    let peer_id = PeerId::from(keypair.public());
-    debug!("Generated new keypair with PeerId: {peer_id}");
 
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
-            Ok(_) => debug!("Successfully saved keypair to file"),
+            Ok(_) => {},
             Err(e) => {
                 let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
                 error_logger.log_error(&format!("Failed to save keypair: {e}"));
@@ -213,23 +207,23 @@ pub fn create_swarm(
     use std::num::NonZeroU8;
     use std::time::Duration;
 
-    // Enhanced TCP configuration with connection limits and pooling optimization
-    // Windows doesn't allow immediate port reuse for sockets in TIME_WAIT state
+    // TCP configuration with connection limits and pooling
+    // Windoze doesn't allow immediate port reuse for sockets in TIME_WAIT state
     #[cfg(windows)]
     let tcp_config = Config::default()
         .nodelay(true)
-        .listen_backlog(1024) // Increase backlog to handle more connections
-        .ttl(64); // Set explicit TTL for better routing
+        .port_reuse(false)
+        .listen_backlog(1024) // Increase backlog to handle connections
+        .ttl(64); // Set explicit TTL
 
     #[cfg(not(windows))]
     let tcp_config = Config::default()
         .nodelay(true)
-        .listen_backlog(1024) // Increase backlog to handle more connections
-        .ttl(64); // Set explicit TTL for better routing
+        .listen_backlog(1024)
+        .ttl(64);
 
-    // Enhanced yamux configuration for better connection pooling
     let mut yamux_config = yamux::Config::default();
-    yamux_config.set_max_num_streams(512); // Allow more concurrent streams for better connection reuse
+    yamux_config.set_max_num_streams(512); 
 
     let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
         .map_err(|e| format!("Failed to create DNS transport: {e}"))?
@@ -237,14 +231,6 @@ pub fn create_swarm(
         .authenticate(noise::Config::new(&KEYS).unwrap())
         .multiplex(yamux_config)
         .boxed();
-
-    debug!(
-        "Using network config - timeout: {}s, streams: {}, connections_per_peer: {}, max_total: {}",
-        network_config.request_timeout_seconds,
-        network_config.max_concurrent_streams,
-        network_config.max_connections_per_peer,
-        network_config.max_established_total
-    );
 
     let protocol = request_response::ProtocolSupport::Full;
     let dm_protocol = StreamProtocol::new("/dm/1.0.0");
@@ -276,20 +262,11 @@ pub fn create_swarm(
 
     let handshake = request_response::cbor::Behaviour::new(handshake_protocols, cfg);
 
-    // Create Kademlia DHT with custom protocol for P2P-Play
     let store = kad::store::MemoryStore::new(*PEER_ID);
     let kad_config = kad::Config::default();
-    // TODO: Use custom protocol name to only connect to other P2P-Play nodes
-    // kad_config.set_protocol_names(vec!["/p2p-play/kad/1.0.0".into()]);
     let mut kad = kad::Behaviour::with_config(*PEER_ID, store, kad_config);
 
-    // Set Kademlia mode to server to accept queries and provide records
     kad.set_mode(Some(kad::Mode::Server));
-
-    debug!(
-        "Using ping config: interval={}s, timeout={}s",
-        ping_config.interval_secs, ping_config.timeout_secs
-    );
 
     let mut behaviour = StoryBehaviour {
         floodsub: Behaviour::new(*PEER_ID),
@@ -306,19 +283,15 @@ pub fn create_swarm(
         kad,
     };
 
-    debug!("Created floodsub with peer id: {:?}", PEER_ID.clone());
-    debug!("Subscribing to topic: {:?}", TOPIC.clone());
     behaviour.floodsub.subscribe(TOPIC.clone());
-    debug!("Subscribing to relay topic: {:?}", RELAY_TOPIC.clone());
     behaviour.floodsub.subscribe(RELAY_TOPIC.clone());
 
-    // Enhanced swarm configuration with improved connection management
     let swarm_config = SwarmConfig::with_tokio_executor()
         .with_dial_concurrency_factor(
             NonZeroU8::new(network_config.max_pending_outgoing as u8)
                 .unwrap_or(NonZeroU8::new(8).unwrap()),
-        ) // Configurable concurrent dial attempts
-        .with_idle_connection_timeout(Duration::from_secs(60)); // Idle connection timeout for resource management
+        )
+        .with_idle_connection_timeout(Duration::from_secs(60));
 
     let swarm = Swarm::<StoryBehaviour>::new(transp, behaviour, *PEER_ID, swarm_config);
     Ok(swarm)
