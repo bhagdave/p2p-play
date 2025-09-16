@@ -61,17 +61,17 @@ pub struct App {
     pub peers: HashMap<PeerId, String>,
     pub stories: Stories,
     pub channels: Channels,
-    pub unread_counts: HashMap<String, usize>, // Channel name -> unread count
+    pub unread_counts: HashMap<String, usize>,
     pub view_mode: ViewMode,
     pub local_peer_name: Option<String>,
     pub local_peer_id: Option<String>,
     pub list_state: ListState,
     pub input_mode: InputMode,
     pub scroll_offset: usize,
-    pub auto_scroll: bool, // Track if we should auto-scroll to bottom
+    pub auto_scroll: bool,
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
-    pub conversations: Vec<crate::types::Conversation>, // Store conversations with status
-    pub unread_message_count: usize,                    // Track unread direct messages
+    pub conversations: Vec<crate::types::Conversation>,
+    pub unread_message_count: usize,                  
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
     pub last_message_sender: Option<String>,
@@ -133,7 +133,6 @@ pub enum AppEvent {
 
 impl App {
     pub fn new() -> UIResult<Self> {
-        // UI initialization code that's difficult to test without a real terminal
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(
@@ -174,11 +173,9 @@ impl App {
             network_health: None,
             conversations: Vec::new(),
             unread_message_count: 0,
-            // Enhanced input features
             input_history: Vec::new(),
             history_index: None,
             last_message_sender: None,
-            // Visual notification features
             notification_config: crate::types::MessageNotificationConfig::new(),
             flash_active: false,
             flash_start_time: None,
@@ -186,7 +183,6 @@ impl App {
     }
 
     pub fn cleanup(&mut self) -> UIResult<()> {
-        // Terminal cleanup code that's difficult to test
         disable_raw_mode()?;
         execute!(
             self.terminal.backend_mut(),
@@ -263,7 +259,6 @@ impl App {
                             self.scroll_offset = 0;
                         }
 
-                        // Add visual feedback to the log
                         self.add_to_log(format!(
                             "{} Auto-scroll {} (Ctrl+S)",
                             Icons::check(),
@@ -275,15 +270,12 @@ impl App {
                         ));
                     }
                     KeyCode::ScrollLock | KeyCode::F(12) => {
-                        // Keep ScrollLock and F12 as fallback options for systems that support them
                         // Toggle auto-scroll on/off
                         self.auto_scroll = !self.auto_scroll;
                         if self.auto_scroll {
-                            // Reset scroll offset when re-enabling auto-scroll to go to bottom
                             self.scroll_offset = 0;
                         }
 
-                        // Add visual feedback to the log
                         self.add_to_log(format!(
                             "{} Auto-scroll {} ({})",
                             Icons::check(),
@@ -332,7 +324,6 @@ impl App {
                         _ => {}
                     },
                     KeyCode::Char('r') => {
-                        // Quick reply to last message sender
                         if let Some(ref last_sender) = self.last_message_sender.clone() {
                             self.input_mode = InputMode::QuickReply {
                                 target_peer: last_sender.clone(),
@@ -350,7 +341,6 @@ impl App {
                         }
                     }
                     KeyCode::Char('m') => {
-                        // Enter message composition mode (will be handled via input command)
                         self.input_mode = InputMode::Editing;
                         self.input = "compose ".to_string();
                     }
@@ -369,7 +359,7 @@ impl App {
                         let input = self.input.clone();
                         self.input.clear();
                         self.input_mode = InputMode::Normal;
-                        self.history_index = None; // Reset history navigation
+                        self.history_index = None;
                         if !input.is_empty() {
                             // Add to history (avoid duplicates)
                             if self.input_history.is_empty()
@@ -386,11 +376,9 @@ impl App {
                         }
                     }
                     KeyCode::Up => {
-                        // Navigate up in command history
                         if !self.input_history.is_empty() {
                             match self.history_index {
                                 None => {
-                                    // Start from the end
                                     self.history_index = Some(self.input_history.len() - 1);
                                     self.input =
                                         self.input_history[self.input_history.len() - 1].clone();
@@ -399,20 +387,16 @@ impl App {
                                     self.history_index = Some(idx - 1);
                                     self.input = self.input_history[idx - 1].clone();
                                 }
-                                _ => {
-                                    // Already at the beginning, stay there
-                                }
+                                _ => {}
                             }
                         }
                     }
                     KeyCode::Down => {
-                        // Navigate down in command history
                         if let Some(idx) = self.history_index {
                             if idx < self.input_history.len() - 1 {
                                 self.history_index = Some(idx + 1);
                                 self.input = self.input_history[idx + 1].clone();
                             } else {
-                                // Clear input when going past the end
                                 self.history_index = None;
                                 self.input.clear();
                             }
@@ -442,13 +426,11 @@ impl App {
                             }
                         } else {
                             self.input.push(c);
-                            // Reset history navigation when user types
                             self.history_index = None;
                         }
                     }
                     KeyCode::Backspace => {
                         self.input.pop();
-                        // Reset history navigation when user modifies input
                         self.history_index = None;
                     }
                     KeyCode::Esc => {
@@ -530,7 +512,6 @@ impl App {
                                     };
                                     new_partial.channel = Some(channel);
 
-                                    // Story creation complete - create the command string
                                     if let (Some(name), Some(header), Some(body), Some(ch)) = (
                                         &new_partial.name,
                                         &new_partial.header,
@@ -549,7 +530,6 @@ impl App {
                                 }
                             }
 
-                            // Update to next step if not complete
                             if let Some(step) = next_step {
                                 self.input_mode = InputMode::CreatingStory {
                                     step,
@@ -618,14 +598,13 @@ impl App {
                     lines,
                     current_line,
                 } => {
-                    let target_peer = target_peer.clone(); // Clone to avoid borrow checker issues
+                    let target_peer = target_peer.clone();
                     let mut new_lines = lines.clone();
                     let mut new_current = current_line.clone();
 
                     match key.code {
                         KeyCode::Enter => {
                             if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                // Ctrl+Enter to send the multi-line message
                                 if !new_current.trim().is_empty() {
                                     new_lines.push(new_current.clone());
                                 }
@@ -649,9 +628,7 @@ impl App {
                                 };
                             }
                         }
-                        // Alternative way to send message with Ctrl+D (for terminals where Ctrl+Enter doesn't work)
                         KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            // Ctrl+D to send the multi-line message (alternative to Ctrl+Enter)
                             if !new_current.trim().is_empty() {
                                 new_lines.push(new_current.clone());
                             }
@@ -694,7 +671,6 @@ impl App {
                         }
                         KeyCode::Backspace => {
                             if new_current.is_empty() && !new_lines.is_empty() {
-                                // If current line is empty, go back to previous line
                                 new_current = new_lines.pop().unwrap();
                                 self.input = new_current.clone();
                                 self.input_mode = InputMode::MessageComposition {
@@ -729,7 +705,7 @@ impl App {
     pub fn clear_output(&mut self) {
         self.output_log.clear();
         self.scroll_offset = 0;
-        self.auto_scroll = true; // Re-enable auto-scroll after clear
+        self.auto_scroll = true;
         self.add_to_log(format!("{} Output cleared", Icons::broom()));
     }
 
@@ -751,7 +727,6 @@ impl App {
 
     pub fn update_channels(&mut self, channels: Channels) {
         self.channels = channels;
-        // Initialize selection to first channel if in channels view and we have channels
         if matches!(self.view_mode, ViewMode::Channels)
             && !self.channels.is_empty()
             && self.list_state.selected().is_none()
@@ -773,7 +748,6 @@ impl App {
 
     pub fn enter_channel(&mut self, channel_name: String) {
         self.view_mode = ViewMode::Stories(channel_name);
-        // Reset list selection when entering stories view
         self.list_state.select(Some(0));
     }
 
@@ -841,18 +815,14 @@ impl App {
     }
 
     pub fn get_selected_channel(&self) -> Option<&str> {
-        // Check if we're in channels view and have channels available
         if matches!(self.view_mode, ViewMode::Channels) && !self.channels.is_empty() {
-            // Use list_state.selected() to get the current selection
             if let Some(selected_index) = self.list_state.selected() {
                 if selected_index < self.channels.len() {
                     Some(&self.channels[selected_index].name)
                 } else {
-                    // Fallback to first channel if index is out of bounds
                     Some(&self.channels[0].name)
                 }
             } else {
-                // No selection, default to first channel
                 Some(&self.channels[0].name)
             }
         } else {
@@ -861,7 +831,6 @@ impl App {
     }
 
     pub fn get_selected_story(&self) -> Option<Story> {
-        // Check if we're in stories view and have stories available
         if let ViewMode::Stories(ref channel_name) = self.view_mode {
             let channel_stories: Vec<&Story> = self
                 .stories
@@ -874,11 +843,9 @@ impl App {
                     if selected_index < channel_stories.len() {
                         Some(channel_stories[selected_index].clone())
                     } else {
-                        // Fallback to first story if index is out of bounds
                         Some(channel_stories[0].clone())
                     }
                 } else {
-                    // No selection, default to first story
                     Some(channel_stories[0].clone())
                 }
             } else {
@@ -902,7 +869,6 @@ impl App {
     }
 
     pub fn display_story_content(&mut self, story: &Story) {
-        // Sanitize all story content for safe display
         let sanitized_name = ContentSanitizer::sanitize_for_display(&story.name);
         let sanitized_header = ContentSanitizer::sanitize_for_display(&story.header);
         let sanitized_body = ContentSanitizer::sanitize_for_display(&story.body);
@@ -961,13 +927,11 @@ impl App {
 
     /// Trigger visual and audio notifications for new messages
     pub fn trigger_message_notification(&mut self, dm: &DirectMessage) {
-        // Trigger flash indicator if enabled
         if self.notification_config.enable_flash_indicators && !dm.is_outgoing {
             self.flash_active = true;
             self.flash_start_time = Some(std::time::Instant::now());
         }
 
-        // Play sound notification if enabled
         if self.notification_config.enable_sound_notifications && !dm.is_outgoing {
             #[cfg(not(windows))]
             {
@@ -983,7 +947,6 @@ impl App {
             }
         }
 
-        // Log notification in output
         let notification_text = format!(
             "{} New message from {} {}",
             Icons::envelope(),
@@ -997,7 +960,6 @@ impl App {
         self.add_to_log(notification_text);
     }
 
-    /// Update flash indicator state - should be called regularly to manage flash duration
     pub fn update_flash_indicator(&mut self) {
         if self.flash_active {
             if let Some(start_time) = self.flash_start_time {
@@ -1008,11 +970,6 @@ impl App {
                 }
             }
         }
-    }
-
-    /// Update notification configuration
-    pub fn update_notification_config(&mut self, config: crate::types::MessageNotificationConfig) {
-        self.notification_config = config;
     }
 
     pub fn update_conversations(&mut self, conversations: Vec<crate::types::Conversation>) {
@@ -1047,7 +1004,6 @@ impl App {
                         let datetime = UNIX_EPOCH + Duration::from_secs(msg.timestamp);
                         let local_datetime = DateTime::<Local>::from(datetime);
                         if self.notification_config.enhanced_timestamps {
-                            // Enhanced timestamp with seconds and better formatting
                             local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
                         } else {
                             local_datetime.format("%Y-%m-%d %H:%M").to_string()
@@ -1057,7 +1013,6 @@ impl App {
                     let direction = if msg.is_outgoing { "→" } else { "←" };
                     let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
 
-                    // Add delivery status indicator for outgoing messages if enabled
                     let status_indicator =
                         if msg.is_outgoing && self.notification_config.show_delivery_status {
                             format!(" {}", Icons::checkmark()) // Simple delivered indicator
@@ -1084,16 +1039,14 @@ impl App {
         }
     }
 
-    /// Try to auto-complete peer names for msg commands
     pub fn try_autocomplete_peer_name(&mut self) {
-        let input_clone = self.input.clone(); // Clone to avoid borrow checker issues
+        let input_clone = self.input.clone();
         if let Some(partial_name) = input_clone.strip_prefix("msg ") {
             let partial_name = partial_name.trim();
             if partial_name.is_empty() {
                 return;
             }
 
-            // Find matching peer names
             let matches: Vec<String> = self
                 .peers
                 .values()
@@ -1123,9 +1076,7 @@ impl App {
                     ));
                 }
                 _ => {
-                    // Multiple matches, show them
                     self.add_to_log(format!("📋 Multiple matches: {}", matches.join(", ")));
-                    // Find common prefix and complete up to that
                     if let Some(common_prefix) = find_common_prefix(&matches) {
                         if common_prefix.len() > partial_name.len() {
                             self.input = format!("msg {} ", common_prefix);
@@ -1196,7 +1147,6 @@ impl App {
 
         self.add_to_log(user_message);
 
-        // Also log detailed error information for debugging
         debug!("Detailed error: {error:#}");
     }
 
@@ -1244,20 +1194,16 @@ impl App {
         }
     }
 
-    /// Calculate the current scroll position based on auto_scroll state and available height
-    /// Returns the scroll offset that should be used for display
     fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
         let total_lines = self.output_log.len();
 
         if self.auto_scroll {
-            // Auto-scroll: show the bottom of the log
             if total_lines <= available_height {
                 0
             } else {
                 total_lines.saturating_sub(available_height)
             }
         } else {
-            // Manual scroll: use the current scroll_offset, but clamp it
             if total_lines <= available_height {
                 0
             } else {
@@ -1268,44 +1214,30 @@ impl App {
     }
 
     fn scroll_up(&mut self) {
-        // If auto-scroll is currently enabled, we need to transition smoothly
-        // by setting scroll_offset to the current auto-scroll position first
         if self.auto_scroll {
-            // Estimate available height (terminal height minus UI elements)
-            // Conservative estimate: assume terminal is at least 24 lines,
-            // minus 3 for status, 3 for input, 2 for borders = ~16 lines for output
             let estimated_height = 16;
             self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
         }
 
-        // Disable auto-scroll when user manually scrolls
         self.auto_scroll = false;
 
-        // Now perform the scroll up operation
         if self.scroll_offset > 0 {
             self.scroll_offset -= 1;
         }
     }
 
     fn scroll_down(&mut self) {
-        // If auto-scroll is currently enabled, we need to transition smoothly
-        // by setting scroll_offset to the current auto-scroll position first
         if self.auto_scroll {
-            // Estimate available height (terminal height minus UI elements)
             let estimated_height = 16;
             self.scroll_offset = self.calculate_current_scroll_position(estimated_height);
         }
 
-        // Disable auto-scroll when user manually scrolls
         self.auto_scroll = false;
 
-        // Now perform the scroll down operation
-        // We'll let the draw() method handle proper clamping of the scroll_offset
         self.scroll_offset += 1;
     }
 
     pub fn draw(&mut self) -> UIResult<()> {
-        // Update flash indicator state
         self.update_flash_indicator();
 
         self.terminal.draw(|f| {
@@ -1318,9 +1250,7 @@ impl App {
                 ])
                 .split(f.size());
 
-            // Status bar
             let version = env!("CARGO_PKG_VERSION");
-            // Add network health to status
             let network_health_text = if let Some(ref health) = self.network_health {
                 if health.overall_healthy {
                     format!("{} Network OK", Icons::network_healthy())
@@ -1331,7 +1261,6 @@ impl App {
                 format!("{} Network Status Unknown", Icons::network_unknown())
             };
 
-            // Add message notification indicator
             let message_indicator = if self.unread_message_count > 0 {
                 if self.flash_active {
                     format!(" | {} MSGS: {} 📳", Icons::envelope(), self.unread_message_count)
@@ -1380,7 +1309,6 @@ impl App {
             };
 
             let status_bar_color = if self.flash_active && self.notification_config.enable_flash_indicators {
-                // Flash between bright yellow and normal color
                 Color::LightYellow
             } else if let Some(ref health) = self.network_health {
                 if health.overall_healthy {
@@ -1397,7 +1325,6 @@ impl App {
                 .block(Block::default().borders(Borders::ALL).title("Status"));
             f.render_widget(status_bar, chunks[0]);
 
-            // Main area - split into left and right
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
@@ -1406,20 +1333,16 @@ impl App {
                 ])
                 .split(chunks[1]);
 
-            // Output log
             let actual_log_height = (main_chunks[0].height as usize).saturating_sub(2);
             let total_lines = self.output_log.len();
 
-            // Calculate scroll position considering auto_scroll
             let scroll_offset = if self.auto_scroll {
-                // Auto-scroll: show the bottom of the log
                 if total_lines <= actual_log_height {
                     0
                 } else {
                     total_lines.saturating_sub(actual_log_height)
                 }
             } else {
-                // Manual scroll: use the current scroll_offset, but clamp it
                 if total_lines <= actual_log_height {
                     0
                 } else {
@@ -1428,11 +1351,9 @@ impl App {
                 }
             };
 
-            // Calculate what portion of the log to display
             let visible_start = scroll_offset;
             let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
 
-            // Convert log messages to display text using explicit ratatui structures
             let lines: Vec<Line> = self.output_log[visible_start..visible_end]
                 .iter()
                 .map(|msg| Line::from(Span::raw(msg.clone())))
@@ -1440,7 +1361,6 @@ impl App {
 
             let text = Text::from(lines);
 
-            // Create title with scroll indicator
             let title = if total_lines > actual_log_height {
                 format!("Output [{}/{}]", visible_start + 1, total_lines)
             } else {
@@ -1453,7 +1373,6 @@ impl App {
                 .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(output, main_chunks[0]);
 
-            // Side panels - split into three sections: peers, messages, and channels/stories
             let side_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -1463,22 +1382,18 @@ impl App {
                 ])
                 .split(main_chunks[1]);
 
-            // Peers list
             let peer_items: Vec<ListItem> = self
                 .peers
                 .iter()
                 .map(|(peer_id, name)| {
                     let peer_id_str = peer_id.to_string();
-                    // Use 20 characters instead of 8 to ensure uniqueness between peers with similar prefixes
                     let peer_id_display = if peer_id_str.len() >= 20 { &peer_id_str[..20] } else { &peer_id_str };
 
                     let content = if name.is_empty() {
                         format!("{peer_id}")
                     } else if name.starts_with("Peer_") && name.contains(&peer_id.to_string()) {
-                        // This is a default name we assigned (contains full peer ID), show truncated version
                         format!("Peer_{peer_id_display} [{peer_id_display}]")
                     } else {
-                        // This is a real name the peer set (or a custom name that starts with "Peer_")
                         format!("{name} ({peer_id_display})")
                     };
                     ListItem::new(content)
@@ -1494,7 +1409,6 @@ impl App {
                 .highlight_style(Style::default().fg(Color::Yellow));
             f.render_widget(peers_list, side_chunks[0]);
 
-            // Conversations panel
             let conversation_items: Vec<ListItem> = self
                 .conversations
                 .iter()
@@ -1505,7 +1419,6 @@ impl App {
                         let datetime = UNIX_EPOCH + Duration::from_secs(conv.last_activity);
                         let local_datetime = DateTime::<Local>::from(datetime);
                         if self.notification_config.enhanced_timestamps {
-                            // Enhanced timestamp formatting with relative time
                             let now = std::time::SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -1544,7 +1457,6 @@ impl App {
                         unread_indicator
                     );
 
-                    // Apply color coding based on unread status and configuration
                     if self.notification_config.enable_color_coding && conv.unread_count > 0 {
                         ListItem::new(item_text).style(Style::default().fg(Color::Magenta))
                     } else {
@@ -1553,7 +1465,6 @@ impl App {
                 })
                 .collect();
 
-            // Create title with unread indicator
             let message_title = if self.unread_message_count > 0 {
                 format!("Conversations [{}]", self.unread_message_count)
             } else {
@@ -1578,22 +1489,18 @@ impl App {
                 f.render_widget(conversations_list, side_chunks[1]);
             }
 
-            // Channels/Stories list - display based on view mode
             let (list_items, list_title) = match &self.view_mode {
                 ViewMode::Channels => {
                     let channel_items: Vec<ListItem> = self
                         .channels
                         .iter()
                         .map(|channel| {
-                            // Count stories in this channel
                             let story_count = self.stories.iter()
                                 .filter(|story| story.channel == channel.name)
                                 .count();
 
-                            // Get unread count for this channel
                             let unread_count = self.unread_counts.get(&channel.name).unwrap_or(&0);
 
-                            // Create the display text with unread indicator
                             let display_text = if *unread_count > 0 {
                                 format!("{} {} [{}] ({} stories) - {}",
                                     Icons::folder(), channel.name, unread_count, story_count, channel.description)
@@ -1602,7 +1509,6 @@ impl App {
                                     Icons::folder(), channel.name, story_count, channel.description)
                             };
 
-                            // Apply styling based on unread status
                             let item = ListItem::new(display_text);
                             if *unread_count > 0 {
                                 // Highlight channels with unread stories in cyan to distinguish from selected items (yellow)
@@ -1653,7 +1559,6 @@ impl App {
                 f.render_widget(list, side_chunks[2]);
             }
 
-            // Input area
             let input_style = match self.input_mode {
                 InputMode::Normal => Style::default(),
                 InputMode::Editing => Style::default().fg(Color::Yellow),
@@ -1696,7 +1601,6 @@ impl App {
                 .block(Block::default().borders(Borders::ALL).title("Input"));
             f.render_widget(input, chunks[2]);
 
-            // Set cursor position if in editing mode or creating story
             match &self.input_mode {
                 InputMode::Editing => {
                     let prefix = "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): ";
@@ -1743,7 +1647,6 @@ impl App {
     }
 }
 
-/// Event handler for UI events
 pub async fn handle_ui_events(
     app: &mut App,
     ui_sender: mpsc::UnboundedSender<AppEvent>,
@@ -1762,8 +1665,6 @@ pub async fn handle_ui_events(
     Ok(())
 }
 
-/// Helper function to format Unix timestamp to human-readable format
-/// Find common prefix of a list of strings (case-insensitive)
 fn find_common_prefix(strings: &[String]) -> Option<String> {
     if strings.is_empty() {
         return None;
