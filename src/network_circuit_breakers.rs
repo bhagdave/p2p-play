@@ -1,9 +1,7 @@
 use crate::circuit_breaker::{CircuitBreaker, CircuitBreakerInfo};
 use crate::types::NetworkCircuitBreakerConfig;
-use log::debug;
 use std::collections::HashMap;
 
-/// Manages circuit breakers for different network operations
 #[derive(Debug)]
 pub struct NetworkCircuitBreakers {
     breakers: HashMap<String, CircuitBreaker>,
@@ -11,13 +9,7 @@ pub struct NetworkCircuitBreakers {
 }
 
 impl NetworkCircuitBreakers {
-    /// Create a new network circuit breakers manager
     pub fn new(config: &NetworkCircuitBreakerConfig) -> Self {
-        debug!(
-            "Creating network circuit breakers (enabled: {})",
-            config.enabled
-        );
-
         let mut breakers = HashMap::new();
 
         if config.enabled {
@@ -44,7 +36,6 @@ impl NetworkCircuitBreakers {
         }
     }
 
-    /// Get a circuit breaker for a specific operation
     pub fn get(&self, operation: &str) -> Option<&CircuitBreaker> {
         if self.enabled {
             self.breakers.get(operation)
@@ -53,7 +44,6 @@ impl NetworkCircuitBreakers {
         }
     }
 
-    /// Execute an operation with circuit breaker protection if enabled
     pub async fn execute<T, E, F, Fut>(
         &self,
         operation: &str,
@@ -67,7 +57,6 @@ impl NetworkCircuitBreakers {
         if let Some(circuit_breaker) = self.get(operation) {
             circuit_breaker.execute(func).await
         } else {
-            // Circuit breakers disabled, execute directly
             match func().await {
                 Ok(result) => Ok(result),
                 Err(error) => {
@@ -77,7 +66,6 @@ impl NetworkCircuitBreakers {
         }
     }
 
-    /// Check if an operation can be executed (not blocked by circuit breaker)
     pub async fn can_execute(&self, operation: &str) -> bool {
         if let Some(circuit_breaker) = self.get(operation) {
             circuit_breaker.can_execute().await
@@ -86,21 +74,18 @@ impl NetworkCircuitBreakers {
         }
     }
 
-    /// Record a successful operation
     pub async fn on_success(&self, operation: &str) {
         if let Some(circuit_breaker) = self.get(operation) {
             circuit_breaker.on_success().await;
         }
     }
 
-    /// Record a failed operation
     pub async fn on_failure(&self, operation: &str, error: &str) {
         if let Some(circuit_breaker) = self.get(operation) {
             circuit_breaker.on_failure(error).await;
         }
     }
 
-    /// Get status information for all circuit breakers
     pub async fn get_all_status(&self) -> HashMap<String, CircuitBreakerInfo> {
         let mut status = HashMap::new();
 
@@ -112,7 +97,6 @@ impl NetworkCircuitBreakers {
         status
     }
 
-    /// Check if any circuit breaker is in a failed state
     pub async fn has_failures(&self) -> bool {
         if !self.enabled {
             return false;
@@ -127,7 +111,6 @@ impl NetworkCircuitBreakers {
         false
     }
 
-    /// Get a summary of network health
     pub async fn health_summary(&self) -> NetworkHealthSummary {
         if !self.enabled {
             return NetworkHealthSummary {
@@ -167,7 +150,6 @@ impl NetworkCircuitBreakers {
     }
 }
 
-/// Summary of network health across all circuit breakers
 #[derive(Debug, Clone)]
 pub struct NetworkHealthSummary {
     pub overall_healthy: bool,
