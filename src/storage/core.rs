@@ -1,10 +1,9 @@
 use crate::errors::StorageResult;
 use crate::storage::{mappers, utils};
 use crate::types::{
-    BootstrapConfig, Channel, ChannelSubscription, ChannelSubscriptions, Channels,
-    DirectMessageConfig, NetworkConfig, Stories, Story, UnifiedNetworkConfig,
+    BootstrapConfig, Channel, Channels,
+    Stories, Story, UnifiedNetworkConfig,
 };
-use log::debug;
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
@@ -20,30 +19,23 @@ use crate::migrations;
 const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
 pub const NODE_DESCRIPTION_FILE_PATH: &str = "node_description.txt";
 
-/// Get the database path, checking environment variables for custom paths
 fn get_database_path() -> String {
-    // Check for test database path first (for integration tests)
     if let Ok(test_path) = std::env::var("TEST_DATABASE_PATH") {
         return test_path;
     }
 
-    // Check for custom database path
     if let Ok(db_path) = std::env::var("DATABASE_PATH") {
         return db_path;
     }
 
-    // Default production path
     "./stories.db".to_string()
 }
 
-// Type alias for our connection pool
 type DbPool = Pool<SqliteConnectionManager>;
 
-// Thread-safe database connection pool with support for dynamic paths
 static DB_POOL_STATE: once_cell::sync::Lazy<RwLock<Option<(DbPool, String)>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
-/// Configuration for the database connection pool
 struct PoolConfig {
     max_size: u32,
     min_idle: Option<u32>,
@@ -62,13 +54,10 @@ impl Default for PoolConfig {
     }
 }
 
-/// Create a new database connection pool
 fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
     let config = PoolConfig::default();
 
-    // Create connection manager
     let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
-        // Enable foreign key constraints and set optimal pragmas
         conn.execute_batch(
             "PRAGMA foreign_keys = ON;
                  PRAGMA synchronous = NORMAL;
@@ -79,7 +68,6 @@ fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
         Ok(())
     });
 
-    // Build the pool with configuration
     let pool = Pool::builder()
         .max_size(config.max_size)
         .min_idle(config.min_idle)
@@ -88,30 +76,20 @@ fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
         .build(manager)
         .map_err(|e| format!("Failed to create database pool: {e}"))?;
 
-    debug!(
-        "Created database pool with max_size={}, min_idle={:?}",
-        config.max_size, config.min_idle
-    );
-
     Ok(pool)
 }
 
-/// Get a database connection from the pool
 pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     let current_path = get_database_path();
 
-    // Check if we have an existing pool with the same path
     {
         let state = DB_POOL_STATE.read().await;
         if let Some((pool, stored_path)) = state.as_ref() {
             if stored_path == &current_path {
-                // Get a connection from the pool - pooled connections implement Deref to Connection
                 let _pooled_conn = pool
                     .get()
                     .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
 
-                // For now, create a new connection with the same path to maintain compatibility
-                // In a future iteration, we could optimize this further
                 let conn = Connection::open(&current_path)?;
                 conn.execute_batch(
                     "PRAGMA foreign_keys = ON;
@@ -126,11 +104,8 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
         }
     }
 
-    // Need to create or update pool
-    debug!("Creating new SQLite database connection pool: {current_path}");
     let pool = create_db_pool(&current_path)?;
 
-    // Create a direct connection for immediate use while pool is ready for future requests
     let conn = Connection::open(&current_path)?;
     conn.execute_batch(
         "PRAGMA foreign_keys = ON;
@@ -141,17 +116,14 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     )?;
     let conn_arc = Arc::new(Mutex::new(conn));
 
-    // Update the stored pool and path
     {
         let mut state = DB_POOL_STATE.write().await;
         *state = Some((pool, current_path));
     }
 
-    debug!("Successfully created database connection pool with optimized pragmas");
     Ok(conn_arc)
 }
 
-/// Reset database connection pool (useful for testing)
 pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
     let mut state = DB_POOL_STATE.write().await;
     *state = None;
@@ -160,7 +132,6 @@ pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
     Ok(())
 }
 
-/// Get database pool statistics for monitoring
 pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
     let state = DB_POOL_STATE.read().await;
     if let Some((pool, _)) = state.as_ref() {
@@ -171,8 +142,6 @@ pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
     }
 }
 
-/// Execute a function with a database transaction
-/// This helps group related operations and provides better error handling
 pub async fn with_transaction<F, R>(f: F) -> StorageResult<R>
 where
     F: FnOnce(&Connection) -> StorageResult<R>,
@@ -180,7 +149,6 @@ where
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Start transaction
     conn.execute("BEGIN TRANSACTION", [])?;
 
     match f(&conn) {
@@ -189,15 +157,12 @@ where
             Ok(result)
         }
         Err(e) => {
-            // Rollback on error
             let _ = conn.execute("ROLLBACK", []);
             Err(e)
         }
     }
 }
 
-/// Execute a function with a read-only database transaction
-/// This is optimized for read operations and reduces lock contention
 pub async fn with_read_transaction<F, R>(f: F) -> StorageResult<R>
 where
     F: FnOnce(&Connection) -> StorageResult<R>,
@@ -205,7 +170,6 @@ where
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Start read-only transaction
     conn.execute("BEGIN DEFERRED", [])?;
 
     match f(&conn) {
@@ -221,19 +185,15 @@ where
     }
 }
 
-/// Initialize a clean test database with proper isolation
 pub async fn init_test_database() -> StorageResult<()> {
     reset_db_connection_for_testing().await?;
     ensure_stories_file_exists().await?;
 
-    // Clear all existing data for clean test (only if tables exist)
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Disable foreign key checks temporarily to allow clean deletion
     conn.execute("PRAGMA foreign_keys = OFF", [])?;
 
-    // Check if tables exist and clear them
     let table_exists = |table_name: &str| -> StorageResult<bool> {
         let mut stmt = conn.prepare(&format!(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
@@ -264,12 +224,10 @@ pub async fn init_test_database() -> StorageResult<()> {
         conn.execute("DELETE FROM story_read_status", [])?;
     }
 
-    // Re-enable foreign key checks
     conn.execute("PRAGMA foreign_keys = ON", [])?;
 
     drop(conn); // Release the lock
 
-    // Add a small delay to ensure all operations complete
     tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
 
     Ok(())
@@ -285,19 +243,15 @@ async fn create_tables() -> StorageResult<()> {
 
 pub async fn ensure_stories_file_exists() -> StorageResult<()> {
     let db_path = get_database_path();
-    debug!("Initializing SQLite database at: {db_path}");
 
-    // Ensure the directory exists for the database file
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
         if !parent.exists() {
-            debug!("Creating directory: {parent:?}");
             tokio::fs::create_dir_all(parent).await?;
         }
     }
 
     let _conn = get_db_connection().await?;
     create_tables().await?;
-    debug!("SQLite database and tables initialized");
     Ok(())
 }
 
@@ -340,7 +294,6 @@ pub async fn read_local_stories_from_path(path: &str) -> StorageResult<Stories> 
     }
 }
 
-/// Read local stories with filtering applied at the database level for efficient story synchronization
 pub async fn read_local_stories_for_sync(
     last_sync_timestamp: u64,
     subscribed_channels: &[String],
@@ -348,11 +301,9 @@ pub async fn read_local_stories_for_sync(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Build dynamic query with proper filtering
     let mut query = "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE public = 1 AND created_at > ?".to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(last_sync_timestamp as i64)];
 
-    // Add channel filtering if channels are specified
     if !subscribed_channels.is_empty() {
         let placeholders = vec!["?"; subscribed_channels.len()].join(",");
         query.push_str(&format!(" AND channel IN ({placeholders})"));
@@ -365,7 +316,6 @@ pub async fn read_local_stories_for_sync(
 
     let mut stmt = conn.prepare(&query)?;
 
-    // Convert params to the proper type for query_map
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let story_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_story)?;
 
@@ -377,15 +327,10 @@ pub async fn read_local_stories_for_sync(
     Ok(stories)
 }
 
-/// Extract unique channel metadata for stories being shared during sync
-/// Creates default metadata for channels that don't exist in the local database
 pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channels> {
     if stories.is_empty() {
-        debug!("No stories provided, returning empty channel list");
         return Ok(Vec::new());
     }
-
-    debug!("Getting channel metadata for {} stories", stories.len());
 
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -396,14 +341,7 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         unique_channels.insert(story.channel.clone());
     }
 
-    debug!(
-        "Found {} unique channel names in stories: {:?}",
-        unique_channels.len(),
-        unique_channels
-    );
-
     if unique_channels.is_empty() {
-        debug!("No unique channels found in stories");
         return Ok(Vec::new());
     }
 
@@ -413,14 +351,8 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         "SELECT name, description, created_by, created_at FROM channels WHERE name IN ({placeholders}) ORDER BY name"
     );
 
-    debug!(
-        "Executing query: {} with params: {:?}",
-        query, unique_channels
-    );
-
     let mut stmt = conn.prepare(&query)?;
 
-    // Convert channel names to query parameters
     let channel_names: Vec<String> = unique_channels.clone().into_iter().collect();
     let param_refs: Vec<&dyn rusqlite::ToSql> = channel_names
         .iter()
@@ -438,15 +370,8 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         channels.push(channel);
     }
 
-    // For any channels that don't exist in our database, create default metadata
-    // This ensures that peers can discover channels even if the original creator
-    // doesn't have the metadata stored locally
     for channel_name in unique_channels {
         if !found_channel_names.contains(&channel_name) {
-            debug!(
-                "Creating default metadata for unknown channel: {}",
-                channel_name
-            );
             let default_channel = crate::types::Channel::new(
                 channel_name.clone(),
                 format!("Channel: {}", channel_name),
@@ -456,136 +381,52 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         }
     }
 
-    debug!(
-        "Found/created {} channel metadata entries for {} stories: {:?}",
-        channels.len(),
-        stories.len(),
-        channels.iter().map(|c| &c.name).collect::<Vec<_>>()
-    );
     Ok(channels)
 }
 
-/// Process and save discovered channels from story sync
 pub async fn process_discovered_channels(
     channels: &[Channel],
     peer_name: &str,
 ) -> StorageResult<usize> {
     if channels.is_empty() {
-        debug!("No channels to process from peer {}", peer_name);
         return Ok(0);
     }
 
-    debug!(
-        "Processing {} discovered channels from peer {}",
-        channels.len(),
-        peer_name
-    );
-
     let mut saved_count = 0;
     for channel in channels {
-        debug!(
-            "Processing channel: name='{}', description='{}', created_by='{}'",
-            channel.name, channel.description, channel.created_by
-        );
 
-        // Validate channel data before saving
         if channel.name.is_empty() || channel.description.is_empty() {
-            debug!(
-                "Skipping invalid channel with empty name or description: name='{}', description='{}'",
-                channel.name, channel.description
-            );
             continue;
         }
 
-        // Check if channel already exists before trying to create it
         match channel_exists(&channel.name).await {
-            Ok(true) => {
-                debug!(
-                    "Channel '{}' already exists in database, skipping",
-                    channel.name
-                );
-                // Channel already exists, don't count as new discovery
-            }
+            Ok(true) => {}
             Ok(false) => {
-                // Channel doesn't exist, try to create it
                 match create_channel(&channel.name, &channel.description, &channel.created_by).await
                 {
                     Ok(_) => {
                         saved_count += 1;
-                        debug!(
-                            "Successfully saved discovered channel '{}' from peer {}",
-                            channel.name, peer_name
-                        );
                     }
-                    Err(e) => {
-                        debug!(
-                            "Failed to save discovered channel '{}': {}",
-                            channel.name, e
-                        );
-                    }
+                    Err(_) => {}
                 }
             }
-            Err(e) => {
-                debug!(
-                    "Failed to check if channel '{}' exists: {}",
-                    channel.name, e
-                );
-            }
+            Err(_) => {}
         }
     }
 
-    debug!(
-        "Processed {} channels from peer {}, saved {} new channels",
-        channels.len(),
-        peer_name,
-        saved_count
-    );
     Ok(saved_count)
 }
 
-pub async fn write_local_stories(stories: &Stories) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    // Clear existing stories and insert new ones
-    conn.execute("DELETE FROM stories", [])?;
-
-    for story in stories {
-        conn.execute(
-            "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            [
-                &story.id.to_string(),
-                &story.name,
-                &story.header,
-                &story.body,
-                &(if story.public {
-                    "1".to_string()
-                } else {
-                    "0".to_string()
-                }),
-                &story.channel,
-                &story.created_at.to_string(),
-            ],
-        )?;
-    }
-
-    Ok(())
-}
-
 pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
-    // For test compatibility, if path is a JSON file, write as JSON
     if path.ends_with(".json") {
         let json = serde_json::to_string(&stories)?;
         fs::write(path, &json).await?;
         Ok(())
     } else {
-        // Treat as SQLite database path - create a temporary connection
         let conn = Connection::open(path)?;
 
-        // Create tables if they don't exist
         migrations::create_tables(&conn)?;
 
-        // Clear existing stories and insert new ones
         conn.execute("DELETE FROM stories", [])?;
 
         for story in stories {
@@ -611,10 +452,6 @@ pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> Stora
     }
 }
 
-pub async fn create_new_story(name: &str, header: &str, body: &str) -> StorageResult<()> {
-    create_new_story_with_channel(name, header, body, "general").await
-}
-
 pub async fn create_new_story_with_channel(
     name: &str,
     header: &str,
@@ -623,20 +460,16 @@ pub async fn create_new_story_with_channel(
 ) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
 
-    // Get the next ID using utility function
     let next_id = utils::get_next_id(&conn_arc, "stories").await?;
 
-    // Get the current timestamp using utility function
     let created_at = utils::get_current_timestamp();
 
-    // Load auto-share configuration to determine if story should be public
     let should_be_public = match load_unified_network_config().await {
         Ok(config) => config.auto_share.global_auto_share,
         Err(_) => true, // Default to true if config can't be loaded
     };
 
     let conn = conn_arc.lock().await;
-    // Insert the new story
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
@@ -649,11 +482,6 @@ pub async fn create_new_story_with_channel(
             &created_at.to_string(),
         ],
     )?;
-
-    debug!("Created story:");
-    debug!("Name: {name}");
-    debug!("Header: {header}");
-    debug!("Body: {body}");
 
     Ok(())
 }
@@ -694,14 +522,12 @@ pub async fn publish_story(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Update the story to be public
     let rows_affected = conn.execute(
         "UPDATE stories SET public = ? WHERE id = ?",
         [&utils::rust_bool_to_db(true), &id.to_string()],
     )?;
 
     if rows_affected > 0 {
-        // Fetch the updated story to send it
         let mut stmt = conn.prepare(
             "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?",
         )?;
@@ -727,14 +553,11 @@ pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Delete the story with the given ID
     let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", [&id.to_string()])?;
 
     if rows_affected > 0 {
-        debug!("Deleted story with ID: {id}");
         Ok(true)
     } else {
-        debug!("No story found with ID: {id}");
         Ok(false)
     }
 }
@@ -758,7 +581,6 @@ pub async fn publish_story_in_path(id: usize, path: &str) -> StorageResult<Optio
 pub async fn save_received_story(story: Story) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
 
-    // Check if story already exists (by name and content to avoid duplicates)
     {
         let conn = conn_arc.lock().await;
         let mut stmt =
@@ -769,15 +591,12 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
         );
 
         if existing.is_ok() {
-            debug!("Story already exists locally, skipping save");
             return Ok(());
         }
     }
 
-    // Story doesn't exist, get the next ID
     let new_id = utils::get_next_id(&conn_arc, "stories").await?;
 
-    // Insert the story with the new ID and mark as public
     let conn = conn_arc.lock().await;
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -792,7 +611,6 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
         ],
     )?;
 
-    debug!("Saved received story to local storage with ID: {new_id}");
     Ok(())
 }
 
@@ -800,7 +618,6 @@ pub async fn save_received_story_to_path(mut story: Story, path: &str) -> Storag
     let mut local_stories: Vec<Story> =
         read_local_stories_from_path(path).await.unwrap_or_default();
 
-    // Check if story already exists
     let already_exists = local_stories
         .iter()
         .any(|s| s.name == story.name && s.header == story.header && s.body == story.body);
@@ -812,7 +629,6 @@ pub async fn save_received_story_to_path(mut story: Story, path: &str) -> Storag
         };
         story.id = new_id;
         story.public = true;
-        // Set created_at if not already set
         if story.created_at == 0 {
             story.created_at = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -824,7 +640,6 @@ pub async fn save_received_story_to_path(mut story: Story, path: &str) -> Storag
         write_local_stories_to_path(&local_stories, path).await?;
         Ok(new_id)
     } else {
-        // Return the existing story's ID
         let existing = local_stories
             .iter()
             .find(|s| s.name == story.name && s.header == story.header && s.body == story.body)
@@ -837,7 +652,6 @@ pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Insert or replace the peer name (there should only be one row)
     conn.execute(
         "INSERT OR REPLACE INTO peer_name (id, name) VALUES (1, ?)",
         [name],
@@ -847,7 +661,6 @@ pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
 }
 
 pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> StorageResult<()> {
-    // For test compatibility, keep writing to JSON file
     let json = serde_json::to_string(name)?;
     fs::write(path, &json).await?;
     Ok(())
@@ -868,7 +681,6 @@ pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
 }
 
 pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<String>> {
-    // For test compatibility, keep reading from JSON file
     match fs::read(path).await {
         Ok(content) => {
             let name: String = serde_json::from_slice(&content)?;
@@ -878,7 +690,6 @@ pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<
     }
 }
 
-// Channel management functions
 pub async fn create_channel(name: &str, description: &str, created_by: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -890,11 +701,9 @@ pub async fn create_channel(name: &str, description: &str, created_by: &str) -> 
         [name, description, created_by, &timestamp.to_string()],
     )?;
 
-    debug!("Created channel: {name} - {description}");
     Ok(())
 }
 
-/// Check if a channel exists in the database
 pub async fn channel_exists(name: &str) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -931,7 +740,6 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageR
         [peer_id, channel_name, &timestamp.to_string()],
     )?;
 
-    debug!("Subscribed {peer_id} to channel: {channel_name}");
     Ok(())
 }
 
@@ -944,7 +752,6 @@ pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> Stor
         [peer_id, channel_name],
     )?;
 
-    debug!("Unsubscribed {peer_id} from channel: {channel_name}");
     Ok(())
 }
 
@@ -1028,30 +835,7 @@ pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels
 
 pub async fn get_auto_subscription_count(peer_id: &str) -> StorageResult<usize> {
     let subscribed = read_subscribed_channels(peer_id).await?;
-    // For now, we'll count all subscriptions as auto-subscriptions
-    // In the future, we could add a flag to track which were auto vs manual
     Ok(subscribed.len())
-}
-
-pub async fn read_channel_subscriptions() -> StorageResult<ChannelSubscriptions> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    let mut stmt = conn.prepare("SELECT peer_id, channel_name, subscribed_at FROM channel_subscriptions ORDER BY channel_name, peer_id")?;
-    let subscription_iter = stmt.query_map([], |row| {
-        Ok(ChannelSubscription {
-            peer_id: row.get(0)?,
-            channel_name: row.get(1)?,
-            subscribed_at: row.get::<_, i64>(2)? as u64,
-        })
-    })?;
-
-    let mut subscriptions = Vec::new();
-    for subscription in subscription_iter {
-        subscriptions.push(subscription?);
-    }
-
-    Ok(subscriptions)
 }
 
 pub async fn save_direct_message(
@@ -1062,7 +846,6 @@ pub async fn save_direct_message(
     let conn = conn_arc.lock().await;
     let is_read = message.is_outgoing; // Outgoing messages are considered read by default
 
-    // Determine the remote peer ID
     let origin_peer_id = if message.is_outgoing {
         &message.to_peer_id
     } else {
@@ -1155,16 +938,13 @@ pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories
 }
 
 pub async fn clear_database_for_testing() -> StorageResult<()> {
-    // Reset the connection to ensure we're using the test database path
     reset_db_connection_for_testing().await?;
 
-    // Ensure the test database is initialized
     ensure_stories_file_exists().await?;
 
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Clear all tables in correct order (respecting foreign key constraints)
     conn.execute("DELETE FROM direct_messages", [])?; // Clear first - has FK to conversations
     conn.execute("DELETE FROM conversations", [])?; // Clear second - referenced by direct_messages
     conn.execute("DELETE FROM story_read_status", [])?; // Clear third - has FKs to stories and channels
@@ -1173,7 +953,6 @@ pub async fn clear_database_for_testing() -> StorageResult<()> {
     conn.execute("DELETE FROM channels", [])?; // Clear sixth - referenced by subscriptions and read_status
     conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
 
-    // Recreate the general channel to ensure consistent test state
     conn.execute(
         r#"
         INSERT INTO channels (name, description, created_by, created_at)
@@ -1182,7 +961,6 @@ pub async fn clear_database_for_testing() -> StorageResult<()> {
         [],
     )?;
 
-    debug!("Test database cleared and reset");
     Ok(())
 }
 
@@ -1201,7 +979,6 @@ pub async fn load_node_description() -> StorageResult<Option<String>> {
             if content.is_empty() {
                 Ok(None)
             } else {
-                // Ensure it doesn't exceed the limit even if file was modified externally
                 if content.len() > 1024 {
                     return Err("Description file exceeds 1024 bytes limit".into());
                 }
@@ -1221,15 +998,10 @@ pub async fn save_bootstrap_config_to_path(
     config: &BootstrapConfig,
     path: &str,
 ) -> StorageResult<()> {
-    // Validate the config before saving
     config.validate()?;
 
     let json = serde_json::to_string_pretty(config)?;
     fs::write(path, json).await?;
-    debug!(
-        "Bootstrap config saved with {} peers",
-        config.bootstrap_peers.len()
-    );
     Ok(())
 }
 
@@ -1245,88 +1017,17 @@ pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<Bootst
             // Validate the loaded config
             config.validate()?;
 
-            debug!(
-                "Loaded bootstrap config with {} peers",
-                config.bootstrap_peers.len()
-            );
             Ok(config)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            debug!("No bootstrap config file found, creating default");
             let default_config = BootstrapConfig::default();
 
-            // Save the default config for future use
             save_bootstrap_config_to_path(&default_config, path).await?;
 
             Ok(default_config)
         }
         Err(e) => Err(e.into()),
     }
-}
-
-pub async fn ensure_bootstrap_config_exists() -> StorageResult<()> {
-    if tokio::fs::metadata("bootstrap_config.json").await.is_err() {
-        let default_config = BootstrapConfig::default();
-        save_bootstrap_config(&default_config).await?;
-        debug!("Created default bootstrap config file");
-    }
-    Ok(())
-}
-
-pub async fn save_direct_message_config(config: &DirectMessageConfig) -> StorageResult<()> {
-    save_direct_message_config_to_path(config, "direct_message_config.json").await
-}
-
-pub async fn save_direct_message_config_to_path(
-    config: &DirectMessageConfig,
-    path: &str,
-) -> StorageResult<()> {
-    let json = serde_json::to_string_pretty(config)?;
-    fs::write(path, json).await?;
-    debug!("Saved direct message config to {path}");
-    Ok(())
-}
-
-pub async fn load_direct_message_config() -> StorageResult<DirectMessageConfig> {
-    load_direct_message_config_from_path("direct_message_config.json").await
-}
-
-pub async fn load_direct_message_config_from_path(
-    path: &str,
-) -> StorageResult<DirectMessageConfig> {
-    match fs::read_to_string(path).await {
-        Ok(content) => {
-            let config: DirectMessageConfig = serde_json::from_str(&content)?;
-
-            // Validate the loaded config
-            config.validate()?;
-
-            debug!("Loaded direct message config from {path}");
-            Ok(config)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            debug!("No direct message config file found, creating default");
-            let default_config = DirectMessageConfig::default();
-
-            // Save the default config for future use
-            save_direct_message_config_to_path(&default_config, path).await?;
-
-            Ok(default_config)
-        }
-        Err(e) => Err(e.into()),
-    }
-}
-
-pub async fn ensure_direct_message_config_exists() -> StorageResult<()> {
-    if tokio::fs::metadata("direct_message_config.json")
-        .await
-        .is_err()
-    {
-        let default_config = DirectMessageConfig::default();
-        save_direct_message_config(&default_config).await?;
-        debug!("Created default direct message config file");
-    }
-    Ok(())
 }
 
 pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
@@ -1361,10 +1062,8 @@ pub async fn load_unified_network_config_from_path(
             Ok(config)
         }
         Err(_) => {
-            // File doesn't exist, create with defaults
             let default_config = UnifiedNetworkConfig::new();
             save_unified_network_config_to_path(&default_config, path).await?;
-            debug!("Created default unified network config file at: {path}");
             Ok(default_config)
         }
     }
@@ -1377,7 +1076,6 @@ pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
     {
         let default_config = UnifiedNetworkConfig::default();
         save_unified_network_config(&default_config).await?;
-        debug!("Created default unified network config file");
     }
     Ok(())
 }
@@ -1397,7 +1095,6 @@ pub async fn mark_story_as_read(
         [&story_id.to_string(), peer_id, &read_at.to_string(), channel_name],
     )?;
 
-    debug!("Marked story {story_id} as read for peer {peer_id} in channel {channel_name}");
     Ok(())
 }
 
@@ -1524,33 +1221,6 @@ pub async fn get_conversation_messages(
     Ok(messages)
 }
 
-pub async fn get_unread_story_ids_for_channel(
-    peer_id: &str,
-    channel_name: &str,
-) -> StorageResult<Vec<usize>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT s.id
-        FROM stories s
-        LEFT JOIN story_read_status srs ON s.id = srs.story_id AND srs.peer_id = ?
-        WHERE s.channel = ? AND s.public = 1 AND srs.story_id IS NULL
-        ORDER BY s.created_at DESC
-        "#,
-    )?;
-
-    let story_iter = stmt.query_map([peer_id, channel_name], mappers::map_row_to_usize)?;
-
-    let mut story_ids = Vec::new();
-    for story_id in story_iter {
-        story_ids.push(story_id?);
-    }
-
-    Ok(story_ids)
-}
-
 pub async fn search_stories(
     query: &crate::types::SearchQuery,
 ) -> StorageResult<crate::types::SearchResults> {
@@ -1559,7 +1229,6 @@ pub async fn search_stories(
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Build the search query using LIKE for text search
     let has_text_search = !query.text.trim().is_empty();
     let search_pattern = if has_text_search {
         Some(format!("%{}%", query.text.trim()))
@@ -1567,7 +1236,6 @@ pub async fn search_stories(
         None
     };
 
-    // Base SQL query
     let mut sql = r#"
         SELECT s.id, s.name, s.header, s.body, s.public, s.channel, s.created_at
         FROM stories s
@@ -1577,7 +1245,6 @@ pub async fn search_stories(
 
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-    // Add text search conditions (search in name, header, and body)
     if let Some(pattern) = &search_pattern {
         sql.push_str(" AND (s.name LIKE ? OR s.header LIKE ? OR s.body LIKE ?)");
         params.push(Box::new(pattern.clone()));
@@ -1585,13 +1252,11 @@ pub async fn search_stories(
         params.push(Box::new(pattern.clone()));
     }
 
-    // Add channel filter
     if let Some(channel) = &query.channel_filter {
         sql.push_str(" AND s.channel = ?");
         params.push(Box::new(channel.clone()));
     }
 
-    // Add visibility filter
     if let Some(public_only) = query.visibility_filter {
         if public_only {
             sql.push_str(" AND s.public = 1");
@@ -1600,7 +1265,6 @@ pub async fn search_stories(
         }
     }
 
-    // Add date range filter
     if let Some(days) = query.date_range_days {
         let cutoff_timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -1612,7 +1276,6 @@ pub async fn search_stories(
         params.push(Box::new(cutoff_timestamp));
     }
 
-    // Order by created_at (most recent first)
     sql.push_str(" ORDER BY s.created_at DESC");
 
     let mut stmt = conn.prepare(&sql)?;
@@ -1638,8 +1301,6 @@ pub async fn search_stories(
             auto_share: None,
         };
 
-        // For LIKE queries, we don't have relevance scores like FTS5
-        // But we could calculate a simple relevance based on where the match occurs
         let relevance_score = if has_text_search {
             calculate_simple_relevance(&story, &query.text)
         } else {
@@ -1670,7 +1331,6 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
     let term_lower = search_term.trim().to_lowercase();
     let mut score = 0.0;
 
-    // Check title match (highest weight)
     if story.name.to_lowercase().contains(&term_lower) {
         score += 3.0;
         if story.name.to_lowercase() == term_lower {
@@ -1678,12 +1338,10 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
         }
     }
 
-    // Check header match (medium weight)
     if story.header.to_lowercase().contains(&term_lower) {
         score += 2.0;
     }
 
-    // Check body match (lower weight)
     if story.body.to_lowercase().contains(&term_lower) {
         score += 1.0;
     }
