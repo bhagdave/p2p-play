@@ -1,14 +1,3 @@
-//! Content validation and sanitization module for P2P-Play
-//!
-//! This module provides comprehensive input validation and sanitization functions
-//! to prevent security vulnerabilities including:
-//! - ANSI escape sequence injection
-//! - Terminal control character injection  
-//! - Content length abuse/resource exhaustion
-//! - Invalid character injection
-//! - Binary data injection
-
-/// Maximum content lengths for different input types
 pub struct ContentLimits;
 
 impl ContentLimits {
@@ -21,7 +10,6 @@ impl ContentLimits {
     pub const NODE_DESCRIPTION_MAX: usize = 2_000;
 }
 
-/// Validation error types
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationError {
     TooLong {
@@ -80,22 +68,18 @@ impl std::error::Error for ValidationError {}
 
 pub type ValidationResult<T> = Result<T, ValidationError>;
 
-/// Content sanitization functions
 pub struct ContentSanitizer;
 
 impl ContentSanitizer {
-    /// Remove ANSI escape sequences from text
     pub fn strip_ansi_escapes(text: &str) -> String {
         let mut result = String::with_capacity(text.len());
         let mut chars = text.chars().peekable();
 
         while let Some(ch) = chars.next() {
             if ch == '\x1b' {
-                // Handle different types of ANSI escape sequences
                 if let Some(&next_ch) = chars.peek() {
                     match next_ch {
                         '[' => {
-                            // CSI sequences: ESC [ ... final_char
                             chars.next(); // consume '['
                             #[allow(clippy::while_let_on_iterator)]
                             while let Some(seq_ch) = chars.next() {
@@ -105,27 +89,22 @@ impl ContentSanitizer {
                             }
                         }
                         ']' => {
-                            // OSC sequences: ESC ] ... ST (either BEL \x07 or ESC \)
                             chars.next(); // consume ']'
                             #[allow(clippy::while_let_on_iterator)]
                             while let Some(seq_ch) = chars.next() {
                                 if seq_ch == '\x07' {
-                                    // BEL terminator
                                     break;
                                 } else if seq_ch == '\x1b' && chars.peek() == Some(&'\\') {
-                                    // ESC \ terminator
                                     chars.next(); // consume '\'
                                     break;
                                 }
                             }
                         }
                         '(' | ')' | '*' | '+' => {
-                            // Charset sequences: ESC ( char, ESC ) char, etc.
                             chars.next(); // consume intermediate
                             chars.next(); // consume final char
                         }
                         _ => {
-                            // Single character sequences or others: ESC char
                             if next_ch.is_ascii_alphabetic() {
                                 chars.next(); // consume the character
                             }
@@ -140,21 +119,17 @@ impl ContentSanitizer {
         result
     }
 
-    /// Remove terminal control characters (but preserve common whitespace)
     pub fn strip_control_characters(text: &str) -> String {
         text.chars()
             .filter(|&ch| {
-                // Allow common whitespace characters
                 if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
                     return true;
                 }
-                // Remove other control characters
                 !ch.is_control()
             })
             .collect()
     }
 
-    /// Remove null bytes and other binary data
     pub fn strip_binary_data(text: &str) -> String {
         text.chars()
             .filter(|&ch| {
@@ -163,14 +138,12 @@ impl ContentSanitizer {
             .collect()
     }
 
-    /// Comprehensive sanitization for display content
     pub fn sanitize_for_display(text: &str) -> String {
         let text = Self::strip_ansi_escapes(text);
         let text = Self::strip_control_characters(&text);
         Self::strip_binary_data(&text)
     }
 
-    /// Sanitization for storage (more permissive, allows newlines)
     pub fn sanitize_for_storage(text: &str) -> String {
         let text = Self::strip_ansi_escapes(text);
         // For storage, we allow newlines and tabs but remove other control chars
@@ -180,11 +153,9 @@ impl ContentSanitizer {
     }
 }
 
-/// Content validation functions
 pub struct ContentValidator;
 
 impl ContentValidator {
-    /// Validate story name
     pub fn validate_story_name(name: &str) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(name);
 
@@ -199,7 +170,6 @@ impl ContentValidator {
             });
         }
 
-        // Check for reasonable character set (alphanumeric, spaces, basic punctuation)
         let invalid_chars: Vec<char> = sanitized
             .chars()
             .filter(|&ch| !Self::is_valid_name_char(ch))
@@ -212,7 +182,6 @@ impl ContentValidator {
         Ok(sanitized.trim().to_string())
     }
 
-    /// Validate story header  
     pub fn validate_story_header(header: &str) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(header);
 
@@ -230,7 +199,6 @@ impl ContentValidator {
         Ok(sanitized.trim().to_string())
     }
 
-    /// Validate story body
     pub fn validate_story_body(body: &str) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(body);
 
@@ -248,7 +216,6 @@ impl ContentValidator {
         Ok(sanitized)
     }
 
-    /// Validate channel name
     pub fn validate_channel_name(name: &str) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(name);
 
@@ -263,7 +230,6 @@ impl ContentValidator {
             });
         }
 
-        // Channel names should be more restrictive
         let invalid_chars: Vec<char> = sanitized
             .chars()
             .filter(|&ch| !Self::is_valid_channel_name_char(ch))
@@ -276,7 +242,6 @@ impl ContentValidator {
         Ok(sanitized.trim().to_string())
     }
 
-    /// Validate channel description
     pub fn validate_channel_description(description: &str) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(description);
 
@@ -294,7 +259,6 @@ impl ContentValidator {
         Ok(sanitized.trim().to_string())
     }
 
-    /// Validate peer name
     pub fn validate_peer_name(name: &str) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(name);
 
@@ -309,7 +273,6 @@ impl ContentValidator {
             });
         }
 
-        // Peer names should be restrictive for network safety
         let invalid_chars: Vec<char> = sanitized
             .chars()
             .filter(|&ch| !Self::is_valid_peer_name_char(ch))
@@ -322,25 +285,6 @@ impl ContentValidator {
         Ok(sanitized.trim().to_string())
     }
 
-    /// Validate direct message content
-    pub fn validate_direct_message(message: &str) -> ValidationResult<String> {
-        let sanitized = ContentSanitizer::sanitize_for_storage(message);
-
-        if sanitized.trim().is_empty() {
-            return Err(ValidationError::Empty);
-        }
-
-        if sanitized.len() > ContentLimits::DIRECT_MESSAGE_MAX {
-            return Err(ValidationError::TooLong {
-                max_length: ContentLimits::DIRECT_MESSAGE_MAX,
-                actual_length: sanitized.len(),
-            });
-        }
-
-        Ok(sanitized)
-    }
-
-    /// Validate node description
     pub fn validate_node_description(description: &str) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(description);
 
@@ -358,33 +302,26 @@ impl ContentValidator {
         Ok(sanitized)
     }
 
-    /// Check if character is valid for general names (stories, etc.)
     fn is_valid_name_char(ch: char) -> bool {
-        // Allow most Unicode characters for story names, but reject problematic ones
         if ch.is_control() && !matches!(ch, '\n' | '\r' | '\t') {
             return false;
         }
 
-        // Reject null bytes and other dangerous characters
         if ch == '\0' || ch == '\x1b' {
             return false;
         }
 
-        // Allow all other Unicode characters including emojis, accented characters, etc.
         true
     }
 
-    /// Check if character is valid for channel names (more restrictive)
     fn is_valid_channel_name_char(ch: char) -> bool {
         ch.is_alphanumeric() || matches!(ch, '-' | '_' | '.')
     }
 
-    /// Check if character is valid for peer names (most restrictive)
     fn is_valid_peer_name_char(ch: char) -> bool {
         ch.is_alphanumeric() || matches!(ch, '-' | '_' | '.')
     }
 
-    /// Validate numeric ID format
     pub fn validate_story_id(id_str: &str) -> ValidationResult<usize> {
         match id_str.trim().parse::<usize>() {
             Ok(id) => Ok(id),
@@ -392,72 +329,6 @@ impl ContentValidator {
                 expected: "positive integer".to_string(),
             }),
         }
-    }
-
-    /// Validate and sanitize file paths to prevent directory traversal
-    pub fn validate_safe_filename(filename: &str) -> ValidationResult<String> {
-        let sanitized = ContentSanitizer::sanitize_for_storage(filename);
-
-        if sanitized.is_empty() {
-            return Err(ValidationError::Empty);
-        }
-
-        // Check for directory traversal attempts
-        if sanitized.contains("..") || sanitized.contains('/') || sanitized.contains('\\') {
-            return Err(ValidationError::InvalidFormat {
-                expected: "filename without path separators".to_string(),
-            });
-        }
-
-        // Check for reserved characters
-        let invalid_chars: Vec<char> = sanitized
-            .chars()
-            .filter(|&ch| matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\0'))
-            .collect();
-
-        if !invalid_chars.is_empty() {
-            return Err(ValidationError::InvalidCharacters { invalid_chars });
-        }
-
-        Ok(sanitized)
-    }
-}
-
-/// Security utilities
-pub struct SecurityValidator;
-
-impl SecurityValidator {
-    /// Check if text contains ANSI escape sequences
-    pub fn contains_ansi_escapes(text: &str) -> bool {
-        text.contains('\x1b')
-    }
-
-    /// Check if text contains control characters (excluding common whitespace)
-    pub fn contains_control_characters(text: &str) -> bool {
-        text.chars()
-            .any(|ch| ch.is_control() && !matches!(ch, ' ' | '\t' | '\n' | '\r'))
-    }
-
-    /// Check if text contains null bytes or other binary data
-    pub fn contains_binary_data(text: &str) -> bool {
-        text.chars().any(|ch| ch == '\0')
-    }
-
-    /// Comprehensive security check
-    pub fn is_safe_content(text: &str) -> Result<(), ValidationError> {
-        if Self::contains_ansi_escapes(text) {
-            return Err(ValidationError::ContainsAnsiEscapes);
-        }
-
-        if Self::contains_control_characters(text) {
-            return Err(ValidationError::ContainsControlCharacters);
-        }
-
-        if Self::contains_binary_data(text) {
-            return Err(ValidationError::ContainsBinaryData);
-        }
-
-        Ok(())
     }
 }
 
@@ -594,29 +465,6 @@ mod tests {
         // Invalid characters
         assert!(ContentValidator::validate_peer_name("alice smith").is_err());
         assert!(ContentValidator::validate_peer_name("user@domain").is_err());
-    }
-
-    #[test]
-    fn test_security_validation() {
-        // Safe content
-        assert!(SecurityValidator::is_safe_content("Normal text").is_ok());
-
-        // ANSI escapes
-        assert!(SecurityValidator::is_safe_content("\x1b[31mRed\x1b[0m").is_err());
-
-        // Control characters
-        assert!(SecurityValidator::is_safe_content("Text\x00").is_err());
-    }
-
-    #[test]
-    fn test_path_traversal_prevention() {
-        // Safe filename
-        assert!(ContentValidator::validate_safe_filename("story.txt").is_ok());
-
-        // Path traversal attempts
-        assert!(ContentValidator::validate_safe_filename("../etc/passwd").is_err());
-        assert!(ContentValidator::validate_safe_filename("subdir/file.txt").is_err());
-        assert!(ContentValidator::validate_safe_filename("..\\windows").is_err());
     }
 
     #[test]
