@@ -47,7 +47,7 @@ where
     F: FnOnce(&mut crate::types::UnifiedNetworkConfig),
 {
     use crate::storage::{load_unified_network_config, save_unified_network_config};
-    
+
     match load_unified_network_config().await {
         Ok(mut config) => {
             modifier(&mut config);
@@ -55,24 +55,25 @@ where
                 Ok(_) => true,
                 Err(e) => {
                     error_logger.log_error(&format!("Failed to save {operation_name} config: {e}"));
-                    ui_logger.log(format!("{} Failed to save {operation_name} configuration", Icons::cross()));
+                    ui_logger.log(format!(
+                        "{} Failed to save {operation_name} configuration",
+                        Icons::cross()
+                    ));
                     false
                 }
             }
         }
         Err(e) => {
-            error_logger.log_error(&format!("Failed to load config for {operation_name} update: {e}"));
+            error_logger.log_error(&format!(
+                "Failed to load config for {operation_name} update: {e}"
+            ));
             ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
             false
         }
     }
 }
 
-async fn modify_bootstrap_config<F>(
-    ui_logger: &UILogger,
-    operation_name: &str,
-    modifier: F,
-) -> bool
+async fn modify_bootstrap_config<F>(ui_logger: &UILogger, operation_name: &str, modifier: F) -> bool
 where
     F: FnOnce(&mut crate::types::BootstrapConfig) -> bool,
 {
@@ -235,10 +236,26 @@ pub async fn handle_create_stories_with_sender(
                 let body = elements.get(2).expect("body is there");
                 let channel = elements.get(3).unwrap_or(&"general");
 
-                let validated_name = validate_and_log(ContentValidator::validate_story_name(name), "story name", ui_logger)?;
-                let validated_header = validate_and_log(ContentValidator::validate_story_header(header), "story header", ui_logger)?;
-                let validated_body = validate_and_log(ContentValidator::validate_story_body(body), "story body", ui_logger)?;
-                let validated_channel = validate_and_log(ContentValidator::validate_channel_name(channel), "channel name", ui_logger)?;
+                let validated_name = validate_and_log(
+                    ContentValidator::validate_story_name(name),
+                    "story name",
+                    ui_logger,
+                )?;
+                let validated_header = validate_and_log(
+                    ContentValidator::validate_story_header(header),
+                    "story header",
+                    ui_logger,
+                )?;
+                let validated_body = validate_and_log(
+                    ContentValidator::validate_story_body(body),
+                    "story body",
+                    ui_logger,
+                )?;
+                let validated_channel = validate_and_log(
+                    ContentValidator::validate_channel_name(channel),
+                    "channel name",
+                    ui_logger,
+                )?;
 
                 if let Err(e) = create_new_story_with_channel(
                     &validated_name,
@@ -313,34 +330,32 @@ pub async fn handle_publish_story(
 pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
     if let Some(rest) = cmd.strip_prefix("show story ") {
         match ContentValidator::validate_story_id(rest) {
-            Ok(id) => {
-                match read_local_stories().await {
-                    Ok(stories) => {
-                        if let Some(story) = stories.iter().find(|s| s.id == id) {
-                            ui_logger.log(format!(
-                                "{} Story {}: {}",
-                                Icons::book(),
-                                story.id,
-                                story.name
-                            ));
-                            ui_logger.log(format!("Channel: {}", story.channel));
-                            ui_logger.log(format!("Header: {}", story.header));
-                            ui_logger.log(format!("Body: {}", story.body));
-                            ui_logger.log(format!(
-                                "Public: {}",
-                                if story.public { "Yes" } else { "No" }
-                            ));
+            Ok(id) => match read_local_stories().await {
+                Ok(stories) => {
+                    if let Some(story) = stories.iter().find(|s| s.id == id) {
+                        ui_logger.log(format!(
+                            "{} Story {}: {}",
+                            Icons::book(),
+                            story.id,
+                            story.name
+                        ));
+                        ui_logger.log(format!("Channel: {}", story.channel));
+                        ui_logger.log(format!("Header: {}", story.header));
+                        ui_logger.log(format!("Body: {}", story.body));
+                        ui_logger.log(format!(
+                            "Public: {}",
+                            if story.public { "Yes" } else { "No" }
+                        ));
 
-                            let _ = mark_story_as_read(story.id, peer_id, &story.channel).await;
-                        } else {
-                            ui_logger.log(format!("Story with id {id} not found"));
-                        }
-                    }
-                    Err(e) => {
-                        ui_logger.log(format!("Error reading stories: {e}"));
+                        let _ = mark_story_as_read(story.id, peer_id, &story.channel).await;
+                    } else {
+                        ui_logger.log(format!("Story with id {id} not found"));
                     }
                 }
-            }
+                Err(e) => {
+                    ui_logger.log(format!("Error reading stories: {e}"));
+                }
+            },
             Err(e) => {
                 ui_logger.log(format!("Invalid story ID: {e}"));
             }
@@ -520,23 +535,27 @@ pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_log
             "on" => {
                 if modify_config(ui_logger, error_logger, "auto-share", |config| {
                     config.auto_share.global_auto_share = true;
-                }).await {
+                })
+                .await
+                {
                     ui_logger.log(format!(
                         "{} Auto-share enabled - new stories will be shared automatically",
                         Icons::check()
                     ));
                 }
-            },
+            }
             "off" => {
                 if modify_config(ui_logger, error_logger, "auto-share", |config| {
                     config.auto_share.global_auto_share = false;
-                }).await {
+                })
+                .await
+                {
                     ui_logger.log(format!(
                         "{} Auto-share disabled - stories will not be shared automatically",
                         Icons::check()
                     ));
                 }
-            },
+            }
             "status" => match load_unified_network_config().await {
                 Ok(config) => {
                     let status = if config.auto_share.global_auto_share {
@@ -586,7 +605,9 @@ pub async fn handle_config_sync_days(cmd: &str, ui_logger: &UILogger, error_logg
 
                 if modify_config(ui_logger, error_logger, "sync-days", |config| {
                     config.auto_share.sync_days = days;
-                }).await {
+                })
+                .await
+                {
                     ui_logger.log(format!(
                         "{} Story sync timeframe set to {} days",
                         Icons::check(),
@@ -613,7 +634,11 @@ pub async fn handle_set_name(
     if let Some(name) = cmd.strip_prefix("name ") {
         let name = name.trim();
 
-        let validated_name = validate_and_log(ContentValidator::validate_peer_name(name), "peer name", ui_logger)?;
+        let validated_name = validate_and_log(
+            ContentValidator::validate_peer_name(name),
+            "peer name",
+            ui_logger,
+        )?;
 
         *local_peer_name = Some(validated_name.clone());
 
@@ -637,7 +662,7 @@ pub fn parse_direct_message_command(
             let remaining = &rest[peer_name.len()..];
 
             if remaining.is_empty() {
-                return None; 
+                return None;
             }
 
             if let Some(stripped) = remaining.strip_prefix(' ') {
@@ -645,7 +670,7 @@ pub fn parse_direct_message_command(
                 if !message.is_empty() {
                     return Some((peer_name.clone(), message.to_string()));
                 } else {
-                    return None; 
+                    return None;
                 }
             }
 
@@ -667,7 +692,6 @@ pub fn parse_direct_message_command(
 
     None
 }
-
 
 pub async fn handle_direct_message_with_relay(
     cmd: &str,
@@ -703,7 +727,11 @@ pub async fn handle_direct_message_with_relay(
             }
         };
 
-        let _validated_to_name = match validate_and_log(ContentValidator::validate_peer_name(&to_name), "peer name", ui_logger) {
+        let _validated_to_name = match validate_and_log(
+            ContentValidator::validate_peer_name(&to_name),
+            "peer name",
+            ui_logger,
+        ) {
             Some(name) => name,
             None => return,
         };
@@ -721,7 +749,10 @@ pub async fn handle_direct_message_with_relay(
 
             if prefer_direct {
                 // 1. Try direct connection first if peer is known and connected
-                ui_logger.log(format!("{} Attempting direct message to {to_name}...", Icons::speech()));
+                ui_logger.log(format!(
+                    "{} Attempting direct message to {to_name}...",
+                    Icons::speech()
+                ));
 
                 let direct_msg_request = DirectMessageRequest {
                     from_peer_id: PEER_ID.to_string(),
@@ -839,7 +870,10 @@ async fn try_relay_delivery(
     target_peer_id: &PeerId,
     ui_logger: &UILogger,
 ) -> bool {
-    ui_logger.log(format!("{} Trying relay delivery to {to_name}...", Icons::speech()));
+    ui_logger.log(format!(
+        "{} Trying relay delivery to {to_name}...",
+        Icons::speech()
+    ));
 
     let direct_msg = DirectMessage {
         from_peer_id: PEER_ID.to_string(),
@@ -858,11 +892,17 @@ async fn try_relay_delivery(
         Ok(relay_msg) => {
             match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
                 Ok(()) => {
-                    ui_logger.log(format!("{} Message sent to {to_name} via relay network", Icons::check()));
+                    ui_logger.log(format!(
+                        "{} Message sent to {to_name} via relay network",
+                        Icons::check()
+                    ));
                     true
                 }
                 Err(e) => {
-                    ui_logger.log(format!("{} Failed to broadcast relay message: {e}", Icons::cross()));
+                    ui_logger.log(format!(
+                        "{} Failed to broadcast relay message: {e}",
+                        Icons::cross()
+                    ));
                     false
                 }
             }
@@ -886,7 +926,10 @@ async fn try_relay_delivery(
                 }
             }
 
-            ui_logger.log(format!("{} Failed to create relay message: {e}", Icons::cross()));
+            ui_logger.log(format!(
+                "{} Failed to create relay message: {e}",
+                Icons::cross()
+            ));
             false
         }
     }
@@ -957,8 +1000,16 @@ pub async fn handle_create_channel(
         let name = elements[0].trim();
         let description = elements[1].trim();
 
-        let validated_name = validate_and_log(ContentValidator::validate_channel_name(name), "channel name", ui_logger)?;
-        let validated_description = validate_and_log(ContentValidator::validate_channel_description(description), "channel description", ui_logger)?;
+        let validated_name = validate_and_log(
+            ContentValidator::validate_channel_name(name),
+            "channel name",
+            ui_logger,
+        )?;
+        let validated_description = validate_and_log(
+            ContentValidator::validate_channel_description(description),
+            "channel description",
+            ui_logger,
+        )?;
 
         let creator = match local_peer_name {
             Some(peer_name) => peer_name.clone(),
@@ -1019,55 +1070,45 @@ pub async fn handle_create_channel(
 pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     let rest = cmd.strip_prefix("ls ch");
     match rest {
-        Some(" available") => {
-            match read_channels().await {
-                Ok(channels) => {
-                    ui_logger.log("Available channels:".to_string());
-                    if channels.is_empty() {
-                        ui_logger.log("  (no channels discovered)".to_string());
-                    } else {
-                        for channel in channels {
-                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
-                        }
+        Some(" available") => match read_channels().await {
+            Ok(channels) => {
+                ui_logger.log("Available channels:".to_string());
+                if channels.is_empty() {
+                    ui_logger.log("  (no channels discovered)".to_string());
+                } else {
+                    for channel in channels {
+                        ui_logger.log(format!("  {} - {}", channel.name, channel.description));
                     }
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to read available channels: {e}"))
-                }
             }
-        }
-        Some(" unsubscribed") => {
-            match read_unsubscribed_channels(&PEER_ID.to_string()).await {
-                Ok(channels) => {
-                    ui_logger.log("Unsubscribed channels:".to_string());
-                    if channels.is_empty() {
-                        ui_logger.log("  (no unsubscribed channels)".to_string());
-                    } else {
-                        for channel in channels {
-                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
-                        }
+            Err(e) => error_logger.log_error(&format!("Failed to read available channels: {e}")),
+        },
+        Some(" unsubscribed") => match read_unsubscribed_channels(&PEER_ID.to_string()).await {
+            Ok(channels) => {
+                ui_logger.log("Unsubscribed channels:".to_string());
+                if channels.is_empty() {
+                    ui_logger.log("  (no unsubscribed channels)".to_string());
+                } else {
+                    for channel in channels {
+                        ui_logger.log(format!("  {} - {}", channel.name, channel.description));
                     }
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to read unsubscribed channels: {e}"))
-                }
             }
-        }
-        Some("") | None => {
-            match read_channels().await {
-                Ok(channels) => {
-                    ui_logger.log("Available channels:".to_string());
-                    if channels.is_empty() {
-                        ui_logger.log("  (no channels discovered)".to_string());
-                    } else {
-                        for channel in channels {
-                            ui_logger.log(format!("  {} - {}", channel.name, channel.description));
-                        }
+            Err(e) => error_logger.log_error(&format!("Failed to read unsubscribed channels: {e}")),
+        },
+        Some("") | None => match read_channels().await {
+            Ok(channels) => {
+                ui_logger.log("Available channels:".to_string());
+                if channels.is_empty() {
+                    ui_logger.log("  (no channels discovered)".to_string());
+                } else {
+                    for channel in channels {
+                        ui_logger.log(format!("  {} - {}", channel.name, channel.description));
                     }
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to read channels: {e}")),
             }
-        }
+            Err(e) => error_logger.log_error(&format!("Failed to read channels: {e}")),
+        },
         _ => {
             ui_logger.log("Usage: ls ch [available|unsubscribed]".to_string());
         }
@@ -1103,7 +1144,10 @@ pub async fn handle_subscribe_channel(
         }
         Err(e) => {
             error_logger.log_error(&format!("Failed to check available channels: {e}"));
-            ui_logger.log(format!("{} Could not verify channel exists. Please try again.", Icons::cross()));
+            ui_logger.log(format!(
+                "{} Could not verify channel exists. Please try again.",
+                Icons::cross()
+            ));
             return None;
         }
     }
@@ -1115,7 +1159,10 @@ pub async fn handle_subscribe_channel(
         ));
         None
     } else {
-        ui_logger.log(format!("{} Subscribed to channel '{channel_name}'", Icons::check()));
+        ui_logger.log(format!(
+            "{} Subscribed to channel '{channel_name}'",
+            Icons::check()
+        ));
         Some(crate::types::ActionResult::RefreshChannels)
     }
 }
@@ -1146,7 +1193,10 @@ pub async fn handle_unsubscribe_channel(
         ));
         None
     } else {
-        ui_logger.log(format!("{} Unsubscribed from channel '{channel_name}'", Icons::check()));
+        ui_logger.log(format!(
+            "{} Unsubscribed from channel '{channel_name}'",
+            Icons::check()
+        ));
         Some(crate::types::ActionResult::RefreshChannels)
     }
 }
@@ -1174,62 +1224,58 @@ pub async fn handle_set_auto_subscription(
 ) {
     let rest = cmd.strip_prefix("set auto-sub ");
     match rest {
-        Some("on") => {
-            match crate::storage::load_unified_network_config().await {
-                Ok(mut config) => {
-                    config
-                        .channel_auto_subscription
-                        .auto_subscribe_to_new_channels = true;
-                    match crate::storage::save_unified_network_config(&config).await {
-                        Ok(_) => ui_logger.log(format!("{} Auto-subscription enabled", Icons::check())),
-                        Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
-                    }
+        Some("on") => match crate::storage::load_unified_network_config().await {
+            Ok(mut config) => {
+                config
+                    .channel_auto_subscription
+                    .auto_subscribe_to_new_channels = true;
+                match crate::storage::save_unified_network_config(&config).await {
+                    Ok(_) => ui_logger.log(format!("{} Auto-subscription enabled", Icons::check())),
+                    Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
             }
-        }
-        Some("off") => {
-            match crate::storage::load_unified_network_config().await {
-                Ok(mut config) => {
-                    config
-                        .channel_auto_subscription
-                        .auto_subscribe_to_new_channels = false;
-                    match crate::storage::save_unified_network_config(&config).await {
-                        Ok(_) => ui_logger.log(format!("{} Auto-subscription disabled", Icons::cross())),
-                        Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
+            Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+        },
+        Some("off") => match crate::storage::load_unified_network_config().await {
+            Ok(mut config) => {
+                config
+                    .channel_auto_subscription
+                    .auto_subscribe_to_new_channels = false;
+                match crate::storage::save_unified_network_config(&config).await {
+                    Ok(_) => {
+                        ui_logger.log(format!("{} Auto-subscription disabled", Icons::cross()))
                     }
+                    Err(e) => error_logger.log_error(&format!("Failed to save config: {e}")),
                 }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
             }
-        }
-        Some("status") | None => {
-            match crate::storage::load_unified_network_config().await {
-                Ok(config) => {
-                    let status = if config
-                        .channel_auto_subscription
-                        .auto_subscribe_to_new_channels
-                    {
+            Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+        },
+        Some("status") | None => match crate::storage::load_unified_network_config().await {
+            Ok(config) => {
+                let status = if config
+                    .channel_auto_subscription
+                    .auto_subscribe_to_new_channels
+                {
+                    "enabled"
+                } else {
+                    "disabled"
+                };
+                ui_logger.log(format!("Auto-subscription is currently {status}"));
+                ui_logger.log(format!(
+                    "Notifications: {}",
+                    if config.channel_auto_subscription.notify_new_channels {
                         "enabled"
                     } else {
                         "disabled"
-                    };
-                    ui_logger.log(format!("Auto-subscription is currently {status}"));
-                    ui_logger.log(format!(
-                        "Notifications: {}",
-                        if config.channel_auto_subscription.notify_new_channels {
-                            "enabled"
-                        } else {
-                            "disabled"
-                        }
-                    ));
-                    ui_logger.log(format!(
-                        "Max auto-subscriptions: {}",
-                        config.channel_auto_subscription.max_auto_subscriptions
-                    ));
-                }
-                Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+                    }
+                ));
+                ui_logger.log(format!(
+                    "Max auto-subscriptions: {}",
+                    config.channel_auto_subscription.max_auto_subscriptions
+                ));
             }
-        }
+            Err(e) => error_logger.log_error(&format!("Failed to load config: {e}")),
+        },
         _ => {
             ui_logger.log("Usage: set auto-sub [on|off|status]".to_string());
         }
@@ -1282,7 +1328,11 @@ pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
 
     let description = parts[2].trim();
 
-    let validated_description = match validate_and_log(ContentValidator::validate_node_description(description), "node description", ui_logger) {
+    let validated_description = match validate_and_log(
+        ContentValidator::validate_node_description(description),
+        "node description",
+        ui_logger,
+    ) {
         Some(desc) => desc,
         None => return,
     };
@@ -1441,7 +1491,9 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
             ui_logger.log(format!("Bootstrap peer already exists: {multiaddr}"));
             false
         }
-    }).await {}
+    })
+    .await
+    {}
 }
 
 async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
@@ -1505,9 +1557,14 @@ async fn handle_bootstrap_clear(ui_logger: &UILogger) {
         let peer_count = config.bootstrap_peers.len();
         config.clear_peers();
         ui_logger.log(format!("Cleared {peer_count} bootstrap peers"));
-        ui_logger.log("Warning: No bootstrap peers configured. Add peers to enable DHT connectivity.".to_string());
+        ui_logger.log(
+            "Warning: No bootstrap peers configured. Add peers to enable DHT connectivity."
+                .to_string(),
+        );
         true
-    }).await {}
+    })
+    .await
+    {}
 }
 
 async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {

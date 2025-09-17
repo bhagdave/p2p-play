@@ -78,20 +78,14 @@ pub struct HandshakeResponse {
 }
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
-    Ok(bytes) => {
-        match identity::Keypair::from_protobuf_encoding(&bytes) {
-            Ok(keypair) => {
-                keypair
-            }
-            Err(e) => {
-                warn!("Error loading keypair: {e}, generating new one");
-                generate_and_save_keypair()
-            }
+    Ok(bytes) => match identity::Keypair::from_protobuf_encoding(&bytes) {
+        Ok(keypair) => keypair,
+        Err(e) => {
+            warn!("Error loading keypair: {e}, generating new one");
+            generate_and_save_keypair()
         }
-    }
-    Err(_) => {
-        generate_and_save_keypair()
-    }
+    },
+    Err(_) => generate_and_save_keypair(),
 });
 
 pub static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
@@ -103,7 +97,7 @@ fn generate_and_save_keypair() -> identity::Keypair {
 
     match keypair.to_protobuf_encoding() {
         Ok(bytes) => match fs::write("peer_key", bytes) {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
                 error_logger.log_error(&format!("Failed to save keypair: {e}"));
@@ -217,13 +211,10 @@ pub fn create_swarm(
         .ttl(64); // Set explicit TTL
 
     #[cfg(not(windows))]
-    let tcp_config = Config::default()
-        .nodelay(true)
-        .listen_backlog(1024)
-        .ttl(64);
+    let tcp_config = Config::default().nodelay(true).listen_backlog(1024).ttl(64);
 
     let mut yamux_config = yamux::Config::default();
-    yamux_config.set_max_num_streams(512); 
+    yamux_config.set_max_num_streams(512);
 
     let transp = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
         .map_err(|e| format!("Failed to create DNS transport: {e}"))?

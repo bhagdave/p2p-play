@@ -71,7 +71,7 @@ pub struct App {
     pub auto_scroll: bool,
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
     pub conversations: Vec<crate::types::Conversation>,
-    pub unread_message_count: usize,                  
+    pub unread_message_count: usize,
     pub input_history: Vec<String>,
     pub history_index: Option<usize>,
     pub last_message_sender: Option<String>,
@@ -443,115 +443,110 @@ impl App {
                 InputMode::CreatingStory {
                     step,
                     partial_story,
-                } => {
-                    match key.code {
-                        KeyCode::Esc => {
-                            self.cancel_story_creation();
-                        }
-                        KeyCode::Enter => {
-                            let input = self.input.trim().to_string();
-                            self.input.clear();
+                } => match key.code {
+                    KeyCode::Esc => {
+                        self.cancel_story_creation();
+                    }
+                    KeyCode::Enter => {
+                        let input = self.input.trim().to_string();
+                        self.input.clear();
 
-                            let mut new_partial = partial_story.clone();
-                            let mut next_step = None;
+                        let mut new_partial = partial_story.clone();
+                        let mut next_step = None;
 
-                            match step {
-                                StoryCreationStep::Name => {
-                                    if input.is_empty() {
-                                        self.add_to_log(format!(
-                                            "{} Story name cannot be empty. Please try again:",
-                                            Icons::cross()
-                                        ));
-                                        return None;
-                                    }
-                                    new_partial.name = Some(input);
-                                    next_step = Some(StoryCreationStep::Header);
-                                    self.add_to_log(format!("{} Story name saved", Icons::check()));
+                        match step {
+                            StoryCreationStep::Name => {
+                                if input.is_empty() {
                                     self.add_to_log(format!(
-                                        "{} Enter story header:",
-                                        Icons::document()
+                                        "{} Story name cannot be empty. Please try again:",
+                                        Icons::cross()
                                     ));
+                                    return None;
                                 }
-                                StoryCreationStep::Header => {
-                                    if input.is_empty() {
-                                        self.add_to_log(format!(
-                                            "{} Story header cannot be empty. Please try again:",
-                                            Icons::cross()
-                                        ));
-                                        return None;
-                                    }
-                                    new_partial.header = Some(input);
-                                    next_step = Some(StoryCreationStep::Body);
+                                new_partial.name = Some(input);
+                                next_step = Some(StoryCreationStep::Header);
+                                self.add_to_log(format!("{} Story name saved", Icons::check()));
+                                self.add_to_log(format!(
+                                    "{} Enter story header:",
+                                    Icons::document()
+                                ));
+                            }
+                            StoryCreationStep::Header => {
+                                if input.is_empty() {
                                     self.add_to_log(format!(
-                                        "{} Story header saved",
+                                        "{} Story header cannot be empty. Please try again:",
+                                        Icons::cross()
+                                    ));
+                                    return None;
+                                }
+                                new_partial.header = Some(input);
+                                next_step = Some(StoryCreationStep::Body);
+                                self.add_to_log(format!("{} Story header saved", Icons::check()));
+                                self.add_to_log(format!("{} Enter story body:", Icons::book()));
+                            }
+                            StoryCreationStep::Body => {
+                                if input.is_empty() {
+                                    self.add_to_log(format!(
+                                        "{} Story body cannot be empty. Please try again:",
+                                        Icons::cross()
+                                    ));
+                                    return None;
+                                }
+                                new_partial.body = Some(input);
+                                next_step = Some(StoryCreationStep::Channel);
+                                self.add_to_log(format!("{} Story body saved", Icons::check()));
+                                self.add_to_log(format!(
+                                    "{} Enter channel (or press Enter for 'general'):",
+                                    Icons::folder()
+                                ));
+                            }
+                            StoryCreationStep::Channel => {
+                                let channel = if input.is_empty() {
+                                    "general".to_string()
+                                } else {
+                                    input
+                                };
+                                new_partial.channel = Some(channel);
+
+                                if let (Some(name), Some(header), Some(body), Some(ch)) = (
+                                    &new_partial.name,
+                                    &new_partial.header,
+                                    &new_partial.body,
+                                    &new_partial.channel,
+                                ) {
+                                    let create_command =
+                                        format!("create s {name}|{header}|{body}|{ch}");
+                                    self.input_mode = InputMode::Normal;
+                                    self.add_to_log(format!(
+                                        "{} Story creation complete!",
                                         Icons::check()
                                     ));
-                                    self.add_to_log(format!("{} Enter story body:", Icons::book()));
+                                    return Some(AppEvent::Input(create_command));
                                 }
-                                StoryCreationStep::Body => {
-                                    if input.is_empty() {
-                                        self.add_to_log(format!(
-                                            "{} Story body cannot be empty. Please try again:",
-                                            Icons::cross()
-                                        ));
-                                        return None;
-                                    }
-                                    new_partial.body = Some(input);
-                                    next_step = Some(StoryCreationStep::Channel);
-                                    self.add_to_log(format!("{} Story body saved", Icons::check()));
-                                    self.add_to_log(format!(
-                                        "{} Enter channel (or press Enter for 'general'):",
-                                        Icons::folder()
-                                    ));
-                                }
-                                StoryCreationStep::Channel => {
-                                    let channel = if input.is_empty() {
-                                        "general".to_string()
-                                    } else {
-                                        input
-                                    };
-                                    new_partial.channel = Some(channel);
+                            }
+                        }
 
-                                    if let (Some(name), Some(header), Some(body), Some(ch)) = (
-                                        &new_partial.name,
-                                        &new_partial.header,
-                                        &new_partial.body,
-                                        &new_partial.channel,
-                                    ) {
-                                        let create_command =
-                                            format!("create s {name}|{header}|{body}|{ch}");
-                                        self.input_mode = InputMode::Normal;
-                                        self.add_to_log(format!(
-                                            "{} Story creation complete!",
-                                            Icons::check()
-                                        ));
-                                        return Some(AppEvent::Input(create_command));
-                                    }
-                                }
-                            }
-
-                            if let Some(step) = next_step {
-                                self.input_mode = InputMode::CreatingStory {
-                                    step,
-                                    partial_story: new_partial,
-                                };
-                            }
+                        if let Some(step) = next_step {
+                            self.input_mode = InputMode::CreatingStory {
+                                step,
+                                partial_story: new_partial,
+                            };
                         }
-                        KeyCode::Char(c) => {
-                            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                if c == 'c' {
-                                    self.cancel_story_creation();
-                                }
-                            } else {
-                                self.input.push(c);
-                            }
-                        }
-                        KeyCode::Backspace => {
-                            self.input.pop();
-                        }
-                        _ => {}
                     }
-                }
+                    KeyCode::Char(c) => {
+                        if key.modifiers.contains(KeyModifiers::CONTROL) {
+                            if c == 'c' {
+                                self.cancel_story_creation();
+                            }
+                        } else {
+                            self.input.push(c);
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        self.input.pop();
+                    }
+                    _ => {}
+                },
                 InputMode::QuickReply { target_peer } => {
                     let target_peer = target_peer.clone(); // Clone to avoid borrow checker issues
                     match key.code {

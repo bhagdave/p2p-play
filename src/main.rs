@@ -58,7 +58,6 @@ async fn main() {
     }
 }
 
-
 fn initialise_ui() -> AppResult<App> {
     let app = match App::new() {
         Ok(mut app) => {

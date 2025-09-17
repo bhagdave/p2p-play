@@ -156,7 +156,8 @@ fn test_handle_create_stories_interactive() {
 
     rt.block_on(async {
         // Test empty create s command should trigger interactive mode
-        let result = handle_create_stories_with_sender("create s", &ui_logger, &error_logger, None).await;
+        let result =
+            handle_create_stories_with_sender("create s", &ui_logger, &error_logger, None).await;
         assert_eq!(result, Some(ActionResult::StartStoryCreation));
 
         // Check that appropriate messages were logged
@@ -203,7 +204,8 @@ fn test_handle_create_stories_invalid() {
 
     rt.block_on(async {
         // Test invalid format (too few arguments)
-        handle_create_stories_with_sender("create sTest|Header", &ui_logger, &error_logger, None).await;
+        handle_create_stories_with_sender("create sTest|Header", &ui_logger, &error_logger, None)
+            .await;
 
         // Test completely invalid format
         handle_create_stories_with_sender("invalid command", &ui_logger, &error_logger, None).await;
@@ -356,7 +358,7 @@ async fn test_handle_direct_message_no_local_name() {
     use p2p_play::relay::RelayService;
     use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
-    
+
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
@@ -401,7 +403,7 @@ async fn test_handle_direct_message_invalid_format() {
     use p2p_play::relay::RelayService;
     use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
-    
+
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
@@ -470,7 +472,7 @@ async fn test_handle_direct_message_with_spaces_in_names() {
     use p2p_play::relay::RelayService;
     use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
-    
+
     let (sender, _receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 

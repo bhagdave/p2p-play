@@ -1,19 +1,17 @@
-use crate::storage::mark_story_as_read;
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
-use crate::handlers::{
-    SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui,
-};
+use crate::handlers::{SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
 use crate::network::{
     APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
 };
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
+use crate::storage::mark_story_as_read;
 use crate::types::{
     ActionResult, DirectMessageConfig, EventType, NetworkConfig, PendingDirectMessage,
     PendingHandshakePeer,
@@ -120,7 +118,7 @@ impl EventProcessor {
         }
     }
 
-    /// Main event loop 
+    /// Main event loop
     #[allow(clippy::too_many_arguments)]
     pub async fn run(
         &mut self,
@@ -395,12 +393,8 @@ impl EventProcessor {
                 peer_id,
                 connection_id,
                 ..
-            } => {
-                None
-            }
-            _ => {
-                None
-            }
+            } => None,
+            _ => None,
         }
     }
 
@@ -414,7 +408,6 @@ impl EventProcessor {
         _sorted_peer_names_cache: &mut SortedPeerNamesCache,
         _local_peer_name: &Option<String>,
     ) {
-
         let pending_peer = PendingHandshakePeer {
             peer_id,
             connection_time: Instant::now(),
@@ -438,7 +431,6 @@ impl EventProcessor {
             .send_request(&peer_id, handshake_request);
 
         track_successful_connection(peer_id);
-
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -451,7 +443,6 @@ impl EventProcessor {
         sorted_peer_names_cache: &mut SortedPeerNamesCache,
         app: &mut App,
     ) {
-
         swarm
             .behaviour_mut()
             .floodsub
@@ -626,7 +617,6 @@ impl EventProcessor {
                 peer_id, HANDSHAKE_TIMEOUT_SECS
             ));
         }
-
     }
 
     async fn handle_action_result(
@@ -693,15 +683,13 @@ fn update_bootstrap_status(
     swarm: &mut Swarm<StoryBehaviour>,
 ) {
     match kad_event {
-        libp2p::kad::Event::OutboundQueryProgressed { result, .. } => {
-            match result {
-                libp2p::kad::QueryResult::Bootstrap(Ok(_)) => {}
-                libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
-                    auto_bootstrap.mark_failed(format!("Bootstrap query failed: {e:?}"));
-                }
-                _ => {}
+        libp2p::kad::Event::OutboundQueryProgressed { result, .. } => match result {
+            libp2p::kad::QueryResult::Bootstrap(Ok(_)) => {}
+            libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
+                auto_bootstrap.mark_failed(format!("Bootstrap query failed: {e:?}"));
             }
-        }
+            _ => {}
+        },
         libp2p::kad::Event::RoutingUpdated {
             is_new_peer: true, ..
         } => {

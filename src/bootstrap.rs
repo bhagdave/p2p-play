@@ -522,6 +522,5 @@ mod tests {
         bootstrap
             .initialise(&test_config, &bootstrap_logger, &error_logger)
             .await;
-
     }
 }

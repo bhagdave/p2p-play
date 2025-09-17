@@ -1,9 +1,6 @@
 use crate::errors::StorageResult;
 use crate::storage::{mappers, utils};
-use crate::types::{
-    BootstrapConfig, Channel, Channels,
-    Stories, Story, UnifiedNetworkConfig,
-};
+use crate::types::{BootstrapConfig, Channel, Channels, Stories, Story, UnifiedNetworkConfig};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
@@ -394,7 +391,6 @@ pub async fn process_discovered_channels(
 
     let mut saved_count = 0;
     for channel in channels {
-
         if channel.name.is_empty() || channel.description.is_empty() {
             continue;
         }

@@ -16,8 +16,8 @@ pub struct RelayService {
 #[derive(Debug)]
 pub enum RelayAction {
     DeliverLocally(DirectMessage),
-    ForwardMessage(RelayMessage), 
-    DropMessage(String),        
+    ForwardMessage(RelayMessage),
+    DropMessage(String),
 }
 
 #[derive(Debug)]
@@ -102,7 +102,6 @@ impl RelayService {
         &mut self,
         relay_msg: &RelayMessage,
     ) -> Result<RelayAction, RelayError> {
-
         if relay_msg.hop_count >= relay_msg.max_hops {
             return Ok(RelayAction::DropMessage(format!(
                 "Max hops exceeded: {}/{}",
@@ -127,9 +126,7 @@ impl RelayService {
                             .crypto
                             .verify_signature(&decrypted_bytes, &relay_msg.sender_signature)
                         {
-                            Ok(true) => {
-                                Ok(RelayAction::DeliverLocally(direct_msg))
-                            }
+                            Ok(true) => Ok(RelayAction::DeliverLocally(direct_msg)),
                             Ok(false) => {
                                 warn!("Signature verification failed for relay message");
                                 Ok(RelayAction::DropMessage("Invalid signature".to_string()))

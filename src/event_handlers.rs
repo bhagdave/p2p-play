@@ -4,10 +4,9 @@ use crate::handlers::{
     handle_config_sync_days, handle_create_channel, handle_create_description,
     handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
     handle_filter_stories, handle_get_description, handle_help, handle_list_channels,
-    handle_list_stories, handle_list_subscriptions, handle_publish_story,
-    handle_reload_config, handle_search_stories, handle_set_auto_subscription, handle_set_name,
-    handle_show_description, handle_show_story, handle_subscribe_channel,
-    handle_unsubscribe_channel,
+    handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
+    handle_search_stories, handle_set_auto_subscription, handle_set_name, handle_show_description,
+    handle_show_story, handle_subscribe_channel, handle_unsubscribe_channel,
 };
 use crate::network::{
     APP_NAME, APP_VERSION, DirectMessageRequest, DirectMessageResponse, HandshakeRequest,

@@ -1,5 +1,5 @@
 use super::utils::{db_bool_to_rust, get_optional_string_with_default, get_timestamp_with_default};
-use crate::types::{Channel,  Story};
+use crate::types::{Channel, Story};
 use rusqlite::Row;
 
 pub fn map_row_to_story(row: &Row) -> Result<Story, rusqlite::Error> {
