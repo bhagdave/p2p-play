@@ -1,10 +1,8 @@
-/// Common utility functions for storage operations
 use crate::errors::StorageResult;
 use rusqlite::{Connection, Row};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// Get the current Unix timestamp in seconds
 pub fn get_current_timestamp() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -12,7 +10,6 @@ pub fn get_current_timestamp() -> u64 {
         .as_secs()
 }
 
-/// Get the next available ID for a table
 pub async fn get_next_id(conn: &Arc<Mutex<Connection>>, table: &str) -> StorageResult<i64> {
     let conn = conn.lock().await;
     let query = format!("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM {table}");
@@ -21,17 +18,14 @@ pub async fn get_next_id(conn: &Arc<Mutex<Connection>>, table: &str) -> StorageR
     Ok(next_id)
 }
 
-/// Convert database boolean (0/1) to Rust bool
 pub fn db_bool_to_rust(value: i64) -> bool {
     value != 0
 }
 
-/// Convert Rust bool to database integer (0/1)
 pub fn rust_bool_to_db(value: bool) -> String {
     if value { "1" } else { "0" }.to_string()
 }
 
-/// Get optional string with default value
 pub fn get_optional_string_with_default(
     row: &Row,
     index: usize,
@@ -42,7 +36,6 @@ pub fn get_optional_string_with_default(
         .unwrap_or_else(|| default.to_string()))
 }
 
-/// Get timestamp with default value of 0
 pub fn get_timestamp_with_default(row: &Row, index: usize) -> Result<u64, rusqlite::Error> {
     Ok(row.get::<_, i64>(index).unwrap_or(0) as u64)
 }
