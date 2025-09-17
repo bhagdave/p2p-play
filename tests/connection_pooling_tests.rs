@@ -137,10 +137,10 @@ async fn test_read_transaction_functionality() {
         .expect("Failed to initialize storage");
 
     // Insert test data first
-    create_new_story("Read Test Story", "Header", "Body")
+    create_new_story_with_channel("Read Test Story", "Header", "Body", "test_channel")
         .await
         .expect("Failed to create story");
-
+    //
     // Test read transaction
     let result = with_read_transaction(|conn| {
         let mut stmt = conn.prepare("SELECT COUNT(*) FROM stories")?;

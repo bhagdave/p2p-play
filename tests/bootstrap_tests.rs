@@ -31,7 +31,7 @@ async fn create_test_bootstrap_config_with_name(
     let config_json = serde_json::to_string_pretty(&config)?;
     tokio::fs::write(filename, config_json).await?;
 
-    // Copy to the standard location that bootstrap.initialize() expects
+    // Copy to the standard location that bootstrap.initialise() expects
     tokio::fs::copy(filename, "bootstrap_config.json").await?;
     Ok(())
 }
@@ -49,7 +49,7 @@ async fn create_test_bootstrap_config_raw_with_name(
     });
     tokio::fs::write(filename, config_json.to_string()).await?;
 
-    // Copy to the standard location that bootstrap.initialize() expects
+    // Copy to the standard location that bootstrap.initialise() expects
     tokio::fs::copy(filename, "bootstrap_config.json").await?;
     Ok(())
 }
@@ -95,7 +95,7 @@ async fn test_attempt_bootstrap_empty_peers() {
     let mut bootstrap_config = p2p_play::types::BootstrapConfig::new();
     bootstrap_config.clear_peers(); // Clear the default peers to test empty case
     bootstrap
-        .initialize(&bootstrap_config, &bootstrap_logger, &error_logger)
+        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger)
         .await;
 
     let result = bootstrap
@@ -138,7 +138,7 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     bootstrap_config.add_peer("invalid-multiaddr".to_string());
     bootstrap_config.add_peer("also-invalid".to_string());
     bootstrap
-        .initialize(&bootstrap_config, &bootstrap_logger, &error_logger)
+        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger)
         .await;
 
     let result = bootstrap
@@ -182,7 +182,7 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     bootstrap_config.clear_peers(); // Clear the default peers
     bootstrap_config.add_peer("/ip4/127.0.0.1/tcp/8080".to_string()); // Valid multiaddr but no peer ID
     bootstrap
-        .initialize(&bootstrap_config, &bootstrap_logger, &error_logger)
+        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger)
         .await;
 
     let result = bootstrap
@@ -234,7 +234,7 @@ async fn test_attempt_bootstrap_valid_peer() {
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
     bootstrap
-        .initialize(&bootstrap_config, &bootstrap_logger, &error_logger)
+        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger)
         .await;
 
     let result = bootstrap
@@ -284,7 +284,7 @@ async fn test_attempt_bootstrap_mixed_peers() {
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
     bootstrap
-        .initialize(&bootstrap_config, &bootstrap_logger, &error_logger)
+        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger)
         .await;
 
     let result = bootstrap
@@ -333,7 +333,7 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
     bootstrap
-        .initialize(&bootstrap_config, &bootstrap_logger, &error_logger)
+        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger)
         .await;
 
     // First attempt
@@ -400,7 +400,7 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
     bootstrap
-        .initialize(&bootstrap_config, &bootstrap_logger, &error_logger)
+        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger)
         .await;
 
     let before_attempt = std::time::Instant::now();
