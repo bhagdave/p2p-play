@@ -1,10 +1,7 @@
 use super::utils::{db_bool_to_rust, get_optional_string_with_default, get_timestamp_with_default};
-/// Result mapping functions for converting database rows to structs
-use crate::types::{Channel, ChannelSubscription, Story, StoryReadStatus};
+use crate::types::{Channel,  Story};
 use rusqlite::Row;
 
-/// Map a database row to a Story struct
-/// Standard mapping for: id, name, header, body, public, channel, created_at, auto_share
 pub fn map_row_to_story(row: &Row) -> Result<Story, rusqlite::Error> {
     Ok(Story {
         id: row.get::<_, i64>(0)? as usize,
@@ -18,8 +15,6 @@ pub fn map_row_to_story(row: &Row) -> Result<Story, rusqlite::Error> {
     })
 }
 
-/// Map a database row to a Channel struct
-/// Standard mapping for: name, description, created_by, created_at
 pub fn map_row_to_channel(row: &Row) -> Result<Channel, rusqlite::Error> {
     Ok(Channel {
         name: row.get(0)?,
@@ -29,43 +24,10 @@ pub fn map_row_to_channel(row: &Row) -> Result<Channel, rusqlite::Error> {
     })
 }
 
-/// Map a database row to a ChannelSubscription struct  
-/// Standard mapping for: peer_id, channel_name, subscribed_at
-pub fn map_row_to_channel_subscription(row: &Row) -> Result<ChannelSubscription, rusqlite::Error> {
-    Ok(ChannelSubscription {
-        peer_id: row.get(0)?,
-        channel_name: row.get(1)?,
-        subscribed_at: row.get::<_, i64>(2)? as u64,
-    })
-}
-
-/// Map a database row to a StoryReadStatus struct
-/// Standard mapping for: story_id, peer_id, read_at, channel_name
-pub fn map_row_to_story_read_status(row: &Row) -> Result<StoryReadStatus, rusqlite::Error> {
-    Ok(StoryReadStatus {
-        story_id: row.get::<_, i64>(0)? as usize,
-        peer_id: row.get(1)?,
-        read_at: row.get::<_, i64>(2)? as u64,
-        channel_name: row.get(3)?,
-    })
-}
-
-/// Map a simple string result from database
-pub fn map_row_to_string(row: &Row) -> Result<String, rusqlite::Error> {
-    row.get(0)
-}
-
-/// Map a simple integer result from database  
 pub fn map_row_to_i64(row: &Row) -> Result<i64, rusqlite::Error> {
     row.get(0)
 }
 
-/// Map a simple usize result from database
-pub fn map_row_to_usize(row: &Row) -> Result<usize, rusqlite::Error> {
-    Ok(row.get::<_, i64>(0)? as usize)
-}
-
-/// Map a row to a tuple of (String, usize) for unread counts
 pub fn map_row_to_channel_unread_count(row: &Row) -> Result<(String, usize), rusqlite::Error> {
     Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
 }
