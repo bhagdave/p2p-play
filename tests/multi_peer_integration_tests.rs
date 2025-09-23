@@ -17,10 +17,10 @@ use tokio::time;
 async fn connect_swarms_mesh(swarms: &mut Vec<libp2p::Swarm<StoryBehaviour>>) -> Vec<Multiaddr> {
     let mut addresses = Vec::new();
 
-    // Start all swarms listening
-    for (i, swarm) in swarms.iter_mut().enumerate() {
+    // Start all swarms listening on dynamic ports (port 0 = auto-assign)
+    for swarm in swarms.iter_mut() {
         swarm
-            .listen_on(format!("/ip4/127.0.0.1/tcp/{}", 20000 + i).parse().unwrap())
+            .listen_on("/ip4/127.0.0.1/tcp/0".parse().unwrap())
             .unwrap();
     }
 
