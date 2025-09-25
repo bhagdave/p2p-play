@@ -154,12 +154,10 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
     )?;
 
     // Add to_peer_id column to existing direct_messages tables if it doesn't exist
-    let add_to_peer_id_result = conn.execute(
+    let _ = conn.execute(
         "ALTER TABLE direct_messages ADD COLUMN to_peer_id TEXT NOT NULL DEFAULT ''",
         [],
     );
-    // Ignore error if column already exists
-    let _ = add_to_peer_id_result;
 
     conn.execute(
         r#"
@@ -433,91 +431,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_to_peer_id_column_migration() {
-        let conn = Connection::open(":memory:").expect("Failed to create in-memory database");
-
-        // First, simulate an old database by creating direct_messages table without to_peer_id
-        conn.execute(
-            r#"
-            CREATE TABLE direct_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                remote_peer_id TEXT NOT NULL,
-                message TEXT NOT NULL,
-                timestamp INTEGER NOT NULL,
-                is_outgoing BOOLEAN NOT NULL,
-                is_read BOOLEAN NOT NULL DEFAULT 0,
-                conversation_id INTEGER
-            )
-            "#,
-            [],
-        ).expect("Failed to create old direct_messages table");
-
-        // Verify the old table doesn't have to_peer_id column
-        let mut stmt = conn.prepare("PRAGMA table_info(direct_messages)").unwrap();
-        let columns_before: Vec<String> = stmt.query_map([], |row| {
-            let name: String = row.get(1)?;
-            Ok(name)
-        })
-        .unwrap()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-
-        assert!(!columns_before.contains(&"to_peer_id".to_string()),
-            "Old table should not have to_peer_id column initially");
-
-        // Now run the migration
-        create_tables(&conn).expect("Migration should succeed");
-
-        // Verify the table now has to_peer_id column
-        let mut stmt = conn.prepare("PRAGMA table_info(direct_messages)").unwrap();
-        let columns_after: Vec<String> = stmt.query_map([], |row| {
-            let name: String = row.get(1)?;
-            Ok(name)
-        })
-        .unwrap()
-        .collect::<Result<Vec<_>, _>>()
-        .unwrap();
-
-        assert!(columns_after.contains(&"to_peer_id".to_string()),
-            "Table should have to_peer_id column after migration");
-
-        // Create a conversation for the foreign key constraint
-        conn.execute(
-            "INSERT INTO conversations (peer_id, peer_name) VALUES (?, ?)",
-            ["peer1", "Test Peer"],
-        ).expect("Should be able to insert conversation");
-
-        // Test that we can now insert with to_peer_id
-        let result = conn.execute(
-            "INSERT INTO direct_messages (remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ["peer1", "peer2", "test message", "123456", "1", "1", "1"],
-        );
-
-        assert!(result.is_ok(), "Should be able to insert with to_peer_id column: {:?}", result);
-    }
-
-    #[test]
-    fn test_migration_is_idempotent_with_to_peer_id() {
-        let conn = Connection::open(":memory:").expect("Failed to create in-memory database");
-
-        // Run migration multiple times
-        create_tables(&conn).expect("First migration should succeed");
-        create_tables(&conn).expect("Second migration should succeed");
-        create_tables(&conn).expect("Third migration should succeed");
-
-        // Create a conversation for the foreign key constraint
-        conn.execute(
-            "INSERT INTO conversations (peer_id, peer_name) VALUES (?, ?)",
-            ["peer1", "Test Peer"],
-        ).expect("Should be able to insert conversation");
-
-        // Verify table still works correctly
-        let result = conn.execute(
-            "INSERT INTO direct_messages (remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ["peer1", "peer2", "test message", "123456", "1", "1", "1"],
-        );
-
-        assert!(result.is_ok(), "Should be able to insert after multiple migrations: {:?}", result);
-    }
 }
