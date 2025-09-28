@@ -1,7 +1,4 @@
-mod bootstrap;
 mod bootstrap_logger;
-mod circuit_breaker;
-mod crypto;
 mod error_logger;
 mod errors;
 mod event_handlers;
@@ -9,24 +6,19 @@ mod event_processor;
 mod file_logger;
 mod handlers;
 mod migrations;
-mod network;
-mod network_circuit_breakers;
-mod relay;
 mod storage;
 mod types;
 mod ui;
 mod validation;
 
-use bootstrap::AutoBootstrap;
+// Import from p2p-network crate
+use p2p_network::{P2PNetwork, NetworkConfig, NetworkEvent};
+
 use bootstrap_logger::BootstrapLogger;
-use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult};
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
-use network::{KEYS, PEER_ID, create_swarm};
-use network_circuit_breakers::NetworkCircuitBreakers;
-use relay::RelayService;
 use storage::{
     ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
     load_unified_network_config,
@@ -34,7 +26,6 @@ use storage::{
 use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::App;
 
-use libp2p::{PeerId, Swarm};
 use log::error;
 use std::collections::HashMap;
 use std::error::Error;
@@ -61,7 +52,7 @@ async fn main() {
 fn initialise_ui() -> AppResult<App> {
     let app = match App::new() {
         Ok(mut app) => {
-            app.update_local_peer_id(PEER_ID.to_string());
+            // We'll set the peer ID after creating the network
             app
         }
         Err(e) => {
@@ -77,6 +68,143 @@ async fn run_app() -> AppResult<()> {
 
     let mut app = initialise_ui()?;
     app.refresh_conversations().await;
+
+    // Load configuration
+    ensure_unified_network_config_exists().await?;
+    ensure_stories_file_exists().await?;
+
+    let unified_config = load_configuration(&mut app).await;
+
+    // Convert UnifiedNetworkConfig to NetworkConfig
+    let net_config = NetworkConfig {
+        peer_name: None, // Will be set later
+        listen_addresses: unified_config.network.listen_addresses.clone(),
+        bootstrap_peers: unified_config.bootstrap.bootstrap_peers.clone(),
+        encryption_enabled: unified_config.network.encryption_enabled.unwrap_or(true),
+        relay_enabled: unified_config.relay.enable_relay,
+        connection_timeout: std::time::Duration::from_secs(unified_config.network.request_timeout_seconds),
+        max_connections: unified_config.network.max_pending_outgoing,
+        bootstrap_config: p2p_network::BootstrapConfig {
+            enabled: unified_config.bootstrap.enabled,
+            auto_bootstrap_interval: std::time::Duration::from_secs(unified_config.bootstrap.auto_bootstrap_interval_seconds),
+            bootstrap_peers: unified_config.bootstrap.bootstrap_peers.clone(),
+            max_bootstrap_peers: unified_config.bootstrap.max_bootstrap_peers,
+        },
+        ping_config: p2p_network::PingConfig {
+            interval: unified_config.ping.interval_duration(),
+            timeout: unified_config.ping.timeout_duration(),
+            max_failures: 3,
+        },
+    };
+
+    // Create P2P network
+    let mut network = P2PNetwork::new(net_config).await
+        .map_err(|e| AppError::Application(format!("Failed to create network: {}", e)))?;
+
+    // Update app with the actual peer ID
+    app.update_local_peer_id(network.local_peer_id().to_string());
+
+    // Load saved peer name if it exists
+    let mut local_peer_name: Option<String> = match load_local_peer_name(&network.local_peer_id().to_string()).await {
+        Ok(saved_name) => {
+            if let Some(ref name) = saved_name {
+                app.add_to_log(format!("Loaded saved peer name: {name}"));
+                app.update_local_peer_name(saved_name.clone());
+            }
+            saved_name
+        }
+        Err(e) => {
+            error!("Failed to load saved peer name: {e}");
+            app.add_to_log(format!("Failed to load saved peer name: {e}"));
+            None
+        }
+    };
+
+    // Start listening
+    network.start_listening().await
+        .map_err(|e| AppError::Application(format!("Failed to start listening: {}", e)))?;
+
+    // Subscribe to main topic and channels
+    network.subscribe_to_topic("stories")
+        .map_err(|e| AppError::Application(format!("Failed to subscribe to stories topic: {}", e)))?;
+
+    // Load and subscribe to saved channels
+    match storage::read_subscribed_channels(&network.local_peer_id().to_string()).await {
+        Ok(channels) => {
+            for channel in channels {
+                app.add_to_log(format!("Auto-subscribing to channel: {}", channel));
+                if let Err(e) = network.subscribe_to_topic(&channel) {
+                    error!("Failed to subscribe to channel {}: {}", channel, e);
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to load subscribed channels: {e}");
+            app.add_to_log(format!("Failed to load subscribed channels: {e}"));
+        }
+    }
+
+    // Load local stories and channels for UI
+    match storage::read_local_stories().await {
+        Ok(stories) => {
+            app.update_stories(stories);
+            refresh_unread_counts_for_ui(&mut app, &network.local_peer_id().to_string()).await;
+        }
+        Err(e) => {
+            error!("Failed to load local stories: {e}");
+            app.add_to_log(format!("Failed to load local stories: {e}"));
+        }
+    }
+
+    match storage::read_subscribed_channels_with_details(&network.local_peer_id().to_string()).await {
+        Ok(channels) => {
+            app.update_channels(channels);
+        }
+        Err(e) => {
+            error!("Failed to load subscribed channels: {e}");
+            app.add_to_log(format!("Failed to load subscribed channels: {e}"));
+        }
+    }
+
+    // Set up communication channels
+    let (channels, loggers) = setup_communication_channels();
+
+    // Initialize components
+    let mut peer_names: HashMap<libp2p::PeerId, String> = HashMap::new();
+    let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+
+    // Create simplified event processor for network crate integration
+    let mut event_processor = EventProcessor::new(
+        channels.ui_rcv,
+        channels.ui_log_rcv,
+        channels.response_rcv,
+        channels.story_rcv,
+        channels.response_sender,
+        channels.story_sender,
+        channels.ui_sender,
+        &unified_config.network,
+        unified_config.direct_message.clone(),
+        pending_messages,
+        handlers::UILogger::new(app.get_log_sender()),
+        loggers.error_logger,
+        loggers.bootstrap_logger,
+        None, // relay service handled by network crate
+        Default::default(), // network circuit breakers simplified
+    );
+
+    // Run the main event loop with network client
+    event_processor.run_with_network_client(
+        network,
+        &mut app,
+        &mut peer_names,
+        &mut sorted_peer_names_cache,
+        &mut local_peer_name,
+    ).await;
+
+    app.cleanup().map_err(AppError::from)?;
+    Ok(())
+}
 
     if let Err(e) = ensure_stories_file_exists().await {
         error!("Failed to initialise stories file: {e}");

@@ -182,15 +182,38 @@ impl P2PNetwork {
         use libp2p::swarm::SwarmEvent;
         
         match event {
-            SwarmEvent::Behaviour(NetworkBehaviourEvent::Floodsub(FloodsubEvent::Message(message))) => {
-                Some(NetworkEvent::MessageReceived {
-                    from: message.source,
-                    topic: message.topics.first()?.to_string(),
-                    data: message.data,
-                })
-            }
-            SwarmEvent::Behaviour(NetworkBehaviourEvent::RequestResponse(event)) => {
-                self.handle_request_response_event(event).await
+            SwarmEvent::Behaviour(behaviour_event) => {
+                match behaviour_event {
+                    NetworkBehaviourEvent::Floodsub(FloodsubEvent::Message(message)) => {
+                        Some(NetworkEvent::MessageReceived {
+                            from: message.source,
+                            topic: message.topics.first()?.to_string(),
+                            data: message.data,
+                        })
+                    }
+                    NetworkBehaviourEvent::RequestResponse(req_resp_event) => {
+                        self.handle_request_response_event(req_resp_event).await
+                    }
+                    NetworkBehaviourEvent::Mdns(mdns_event) => {
+                        // Handle mDNS events for peer discovery
+                        use libp2p::mdns::Event;
+                        match mdns_event {
+                            Event::Discovered(peers) => {
+                                for (peer_id, _addr) in peers {
+                                    self.peers.insert(peer_id, PeerInfo::new(peer_id));
+                                }
+                                None // Don't emit event for mDNS discovery
+                            }
+                            Event::Expired(peers) => {
+                                for (peer_id, _addr) in peers {
+                                    self.peers.remove(&peer_id);
+                                }
+                                None
+                            }
+                        }
+                    }
+                    _ => None,
+                }
             }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 self.peers.insert(peer_id, PeerInfo::new(peer_id));
@@ -292,28 +315,6 @@ pub struct NetworkStats {
     pub local_peer_id: PeerId,
     pub listening_addresses: Vec<Multiaddr>,
 }
-        
-        // Initialize services
-        let crypto_service = CryptoService::new(swarm.local_peer_id().clone());
-        let bootstrap_service = AutoBootstrap::new(config.bootstrap_config.clone());
-        let relay_service = RelayService::new();
-        
-        Ok(Self {
-            swarm,
-            config,
-            crypto_service,
-            bootstrap_service,
-            relay_service,
-            peers: HashMap::new(),
-            event_sender,
-            event_receiver,
-        })
-    }
-
-    /// Get the local peer ID
-    pub fn local_peer_id(&self) -> PeerId {
-        *self.swarm.local_peer_id()
-    }
 
     /// Start listening for connections
     pub async fn start_listening(&mut self) -> NetworkResult<()> {
