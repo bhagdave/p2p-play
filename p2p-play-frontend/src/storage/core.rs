@@ -1,0 +1,1469 @@
+use crate::errors::StorageResult;
+use crate::storage::{mappers, utils};
+use crate::types::{BootstrapConfig, Channel, Channels, Stories, Story, UnifiedNetworkConfig};
+use r2d2::Pool;
+use r2d2_sqlite::SqliteConnectionManager;
+use rusqlite::Connection;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::fs;
+use tokio::sync::{Mutex, RwLock};
+
+use crate::migrations;
+
+#[allow(dead_code)]
+const PEER_NAME_FILE_PATH: &str = "./peer_name.json"; // Keep for backward compatibility
+pub const NODE_DESCRIPTION_FILE_PATH: &str = "node_description.txt";
+
+fn get_database_path() -> String {
+    if let Ok(test_path) = std::env::var("TEST_DATABASE_PATH") {
+        return test_path;
+    }
+
+    if let Ok(db_path) = std::env::var("DATABASE_PATH") {
+        return db_path;
+    }
+
+    "./stories.db".to_string()
+}
+
+type DbPool = Pool<SqliteConnectionManager>;
+
+static DB_POOL_STATE: once_cell::sync::Lazy<RwLock<Option<(DbPool, String)>>> =
+    once_cell::sync::Lazy::new(|| RwLock::new(None));
+
+struct PoolConfig {
+    max_size: u32,
+    min_idle: Option<u32>,
+    connection_timeout: Duration,
+    idle_timeout: Duration,
+}
+
+impl Default for PoolConfig {
+    fn default() -> Self {
+        Self {
+            max_size: 10,      // Allow up to 10 concurrent connections
+            min_idle: Some(2), // Keep at least 2 connections idle
+            connection_timeout: Duration::from_secs(30),
+            idle_timeout: Duration::from_secs(600), // 10 minutes
+        }
+    }
+}
+
+fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
+    let config = PoolConfig::default();
+
+    let manager = SqliteConnectionManager::file(db_path).with_init(|conn| {
+        conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+                 PRAGMA synchronous = NORMAL;
+                 PRAGMA cache_size = -64000;
+                 PRAGMA temp_store = MEMORY;
+                 PRAGMA journal_mode = WAL;",
+        )?;
+        Ok(())
+    });
+
+    let pool = Pool::builder()
+        .max_size(config.max_size)
+        .min_idle(config.min_idle)
+        .connection_timeout(config.connection_timeout)
+        .idle_timeout(Some(config.idle_timeout))
+        .build(manager)
+        .map_err(|e| format!("Failed to create database pool: {e}"))?;
+
+    Ok(pool)
+}
+
+pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
+    let current_path = get_database_path();
+
+    {
+        let state = DB_POOL_STATE.read().await;
+        if let Some((pool, stored_path)) = state.as_ref() {
+            if stored_path == &current_path {
+                let _pooled_conn = pool
+                    .get()
+                    .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
+
+                let conn = Connection::open(&current_path)?;
+                conn.execute_batch(
+                    "PRAGMA foreign_keys = ON;
+                     PRAGMA synchronous = NORMAL;
+                     PRAGMA cache_size = -64000;
+                     PRAGMA temp_store = MEMORY;
+                     PRAGMA journal_mode = WAL;",
+                )?;
+
+                return Ok(Arc::new(Mutex::new(conn)));
+            }
+        }
+    }
+
+    let pool = create_db_pool(&current_path)?;
+
+    let conn = Connection::open(&current_path)?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA synchronous = NORMAL;
+         PRAGMA cache_size = -64000;
+         PRAGMA temp_store = MEMORY;
+         PRAGMA journal_mode = WAL;",
+    )?;
+    let conn_arc = Arc::new(Mutex::new(conn));
+
+    {
+        let mut state = DB_POOL_STATE.write().await;
+        *state = Some((pool, current_path));
+    }
+
+    Ok(conn_arc)
+}
+
+pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
+    let mut state = DB_POOL_STATE.write().await;
+    *state = None;
+    // Add a small delay to ensure any pending database operations complete
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    Ok(())
+}
+
+pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
+    let state = DB_POOL_STATE.read().await;
+    if let Some((pool, _)) = state.as_ref() {
+        let state = pool.state();
+        Some((state.connections, state.idle_connections, pool.max_size()))
+    } else {
+        None
+    }
+}
+
+pub async fn with_transaction<F, R>(f: F) -> StorageResult<R>
+where
+    F: FnOnce(&Connection) -> StorageResult<R>,
+{
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute("BEGIN TRANSACTION", [])?;
+
+    match f(&conn) {
+        Ok(result) => {
+            conn.execute("COMMIT", [])?;
+            Ok(result)
+        }
+        Err(e) => {
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
+pub async fn with_read_transaction<F, R>(f: F) -> StorageResult<R>
+where
+    F: FnOnce(&Connection) -> StorageResult<R>,
+{
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute("BEGIN DEFERRED", [])?;
+
+    match f(&conn) {
+        Ok(result) => {
+            conn.execute("COMMIT", [])?;
+            Ok(result)
+        }
+        Err(e) => {
+            // Rollback on error
+            let _ = conn.execute("ROLLBACK", []);
+            Err(e)
+        }
+    }
+}
+
+pub async fn init_test_database() -> StorageResult<()> {
+    reset_db_connection_for_testing().await?;
+    ensure_stories_file_exists().await?;
+
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute("PRAGMA foreign_keys = OFF", [])?;
+
+    let table_exists = |table_name: &str| -> StorageResult<bool> {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+        ))?;
+        let exists = stmt.exists([])?;
+        Ok(exists)
+    };
+
+    if table_exists("direct_messages")? {
+        conn.execute("DELETE FROM direct_messages", [])?;
+    }
+    if table_exists("conversations")? {
+        conn.execute("DELETE FROM conversations", [])?;
+    }
+    if table_exists("channel_subscriptions")? {
+        conn.execute("DELETE FROM channel_subscriptions", [])?;
+    }
+    if table_exists("channels")? {
+        conn.execute("DELETE FROM channels", [])?;
+    }
+    if table_exists("stories")? {
+        conn.execute("DELETE FROM stories", [])?;
+    }
+    if table_exists("peer_name")? {
+        conn.execute("DELETE FROM peer_name", [])?;
+    }
+    if table_exists("story_read_status")? {
+        conn.execute("DELETE FROM story_read_status", [])?;
+    }
+
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+
+    drop(conn); // Release the lock
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+
+    Ok(())
+}
+
+async fn create_tables() -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    migrations::create_tables(&conn)?;
+    Ok(())
+}
+
+pub async fn ensure_stories_file_exists() -> StorageResult<()> {
+    let db_path = get_database_path();
+
+    if let Some(parent) = std::path::Path::new(&db_path).parent() {
+        if !parent.exists() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+    }
+
+    let _conn = get_db_connection().await?;
+    create_tables().await?;
+    Ok(())
+}
+
+pub async fn read_local_stories() -> StorageResult<Stories> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt =
+        conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
+    let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
+pub async fn read_local_stories_from_path(path: &str) -> StorageResult<Stories> {
+    // For test compatibility, if path points to a JSON file, read it as JSON
+    if path.ends_with(".json") {
+        let content = fs::read(path).await?;
+        let result = serde_json::from_slice(&content)?;
+        Ok(result)
+    } else {
+        // Treat as SQLite database path - create a temporary connection
+        let conn = Connection::open(path)?;
+
+        let mut stmt = conn
+            .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
+        let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
+
+        let mut stories = Vec::new();
+        for story in story_iter {
+            stories.push(story?);
+        }
+
+        Ok(stories)
+    }
+}
+
+pub async fn read_local_stories_for_sync(
+    last_sync_timestamp: u64,
+    subscribed_channels: &[String],
+) -> StorageResult<Stories> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut query = "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE public = 1 AND created_at > ?".to_string();
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(last_sync_timestamp as i64)];
+
+    if !subscribed_channels.is_empty() {
+        let placeholders = vec!["?"; subscribed_channels.len()].join(",");
+        query.push_str(&format!(" AND channel IN ({placeholders})"));
+        for channel in subscribed_channels {
+            params.push(Box::new(channel.clone()));
+        }
+    }
+
+    query.push_str(" ORDER BY created_at DESC");
+
+    let mut stmt = conn.prepare(&query)?;
+
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let story_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_story)?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
+pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channels> {
+    if stories.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    // Get unique channel names from stories
+    let mut unique_channels: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for story in stories {
+        unique_channels.insert(story.channel.clone());
+    }
+
+    if unique_channels.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Build query to get channel metadata for these channels
+    let placeholders = vec!["?"; unique_channels.len()].join(",");
+    let query = format!(
+        "SELECT name, description, created_by, created_at FROM channels WHERE name IN ({placeholders}) ORDER BY name"
+    );
+
+    let mut stmt = conn.prepare(&query)?;
+
+    let channel_names: Vec<String> = unique_channels.clone().into_iter().collect();
+    let param_refs: Vec<&dyn rusqlite::ToSql> = channel_names
+        .iter()
+        .map(|s| s as &dyn rusqlite::ToSql)
+        .collect();
+
+    let channel_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_channel)?;
+
+    let mut channels = Vec::new();
+    let mut found_channel_names = std::collections::HashSet::new();
+
+    for channel in channel_iter {
+        let channel = channel?;
+        found_channel_names.insert(channel.name.clone());
+        channels.push(channel);
+    }
+
+    for channel_name in unique_channels {
+        if !found_channel_names.contains(&channel_name) {
+            let default_channel = crate::types::Channel::new(
+                channel_name.clone(),
+                format!("Channel: {}", channel_name),
+                "unknown".to_string(),
+            );
+            channels.push(default_channel);
+        }
+    }
+
+    Ok(channels)
+}
+
+pub async fn process_discovered_channels(
+    channels: &[Channel],
+    peer_name: &str,
+) -> StorageResult<usize> {
+    if channels.is_empty() {
+        return Ok(0);
+    }
+
+    let mut saved_count = 0;
+    for channel in channels {
+        if channel.name.is_empty() || channel.description.is_empty() {
+            continue;
+        }
+
+        match channel_exists(&channel.name).await {
+            Ok(true) => {}
+            Ok(false) => {
+                match create_channel(&channel.name, &channel.description, &channel.created_by).await
+                {
+                    Ok(_) => {
+                        saved_count += 1;
+                    }
+                    Err(_) => {}
+                }
+            }
+            Err(_) => {}
+        }
+    }
+
+    Ok(saved_count)
+}
+
+pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
+    if path.ends_with(".json") {
+        let json = serde_json::to_string(&stories)?;
+        fs::write(path, &json).await?;
+        Ok(())
+    } else {
+        let conn = Connection::open(path)?;
+
+        migrations::create_tables(&conn)?;
+
+        conn.execute("DELETE FROM stories", [])?;
+
+        for story in stories {
+            conn.execute(
+                "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    &story.id.to_string(),
+                    &story.name,
+                    &story.header,
+                    &story.body,
+                    &(if story.public {
+                        "1".to_string()
+                    } else {
+                        "0".to_string()
+                    }),
+                    &story.channel,
+                    &story.created_at.to_string(),
+                ],
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+pub async fn create_new_story_with_channel(
+    name: &str,
+    header: &str,
+    body: &str,
+    channel: &str,
+) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+
+    let next_id = utils::get_next_id(&conn_arc, "stories").await?;
+
+    let created_at = utils::get_current_timestamp();
+
+    let should_be_public = match load_unified_network_config().await {
+        Ok(config) => config.auto_share.global_auto_share,
+        Err(_) => true, // Default to true if config can't be loaded
+    };
+
+    let conn = conn_arc.lock().await;
+    conn.execute(
+        "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            &next_id.to_string(),
+            name,
+            header,
+            body,
+            &utils::rust_bool_to_db(should_be_public), // Use auto-share configuration
+            channel,
+            &created_at.to_string(),
+        ],
+    )?;
+
+    Ok(())
+}
+
+pub async fn create_new_story_in_path(
+    name: &str,
+    header: &str,
+    body: &str,
+    path: &str,
+) -> StorageResult<usize> {
+    let mut local_stories: Vec<Story> =
+        read_local_stories_from_path(path).await.unwrap_or_default();
+    let new_id = match local_stories.iter().max_by_key(|r| r.id) {
+        Some(v) => v.id + 1,
+        None => 0,
+    };
+    local_stories.push(Story {
+        id: new_id,
+        name: name.to_owned(),
+        header: header.to_owned(),
+        body: body.to_owned(),
+        public: false,
+        channel: "general".to_string(),
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        auto_share: None, // Use global setting by default
+    });
+    write_local_stories_to_path(&local_stories, path).await?;
+    Ok(new_id)
+}
+
+pub async fn publish_story(
+    id: usize,
+    sender: tokio::sync::mpsc::UnboundedSender<Story>,
+) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let rows_affected = conn.execute(
+        "UPDATE stories SET public = ? WHERE id = ?",
+        [&utils::rust_bool_to_db(true), &id.to_string()],
+    )?;
+
+    if rows_affected > 0 {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?",
+        )?;
+        let story_result = stmt.query_row([&id.to_string()], mappers::map_row_to_story);
+
+        if let Ok(story) = story_result {
+            if let Err(e) = sender.send(story) {
+                let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+                crate::log_network_error!(
+                    error_logger,
+                    "storage",
+                    "error sending story for broadcast: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", [&id.to_string()])?;
+
+    if rows_affected > 0 {
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+pub async fn publish_story_in_path(id: usize, path: &str) -> StorageResult<Option<Story>> {
+    let mut local_stories = read_local_stories_from_path(path).await?;
+    let mut published_story = None;
+
+    for story in local_stories.iter_mut() {
+        if story.id == id {
+            story.public = true;
+            published_story = Some(story.clone());
+            break;
+        }
+    }
+
+    write_local_stories_to_path(&local_stories, path).await?;
+    Ok(published_story)
+}
+
+pub async fn save_received_story(story: Story) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+
+    {
+        let conn = conn_arc.lock().await;
+        let mut stmt =
+            conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
+        let existing = stmt.query_row(
+            [&story.name, &story.header, &story.body],
+            mappers::map_row_to_i64,
+        );
+
+        if existing.is_ok() {
+            return Ok(());
+        }
+    }
+
+    let new_id = utils::get_next_id(&conn_arc, "stories").await?;
+
+    let conn = conn_arc.lock().await;
+    conn.execute(
+        "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            &new_id.to_string(),
+            &story.name,
+            &story.header,
+            &story.body,
+            &utils::rust_bool_to_db(true), // Mark as public since it was published
+            &story.channel,
+            &story.created_at.to_string(),
+        ],
+    )?;
+
+    Ok(())
+}
+
+pub async fn save_received_story_to_path(mut story: Story, path: &str) -> StorageResult<usize> {
+    let mut local_stories: Vec<Story> =
+        read_local_stories_from_path(path).await.unwrap_or_default();
+
+    let already_exists = local_stories
+        .iter()
+        .any(|s| s.name == story.name && s.header == story.header && s.body == story.body);
+
+    if !already_exists {
+        let new_id = match local_stories.iter().max_by_key(|r| r.id) {
+            Some(v) => v.id + 1,
+            None => 0,
+        };
+        story.id = new_id;
+        story.public = true;
+        if story.created_at == 0 {
+            story.created_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+        }
+
+        local_stories.push(story);
+        write_local_stories_to_path(&local_stories, path).await?;
+        Ok(new_id)
+    } else {
+        let existing = local_stories
+            .iter()
+            .find(|s| s.name == story.name && s.header == story.header && s.body == story.body)
+            .unwrap();
+        Ok(existing.id)
+    }
+}
+
+pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO peer_name (id, name) VALUES (1, ?)",
+        [name],
+    )?;
+
+    Ok(())
+}
+
+pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> StorageResult<()> {
+    let json = serde_json::to_string(name)?;
+    fs::write(path, &json).await?;
+    Ok(())
+}
+
+pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare("SELECT name FROM peer_name WHERE id = 1")?;
+    let result = stmt.query_row([], |row| row.get::<_, String>(0));
+
+    match result {
+        Ok(name) => Ok(Some(name)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<String>> {
+    match fs::read(path).await {
+        Ok(content) => {
+            let name: String = serde_json::from_slice(&content)?;
+            Ok(Some(name))
+        }
+        Err(_) => Ok(None), // File doesn't exist or can't be read, return None
+    }
+}
+
+pub async fn create_channel(name: &str, description: &str, created_by: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let timestamp = utils::get_current_timestamp();
+
+    conn.execute(
+        "INSERT OR IGNORE INTO channels (name, description, created_by, created_at) VALUES (?, ?, ?, ?)",
+        [name, description, created_by, &timestamp.to_string()],
+    )?;
+
+    Ok(())
+}
+
+pub async fn channel_exists(name: &str) -> StorageResult<bool> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare("SELECT 1 FROM channels WHERE name = ? LIMIT 1")?;
+    let exists = stmt.exists([name])?;
+    Ok(exists)
+}
+
+pub async fn read_channels() -> StorageResult<Channels> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn
+        .prepare("SELECT name, description, created_by, created_at FROM channels ORDER BY name")?;
+    let channel_iter = stmt.query_map([], mappers::map_row_to_channel)?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
+pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let timestamp = utils::get_current_timestamp();
+
+    conn.execute(
+        "INSERT OR REPLACE INTO channel_subscriptions (peer_id, channel_name, subscribed_at) VALUES (?, ?, ?)",
+        [peer_id, channel_name, &timestamp.to_string()],
+    )?;
+
+    Ok(())
+}
+
+pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute(
+        "DELETE FROM channel_subscriptions WHERE peer_id = ? AND channel_name = ?",
+        [peer_id, channel_name],
+    )?;
+
+    Ok(())
+}
+
+pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT channel_name FROM channel_subscriptions WHERE peer_id = ? ORDER BY channel_name",
+    )?;
+    let channel_iter = stmt.query_map([peer_id], |row| row.get::<_, String>(0))?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
+pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResult<Channels> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT c.name, c.description, c.created_by, c.created_at 
+        FROM channels c
+        INNER JOIN channel_subscriptions cs ON c.name = cs.channel_name AND cs.peer_id = ?
+        ORDER BY c.name
+        "#,
+    )?;
+
+    let channel_iter = stmt.query_map([peer_id], |row| {
+        Ok(Channel {
+            name: row.get(0)?,
+            description: row.get(1)?,
+            created_by: row.get(2)?,
+            created_at: row.get::<_, i64>(3)? as u64,
+        })
+    })?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
+pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT c.name, c.description, c.created_by, c.created_at 
+        FROM channels c
+        LEFT JOIN channel_subscriptions cs ON c.name = cs.channel_name AND cs.peer_id = ?
+        WHERE cs.channel_name IS NULL
+        ORDER BY c.name
+        "#,
+    )?;
+
+    let channel_iter = stmt.query_map([peer_id], |row| {
+        Ok(Channel {
+            name: row.get(0)?,
+            description: row.get(1)?,
+            created_by: row.get(2)?,
+            created_at: row.get::<_, i64>(3)? as u64,
+        })
+    })?;
+
+    let mut channels = Vec::new();
+    for channel in channel_iter {
+        channels.push(channel?);
+    }
+
+    Ok(channels)
+}
+
+pub async fn get_auto_subscription_count(peer_id: &str) -> StorageResult<usize> {
+    let subscribed = read_subscribed_channels(peer_id).await?;
+    Ok(subscribed.len())
+}
+
+pub async fn save_direct_message(
+    message: &crate::types::DirectMessage,
+    peer_names: Option<&std::collections::HashMap<libp2p::PeerId, String>>,
+) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+    let is_read = message.is_outgoing; // Outgoing messages are considered read by default
+
+    let origin_peer_id = if message.is_outgoing {
+        &message.to_peer_id
+    } else {
+        &message.from_peer_id
+    };
+
+    let conversation_id = create_or_find_conversation(&conn, origin_peer_id, peer_names)?;
+
+    conn.execute(
+        "INSERT INTO direct_messages (remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read, conversation_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            &message.from_peer_id,
+            &message.to_peer_id,
+            &message.message,
+            &message.timestamp.to_string(),
+            &utils::rust_bool_to_db(message.is_outgoing),
+            &utils::rust_bool_to_db(is_read),
+            &conversation_id.to_string(),
+        ],
+    )?;
+
+    Ok(())
+}
+
+fn create_or_find_conversation(
+    conn: &Connection,
+    peer_id: &str,
+    peer_names: Option<&std::collections::HashMap<libp2p::PeerId, String>>,
+) -> StorageResult<i64> {
+    let mut stmt = conn.prepare("SELECT id, peer_name FROM conversations WHERE peer_id = ?")?;
+    let existing_result = stmt.query_row([peer_id], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    });
+
+    match existing_result {
+        Ok((id, current_peer_name)) => {
+            if let Some(names) = peer_names {
+                if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
+                    if let Some(actual_name) = names.get(&parsed_peer_id) {
+                        if current_peer_name == peer_id || current_peer_name != *actual_name {
+                            conn.execute(
+                                "UPDATE conversations SET peer_name = ? WHERE id = ?",
+                                [actual_name, &id.to_string()],
+                            )?;
+                        }
+                    }
+                }
+            }
+            Ok(id)
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            let peer_name = if let Some(names) = peer_names {
+                if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
+                    names
+                        .get(&parsed_peer_id)
+                        .cloned()
+                        .unwrap_or_else(|| peer_id.to_string())
+                } else {
+                    peer_id.to_string()
+                }
+            } else {
+                peer_id.to_string()
+            };
+
+            conn.execute(
+                "INSERT INTO conversations (peer_id, peer_name) VALUES (?, ?)",
+                [peer_id, &peer_name],
+            )?;
+
+            let new_id = conn.last_insert_rowid();
+            Ok(new_id)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE channel = ? AND public = 1 ORDER BY created_at DESC")?;
+    let story_iter = stmt.query_map([channel_name], mappers::map_row_to_story)?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
+pub async fn clear_database_for_testing() -> StorageResult<()> {
+    reset_db_connection_for_testing().await?;
+
+    ensure_stories_file_exists().await?;
+
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute("DELETE FROM direct_messages", [])?; // Clear first - has FK to conversations
+    conn.execute("DELETE FROM conversations", [])?; // Clear second - referenced by direct_messages
+    conn.execute("DELETE FROM story_read_status", [])?; // Clear third - has FKs to stories and channels
+    conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear fourth - has FK to channels
+    conn.execute("DELETE FROM stories", [])?; // Clear fifth - referenced by story_read_status
+    conn.execute("DELETE FROM channels", [])?; // Clear sixth - referenced by subscriptions and read_status
+    conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
+
+    conn.execute(
+        r#"
+        INSERT INTO channels (name, description, created_by, created_at)
+        VALUES ('general', 'Default general discussion channel', 'system', 0)
+        "#,
+        [],
+    )?;
+
+    Ok(())
+}
+
+pub async fn save_node_description(description: &str) -> StorageResult<()> {
+    if description.len() > 1024 {
+        return Err("Description exceeds 1024 bytes limit".into());
+    }
+
+    fs::write(NODE_DESCRIPTION_FILE_PATH, description).await?;
+    Ok(())
+}
+
+pub async fn load_node_description() -> StorageResult<Option<String>> {
+    match fs::read_to_string(NODE_DESCRIPTION_FILE_PATH).await {
+        Ok(content) => {
+            if content.is_empty() {
+                Ok(None)
+            } else {
+                if content.len() > 1024 {
+                    return Err("Description file exceeds 1024 bytes limit".into());
+                }
+                Ok(Some(content))
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub async fn save_bootstrap_config(config: &BootstrapConfig) -> StorageResult<()> {
+    save_bootstrap_config_to_path(config, "bootstrap_config.json").await
+}
+
+pub async fn save_bootstrap_config_to_path(
+    config: &BootstrapConfig,
+    path: &str,
+) -> StorageResult<()> {
+    config.validate()?;
+
+    let json = serde_json::to_string_pretty(config)?;
+    fs::write(path, json).await?;
+    Ok(())
+}
+
+pub async fn load_bootstrap_config() -> StorageResult<BootstrapConfig> {
+    load_bootstrap_config_from_path("bootstrap_config.json").await
+}
+
+pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<BootstrapConfig> {
+    match fs::read_to_string(path).await {
+        Ok(content) => {
+            let config: BootstrapConfig = serde_json::from_str(&content)?;
+
+            // Validate the loaded config
+            config.validate()?;
+
+            Ok(config)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let default_config = BootstrapConfig::default();
+
+            save_bootstrap_config_to_path(&default_config, path).await?;
+
+            Ok(default_config)
+        }
+        Err(e) => Err(e.into()),
+    }
+}
+
+pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
+    save_unified_network_config_to_path(config, "unified_network_config.json").await
+}
+
+pub async fn save_unified_network_config_to_path(
+    config: &UnifiedNetworkConfig,
+    path: &str,
+) -> StorageResult<()> {
+    config
+        .validate()
+        .map_err(|e| format!("Configuration validation failed: {e}"))?;
+    let json = serde_json::to_string_pretty(config)?;
+    fs::write(path, &json).await?;
+    Ok(())
+}
+
+pub async fn load_unified_network_config() -> StorageResult<UnifiedNetworkConfig> {
+    load_unified_network_config_from_path("unified_network_config.json").await
+}
+
+pub async fn load_unified_network_config_from_path(
+    path: &str,
+) -> StorageResult<UnifiedNetworkConfig> {
+    match fs::read_to_string(path).await {
+        Ok(content) => {
+            let config: UnifiedNetworkConfig = serde_json::from_str(&content)?;
+            config
+                .validate()
+                .map_err(|e| format!("Configuration validation failed: {e}"))?;
+            Ok(config)
+        }
+        Err(_) => {
+            let default_config = UnifiedNetworkConfig::new();
+            save_unified_network_config_to_path(&default_config, path).await?;
+            Ok(default_config)
+        }
+    }
+}
+
+pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
+    if tokio::fs::metadata("unified_network_config.json")
+        .await
+        .is_err()
+    {
+        let default_config = UnifiedNetworkConfig::default();
+        save_unified_network_config(&default_config).await?;
+    }
+    Ok(())
+}
+
+pub async fn mark_story_as_read(
+    story_id: usize,
+    peer_id: &str,
+    channel_name: &str,
+) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let read_at = utils::get_current_timestamp();
+
+    conn.execute(
+        "INSERT OR REPLACE INTO story_read_status (story_id, peer_id, read_at, channel_name) VALUES (?, ?, ?, ?)",
+        [&story_id.to_string(), peer_id, &read_at.to_string(), channel_name],
+    )?;
+
+    Ok(())
+}
+
+pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMap<String, usize>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT s.channel, COUNT(*) as unread_count
+        FROM stories s
+        LEFT JOIN story_read_status srs ON s.id = srs.story_id AND srs.peer_id = ?
+        WHERE s.public = 1 AND srs.story_id IS NULL
+        GROUP BY s.channel
+        "#,
+    )?;
+
+    let unread_iter = stmt.query_map([peer_id], mappers::map_row_to_channel_unread_count)?;
+
+    let mut unread_counts = HashMap::new();
+    for result in unread_iter {
+        let (channel, count) = result?;
+        unread_counts.insert(channel, count);
+    }
+
+    Ok(unread_counts)
+}
+
+pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt =
+        conn.prepare("SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?")?;
+
+    let count: i64 = stmt.query_row([&story_id.to_string(), peer_id], mappers::map_row_to_i64)?;
+
+    Ok(count > 0)
+}
+
+pub async fn get_conversations_with_status() -> StorageResult<Vec<crate::types::Conversation>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT 
+            c.peer_id, 
+            c.peer_name,
+            COUNT(CASE WHEN dm.is_read = 0 AND dm.is_outgoing = 0 THEN 1 END) as unread_count,
+            MAX(dm.timestamp) as last_activity
+        FROM conversations c
+        LEFT JOIN direct_messages dm ON c.id = dm.conversation_id
+        GROUP BY c.id, c.peer_id, c.peer_name
+        ORDER BY last_activity DESC NULLS LAST
+        "#,
+    )?;
+
+    let conversation_iter = stmt.query_map([], |row| {
+        let peer_id: String = row.get(0)?;
+        let peer_name: String = row.get(1)?;
+        let unread_count: i64 = row.get(2)?;
+        let last_activity: Option<i64> = row.get(3)?;
+
+        Ok(crate::types::Conversation {
+            peer_id,
+            peer_name,
+            messages: Vec::new(),
+            unread_count: unread_count as usize,
+            last_activity: last_activity.unwrap_or(0) as u64,
+        })
+    })?;
+
+    let mut conversations = Vec::new();
+    for conversation in conversation_iter {
+        conversations.push(conversation?);
+    }
+
+    Ok(conversations)
+}
+
+pub async fn mark_conversation_messages_as_read(peer_id: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    conn.execute(
+        "UPDATE direct_messages SET is_read = 1 WHERE remote_peer_id = ? AND is_outgoing = 0 AND is_read = 0",
+        [peer_id],
+    )?;
+
+    Ok(())
+}
+
+pub async fn get_conversation_messages(
+    peer_id: &str,
+) -> StorageResult<Vec<crate::types::DirectMessage>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read FROM direct_messages dm 
+         JOIN conversations c ON dm.conversation_id = c.id 
+         WHERE c.peer_id = ? 
+         ORDER BY dm.timestamp ASC"
+    )?;
+
+    let message_iter = stmt.query_map([peer_id], |row| {
+        Ok(crate::types::DirectMessage {
+            from_peer_id: row.get(0)?,
+            to_peer_id: row.get(1)?,
+            from_name: String::new(),
+            to_name: String::new(),
+            message: row.get(2)?,
+            timestamp: row.get(3)?,
+            is_outgoing: utils::db_bool_to_rust(row.get(4)?),
+        })
+    })?;
+
+    let mut messages = Vec::new();
+    for message in message_iter {
+        messages.push(message?);
+    }
+
+    Ok(messages)
+}
+
+pub async fn search_stories(
+    query: &crate::types::SearchQuery,
+) -> StorageResult<crate::types::SearchResults> {
+    use crate::types::{SearchResult, SearchResults};
+
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let has_text_search = !query.text.trim().is_empty();
+    let search_pattern = if has_text_search {
+        Some(format!("%{}%", query.text.trim()))
+    } else {
+        None
+    };
+
+    let mut sql = r#"
+        SELECT s.id, s.name, s.header, s.body, s.public, s.channel, s.created_at
+        FROM stories s
+        WHERE 1=1
+    "#
+    .to_string();
+
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(pattern) = &search_pattern {
+        sql.push_str(" AND (s.name LIKE ? OR s.header LIKE ? OR s.body LIKE ?)");
+        params.push(Box::new(pattern.clone()));
+        params.push(Box::new(pattern.clone()));
+        params.push(Box::new(pattern.clone()));
+    }
+
+    if let Some(channel) = &query.channel_filter {
+        sql.push_str(" AND s.channel = ?");
+        params.push(Box::new(channel.clone()));
+    }
+
+    if let Some(public_only) = query.visibility_filter {
+        if public_only {
+            sql.push_str(" AND s.public = 1");
+        } else {
+            sql.push_str(" AND s.public = 0");
+        }
+    }
+
+    if let Some(days) = query.date_range_days {
+        let cutoff_timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .saturating_sub((days as u64) * 24 * 60 * 60); // Subtract N days in seconds
+
+        sql.push_str(" AND s.created_at >= ?");
+        params.push(Box::new(cutoff_timestamp));
+    }
+
+    sql.push_str(" ORDER BY s.created_at DESC");
+
+    let mut stmt = conn.prepare(&sql)?;
+    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let story_iter = stmt.query_map(param_refs.as_slice(), |row| {
+        let id: usize = row.get(0)?;
+        let name: String = row.get(1)?;
+        let header: String = row.get(2)?;
+        let body: String = row.get(3)?;
+        let public: bool = utils::db_bool_to_rust(row.get::<_, i64>(4)?);
+        let channel: String = row.get(5)?;
+        let created_at: u64 = row.get(6)?;
+
+        let story = crate::types::Story {
+            id,
+            name,
+            header,
+            body,
+            public,
+            channel,
+            created_at,
+            auto_share: None,
+        };
+
+        let relevance_score = if has_text_search {
+            calculate_simple_relevance(&story, &query.text)
+        } else {
+            None
+        };
+
+        let mut search_result = SearchResult::new(story);
+        if let Some(score) = relevance_score {
+            search_result = search_result.with_relevance_score(score);
+        }
+
+        Ok(search_result)
+    })?;
+
+    let mut results = SearchResults::new();
+    for result in story_iter {
+        results.push(result?);
+    }
+
+    Ok(results)
+}
+
+fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) -> Option<f64> {
+    if search_term.trim().is_empty() {
+        return None;
+    }
+
+    let term_lower = search_term.trim().to_lowercase();
+    let mut score = 0.0;
+
+    if story.name.to_lowercase().contains(&term_lower) {
+        score += 3.0;
+        if story.name.to_lowercase() == term_lower {
+            score += 2.0; // Exact match bonus
+        }
+    }
+
+    if story.header.to_lowercase().contains(&term_lower) {
+        score += 2.0;
+    }
+
+    if story.body.to_lowercase().contains(&term_lower) {
+        score += 1.0;
+    }
+
+    if score > 0.0 { Some(score) } else { None }
+}
+
+pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::types::Stories> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, header, body, public, channel, created_at 
+         FROM stories 
+         WHERE channel = ? 
+         ORDER BY created_at DESC",
+    )?;
+
+    let story_iter = stmt.query_map([channel], mappers::map_row_to_story)?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
+pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::types::Stories> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let cutoff_timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .saturating_sub((days as u64) * 24 * 60 * 60);
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, header, body, public, channel, created_at 
+         FROM stories 
+         WHERE created_at >= ? 
+         ORDER BY created_at DESC",
+    )?;
+
+    let story_iter = stmt.query_map([cutoff_timestamp], mappers::map_row_to_story)?;
+
+    let mut stories = Vec::new();
+    for story in story_iter {
+        stories.push(story?);
+    }
+
+    Ok(stories)
+}
+
+#[cfg(test)]
+mod read_status_tests {
+    use super::*;
+    use std::env;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_story_read_status_functionality() {
+        // Setup test database
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_read_status.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        // Reset connection and initialize storage
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        // Create test data
+        let peer_id = "test_peer_123";
+        let channel_name = "tech-news";
+
+        // Create a test story
+        create_new_story_with_channel("Test Story", "Header", "Body", channel_name)
+            .await
+            .expect("Failed to create story");
+
+        // Create the channel if it doesn't exist
+        create_channel(channel_name, "Test channel for read status", "test_system")
+            .await
+            .expect("Failed to create channel");
+
+        // Make the story public so it shows up in unread counts
+        let conn_arc = get_db_connection().await.expect("Failed to get connection");
+        let conn = conn_arc.lock().await;
+        conn.execute("UPDATE stories SET public = 1 WHERE id = 0", [])
+            .expect("Failed to make story public");
+        drop(conn); // Release the lock
+
+        // Check initial unread count
+        let unread_counts = get_unread_counts_by_channel(peer_id)
+            .await
+            .expect("Failed to get unread counts");
+
+        // Should have 1 unread story in tech-news channel
+        assert_eq!(unread_counts.get(channel_name), Some(&1));
+
+        // Mark the story as read
+        mark_story_as_read(0, peer_id, channel_name)
+            .await
+            .expect("Failed to mark story as read");
+
+        // Check unread count again - should be 0 now
+        let unread_counts = get_unread_counts_by_channel(peer_id)
+            .await
+            .expect("Failed to get unread counts");
+
+        // Should have 0 unread stories now
+        assert_eq!(unread_counts.get(channel_name), None); // No entry means 0 unread
+
+        // Verify story is marked as read
+        let is_read = is_story_read(0, peer_id)
+            .await
+            .expect("Failed to check read status");
+        assert!(is_read);
+
+        println!("✅ Read status functionality test passed!");
+    }
+}
