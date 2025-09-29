@@ -1,4 +1,7 @@
-//! Core P2P Network interface - Clean implementation
+//! Core P2P Network interface
+//!
+//! This module provides the main P2PNetwork struct that encapsulates
+//! all networking functionality in a clean, reusable API.
 
 use crate::crypto::CryptoService;
 use crate::bootstrap::AutoBootstrap;
@@ -14,12 +17,27 @@ use std::time::Duration;
 use once_cell::sync::Lazy;
 
 static KEYS: Lazy<libp2p::identity::Keypair> = Lazy::new(|| {
-    libp2p::identity::Keypair::generate_ed25519()
+    // Try to load existing key or generate new one
+    if let Ok(key_bytes) = std::fs::read("peer_key") {
+        if let Ok(keypair) = libp2p::identity::Keypair::from_protobuf_encoding(&key_bytes) {
+            return keypair;
+        }
+    }
+    
+    // Generate new key and save it
+    let keypair = libp2p::identity::Keypair::generate_ed25519();
+    if let Ok(encoded) = keypair.to_protobuf_encoding() {
+        let _ = std::fs::write("peer_key", encoded);
+    }
+    keypair
 });
 
 static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 
 /// Main P2P Network client
+/// 
+/// This struct provides a high-level interface for P2P networking operations
+/// including peer discovery, message broadcasting, and direct messaging.
 pub struct P2PNetwork {
     swarm: Swarm<NetworkBehaviour>,
     config: NetworkConfig,
@@ -31,7 +49,7 @@ pub struct P2PNetwork {
     event_receiver: mpsc::UnboundedReceiver<NetworkEvent>,
 }
 
-/// Network behaviour - simplified
+/// Network behaviour combining all libp2p protocols
 #[derive(libp2p::swarm::NetworkBehaviour)]
 pub struct NetworkBehaviour {
     pub floodsub: FloodsubBehaviour,
@@ -42,14 +60,14 @@ pub struct NetworkBehaviour {
 }
 
 impl P2PNetwork {
-    /// Create a new P2P network
+    /// Create a new P2P network with the given configuration
     pub async fn new(config: NetworkConfig) -> NetworkResult<Self> {
         let (event_sender, event_receiver) = mpsc::unbounded_channel();
         
         // Create libp2p swarm
         let swarm = create_swarm(&config).await?;
         
-        // Initialize optional services
+        // Initialize services based on configuration
         let crypto_service = if config.encryption_enabled {
             Some(CryptoService::new(KEYS.clone()))
         } else {
@@ -94,11 +112,25 @@ impl P2PNetwork {
         Ok(())
     }
 
-    /// Subscribe to a topic
+    /// Subscribe to a topic for message broadcasting
     pub fn subscribe_to_topic(&mut self, topic: &str) -> NetworkResult<()> {
         let topic = Topic::new(topic);
         self.swarm.behaviour_mut().floodsub.subscribe(topic.clone());
+        
+        // Send notification event
         let _ = self.event_sender.send(NetworkEvent::TopicSubscribed { 
+            topic: topic.to_string() 
+        });
+        Ok(())
+    }
+
+    /// Unsubscribe from a topic
+    pub fn unsubscribe_from_topic(&mut self, topic: &str) -> NetworkResult<()> {
+        let topic = Topic::new(topic);
+        self.swarm.behaviour_mut().floodsub.unsubscribe(topic.clone());
+        
+        // Send notification event
+        let _ = self.event_sender.send(NetworkEvent::TopicUnsubscribed { 
             topic: topic.to_string() 
         });
         Ok(())
@@ -111,11 +143,22 @@ impl P2PNetwork {
         Ok(())
     }
 
-    /// Send a direct message
+    /// Send a direct message to a specific peer
     pub async fn send_direct_message(&mut self, peer: PeerId, message: Message) -> NetworkResult<()> {
+        // Encrypt message if crypto is enabled
+        let final_message = if let Some(crypto) = &self.crypto_service {
+            match crypto.encrypt_message(&message, &peer).await {
+                Ok(encrypted) => encrypted,
+                Err(e) => return Err(NetworkError::EncryptionError(e)),
+            }
+        } else {
+            message
+        };
+
         self.swarm.behaviour_mut()
             .request_response
-            .send_request(&peer, message);
+            .send_request(&peer, final_message);
+        
         Ok(())
     }
 
@@ -131,9 +174,16 @@ impl P2PNetwork {
         }
     }
 
-    /// Handle swarm events - simplified
+    /// Process swarm events and convert to NetworkEvents
     async fn handle_swarm_event(&mut self, event: SwarmEvent<NetworkBehaviourEvent>) -> Option<NetworkEvent> {
+        use libp2p::swarm::SwarmEvent;
+        
         match event {
+            SwarmEvent::Behaviour(_behaviour_event) => {
+                // Handle network behaviour events
+                // For now, simplified - can be expanded later
+                None
+            }
             SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                 self.peers.insert(peer_id, PeerInfo::new(peer_id));
                 Some(NetworkEvent::PeerConnected { peer: peer_id })
@@ -154,7 +204,7 @@ impl P2PNetwork {
         self.peers.values().cloned().collect()
     }
 
-    /// Bootstrap to DHT
+    /// Bootstrap to the DHT network
     pub async fn bootstrap(&mut self) -> NetworkResult<()> {
         if let Some(bootstrap) = &mut self.bootstrap_service {
             bootstrap.run_bootstrap(&mut self.swarm).await?;
@@ -162,7 +212,15 @@ impl P2PNetwork {
         Ok(())
     }
 
-    /// Get network stats
+    /// Add a bootstrap peer
+    pub fn add_bootstrap_peer(&mut self, address: Multiaddr) -> NetworkResult<()> {
+        if let Some(bootstrap) = &mut self.bootstrap_service {
+            bootstrap.add_peer(address);
+        }
+        Ok(())
+    }
+
+    /// Get network statistics
     pub fn network_stats(&self) -> NetworkStats {
         NetworkStats {
             connected_peers: self.peers.len(),
@@ -180,11 +238,12 @@ pub struct NetworkStats {
     pub listening_addresses: Vec<Multiaddr>,
 }
 
-/// Create swarm - simplified
+/// Create a libp2p swarm with the network behaviour
 async fn create_swarm(config: &NetworkConfig) -> NetworkResult<Swarm<NetworkBehaviour>> {
     use libp2p::{core::upgrade, dns, noise, yamux, tcp, request_response, StreamProtocol};
     use std::iter;
 
+    // Create transport
     let tcp_config = tcp::Config::default().nodelay(true);
     let transport = dns::tokio::Transport::system(tcp::tokio::Transport::new(tcp_config))
         .map_err(|e| NetworkError::TransportError(format!("DNS transport error: {}", e)))?
@@ -193,6 +252,7 @@ async fn create_swarm(config: &NetworkConfig) -> NetworkResult<Swarm<NetworkBeha
         .multiplex(yamux::Config::default())
         .boxed();
 
+    // Create request-response protocol
     let protocol = request_response::ProtocolSupport::Full;
     let dm_protocol = StreamProtocol::new("/p2p-network/dm/1.0.0");
     let protocols = iter::once((dm_protocol, protocol));
@@ -202,10 +262,12 @@ async fn create_swarm(config: &NetworkConfig) -> NetworkResult<Swarm<NetworkBeha
     
     let request_response = request_response::cbor::Behaviour::new(protocols, req_resp_config);
 
+    // Create Kademlia DHT
     let store = libp2p::kad::store::MemoryStore::new(*PEER_ID);
     let kad_config = libp2p::kad::Config::default();
     let kad = libp2p::kad::Behaviour::with_config(*PEER_ID, store, kad_config);
 
+    // Create network behaviour
     let behaviour = NetworkBehaviour {
         floodsub: FloodsubBehaviour::new(*PEER_ID),
         mdns: libp2p::mdns::tokio::Behaviour::new(
@@ -221,8 +283,22 @@ async fn create_swarm(config: &NetworkConfig) -> NetworkResult<Swarm<NetworkBeha
         kad,
     };
 
+    // Create swarm with connection limits
     let swarm_config = libp2p::swarm::Config::with_tokio_executor()
         .with_idle_connection_timeout(Duration::from_secs(60));
 
-    Ok(Swarm::new(transport, behaviour, *PEER_ID, swarm_config))
+    let swarm = Swarm::new(transport, behaviour, *PEER_ID, swarm_config);
+    Ok(swarm)
 }
+
+/// Network behaviour event type - simplified for now
+#[derive(Debug)]
+pub enum NetworkBehaviourEvent {
+    Floodsub(libp2p::floodsub::Event),
+    Mdns(libp2p::mdns::Event),
+    Ping(libp2p::ping::Event),
+    RequestResponse(libp2p::request_response::Event<Message, Message>),
+    Kad(libp2p::kad::Event),
+}
+
+// Event conversions - these will be handled by the NetworkBehaviour derive macro

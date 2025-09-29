@@ -1,14 +1,13 @@
-use crate::crypto::{CryptoError, CryptoService};
+use crate::crypto::CryptoService;
 use crate::types::{DirectMessage, RelayConfig, RelayMessage};
+use crate::errors::CryptoError;
 use libp2p::PeerId;
 use log::warn;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use uuid::Uuid;
 
 pub struct RelayService {
     config: RelayConfig,
-    crypto: CryptoService,
     pending_confirmations: HashMap<String, Instant>, // Message ID -> Send time
     rate_limits: HashMap<PeerId, Vec<Instant>>,      // Rate limiting per peer
 }
@@ -48,6 +47,32 @@ impl std::error::Error for RelayError {}
 impl From<CryptoError> for RelayError {
     fn from(error: CryptoError) -> Self {
         RelayError::CryptoError(error)
+    }
+}
+
+impl RelayService {
+    pub fn new() -> Self {
+        Self {
+            config: RelayConfig::default(),
+            pending_confirmations: HashMap::new(),
+            rate_limits: HashMap::new(),
+        }
+    }
+
+    pub fn with_config(config: RelayConfig) -> Self {
+        Self {
+            config,
+            pending_confirmations: HashMap::new(),
+            rate_limits: HashMap::new(),
+        }
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.config.enable_relay
+    }
+
+    pub fn should_forward(&self) -> bool {
+        self.config.enable_forwarding
     }
 }
 

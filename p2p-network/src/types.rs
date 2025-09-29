@@ -197,6 +197,44 @@ pub struct PeerMessage {
     pub message: Message,
 }
 
+/// Relay configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelayConfig {
+    pub enable_relay: bool,       // Master relay switch
+    pub enable_forwarding: bool,  // Act as relay for others
+    pub max_hops: u8,             // Default: 3
+    pub relay_timeout_ms: u64,    // Default: 5000ms
+    pub prefer_direct: bool,      // Try direct first
+    pub rate_limit_per_peer: u32, // Messages per minute
+}
+
+impl Default for RelayConfig {
+    fn default() -> Self {
+        Self {
+            enable_relay: false,
+            enable_forwarding: false,
+            max_hops: 3,
+            relay_timeout_ms: 5000,
+            prefer_direct: true,
+            rate_limit_per_peer: 60,
+        }
+    }
+}
+
+/// Relay message structure
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct RelayMessage {
+    pub message_id: String,                  // Unique message identifier
+    pub target_peer_id: String,              // Intended recipient
+    pub target_name: String,                 // Recipient's alias
+    pub encrypted_payload: Vec<u8>,          // Encrypted content
+    pub sender_signature: Vec<u8>,           // Authentication
+    pub hop_count: u8,                       // Prevent infinite loops
+    pub max_hops: u8,                        // Maximum relay hops allowed
+    pub timestamp: u64,                      // For replay protection
+    pub relay_attempt: bool,                 // Distinguishes from direct attempts
+}
+
 /// Result type alias for network operations
 pub type NetworkResult<T> = Result<T, crate::errors::NetworkError>;
 

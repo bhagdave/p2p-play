@@ -61,7 +61,7 @@ impl AutoBootstrap {
         }
 
         // Try to connect to bootstrap peers
-        for peer_addr in &self.bootstrap_peers {
+        for peer_addr in &self.bootstrap_peers.clone() {
             if let Err(e) = swarm.dial(peer_addr.clone()) {
                 warn!("Failed to dial bootstrap peer {}: {}", peer_addr, e);
             }
@@ -69,7 +69,7 @@ impl AutoBootstrap {
 
         // Start DHT bootstrap if we have Kademlia behavior
         if let Err(e) = swarm.behaviour_mut().kad.bootstrap() {
-            warn!("Failed to start DHT bootstrap: {}", e);
+            warn!("Failed to start DHT bootstrap: {:?}", e);
         }
 
         Ok(())
