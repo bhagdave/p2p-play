@@ -153,6 +153,12 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         [],
     )?;
 
+    // Add to_peer_id column to existing direct_messages tables if it doesn't exist
+    let _ = conn.execute(
+        "ALTER TABLE direct_messages ADD COLUMN to_peer_id TEXT NOT NULL DEFAULT ''",
+        [],
+    );
+
     conn.execute(
         r#"
         CREATE INDEX IF NOT EXISTS idx_direct_messages_remote_peer 
@@ -424,4 +430,5 @@ mod tests {
             "Created_at column should exist"
         );
     }
+
 }
