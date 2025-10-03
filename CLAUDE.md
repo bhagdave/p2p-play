@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+**IMPORTANT**: All development MUST comply with the Project Constitution (`.specify/memory/constitution.md`), which defines non-negotiable principles for TDD, code quality, UX consistency, performance, and security.
+
 ## Project Overview
 P2P-Play is a peer-to-peer story sharing application built with Rust using libp2p 0.56.0. The application allows users to create, publish, and share stories across a distributed network of peers using floodsub messaging with mDNS, Kademlia DHT, and ping protocols. Additional features include direct messaging between peers via request-response protocols, channel-based story organization, automatic bootstrap connectivity, SQLite-based local storage, and a terminal-based user interface (TUI) using ratatui.
 
