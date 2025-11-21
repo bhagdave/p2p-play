@@ -16,6 +16,7 @@ pub mod storage;
 pub mod types;
 pub mod ui;
 pub mod validation;
+pub mod wasm_executor;
 
 pub use crypto::*;
 pub use errors::*;
