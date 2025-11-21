@@ -29,7 +29,7 @@ zeroize = "1.8"
 async-trait = "0.1"
 uuid = { version = "1.0", features = ["v4"] }
 thiserror = "1.0"
-wasmtime = "11.0"
+wasmtime = "24.0"
 wasmtime-wasi = "11.0"
 lru = "0.7"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
