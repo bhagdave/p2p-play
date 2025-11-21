@@ -65,3 +65,17 @@ impl ContentFetcher for GatewayFetcher {
         Ok(cid.to_string())
     }
 }
+
+
+#[cfg(test)]
+use crate::wasm_executor::validate_wasm;
+#[tokio::test]
+async fn test_fetch_wasm() {
+    let fetcher = GatewayFetcher::new();
+    let cid = "QmSwfNM1vNQu3orSr2SrSyAZijYmHm57W4PU2XULPrNcjd";
+    
+    let bytes = fetcher.fetch(cid).await.unwrap();
+    validate_wasm(&bytes).unwrap();
+    
+    println!("Fetched {} bytes", bytes.len());
+}
