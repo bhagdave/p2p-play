@@ -31,6 +31,7 @@ pub enum AppError {
 
     #[error("Application error: {0}")]
     Application(String),
+
 }
 
 /// Storage-related errors for database and file operations
@@ -150,6 +151,15 @@ pub enum ConfigError {
 
     #[error("Config I/O error: {0}")]
     IO(#[from] std::io::Error),
+}
+
+#[derive(Debug)]
+pub enum FetchError {
+    Http(reqwest::Error),
+    InvalidCid(String),
+    NotFound(String),
+    Timeout,
+    InvalidWasm,
 }
 
 /// Result type aliases for common error combinations
@@ -353,6 +363,26 @@ impl UIError {
             widget: widget.into(),
             reason: reason.into(),
         }
+    }
+}
+
+impl std::fmt::Display for FetchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Http(e) => write!(f, "HTTP request failed: {}", e),
+            Self::InvalidCid(cid) => write!(f, "Invalid CID: {}", cid),
+            Self::NotFound(cid) => write!(f, "Content not found: {}", cid),
+            Self::Timeout => write!(f, "Gateway timeout"),
+            Self::InvalidWasm => write!(f, "Invalid WASM: magic bytes mismatch"),
+        }
+    }
+}
+
+impl std::error::Error for FetchError {}
+
+impl From<reqwest::Error> for FetchError {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Http(e)
     }
 }
 
