@@ -6,6 +6,7 @@
 
 use crate::crypto::CryptoError;
 use crate::relay::RelayError;
+use crate::wasm_executor::WasmExecutionError;
 use thiserror::Error;
 
 /// Main application error type that chains all domain-specific errors
@@ -29,9 +30,11 @@ pub enum AppError {
     #[error("Relay error: {0}")]
     Relay(#[from] RelayError),
 
+    #[error("WASM execution error: {0}")]
+    WasmExecution(#[from] WasmExecutionError),
+
     #[error("Application error: {0}")]
     Application(String),
-
 }
 
 /// Storage-related errors for database and file operations

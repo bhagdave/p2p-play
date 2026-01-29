@@ -1,6 +1,7 @@
 mod bootstrap;
 mod bootstrap_logger;
 mod circuit_breaker;
+mod content_fetcher;
 mod crypto;
 mod error_logger;
 mod errors;
@@ -16,6 +17,7 @@ mod storage;
 mod types;
 mod ui;
 mod validation;
+mod wasm_executor;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
