@@ -1,8 +1,6 @@
 use p2p_play::content_fetcher::ContentFetcher;
 use p2p_play::errors::FetchError;
-use p2p_play::wasm_executor::{
-    validate_wasm, ExecutionRequest, WasmExecutionError, WasmExecutor,
-};
+use p2p_play::wasm_executor::{ExecutionRequest, WasmExecutionError, WasmExecutor, validate_wasm};
 use std::sync::Arc;
 
 /// Mock ContentFetcher for testing
@@ -361,7 +359,7 @@ async fn test_execute_stdout_capture() {
 
     assert!(result.is_ok());
     let execution_result = result.unwrap();
-    
+
     // Check that stdout was captured and contains "Hello"
     assert!(!execution_result.stdout.is_empty());
     let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
@@ -381,7 +379,7 @@ async fn test_execute_stdin_input() {
     // Verify execution succeeds with input
     assert!(result.is_ok());
     let execution_result = result.unwrap();
-    
+
     // Verify that the input was echoed to stdout
     let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
     assert!(stdout_str.contains("test input"));
@@ -417,7 +415,7 @@ async fn test_execute_entry_point_not_found() {
         "#,
     )
     .expect("Failed to parse WAT");
-    
+
     let fetcher = Arc::new(MockContentFetcher::new(wasm_no_start));
     let executor = WasmExecutor::new(fetcher).unwrap();
 
