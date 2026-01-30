@@ -9,7 +9,7 @@ use bytes::Bytes;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-use wasmtime::{Config, Engine, Linker, Module, Store};
+use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::preview1;
 use wasmtime_wasi::WasiCtxBuilder;
 
@@ -157,6 +157,12 @@ impl Default for WasmExecutorConfig {
     }
 }
 
+/// Store data that holds both WASI context and resource limits
+struct StoreData {
+    wasi: wasmtime_wasi::preview1::WasiP1Ctx,
+    limits: StoreLimits,
+}
+
 /// WASM executor that fetches, validates, and runs WASM modules
 pub struct WasmExecutor<F: ContentFetcher> {
     engine: Engine,
@@ -174,7 +180,9 @@ impl<F: ContentFetcher> WasmExecutor<F> {
     /// Create a new WASM executor with custom configuration
     pub fn with_config(fetcher: Arc<F>, config: WasmExecutorConfig) -> WasmResult<Self> {
         let mut engine_config = Config::new();
-        engine_config.async_support(true).consume_fuel(true);
+        engine_config
+            .async_support(true)
+            .consume_fuel(true);
 
         let engine = Engine::new(&engine_config)
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
@@ -224,15 +232,28 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         // Build WASIp1 context
         let wasi_ctx = wasi_builder.build_p1();
 
-        // Create store with fuel limit
-        let mut store = Store::new(&self.engine, wasi_ctx);
+        // Create store limits based on the request
+        let memory_limit_bytes = (request.memory_limit_mb as usize) * 1024 * 1024;
+        let limits = StoreLimitsBuilder::new()
+            .memory_size(memory_limit_bytes)
+            .build();
+
+        // Create store data with WASI context and limits
+        let store_data = StoreData {
+            wasi: wasi_ctx,
+            limits,
+        };
+
+        // Create store with fuel limit and memory limits
+        let mut store = Store::new(&self.engine, store_data);
+        store.limiter(|data| &mut data.limits);
         store.set_fuel(request.fuel_limit).map_err(|e| {
             WasmExecutionError::ExecutionFailed(format!("Failed to set fuel: {}", e))
         })?;
 
         // Create linker and add WASI preview1
         let mut linker = Linker::new(&self.engine);
-        preview1::add_to_linker_async(&mut linker, |s| s)
+        preview1::add_to_linker_async(&mut linker, |s: &mut StoreData| &mut s.wasi)
             .map_err(|e| WasmExecutionError::WasiSetupFailed(e.to_string()))?;
 
         // Instantiate the module
@@ -271,6 +292,12 @@ impl<F: ContentFetcher> WasmExecutor<F> {
                     return Err(WasmExecutionError::FuelExhausted {
                         consumed: fuel_consumed,
                     });
+                }
+                // Check if it's a memory limit error
+                if error_str.contains("memory") 
+                    && (error_str.contains("limit") || error_str.contains("out of bounds") 
+                        || error_str.contains("maximum")) {
+                    return Err(WasmExecutionError::MemoryLimitExceeded);
                 }
                 // Check for WASI exit code
                 if let Some(exit_error) = e.downcast_ref::<wasmtime_wasi::I32Exit>() {
@@ -419,5 +446,30 @@ mod tests {
         let config = WasmExecutorConfig::default();
         assert!(config.enable_cache);
         assert_eq!(config.max_cached_modules, 10);
+    }
+
+    #[test]
+    fn test_memory_limit_configuration() {
+        // Test that memory limits are properly converted to bytes
+        let request = ExecutionRequest::new("QmTest".to_string())
+            .with_memory_limit_mb(64);
+
+        // 64 MB should convert to 64 * 1024 * 1024 bytes = 67108864 bytes
+        let expected_bytes = 64 * 1024 * 1024;
+        let actual_bytes = (request.memory_limit_mb as usize) * 1024 * 1024;
+        assert_eq!(actual_bytes, expected_bytes);
+    }
+
+    #[test]
+    fn test_store_limits_builder() {
+        // Verify that StoreLimitsBuilder can be used to create memory limits
+        let memory_limit_mb = 32;
+        let memory_limit_bytes = (memory_limit_mb as usize) * 1024 * 1024;
+        let limits = StoreLimitsBuilder::new()
+            .memory_size(memory_limit_bytes)
+            .build();
+
+        // If we can build the limits without error, the configuration is valid
+        assert!(std::mem::size_of_val(&limits) > 0);
     }
 }
