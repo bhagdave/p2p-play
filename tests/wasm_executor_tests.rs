@@ -139,6 +139,56 @@ fn create_long_running_wasm() -> Vec<u8> {
     .expect("Failed to parse WAT")
 }
 
+/// Create a WASM module that reads from stdin and writes to stdout
+fn create_stdin_echo_wasm() -> Vec<u8> {
+    // A WASM module that reads from stdin and echoes to stdout
+    wat::parse_str(
+        r#"
+        (module
+            (import "wasi_snapshot_preview1" "fd_read"
+                (func $fd_read (param i32 i32 i32 i32) (result i32)))
+            (import "wasi_snapshot_preview1" "fd_write"
+                (func $fd_write (param i32 i32 i32 i32) (result i32)))
+            
+            (memory 1)
+            (export "memory" (memory 0))
+            
+            (func $main
+                ;; Read from stdin (fd=0) into buffer at offset 0
+                ;; Create iovec at offset 100
+                (i32.store (i32.const 100) (i32.const 0))   ;; iov.buf = 0
+                (i32.store (i32.const 104) (i32.const 64))  ;; iov.len = 64
+                
+                ;; Call fd_read(0, 100, 1, 108)
+                ;; fd=0 (stdin), iovs=100, iovs_len=1, nread=108
+                (call $fd_read
+                    (i32.const 0)    ;; fd (stdin)
+                    (i32.const 100)  ;; iovs
+                    (i32.const 1)    ;; iovs_len
+                    (i32.const 108)) ;; nread pointer
+                drop
+                
+                ;; Write to stdout (fd=1) from buffer at offset 0
+                ;; Create iovec at offset 112
+                (i32.store (i32.const 112) (i32.const 0))   ;; iov.buf = 0
+                (i32.store (i32.const 116) (i32.const 64))  ;; iov.len = 64
+                
+                ;; Call fd_write(1, 112, 1, 120)
+                (call $fd_write
+                    (i32.const 1)    ;; fd (stdout)
+                    (i32.const 112)  ;; iovs
+                    (i32.const 1)    ;; iovs_len
+                    (i32.const 120)) ;; nwritten pointer
+                drop
+            )
+            
+            (export "_start" (func $main))
+        )
+        "#,
+    )
+    .expect("Failed to parse WAT")
+}
+
 #[tokio::test]
 async fn test_executor_creation() {
     let fetcher = Arc::new(MockContentFetcher::new(vec![]));
@@ -249,9 +299,11 @@ async fn test_execute_fuel_exhaustion() {
             assert!(consumed > 0);
         }
         WasmExecutionError::ExecutionFailed(msg) => {
-            // Wasmtime may report fuel exhaustion as execution failure
-            // This is acceptable for this test
+            // Wasmtime may report fuel exhaustion differently depending on the scenario
+            // Accept ExecutionFailed only if it seems related to resource exhaustion
             eprintln!("Got ExecutionFailed (acceptable): {}", msg);
+            // Verify this is a legitimate execution failure, not something else
+            assert!(!msg.contains("NotFound") && !msg.contains("invalid"));
         }
         e => panic!("Expected FuelExhausted or ExecutionFailed, got: {:?}", e),
     }
@@ -275,9 +327,11 @@ async fn test_execute_timeout() {
     match err {
         WasmExecutionError::ExecutionTimeout => {}
         WasmExecutionError::ExecutionFailed(msg) => {
-            // Wasmtime may report timeout-related issues as execution failure
-            // This is acceptable for this test
+            // Wasmtime may report timeout-related issues differently
+            // Accept ExecutionFailed only if it's a legitimate execution issue
             eprintln!("Got ExecutionFailed (acceptable): {}", msg);
+            // Verify this is a legitimate execution failure, not something else
+            assert!(!msg.contains("NotFound") && !msg.contains("invalid"));
         }
         e => panic!("Expected ExecutionTimeout or ExecutionFailed, got: {:?}", e),
     }
@@ -316,7 +370,7 @@ async fn test_execute_stdout_capture() {
 
 #[tokio::test]
 async fn test_execute_stdin_input() {
-    let wasm_bytes = create_minimal_wasm();
+    let wasm_bytes = create_stdin_echo_wasm();
     let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
     let executor = WasmExecutor::new(fetcher).unwrap();
 
@@ -326,6 +380,11 @@ async fn test_execute_stdin_input() {
 
     // Verify execution succeeds with input
     assert!(result.is_ok());
+    let execution_result = result.unwrap();
+    
+    // Verify that the input was echoed to stdout
+    let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
+    assert!(stdout_str.contains("test input"));
 }
 
 #[tokio::test]
@@ -339,6 +398,10 @@ async fn test_execute_with_args() {
     let result = executor.execute(request).await;
 
     // Verify execution succeeds with args
+    // Note: The minimal WASM module doesn't actually read args, so this test
+    // only verifies that the executor accepts args without errors.
+    // A more comprehensive test would require a WASM module that reads and
+    // validates command-line arguments, but that's complex in WASI.
     assert!(result.is_ok());
 }
 
