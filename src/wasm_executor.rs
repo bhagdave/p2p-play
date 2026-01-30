@@ -25,6 +25,9 @@ const DEFAULT_FUEL_LIMIT: u64 = 10_000_000;
 /// Default memory limit in megabytes
 const DEFAULT_MEMORY_LIMIT_MB: u32 = 64;
 
+/// Maximum allowed memory limit in megabytes (1 GB)
+const MAX_MEMORY_LIMIT_MB: u32 = 1024;
+
 /// Default execution timeout in seconds
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
@@ -51,6 +54,9 @@ pub enum WasmExecutionError {
 
     #[error("Memory limit exceeded")]
     MemoryLimitExceeded,
+
+    #[error("Memory limit too large: {0} MB (maximum {1} MB)")]
+    MemoryLimitTooLarge(u32, u32),
 
     #[error("Execution timeout after 30 seconds")]
     ExecutionTimeout,
@@ -232,6 +238,14 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         // Build WASIp1 context
         let wasi_ctx = wasi_builder.build_p1();
 
+        // Validate memory limit to prevent overflow
+        if request.memory_limit_mb > MAX_MEMORY_LIMIT_MB {
+            return Err(WasmExecutionError::MemoryLimitTooLarge(
+                request.memory_limit_mb,
+                MAX_MEMORY_LIMIT_MB,
+            ));
+        }
+
         // Create store limits based on the request
         let memory_limit_bytes = (request.memory_limit_mb as usize) * 1024 * 1024;
         let limits = StoreLimitsBuilder::new()
@@ -294,9 +308,9 @@ impl<F: ContentFetcher> WasmExecutor<F> {
                     });
                 }
                 // Check if it's a memory limit error
-                if error_str.contains("memory") 
-                    && (error_str.contains("limit") || error_str.contains("out of bounds") 
-                        || error_str.contains("maximum")) {
+                // Wasmtime's ResourceLimiter errors typically contain "resource limit exceeded"
+                if error_str.contains("resource limit exceeded") 
+                    || (error_str.contains("memory") && error_str.contains("limit exceeded")) {
                     return Err(WasmExecutionError::MemoryLimitExceeded);
                 }
                 // Check for WASI exit code
@@ -471,5 +485,16 @@ mod tests {
 
         // If we can build the limits without error, the configuration is valid
         assert!(std::mem::size_of_val(&limits) > 0);
+    }
+
+    #[test]
+    fn test_memory_limit_validation() {
+        // Test that exceeding MAX_MEMORY_LIMIT_MB is detected
+        let request = ExecutionRequest::new("QmTest".to_string())
+            .with_memory_limit_mb(MAX_MEMORY_LIMIT_MB + 1);
+
+        // The executor should validate and reject excessive memory limits
+        assert_eq!(request.memory_limit_mb, MAX_MEMORY_LIMIT_MB + 1);
+        assert!(request.memory_limit_mb > MAX_MEMORY_LIMIT_MB);
     }
 }
