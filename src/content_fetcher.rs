@@ -2,7 +2,6 @@ use crate::errors::FetchError;
 use reqwest::Client;
 use std::time::Duration;
 
-
 pub trait ContentFetcher: Send + Sync {
     async fn fetch(&self, cid: &str) -> Result<Vec<u8>, FetchError>;
     async fn resolve_ipns(&self, name: &str) -> Result<String, FetchError>;
@@ -52,20 +51,20 @@ impl ContentFetcher for GatewayFetcher {
 
         Ok(bytes)
     }
-    
+
     async fn resolve_ipns(&self, name: &str) -> Result<String, FetchError> {
         // Gateways support IPNS resolution via redirect
         let url = format!("{}/ipns/{}", self.gateway_url, name);
         let response = self.client.head(&url).send().await?;
-        
+
         let final_url = response.url().path();
-        let cid = final_url.strip_prefix("/ipfs/").ok_or_else(|| FetchError::InvalidCid(name.to_string()))?;
-        
-        
+        let cid = final_url
+            .strip_prefix("/ipfs/")
+            .ok_or_else(|| FetchError::InvalidCid(name.to_string()))?;
+
         Ok(cid.to_string())
     }
 }
-
 
 #[cfg(test)]
 use crate::wasm_executor::validate_wasm;
@@ -73,9 +72,9 @@ use crate::wasm_executor::validate_wasm;
 async fn test_fetch_wasm() {
     let fetcher = GatewayFetcher::new();
     let cid = "QmSwfNM1vNQu3orSr2SrSyAZijYmHm57W4PU2XULPrNcjd";
-    
+
     let bytes = fetcher.fetch(cid).await.unwrap();
     validate_wasm(&bytes).unwrap();
-    
+
     println!("Fetched {} bytes", bytes.len());
 }

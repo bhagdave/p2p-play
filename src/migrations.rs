@@ -430,5 +430,4 @@ mod tests {
             "Created_at column should exist"
         );
     }
-
 }
