@@ -12,7 +12,6 @@ use thiserror::Error;
 use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::preview1;
 use wasmtime_wasi::WasiCtxBuilder;
-use wasmtime_wasi::preview1;
 
 /// WASM magic bytes: "\0asm"
 const WASM_MAGIC: &[u8] = b"\0asm";
