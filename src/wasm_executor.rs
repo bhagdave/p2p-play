@@ -12,6 +12,7 @@ use thiserror::Error;
 use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::preview1;
 use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::preview1;
 
 /// WASM magic bytes: "\0asm"
 const WASM_MAGIC: &[u8] = b"\0asm";
@@ -217,7 +218,8 @@ impl<F: ContentFetcher> WasmExecutor<F> {
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
 
         // Create WASI context with captured stdout/stderr
-        let stdin_pipe = wasmtime_wasi::pipe::MemoryInputPipe::new(Bytes::from(request.input.clone()));
+        let stdin_pipe =
+            wasmtime_wasi::pipe::MemoryInputPipe::new(Bytes::from(request.input.clone()));
         let stdout_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(64 * 1024);
         let stderr_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(64 * 1024);
 
