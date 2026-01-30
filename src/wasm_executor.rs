@@ -260,7 +260,7 @@ impl<F: ContentFetcher> WasmExecutor<F> {
 
         // Create store with fuel limit and memory limits
         let mut store = Store::new(&self.engine, store_data);
-        store.limiter(|data| &mut data.limits);
+        store.limiter(|data| &mut data.limits as &mut dyn wasmtime::ResourceLimiter);
         store.set_fuel(request.fuel_limit).map_err(|e| {
             WasmExecutionError::ExecutionFailed(format!("Failed to set fuel: {}", e))
         })?;
