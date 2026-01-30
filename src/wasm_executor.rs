@@ -52,7 +52,7 @@ pub enum WasmExecutionError {
     #[error("Memory limit exceeded")]
     MemoryLimitExceeded,
 
-    #[error("Execution timeout")]
+    #[error("Execution timeout after 30 seconds")]
     ExecutionTimeout,
 
     #[error("Entry point '_start' not found")]
