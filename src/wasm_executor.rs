@@ -218,8 +218,7 @@ impl<F: ContentFetcher> WasmExecutor<F> {
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
 
         // Create WASI context with captured stdout/stderr
-        let stdin_pipe =
-            wasmtime_wasi::pipe::MemoryInputPipe::new(Bytes::from(request.input.clone()));
+        let stdin_pipe = wasmtime_wasi::pipe::MemoryInputPipe::new(Bytes::from(request.input));
         let stdout_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(64 * 1024);
         let stderr_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(64 * 1024);
 
