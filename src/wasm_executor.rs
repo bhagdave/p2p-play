@@ -7,7 +7,6 @@ use crate::content_fetcher::ContentFetcher;
 use crate::errors::FetchError;
 use bytes::Bytes;
 use std::sync::Arc;
-#[allow(unused_imports)]
 use std::time::Duration;
 use thiserror::Error;
 use wasmtime::{Config, Engine, Linker, Module, Store};
