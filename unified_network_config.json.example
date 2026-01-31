@@ -34,6 +34,14 @@
     "notify_new_channels": true,
     "max_auto_subscriptions": 10
   },
+  "message_notifications": {
+    "enable_color_coding": true,
+    "enable_sound_notifications": false,
+    "enable_flash_indicators": true,
+    "flash_duration_ms": 200,
+    "show_delivery_status": true,
+    "enhanced_timestamps": true
+  },
   "relay": {
     "enable_relay": true,
     "enable_forwarding": true,
@@ -52,5 +60,11 @@
     "timeout_secs": 60,
     "operation_timeout_secs": 30,
     "enabled": true
+  },
+  "wasm": {
+    "default_fuel_limit": 10000000,
+    "default_memory_limit_mb": 64,
+    "max_memory_limit_mb": 1024,
+    "default_timeout_secs": 30
   }
 }
