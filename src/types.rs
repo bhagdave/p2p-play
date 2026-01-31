@@ -254,6 +254,14 @@ pub struct NetworkCircuitBreakerConfig {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WasmConfig {
+    pub default_fuel_limit: u64,
+    pub default_memory_limit_mb: u32,
+    pub max_memory_limit_mb: u32,
+    pub default_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnifiedNetworkConfig {
     pub bootstrap: BootstrapConfig,
     pub network: NetworkConfig,
@@ -264,6 +272,8 @@ pub struct UnifiedNetworkConfig {
     pub relay: RelayConfig,
     pub auto_share: AutoShareConfig,
     pub circuit_breaker: NetworkCircuitBreakerConfig,
+    #[serde(default)]
+    pub wasm: WasmConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -994,6 +1004,45 @@ impl Default for NetworkCircuitBreakerConfig {
     }
 }
 
+impl WasmConfig {
+    pub fn new() -> Self {
+        Self {
+            default_fuel_limit: 10_000_000,     // 10 million instructions
+            default_memory_limit_mb: 64,         // 64 MB
+            max_memory_limit_mb: 1024,           // 1 GB
+            default_timeout_secs: 30,            // 30 seconds
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.default_fuel_limit == 0 {
+            return Err("default_fuel_limit must be greater than 0".to_string());
+        }
+        if self.default_memory_limit_mb == 0 {
+            return Err("default_memory_limit_mb must be greater than 0".to_string());
+        }
+        if self.max_memory_limit_mb == 0 {
+            return Err("max_memory_limit_mb must be greater than 0".to_string());
+        }
+        if self.default_memory_limit_mb > self.max_memory_limit_mb {
+            return Err(format!(
+                "default_memory_limit_mb ({}) must not exceed max_memory_limit_mb ({})",
+                self.default_memory_limit_mb, self.max_memory_limit_mb
+            ));
+        }
+        if self.default_timeout_secs == 0 {
+            return Err("default_timeout_secs must be greater than 0".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl Default for WasmConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PingConfig {
     pub fn new() -> Self {
         Self {
@@ -1057,6 +1106,7 @@ impl UnifiedNetworkConfig {
             relay: RelayConfig::new(),
             auto_share: AutoShareConfig::new(),
             circuit_breaker: NetworkCircuitBreakerConfig::new(),
+            wasm: WasmConfig::new(),
         }
     }
 
@@ -1070,6 +1120,7 @@ impl UnifiedNetworkConfig {
         self.relay.validate()?;
         self.auto_share.validate()?;
         self.circuit_breaker.validate()?;
+        self.wasm.validate()?;
         Ok(())
     }
 
