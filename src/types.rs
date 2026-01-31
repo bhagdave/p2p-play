@@ -254,6 +254,14 @@ pub struct NetworkCircuitBreakerConfig {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WasmConfig {
+    pub default_fuel_limit: u64,
+    pub default_memory_limit_mb: u32,
+    pub max_memory_limit_mb: u32,
+    pub default_timeout_secs: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct UnifiedNetworkConfig {
     pub bootstrap: BootstrapConfig,
     pub network: NetworkConfig,
@@ -264,6 +272,8 @@ pub struct UnifiedNetworkConfig {
     pub relay: RelayConfig,
     pub auto_share: AutoShareConfig,
     pub circuit_breaker: NetworkCircuitBreakerConfig,
+    #[serde(default)]
+    pub wasm: WasmConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -994,6 +1004,57 @@ impl Default for NetworkCircuitBreakerConfig {
     }
 }
 
+impl WasmConfig {
+    /// Default fuel limit for WASM execution (10 million instructions)
+    pub const DEFAULT_FUEL_LIMIT: u64 = 10_000_000;
+    
+    /// Default memory limit in megabytes
+    pub const DEFAULT_MEMORY_LIMIT_MB: u32 = 64;
+    
+    /// Maximum allowed memory limit in megabytes (1 GB)
+    pub const MAX_MEMORY_LIMIT_MB: u32 = 1024;
+    
+    /// Default execution timeout in seconds
+    pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+    pub fn new() -> Self {
+        Self {
+            default_fuel_limit: Self::DEFAULT_FUEL_LIMIT,
+            default_memory_limit_mb: Self::DEFAULT_MEMORY_LIMIT_MB,
+            max_memory_limit_mb: Self::MAX_MEMORY_LIMIT_MB,
+            default_timeout_secs: Self::DEFAULT_TIMEOUT_SECS,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.default_fuel_limit == 0 {
+            return Err("default_fuel_limit must be greater than 0".to_string());
+        }
+        if self.default_memory_limit_mb == 0 {
+            return Err("default_memory_limit_mb must be greater than 0".to_string());
+        }
+        if self.max_memory_limit_mb == 0 {
+            return Err("max_memory_limit_mb must be greater than 0".to_string());
+        }
+        if self.default_memory_limit_mb > self.max_memory_limit_mb {
+            return Err(format!(
+                "default_memory_limit_mb ({}) must not exceed max_memory_limit_mb ({})",
+                self.default_memory_limit_mb, self.max_memory_limit_mb
+            ));
+        }
+        if self.default_timeout_secs == 0 {
+            return Err("default_timeout_secs must be greater than 0".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl Default for WasmConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PingConfig {
     pub fn new() -> Self {
         Self {
@@ -1057,6 +1118,7 @@ impl UnifiedNetworkConfig {
             relay: RelayConfig::new(),
             auto_share: AutoShareConfig::new(),
             circuit_breaker: NetworkCircuitBreakerConfig::new(),
+            wasm: WasmConfig::new(),
         }
     }
 
@@ -1070,6 +1132,7 @@ impl UnifiedNetworkConfig {
         self.relay.validate()?;
         self.auto_share.validate()?;
         self.circuit_breaker.validate()?;
+        self.wasm.validate()?;
         Ok(())
     }
 

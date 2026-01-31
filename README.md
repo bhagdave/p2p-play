@@ -94,7 +94,7 @@ The application uses a unified network configuration file (`unified_network_conf
 
 ### Unified Network Configuration (`unified_network_config.json`)
 
-The configuration file contains four main sections:
+The configuration file contains multiple sections covering all network and resource management settings:
 
 ```json
 {
@@ -126,9 +126,17 @@ The configuration file contains four main sections:
     "retry_interval_seconds": 30,
     "enable_connection_retries": true,
     "enable_timed_retries": true
+  },
+  "wasm": {
+    "default_fuel_limit": 10000000,
+    "default_memory_limit_mb": 64,
+    "max_memory_limit_mb": 1024,
+    "default_timeout_secs": 30
   }
 }
 ```
+
+**Note:** The configuration file also includes `channel_auto_subscription`, `message_notifications`, `relay`, `auto_share`, and `circuit_breaker` sections. See the `unified_network_config.json.example` file for a complete configuration example.
 
 ### Configuration Sections
 
@@ -159,6 +167,14 @@ These ping settings are more conservative than libp2p's defaults (15s interval, 
 - `retry_interval_seconds`: Time between retry attempts
 - `enable_connection_retries`: Enable retries when connections fail
 - `enable_timed_retries`: Enable automatic timed retries
+
+#### WASM Configuration
+- `default_fuel_limit`: Default computational limit for WASM execution (default: 10,000,000 instructions)
+- `default_memory_limit_mb`: Default memory limit for WASM modules (default: 64 MB)
+- `max_memory_limit_mb`: Maximum allowed memory limit for WASM modules (default: 1024 MB / 1 GB)
+- `default_timeout_secs`: Default execution timeout for WASM modules (default: 30 seconds)
+
+The WASM configuration controls resource limits for executing WebAssembly modules, preventing excessive resource consumption and ensuring system stability.
 
 ### Hot Reloading Configuration
 
