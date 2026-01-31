@@ -169,7 +169,7 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
 
     conn.execute(
         r#"
-        CREATE INDEX IF NOT EXISTS idx_direct_messages_timestamp 
+        CREATE INDEX IF NOT EXISTS idx_direct_messages_timestamp
         ON direct_messages(timestamp DESC)
         "#,
         [],
@@ -182,6 +182,81 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
             peer_id TEXT NOT NULL UNIQUE,
             peer_name TEXT NOT NULL
         )
+        "#,
+        [],
+    )?;
+
+    // WASM offerings table - local offerings this node advertises
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS wasm_offerings (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            ipfs_cid TEXT NOT NULL UNIQUE,
+            parameters_json TEXT NOT NULL,
+            resource_requirements_json TEXT NOT NULL,
+            version TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )
+        "#,
+        [],
+    )?;
+
+    // Index for querying enabled offerings
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_wasm_offerings_enabled
+        ON wasm_offerings(enabled)
+        "#,
+        [],
+    )?;
+
+    // Index for CID lookups
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_wasm_offerings_ipfs_cid
+        ON wasm_offerings(ipfs_cid)
+        "#,
+        [],
+    )?;
+
+    // Discovered WASM offerings from other peers
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS discovered_wasm_offerings (
+            id TEXT NOT NULL,
+            peer_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            ipfs_cid TEXT NOT NULL,
+            parameters_json TEXT NOT NULL,
+            resource_requirements_json TEXT NOT NULL,
+            version TEXT NOT NULL,
+            discovered_at INTEGER NOT NULL,
+            last_seen_at INTEGER NOT NULL,
+            PRIMARY KEY (peer_id, ipfs_cid)
+        )
+        "#,
+        [],
+    )?;
+
+    // Index for peer-based queries
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_discovered_wasm_offerings_peer_id
+        ON discovered_wasm_offerings(peer_id)
+        "#,
+        [],
+    )?;
+
+    // Index for stale offering cleanup
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_discovered_wasm_offerings_last_seen
+        ON discovered_wasm_offerings(last_seen_at)
         "#,
         [],
     )?;

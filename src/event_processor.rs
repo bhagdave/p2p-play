@@ -423,6 +423,7 @@ impl EventProcessor {
             app_name: APP_NAME.to_string(),
             app_version: APP_VERSION.to_string(),
             peer_id: PEER_ID.to_string(),
+            wasm_capable: true, // This node supports WASM capability advertisement
         };
 
         let _ = swarm
