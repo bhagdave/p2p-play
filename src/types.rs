@@ -1005,12 +1005,24 @@ impl Default for NetworkCircuitBreakerConfig {
 }
 
 impl WasmConfig {
+    /// Default fuel limit for WASM execution (10 million instructions)
+    pub const DEFAULT_FUEL_LIMIT: u64 = 10_000_000;
+    
+    /// Default memory limit in megabytes
+    pub const DEFAULT_MEMORY_LIMIT_MB: u32 = 64;
+    
+    /// Maximum allowed memory limit in megabytes (1 GB)
+    pub const MAX_MEMORY_LIMIT_MB: u32 = 1024;
+    
+    /// Default execution timeout in seconds
+    pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
     pub fn new() -> Self {
         Self {
-            default_fuel_limit: 10_000_000,     // 10 million instructions
-            default_memory_limit_mb: 64,         // 64 MB
-            max_memory_limit_mb: 1024,           // 1 GB
-            default_timeout_secs: 30,            // 30 seconds
+            default_fuel_limit: Self::DEFAULT_FUEL_LIMIT,
+            default_memory_limit_mb: Self::DEFAULT_MEMORY_LIMIT_MB,
+            max_memory_limit_mb: Self::MAX_MEMORY_LIMIT_MB,
+            default_timeout_secs: Self::DEFAULT_TIMEOUT_SECS,
         }
     }
 

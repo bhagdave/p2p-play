@@ -5,6 +5,7 @@
 
 use crate::content_fetcher::ContentFetcher;
 use crate::errors::FetchError;
+use crate::types::WasmConfig;
 use bytes::Bytes;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,18 +19,6 @@ const WASM_MAGIC: &[u8] = b"\0asm";
 
 /// Expected WASM version bytes (version 1)
 const WASM_VERSION: &[u8] = &[0x01, 0x00, 0x00, 0x00];
-
-/// Default fuel limit for WASM execution (10 million instructions)
-const DEFAULT_FUEL_LIMIT: u64 = 10_000_000;
-
-/// Default memory limit in megabytes
-const DEFAULT_MEMORY_LIMIT_MB: u32 = 64;
-
-/// Maximum allowed memory limit in megabytes (1 GB)
-const MAX_MEMORY_LIMIT_MB: u32 = 1024;
-
-/// Default execution timeout in seconds
-const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
 /// Errors that can occur during WASM execution
 #[derive(Debug, Error)]
@@ -89,14 +78,19 @@ pub struct ExecutionRequest {
 }
 
 impl ExecutionRequest {
-    /// Create a new execution request with default limits
+    /// Create a new execution request with default limits from WasmConfig
     pub fn new(wasm_cid: String) -> Self {
+        Self::with_config(wasm_cid, &WasmConfig::new())
+    }
+
+    /// Create a new execution request with limits from the provided WasmConfig
+    pub fn with_config(wasm_cid: String, config: &WasmConfig) -> Self {
         Self {
             wasm_cid,
             input: Vec::new(),
-            fuel_limit: DEFAULT_FUEL_LIMIT,
-            memory_limit_mb: DEFAULT_MEMORY_LIMIT_MB,
-            timeout_secs: Some(DEFAULT_TIMEOUT_SECS),
+            fuel_limit: config.default_fuel_limit,
+            memory_limit_mb: config.default_memory_limit_mb,
+            timeout_secs: Some(config.default_timeout_secs),
             args: Vec::new(),
         }
     }
@@ -174,17 +168,27 @@ pub struct WasmExecutor<F: ContentFetcher> {
     engine: Engine,
     fetcher: Arc<F>,
     #[allow(dead_code)]
-    config: WasmExecutorConfig,
+    executor_config: WasmExecutorConfig,
+    resource_config: WasmConfig,
 }
 
 impl<F: ContentFetcher> WasmExecutor<F> {
-    /// Create a new WASM executor with the given content fetcher
+    /// Create a new WASM executor with the given content fetcher and default resource limits
     pub fn new(fetcher: Arc<F>) -> WasmResult<Self> {
-        Self::with_config(fetcher, WasmExecutorConfig::default())
+        Self::with_configs(fetcher, WasmExecutorConfig::default(), WasmConfig::new())
     }
 
     /// Create a new WASM executor with custom configuration
     pub fn with_config(fetcher: Arc<F>, config: WasmExecutorConfig) -> WasmResult<Self> {
+        Self::with_configs(fetcher, config, WasmConfig::new())
+    }
+
+    /// Create a new WASM executor with custom executor and resource configurations
+    pub fn with_configs(
+        fetcher: Arc<F>,
+        executor_config: WasmExecutorConfig,
+        resource_config: WasmConfig,
+    ) -> WasmResult<Self> {
         let mut engine_config = Config::new();
         engine_config
             .async_support(true)
@@ -196,7 +200,8 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         Ok(Self {
             engine,
             fetcher,
-            config,
+            executor_config,
+            resource_config,
         })
     }
 
@@ -239,10 +244,10 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         let wasi_ctx = wasi_builder.build_p1();
 
         // Validate memory limit to prevent overflow
-        if request.memory_limit_mb > MAX_MEMORY_LIMIT_MB {
+        if request.memory_limit_mb > self.resource_config.max_memory_limit_mb {
             return Err(WasmExecutionError::MemoryLimitTooLarge(
                 request.memory_limit_mb,
-                MAX_MEMORY_LIMIT_MB,
+                self.resource_config.max_memory_limit_mb,
             ));
         }
 
@@ -448,9 +453,9 @@ mod tests {
     fn test_execution_request_defaults() {
         let request = ExecutionRequest::new("QmTest".to_string());
 
-        assert_eq!(request.fuel_limit, DEFAULT_FUEL_LIMIT);
-        assert_eq!(request.memory_limit_mb, DEFAULT_MEMORY_LIMIT_MB);
-        assert_eq!(request.timeout_secs, Some(DEFAULT_TIMEOUT_SECS));
+        assert_eq!(request.fuel_limit, WasmConfig::DEFAULT_FUEL_LIMIT);
+        assert_eq!(request.memory_limit_mb, WasmConfig::DEFAULT_MEMORY_LIMIT_MB);
+        assert_eq!(request.timeout_secs, Some(WasmConfig::DEFAULT_TIMEOUT_SECS));
         assert!(request.input.is_empty());
         assert!(request.args.is_empty());
     }
@@ -489,12 +494,12 @@ mod tests {
 
     #[test]
     fn test_memory_limit_validation() {
-        // Test that exceeding MAX_MEMORY_LIMIT_MB is detected
+        // Test that exceeding max memory limit is detected
         let request = ExecutionRequest::new("QmTest".to_string())
-            .with_memory_limit_mb(MAX_MEMORY_LIMIT_MB + 1);
+            .with_memory_limit_mb(WasmConfig::MAX_MEMORY_LIMIT_MB + 1);
 
         // The executor should validate and reject excessive memory limits
-        assert_eq!(request.memory_limit_mb, MAX_MEMORY_LIMIT_MB + 1);
-        assert!(request.memory_limit_mb > MAX_MEMORY_LIMIT_MB);
+        assert_eq!(request.memory_limit_mb, WasmConfig::MAX_MEMORY_LIMIT_MB + 1);
+        assert!(request.memory_limit_mb > WasmConfig::MAX_MEMORY_LIMIT_MB);
     }
 }
