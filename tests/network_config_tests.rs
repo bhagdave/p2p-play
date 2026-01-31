@@ -303,3 +303,174 @@ async fn test_ensure_network_config_exists() {
     // uses a hardcoded path. For this test, we're testing the pattern.
     assert!(fs::metadata(path).is_err());
 }
+
+#[tokio::test]
+async fn test_wasm_config_creation() {
+    use p2p_play::types::WasmConfig;
+    let config = WasmConfig::new();
+    assert_eq!(config.default_fuel_limit, 10_000_000);
+    assert_eq!(config.default_memory_limit_mb, 64);
+    assert_eq!(config.max_memory_limit_mb, 1024);
+    assert_eq!(config.default_timeout_secs, 30);
+}
+
+#[tokio::test]
+async fn test_wasm_config_validation_success() {
+    use p2p_play::types::WasmConfig;
+    let config = WasmConfig::new();
+    assert!(config.validate().is_ok());
+}
+
+#[tokio::test]
+async fn test_wasm_config_validation_failures() {
+    use p2p_play::types::WasmConfig;
+    
+    // Test zero fuel limit
+    let config = WasmConfig {
+        default_fuel_limit: 0,
+        ..Default::default()
+    };
+    assert!(config.validate().is_err());
+    assert!(config.validate().unwrap_err().contains("default_fuel_limit must be greater than 0"));
+    
+    // Test zero default memory
+    let config = WasmConfig {
+        default_memory_limit_mb: 0,
+        ..Default::default()
+    };
+    assert!(config.validate().is_err());
+    assert!(config.validate().unwrap_err().contains("default_memory_limit_mb must be greater than 0"));
+    
+    // Test zero max memory
+    let config = WasmConfig {
+        max_memory_limit_mb: 0,
+        ..Default::default()
+    };
+    assert!(config.validate().is_err());
+    assert!(config.validate().unwrap_err().contains("max_memory_limit_mb must be greater than 0"));
+    
+    // Test default exceeds max
+    let config = WasmConfig {
+        default_memory_limit_mb: 2048,
+        max_memory_limit_mb: 1024,
+        ..Default::default()
+    };
+    assert!(config.validate().is_err());
+    assert!(config.validate().unwrap_err().contains("must not exceed max_memory_limit_mb"));
+    
+    // Test zero timeout
+    let config = WasmConfig {
+        default_timeout_secs: 0,
+        ..Default::default()
+    };
+    assert!(config.validate().is_err());
+    assert!(config.validate().unwrap_err().contains("default_timeout_secs must be greater than 0"));
+}
+
+#[tokio::test]
+async fn test_wasm_config_in_unified_config() {
+    use p2p_play::types::UnifiedNetworkConfig;
+    
+    let unified_config = UnifiedNetworkConfig::new();
+    assert_eq!(unified_config.wasm.default_fuel_limit, 10_000_000);
+    assert_eq!(unified_config.wasm.default_memory_limit_mb, 64);
+    assert_eq!(unified_config.wasm.max_memory_limit_mb, 1024);
+    assert_eq!(unified_config.wasm.default_timeout_secs, 30);
+}
+
+#[tokio::test]
+async fn test_wasm_config_serialization() {
+    use p2p_play::types::WasmConfig;
+    
+    let config = WasmConfig::new();
+    let json = serde_json::to_string(&config).unwrap();
+    let deserialized: WasmConfig = serde_json::from_str(&json).unwrap();
+    
+    assert_eq!(config.default_fuel_limit, deserialized.default_fuel_limit);
+    assert_eq!(config.default_memory_limit_mb, deserialized.default_memory_limit_mb);
+    assert_eq!(config.max_memory_limit_mb, deserialized.max_memory_limit_mb);
+    assert_eq!(config.default_timeout_secs, deserialized.default_timeout_secs);
+}
+
+#[tokio::test]
+async fn test_wasm_config_backward_compatibility() {
+    use p2p_play::types::UnifiedNetworkConfig;
+    use tempfile::NamedTempFile;
+    
+    let temp_file = NamedTempFile::new().unwrap();
+    let path = temp_file.path().to_str().unwrap();
+    
+    // Write a config without wasm field (simulating old config)
+    let old_config = r#"{
+        "bootstrap": {
+            "bootstrap_peers": ["/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN"],
+            "retry_interval_ms": 5000,
+            "max_retry_attempts": 10,
+            "bootstrap_timeout_ms": 60000
+        },
+        "network": {
+            "connection_maintenance_interval_seconds": 300,
+            "request_timeout_seconds": 120,
+            "max_concurrent_streams": 100,
+            "max_connections_per_peer": 1,
+            "max_pending_incoming": 10,
+            "max_pending_outgoing": 10,
+            "max_established_total": 100,
+            "connection_establishment_timeout_seconds": 30,
+            "network_health_update_interval_seconds": 15
+        },
+        "ping": {
+            "interval_secs": 30,
+            "timeout_secs": 20
+        },
+        "direct_message": {
+            "max_retry_attempts": 3,
+            "retry_interval_seconds": 30,
+            "enable_connection_retries": true,
+            "enable_timed_retries": true
+        },
+        "channel_auto_subscription": {
+            "auto_subscribe_to_new_channels": false,
+            "notify_new_channels": true,
+            "max_auto_subscriptions": 10
+        },
+        "message_notifications": {
+            "enable_color_coding": true,
+            "enable_sound_notifications": false,
+            "enable_flash_indicators": true,
+            "flash_duration_ms": 200,
+            "show_delivery_status": true,
+            "enhanced_timestamps": true
+        },
+        "relay": {
+            "enable_relay": false,
+            "enable_forwarding": false,
+            "max_hops": 3,
+            "relay_timeout_ms": 5000,
+            "prefer_direct": true,
+            "rate_limit_per_peer": 10
+        },
+        "auto_share": {
+            "global_auto_share": true,
+            "sync_days": 30
+        },
+        "circuit_breaker": {
+            "failure_threshold": 5,
+            "success_threshold": 3,
+            "timeout_secs": 60,
+            "operation_timeout_secs": 30,
+            "enabled": true
+        }
+    }"#;
+    fs::write(path, old_config).unwrap();
+    
+    // Load config - should use defaults for wasm field
+    let loaded_config = load_unified_network_config_from_path(path).await.unwrap();
+    
+    // Verify wasm config got default values
+    assert_eq!(loaded_config.wasm.default_fuel_limit, 10_000_000);
+    assert_eq!(loaded_config.wasm.default_memory_limit_mb, 64);
+    assert_eq!(loaded_config.wasm.max_memory_limit_mb, 1024);
+    assert_eq!(loaded_config.wasm.default_timeout_secs, 30);
+}
+
