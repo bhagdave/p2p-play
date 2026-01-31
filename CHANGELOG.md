@@ -2,6 +2,19 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **WASM Configuration Support**: Added WASM executor resource limits to the unified network configuration
+  - **Configurable Resource Limits**: WASM execution now uses configuration values instead of hardcoded constants
+  - **Default Fuel Limit**: Configurable computational limit for WASM execution (default: 10,000,000 instructions)
+  - **Memory Limits**: Configurable default (64 MB) and maximum (1024 MB) memory limits for WASM modules
+  - **Execution Timeout**: Configurable execution timeout for WASM modules (default: 30 seconds)
+  - **Backward Compatibility**: Existing configuration files without WASM section use default values automatically
+  - **Validation**: Added comprehensive validation to ensure resource limits are properly configured
+  - **Documentation**: Updated README.md and unified_network_config.json.example with WASM configuration details
+  - **Test Coverage**: Added 6 new tests for WASM configuration validation and backward compatibility
+
 ## [0.10.6] - 2025-09-03
 
 ### Added
