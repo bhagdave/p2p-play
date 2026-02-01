@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
-use wasmtime_wasi::preview1;
 use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::preview1;
 
 /// WASM magic bytes: "\0asm"
 const WASM_MAGIC: &[u8] = b"\0asm";
@@ -190,9 +190,7 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         resource_config: WasmConfig,
     ) -> WasmResult<Self> {
         let mut engine_config = Config::new();
-        engine_config
-            .async_support(true)
-            .consume_fuel(true);
+        engine_config.async_support(true).consume_fuel(true);
 
         let engine = Engine::new(&engine_config)
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
@@ -314,8 +312,9 @@ impl<F: ContentFetcher> WasmExecutor<F> {
                 }
                 // Check if it's a memory limit error
                 // Wasmtime's ResourceLimiter errors typically contain "resource limit exceeded"
-                if error_str.contains("resource limit exceeded") 
-                    || (error_str.contains("memory") && error_str.contains("limit exceeded")) {
+                if error_str.contains("resource limit exceeded")
+                    || (error_str.contains("memory") && error_str.contains("limit exceeded"))
+                {
                     return Err(WasmExecutionError::MemoryLimitExceeded);
                 }
                 // Check for WASI exit code
@@ -470,8 +469,7 @@ mod tests {
     #[test]
     fn test_memory_limit_configuration() {
         // Test that memory limits are properly converted to bytes
-        let request = ExecutionRequest::new("QmTest".to_string())
-            .with_memory_limit_mb(64);
+        let request = ExecutionRequest::new("QmTest".to_string()).with_memory_limit_mb(64);
 
         // 64 MB should convert to 64 * 1024 * 1024 bytes = 67108864 bytes
         let expected_bytes = 64 * 1024 * 1024;

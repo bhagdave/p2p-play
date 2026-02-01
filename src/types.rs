@@ -4,6 +4,7 @@ use crate::network::{
     DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
     NodeDescriptionRequest, NodeDescriptionResponse,
 };
+use crate::validation::ContentSanitizer;
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
@@ -253,12 +254,87 @@ pub struct NetworkCircuitBreakerConfig {
     pub enabled: bool,
 }
 
+/// Parameter definition for a WASM offering
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WasmParameter {
+    /// Parameter name (e.g., "input_text")
+    pub name: String,
+    /// Parameter type (e.g., "string", "bytes", "json")
+    pub param_type: String,
+    /// Human-readable description
+    pub description: String,
+    /// Whether parameter is required
+    pub required: bool,
+    /// Default value if not provided
+    pub default_value: Option<String>,
+}
+
+/// Resource requirements for WASM execution
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WasmResourceRequirements {
+    /// Minimum fuel (instructions) needed
+    pub min_fuel: u64,
+    /// Maximum fuel allowed
+    pub max_fuel: u64,
+    /// Minimum memory in megabytes
+    pub min_memory_mb: u32,
+    /// Maximum memory in megabytes
+    pub max_memory_mb: u32,
+    /// Estimated execution timeout in seconds
+    pub estimated_timeout_secs: u64,
+}
+
+/// A WASM module offering from a node
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WasmOffering {
+    /// Unique identifier (UUID)
+    pub id: String,
+    /// Human-readable name
+    pub name: String,
+    /// Description of what the WASM does
+    pub description: String,
+    /// IPFS CID of the WASM binary
+    pub ipfs_cid: String,
+    /// Parameter definitions
+    pub parameters: Vec<WasmParameter>,
+    /// Resource requirements
+    pub resource_requirements: WasmResourceRequirements,
+    /// Version string
+    pub version: String,
+    /// Whether this offering is enabled
+    pub enabled: bool,
+    /// Creation timestamp (Unix seconds)
+    pub created_at: u64,
+    /// Last update timestamp (Unix seconds)
+    pub updated_at: u64,
+}
+
+/// Configuration for WASM capability advertising and execution
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct WasmCapabilityConfig {
+    /// Whether to advertise WASM capabilities to peers
+    pub advertise_capabilities: bool,
+    /// Whether to accept remote WASM execution requests
+    pub allow_remote_execution: bool,
+    /// Maximum number of offerings this node can advertise
+    pub max_offerings: usize,
+    /// Whether to cache discovered offerings from other peers
+    pub cache_remote_offerings: bool,
+    /// Interval between capability discovery queries (seconds)
+    pub discovery_interval_secs: u64,
+    /// Maximum concurrent WASM executions allowed
+    pub max_concurrent_executions: usize,
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WasmConfig {
     pub default_fuel_limit: u64,
     pub default_memory_limit_mb: u32,
     pub max_memory_limit_mb: u32,
     pub default_timeout_secs: u64,
+    /// WASM capability advertisement configuration
+    #[serde(default)]
+    pub capability: WasmCapabilityConfig,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -315,6 +391,18 @@ pub enum EventType {
         >,
     ),
     HandshakeEvent(request_response::Event<HandshakeRequest, HandshakeResponse>),
+    WasmCapabilitiesEvent(
+        request_response::Event<
+            crate::network::WasmCapabilitiesRequest,
+            crate::network::WasmCapabilitiesResponse,
+        >,
+    ),
+    WasmExecutionEvent(
+        request_response::Event<
+            crate::network::WasmExecutionRequest,
+            crate::network::WasmExecutionResponse,
+        >,
+    ),
     KadEvent(kad::Event),
     PublishStory(Story),
     PeerName(PeerName),
@@ -1004,16 +1092,187 @@ impl Default for NetworkCircuitBreakerConfig {
     }
 }
 
+impl WasmParameter {
+    pub fn new(name: String, param_type: String, description: String, required: bool) -> Self {
+        Self {
+            name,
+            param_type,
+            description,
+            required,
+            default_value: None,
+        }
+    }
+
+    pub fn with_default(mut self, default_value: String) -> Self {
+        self.default_value = Some(default_value);
+        self
+    }
+}
+
+impl WasmResourceRequirements {
+    pub fn new(
+        min_fuel: u64,
+        max_fuel: u64,
+        min_memory_mb: u32,
+        max_memory_mb: u32,
+        estimated_timeout_secs: u64,
+    ) -> Self {
+        Self {
+            min_fuel,
+            max_fuel,
+            min_memory_mb,
+            max_memory_mb,
+            estimated_timeout_secs,
+        }
+    }
+
+    pub fn default_requirements() -> Self {
+        Self {
+            min_fuel: 1_000_000,
+            max_fuel: WasmConfig::DEFAULT_FUEL_LIMIT,
+            min_memory_mb: 16,
+            max_memory_mb: WasmConfig::DEFAULT_MEMORY_LIMIT_MB,
+            estimated_timeout_secs: WasmConfig::DEFAULT_TIMEOUT_SECS,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.min_fuel > self.max_fuel {
+            return Err(format!(
+                "min_fuel ({}) must not exceed max_fuel ({})",
+                self.min_fuel, self.max_fuel
+            ));
+        }
+        if self.min_memory_mb > self.max_memory_mb {
+            return Err(format!(
+                "min_memory_mb ({}) must not exceed max_memory_mb ({})",
+                self.min_memory_mb, self.max_memory_mb
+            ));
+        }
+        if self.estimated_timeout_secs == 0 {
+            return Err("estimated_timeout_secs must be greater than 0".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl WasmOffering {
+    pub fn new(name: String, description: String, ipfs_cid: String, version: String) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            description,
+            ipfs_cid,
+            parameters: Vec::new(),
+            resource_requirements: WasmResourceRequirements::default_requirements(),
+            version,
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn with_parameters(mut self, parameters: Vec<WasmParameter>) -> Self {
+        self.parameters = parameters;
+        self
+    }
+
+    pub fn with_resource_requirements(mut self, requirements: WasmResourceRequirements) -> Self {
+        self.resource_requirements = requirements;
+        self
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        // Sanitize and check for dangerous content
+        let sanitized_name = ContentSanitizer::sanitize_for_storage(&self.name);
+        if sanitized_name != self.name {
+            return Err(
+                "name contains invalid characters (control chars or ANSI escapes)".to_string(),
+            );
+        }
+
+        let sanitized_description = ContentSanitizer::sanitize_for_storage(&self.description);
+        if sanitized_description != self.description {
+            return Err("description contains invalid characters".to_string());
+        }
+
+        if self.name.is_empty() {
+            return Err("name cannot be empty".to_string());
+        }
+        if self.name.len() > 100 {
+            return Err("name must not exceed 100 characters".to_string());
+        }
+        if self.description.len() > 500 {
+            return Err("description must not exceed 500 characters".to_string());
+        }
+        if self.ipfs_cid.is_empty() {
+            return Err("ipfs_cid cannot be empty".to_string());
+        }
+        // Basic IPFS CID validation (starts with Qm for v0 or bafy for v1)
+        if !self.ipfs_cid.starts_with("Qm") && !self.ipfs_cid.starts_with("bafy") {
+            return Err("ipfs_cid must be a valid IPFS CID (starting with Qm or bafy)".to_string());
+        }
+        if self.version.is_empty() {
+            return Err("version cannot be empty".to_string());
+        }
+        self.resource_requirements.validate()?;
+        Ok(())
+    }
+}
+
+impl WasmCapabilityConfig {
+    pub fn new() -> Self {
+        Self {
+            advertise_capabilities: false,
+            allow_remote_execution: false,
+            max_offerings: 10,
+            cache_remote_offerings: true,
+            discovery_interval_secs: 300, // 5 minutes
+            max_concurrent_executions: 2,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.max_offerings == 0 {
+            return Err("max_offerings must be greater than 0".to_string());
+        }
+        if self.max_offerings > 100 {
+            return Err("max_offerings should not exceed 100".to_string());
+        }
+        if self.discovery_interval_secs < 60 {
+            return Err("discovery_interval_secs must be at least 60 seconds".to_string());
+        }
+        if self.max_concurrent_executions == 0 {
+            return Err("max_concurrent_executions must be greater than 0".to_string());
+        }
+        if self.max_concurrent_executions > 10 {
+            return Err("max_concurrent_executions should not exceed 10".to_string());
+        }
+        Ok(())
+    }
+}
+
+impl Default for WasmCapabilityConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WasmConfig {
     /// Default fuel limit for WASM execution (10 million instructions)
     pub const DEFAULT_FUEL_LIMIT: u64 = 10_000_000;
-    
+
     /// Default memory limit in megabytes
     pub const DEFAULT_MEMORY_LIMIT_MB: u32 = 64;
-    
+
     /// Maximum allowed memory limit in megabytes (1 GB)
     pub const MAX_MEMORY_LIMIT_MB: u32 = 1024;
-    
+
     /// Default execution timeout in seconds
     pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 
@@ -1023,6 +1282,7 @@ impl WasmConfig {
             default_memory_limit_mb: Self::DEFAULT_MEMORY_LIMIT_MB,
             max_memory_limit_mb: Self::MAX_MEMORY_LIMIT_MB,
             default_timeout_secs: Self::DEFAULT_TIMEOUT_SECS,
+            capability: WasmCapabilityConfig::new(),
         }
     }
 
@@ -1045,6 +1305,7 @@ impl WasmConfig {
         if self.default_timeout_secs == 0 {
             return Err("default_timeout_secs must be greater than 0".to_string());
         }
+        self.capability.validate()?;
         Ok(())
     }
 }

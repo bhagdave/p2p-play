@@ -68,6 +68,9 @@ pub struct HandshakeRequest {
     pub app_name: String,
     pub app_version: String,
     pub peer_id: String,
+    /// Whether this node supports WASM capability advertisement
+    #[serde(default)]
+    pub wasm_capable: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -75,6 +78,71 @@ pub struct HandshakeResponse {
     pub accepted: bool,
     pub app_name: String,
     pub app_version: String,
+    /// Whether this node supports WASM capability advertisement
+    #[serde(default)]
+    pub wasm_capable: bool,
+}
+
+/// Request to query a peer's WASM capabilities
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WasmCapabilitiesRequest {
+    pub from_peer_id: String,
+    pub from_name: String,
+    pub timestamp: u64,
+    /// Whether to include full parameter definitions in the response
+    pub include_parameters: bool,
+}
+
+/// Response containing a peer's WASM offerings
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WasmCapabilitiesResponse {
+    pub peer_id: String,
+    pub peer_name: String,
+    /// Whether this node has WASM execution enabled
+    pub wasm_enabled: bool,
+    /// List of WASM offerings this node provides
+    pub offerings: Vec<crate::types::WasmOffering>,
+    pub timestamp: u64,
+}
+
+/// Request to execute a WASM module on a remote peer
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WasmExecutionRequest {
+    pub from_peer_id: String,
+    pub from_name: String,
+    /// The offering ID to execute
+    pub offering_id: String,
+    /// IPFS CID for verification
+    pub ipfs_cid: String,
+    /// Stdin input data
+    pub input: Vec<u8>,
+    /// Command-line arguments
+    pub args: Vec<String>,
+    /// Optional fuel limit override
+    pub fuel_limit: Option<u64>,
+    /// Optional memory limit override (MB)
+    pub memory_limit_mb: Option<u32>,
+    /// Optional timeout override (seconds)
+    pub timeout_secs: Option<u64>,
+    pub timestamp: u64,
+}
+
+/// Response from a WASM execution request
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WasmExecutionResponse {
+    /// Whether execution succeeded
+    pub success: bool,
+    /// Stdout output
+    pub stdout: Vec<u8>,
+    /// Stderr output
+    pub stderr: Vec<u8>,
+    /// Fuel consumed during execution
+    pub fuel_consumed: u64,
+    /// Exit code (0 for success)
+    pub exit_code: i32,
+    /// Error message if execution failed
+    pub error: Option<String>,
+    pub timestamp: u64,
 }
 
 pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
@@ -123,6 +191,10 @@ pub struct StoryBehaviour {
         request_response::cbor::Behaviour<NodeDescriptionRequest, NodeDescriptionResponse>,
     pub story_sync: request_response::cbor::Behaviour<StorySyncRequest, StorySyncResponse>,
     pub handshake: request_response::cbor::Behaviour<HandshakeRequest, HandshakeResponse>,
+    pub wasm_capabilities:
+        request_response::cbor::Behaviour<WasmCapabilitiesRequest, WasmCapabilitiesResponse>,
+    pub wasm_execution:
+        request_response::cbor::Behaviour<WasmExecutionRequest, WasmExecutionResponse>,
     pub kad: kad::Behaviour<kad::store::MemoryStore>,
 }
 
@@ -135,6 +207,8 @@ pub enum StoryBehaviourEvent {
     NodeDescription(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
     StorySync(request_response::Event<StorySyncRequest, StorySyncResponse>),
     Handshake(request_response::Event<HandshakeRequest, HandshakeResponse>),
+    WasmCapabilities(request_response::Event<WasmCapabilitiesRequest, WasmCapabilitiesResponse>),
+    WasmExecution(request_response::Event<WasmExecutionRequest, WasmExecutionResponse>),
     Kad(kad::Event),
 }
 
@@ -183,6 +257,24 @@ impl From<request_response::Event<StorySyncRequest, StorySyncResponse>> for Stor
 impl From<request_response::Event<HandshakeRequest, HandshakeResponse>> for StoryBehaviourEvent {
     fn from(event: request_response::Event<HandshakeRequest, HandshakeResponse>) -> Self {
         StoryBehaviourEvent::Handshake(event)
+    }
+}
+
+impl From<request_response::Event<WasmCapabilitiesRequest, WasmCapabilitiesResponse>>
+    for StoryBehaviourEvent
+{
+    fn from(
+        event: request_response::Event<WasmCapabilitiesRequest, WasmCapabilitiesResponse>,
+    ) -> Self {
+        StoryBehaviourEvent::WasmCapabilities(event)
+    }
+}
+
+impl From<request_response::Event<WasmExecutionRequest, WasmExecutionResponse>>
+    for StoryBehaviourEvent
+{
+    fn from(event: request_response::Event<WasmExecutionRequest, WasmExecutionResponse>) -> Self {
+        StoryBehaviourEvent::WasmExecution(event)
     }
 }
 
@@ -251,7 +343,22 @@ pub fn create_swarm(
     let handshake_protocol = StreamProtocol::new(APP_PROTOCOL);
     let handshake_protocols = iter::once((handshake_protocol, handshake_protocol_support));
 
-    let handshake = request_response::cbor::Behaviour::new(handshake_protocols, cfg);
+    let handshake = request_response::cbor::Behaviour::new(handshake_protocols, cfg.clone());
+
+    // WASM capability discovery protocol
+    let wasm_caps_protocol_support = request_response::ProtocolSupport::Full;
+    let wasm_caps_protocol = StreamProtocol::new("/wasm-caps/1.0.0");
+    let wasm_caps_protocols = iter::once((wasm_caps_protocol, wasm_caps_protocol_support));
+
+    let wasm_capabilities =
+        request_response::cbor::Behaviour::new(wasm_caps_protocols, cfg.clone());
+
+    // WASM remote execution protocol
+    let wasm_exec_protocol_support = request_response::ProtocolSupport::Full;
+    let wasm_exec_protocol = StreamProtocol::new("/wasm-exec/1.0.0");
+    let wasm_exec_protocols = iter::once((wasm_exec_protocol, wasm_exec_protocol_support));
+
+    let wasm_execution = request_response::cbor::Behaviour::new(wasm_exec_protocols, cfg);
 
     let store = kad::store::MemoryStore::new(*PEER_ID);
     let kad_config = kad::Config::default();
@@ -271,6 +378,8 @@ pub fn create_swarm(
         node_description,
         story_sync,
         handshake,
+        wasm_capabilities,
+        wasm_execution,
         kad,
     };
 

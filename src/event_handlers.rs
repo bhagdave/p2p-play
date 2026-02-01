@@ -1,3 +1,4 @@
+use crate::content_fetcher::GatewayFetcher;
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
@@ -6,12 +7,13 @@ use crate::handlers::{
     handle_filter_stories, handle_get_description, handle_help, handle_list_channels,
     handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
     handle_search_stories, handle_set_auto_subscription, handle_set_name, handle_show_description,
-    handle_show_story, handle_subscribe_channel, handle_unsubscribe_channel,
+    handle_show_story, handle_subscribe_channel, handle_unsubscribe_channel, handle_wasm_command,
 };
 use crate::network::{
     APP_NAME, APP_VERSION, DirectMessageRequest, DirectMessageResponse, HandshakeRequest,
     HandshakeResponse, NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour,
-    TOPIC,
+    TOPIC, WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest,
+    WasmExecutionResponse,
 };
 use crate::storage::{load_node_description, save_received_story};
 use crate::types::{
@@ -19,6 +21,7 @@ use crate::types::{
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
     PublishedStory,
 };
+use crate::wasm_executor::{ExecutionRequest, WasmExecutionError, WasmExecutor};
 
 use bytes::Bytes;
 use libp2p::{PeerId, Swarm, request_response};
@@ -309,6 +312,17 @@ pub async fn handle_input_event(
                 dm_config,
                 relay_service,
                 pending_messages,
+            )
+            .await;
+        }
+        cmd if cmd.starts_with("wasm ") => {
+            handle_wasm_command(
+                cmd,
+                swarm,
+                peer_names,
+                local_peer_name,
+                ui_logger,
+                error_logger,
             )
             .await;
         }
@@ -1747,6 +1761,7 @@ pub async fn handle_handshake_event(
                         accepted,
                         app_name: APP_NAME.to_string(),
                         app_version: APP_VERSION.to_string(),
+                        wasm_capable: true, // This node supports WASM capability advertisement
                     };
 
                     if let Err(e) = swarm
@@ -2026,8 +2041,498 @@ pub async fn handle_event(
         EventType::ChannelSubscription(subscription) => {
             handle_channel_subscription_event(subscription).await;
         }
+        EventType::WasmCapabilitiesEvent(wasm_caps_event) => {
+            handle_wasm_capabilities_event(
+                wasm_caps_event,
+                swarm,
+                local_peer_name,
+                ui_logger,
+                error_logger,
+            )
+            .await;
+        }
+        EventType::WasmExecutionEvent(wasm_exec_event) => {
+            handle_wasm_execution_event(
+                wasm_exec_event,
+                swarm,
+                local_peer_name,
+                ui_logger,
+                error_logger,
+            )
+            .await;
+        }
     }
     None
+}
+
+/// Handle WASM capabilities request/response events
+pub async fn handle_wasm_capabilities_event(
+    event: request_response::Event<WasmCapabilitiesRequest, WasmCapabilitiesResponse>,
+    swarm: &mut Swarm<StoryBehaviour>,
+    local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
+    match event {
+        request_response::Event::Message { peer, message, .. } => {
+            match message {
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    debug!(
+                        "Received WASM capabilities request from {} ({})",
+                        request.from_name, peer
+                    );
+
+                    // Load local WASM offerings from storage
+                    let offerings = match crate::storage::read_enabled_wasm_offerings().await {
+                        Ok(offerings) => offerings,
+                        Err(e) => {
+                            error_logger.log_error(&format!(
+                                "Failed to load WASM offerings for capability response: {e}"
+                            ));
+                            Vec::new()
+                        }
+                    };
+
+                    // Check if WASM execution is enabled
+                    let wasm_enabled = match crate::storage::load_unified_network_config().await {
+                        Ok(config) => config.wasm.capability.allow_remote_execution,
+                        Err(_) => false,
+                    };
+
+                    let from_name = local_peer_name
+                        .clone()
+                        .unwrap_or_else(|| PEER_ID.to_string());
+
+                    let response = WasmCapabilitiesResponse {
+                        peer_id: PEER_ID.to_string(),
+                        peer_name: from_name,
+                        wasm_enabled,
+                        offerings,
+                        timestamp: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                    };
+
+                    if let Err(e) = swarm
+                        .behaviour_mut()
+                        .wasm_capabilities
+                        .send_response(channel, response)
+                    {
+                        error_logger.log_error(&format!(
+                            "Failed to send WASM capabilities response: {e:?}"
+                        ));
+                    } else {
+                        debug!("Sent WASM capabilities response to {}", peer);
+                    }
+                }
+                request_response::Message::Response { response, .. } => {
+                    // We received capabilities from a peer
+                    ui_logger.log(format!(
+                        "{} Received {} WASM offering(s) from {} (execution: {})",
+                        Icons::wrench(),
+                        response.offerings.len(),
+                        response.peer_name,
+                        if response.wasm_enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    ));
+
+                    // Cache discovered offerings
+                    for offering in &response.offerings {
+                        if let Err(e) = crate::storage::cache_discovered_wasm_offering(
+                            &response.peer_id,
+                            offering,
+                        )
+                        .await
+                        {
+                            error_logger.log_error(&format!(
+                                "Failed to cache WASM offering '{}' from {}: {e}",
+                                offering.name, response.peer_name
+                            ));
+                        }
+                    }
+
+                    // Show offerings to user
+                    for offering in &response.offerings {
+                        ui_logger.log(format!(
+                            "  {} {} (v{}) - {}",
+                            Icons::chart(),
+                            offering.name,
+                            offering.version,
+                            offering.description
+                        ));
+                    }
+                }
+            }
+        }
+        request_response::Event::OutboundFailure { peer, error, .. } => {
+            error_logger.log_error(&format!(
+                "WASM capabilities request to {} failed: {error:?}",
+                peer
+            ));
+        }
+        request_response::Event::InboundFailure { peer, error, .. } => {
+            error_logger.log_error(&format!(
+                "WASM capabilities inbound failure from {}: {error:?}",
+                peer
+            ));
+        }
+        request_response::Event::ResponseSent { peer, .. } => {
+            debug!("WASM capabilities response sent to {}", peer);
+        }
+    }
+}
+
+/// Handle WASM execution request/response events
+pub async fn handle_wasm_execution_event(
+    event: request_response::Event<WasmExecutionRequest, WasmExecutionResponse>,
+    swarm: &mut Swarm<StoryBehaviour>,
+    _local_peer_name: &Option<String>,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
+    match event {
+        request_response::Event::Message { peer, message, .. } => {
+            match message {
+                request_response::Message::Request {
+                    request, channel, ..
+                } => {
+                    debug!(
+                        "Received WASM execution request from {} ({}) for offering {}",
+                        request.from_name, peer, request.offering_id
+                    );
+
+                    // Check if remote execution is enabled
+                    let config = match crate::storage::load_unified_network_config().await {
+                        Ok(config) => config,
+                        Err(e) => {
+                            error_logger.log_error(&format!(
+                                "Failed to load config for WASM execution: {e}"
+                            ));
+                            let response = WasmExecutionResponse {
+                                success: false,
+                                stdout: Vec::new(),
+                                stderr: Vec::new(),
+                                fuel_consumed: 0,
+                                exit_code: -1,
+                                error: Some("Internal configuration error".to_string()),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+                            let _ = swarm
+                                .behaviour_mut()
+                                .wasm_execution
+                                .send_response(channel, response);
+                            return;
+                        }
+                    };
+
+                    if !config.wasm.capability.allow_remote_execution {
+                        ui_logger.log(format!(
+                            "{} Rejected WASM execution request from {} - remote execution disabled",
+                            Icons::cross(),
+                            request.from_name
+                        ));
+                        let response = WasmExecutionResponse {
+                            success: false,
+                            stdout: Vec::new(),
+                            stderr: Vec::new(),
+                            fuel_consumed: 0,
+                            exit_code: -1,
+                            error: Some(
+                                "Remote WASM execution is disabled on this node".to_string(),
+                            ),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        };
+                        let _ = swarm
+                            .behaviour_mut()
+                            .wasm_execution
+                            .send_response(channel, response);
+                        return;
+                    }
+
+                    // Verify the offering exists and is enabled
+                    let offering =
+                        match crate::storage::get_wasm_offering_by_id(&request.offering_id).await {
+                            Ok(Some(offering)) => offering,
+                            Ok(None) => {
+                                ui_logger.log(format!(
+                                    "{} WASM execution request for unknown offering: {}",
+                                    Icons::cross(),
+                                    request.offering_id
+                                ));
+                                let response = WasmExecutionResponse {
+                                    success: false,
+                                    stdout: Vec::new(),
+                                    stderr: Vec::new(),
+                                    fuel_consumed: 0,
+                                    exit_code: -1,
+                                    error: Some(format!(
+                                        "Offering '{}' not found",
+                                        request.offering_id
+                                    )),
+                                    timestamp: std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_secs(),
+                                };
+                                let _ = swarm
+                                    .behaviour_mut()
+                                    .wasm_execution
+                                    .send_response(channel, response);
+                                return;
+                            }
+                            Err(e) => {
+                                error_logger
+                                    .log_error(&format!("Failed to lookup WASM offering: {e}"));
+                                let response = WasmExecutionResponse {
+                                    success: false,
+                                    stdout: Vec::new(),
+                                    stderr: Vec::new(),
+                                    fuel_consumed: 0,
+                                    exit_code: -1,
+                                    error: Some("Internal error looking up offering".to_string()),
+                                    timestamp: std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .unwrap_or_default()
+                                        .as_secs(),
+                                };
+                                let _ = swarm
+                                    .behaviour_mut()
+                                    .wasm_execution
+                                    .send_response(channel, response);
+                                return;
+                            }
+                        };
+
+                    // Verify CID matches
+                    if offering.ipfs_cid != request.ipfs_cid {
+                        ui_logger.log(format!(
+                            "{} CID mismatch for offering {} - expected {}, got {}",
+                            Icons::cross(),
+                            request.offering_id,
+                            offering.ipfs_cid,
+                            request.ipfs_cid
+                        ));
+                        let response = WasmExecutionResponse {
+                            success: false,
+                            stdout: Vec::new(),
+                            stderr: Vec::new(),
+                            fuel_consumed: 0,
+                            exit_code: -1,
+                            error: Some("CID verification failed".to_string()),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        };
+                        let _ = swarm
+                            .behaviour_mut()
+                            .wasm_execution
+                            .send_response(channel, response);
+                        return;
+                    }
+
+                    // Check if offering is enabled
+                    if !offering.enabled {
+                        let response = WasmExecutionResponse {
+                            success: false,
+                            stdout: Vec::new(),
+                            stderr: Vec::new(),
+                            fuel_consumed: 0,
+                            exit_code: -1,
+                            error: Some("Offering is currently disabled".to_string()),
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        };
+                        let _ = swarm
+                            .behaviour_mut()
+                            .wasm_execution
+                            .send_response(channel, response);
+                        return;
+                    }
+
+                    ui_logger.log(format!(
+                        "{} Executing WASM '{}' for {}",
+                        Icons::sync(),
+                        offering.name,
+                        request.from_name
+                    ));
+
+                    // Determine resource limits: use offering defaults, allow request overrides
+                    let fuel_limit = request
+                        .fuel_limit
+                        .unwrap_or(offering.resource_requirements.max_fuel);
+                    let memory_limit_mb = request
+                        .memory_limit_mb
+                        .unwrap_or(offering.resource_requirements.max_memory_mb);
+                    let timeout_secs = request
+                        .timeout_secs
+                        .or(Some(offering.resource_requirements.estimated_timeout_secs));
+
+                    // Create executor with content fetcher
+                    let fetcher = Arc::new(GatewayFetcher::new());
+                    let executor = match WasmExecutor::new(fetcher) {
+                        Ok(exec) => exec,
+                        Err(e) => {
+                            error_logger.log_error(&format!("Failed to create WASM executor: {e}"));
+                            let response = WasmExecutionResponse {
+                                success: false,
+                                stdout: Vec::new(),
+                                stderr: Vec::new(),
+                                fuel_consumed: 0,
+                                exit_code: -1,
+                                error: Some(format!("Failed to initialize WASM executor: {e}")),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+                            let _ = swarm
+                                .behaviour_mut()
+                                .wasm_execution
+                                .send_response(channel, response);
+                            return;
+                        }
+                    };
+
+                    // Build execution request
+                    let exec_request = ExecutionRequest::new(request.ipfs_cid.clone())
+                        .with_input(request.input.clone())
+                        .with_fuel_limit(fuel_limit)
+                        .with_memory_limit_mb(memory_limit_mb)
+                        .with_args(request.args.clone());
+
+                    let exec_request = if let Some(timeout) = timeout_secs {
+                        exec_request.with_timeout_secs(Some(timeout))
+                    } else {
+                        exec_request
+                    };
+
+                    // Execute WASM module
+                    let response = match executor.execute(exec_request).await {
+                        Ok(result) => {
+                            ui_logger.log(format!(
+                                "{} WASM '{}' executed (fuel: {}, exit: {})",
+                                Icons::check(),
+                                offering.name,
+                                result.fuel_consumed,
+                                result.exit_code
+                            ));
+                            WasmExecutionResponse {
+                                success: result.exit_code == 0,
+                                stdout: result.stdout,
+                                stderr: result.stderr,
+                                fuel_consumed: result.fuel_consumed,
+                                exit_code: result.exit_code,
+                                error: None,
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            }
+                        }
+                        Err(e) => {
+                            let error_msg = format!("{e}");
+                            let fuel_consumed = match &e {
+                                WasmExecutionError::FuelExhausted { consumed } => *consumed,
+                                _ => 0,
+                            };
+                            ui_logger.log(format!(
+                                "{} WASM '{}' failed: {}",
+                                Icons::cross(),
+                                offering.name,
+                                error_msg
+                            ));
+                            WasmExecutionResponse {
+                                success: false,
+                                stdout: Vec::new(),
+                                stderr: error_msg.as_bytes().to_vec(),
+                                fuel_consumed,
+                                exit_code: -1,
+                                error: Some(error_msg),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            }
+                        }
+                    };
+
+                    if let Err(e) = swarm
+                        .behaviour_mut()
+                        .wasm_execution
+                        .send_response(channel, response)
+                    {
+                        error_logger
+                            .log_error(&format!("Failed to send WASM execution response: {e:?}"));
+                    }
+                }
+                request_response::Message::Response { response, .. } => {
+                    // We received execution results
+                    if response.success {
+                        ui_logger.log(format!(
+                            "{} WASM execution completed successfully (fuel: {})",
+                            Icons::check(),
+                            response.fuel_consumed
+                        ));
+                        if !response.stdout.is_empty() {
+                            if let Ok(stdout_str) = String::from_utf8(response.stdout.clone()) {
+                                ui_logger.log(format!("stdout: {}", stdout_str));
+                            } else {
+                                ui_logger.log(format!(
+                                    "stdout: ({} bytes of binary data)",
+                                    response.stdout.len()
+                                ));
+                            }
+                        }
+                        if !response.stderr.is_empty() {
+                            if let Ok(stderr_str) = String::from_utf8(response.stderr.clone()) {
+                                ui_logger.log(format!("stderr: {}", stderr_str));
+                            }
+                        }
+                    } else {
+                        ui_logger.log(format!(
+                            "{} WASM execution failed: {}",
+                            Icons::cross(),
+                            response.error.as_deref().unwrap_or("Unknown error")
+                        ));
+                    }
+                }
+            }
+        }
+        request_response::Event::OutboundFailure { peer, error, .. } => {
+            error_logger.log_error(&format!(
+                "WASM execution request to {} failed: {error:?}",
+                peer
+            ));
+            ui_logger.log(format!(
+                "{} WASM execution request failed: {error:?}",
+                Icons::cross()
+            ));
+        }
+        request_response::Event::InboundFailure { peer, error, .. } => {
+            error_logger.log_error(&format!(
+                "WASM execution inbound failure from {}: {error:?}",
+                peer
+            ));
+        }
+        request_response::Event::ResponseSent { peer, .. } => {
+            debug!("WASM execution response sent to {}", peer);
+        }
+    }
 }
 
 // Connection throttling to prevent rapid reconnection attempts

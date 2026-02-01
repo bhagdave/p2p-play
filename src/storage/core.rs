@@ -1393,6 +1393,299 @@ pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::ty
     Ok(stories)
 }
 
+// ============================================================================
+// WASM Offering Storage Operations
+// ============================================================================
+
+/// Create a new WASM offering
+pub async fn create_wasm_offering(offering: &crate::types::WasmOffering) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let parameters_json = serde_json::to_string(&offering.parameters)?;
+    let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
+
+    conn.execute(
+        r#"
+        INSERT INTO wasm_offerings
+        (id, name, description, ipfs_cid, parameters_json, resource_requirements_json, version, enabled, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#,
+        rusqlite::params![
+            &offering.id,
+            &offering.name,
+            &offering.description,
+            &offering.ipfs_cid,
+            &parameters_json,
+            &resource_requirements_json,
+            &offering.version,
+            utils::rust_bool_to_db(offering.enabled),
+            offering.created_at as i64,
+            offering.updated_at as i64,
+        ],
+    )?;
+
+    Ok(())
+}
+
+/// Read all local WASM offerings
+pub async fn read_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOffering>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, name, description, ipfs_cid, parameters_json, resource_requirements_json,
+               version, enabled, created_at, updated_at
+        FROM wasm_offerings
+        ORDER BY name
+        "#,
+    )?;
+
+    let offering_iter = stmt.query_map([], mappers::map_row_to_wasm_offering)?;
+
+    let mut offerings = Vec::new();
+    for offering in offering_iter {
+        offerings.push(offering?);
+    }
+
+    Ok(offerings)
+}
+
+/// Read only enabled WASM offerings (for capability advertisement)
+pub async fn read_enabled_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOffering>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, name, description, ipfs_cid, parameters_json, resource_requirements_json,
+               version, enabled, created_at, updated_at
+        FROM wasm_offerings
+        WHERE enabled = 1
+        ORDER BY name
+        "#,
+    )?;
+
+    let offering_iter = stmt.query_map([], mappers::map_row_to_wasm_offering)?;
+
+    let mut offerings = Vec::new();
+    for offering in offering_iter {
+        offerings.push(offering?);
+    }
+
+    Ok(offerings)
+}
+
+/// Get a WASM offering by its ID
+pub async fn get_wasm_offering_by_id(
+    id: &str,
+) -> StorageResult<Option<crate::types::WasmOffering>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, name, description, ipfs_cid, parameters_json, resource_requirements_json,
+               version, enabled, created_at, updated_at
+        FROM wasm_offerings
+        WHERE id = ?
+        "#,
+    )?;
+
+    let result = stmt.query_row([id], mappers::map_row_to_wasm_offering);
+
+    match result {
+        Ok(offering) => Ok(Some(offering)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Update a WASM offering
+pub async fn update_wasm_offering(offering: &crate::types::WasmOffering) -> StorageResult<bool> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let parameters_json = serde_json::to_string(&offering.parameters)?;
+    let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
+    let updated_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let rows_affected = conn.execute(
+        r#"
+        UPDATE wasm_offerings
+        SET name = ?, description = ?, ipfs_cid = ?, parameters_json = ?,
+            resource_requirements_json = ?, version = ?, enabled = ?, updated_at = ?
+        WHERE id = ?
+        "#,
+        rusqlite::params![
+            &offering.name,
+            &offering.description,
+            &offering.ipfs_cid,
+            &parameters_json,
+            &resource_requirements_json,
+            &offering.version,
+            utils::rust_bool_to_db(offering.enabled),
+            updated_at as i64,
+            &offering.id,
+        ],
+    )?;
+
+    Ok(rows_affected > 0)
+}
+
+/// Toggle a WASM offering's enabled state
+pub async fn toggle_wasm_offering(id: &str, enabled: bool) -> StorageResult<bool> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let updated_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let rows_affected = conn.execute(
+        "UPDATE wasm_offerings SET enabled = ?, updated_at = ? WHERE id = ?",
+        rusqlite::params![utils::rust_bool_to_db(enabled), updated_at as i64, id],
+    )?;
+
+    Ok(rows_affected > 0)
+}
+
+/// Delete a WASM offering
+pub async fn delete_wasm_offering(id: &str) -> StorageResult<bool> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let rows_affected = conn.execute("DELETE FROM wasm_offerings WHERE id = ?", [id])?;
+
+    Ok(rows_affected > 0)
+}
+
+// ============================================================================
+// Discovered WASM Offerings Cache Operations
+// ============================================================================
+
+/// Cache a discovered WASM offering from another peer
+pub async fn cache_discovered_wasm_offering(
+    peer_id: &str,
+    offering: &crate::types::WasmOffering,
+) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let parameters_json = serde_json::to_string(&offering.parameters)?;
+    let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    conn.execute(
+        r#"
+        INSERT OR REPLACE INTO discovered_wasm_offerings
+        (id, peer_id, name, description, ipfs_cid, parameters_json, resource_requirements_json,
+         version, discovered_at, last_seen_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+                COALESCE((SELECT discovered_at FROM discovered_wasm_offerings WHERE peer_id = ? AND ipfs_cid = ?), ?),
+                ?)
+        "#,
+        rusqlite::params![
+            &offering.id,
+            peer_id,
+            &offering.name,
+            &offering.description,
+            &offering.ipfs_cid,
+            &parameters_json,
+            &resource_requirements_json,
+            &offering.version,
+            peer_id,
+            &offering.ipfs_cid,
+            now as i64,
+            now as i64,
+        ],
+    )?;
+
+    Ok(())
+}
+
+/// Get cached WASM offerings from a specific peer
+pub async fn get_cached_wasm_offerings_by_peer(
+    peer_id: &str,
+) -> StorageResult<Vec<crate::types::WasmOffering>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, peer_id, name, description, ipfs_cid, parameters_json, resource_requirements_json,
+               version, discovered_at, last_seen_at
+        FROM discovered_wasm_offerings
+        WHERE peer_id = ?
+        ORDER BY name
+        "#,
+    )?;
+
+    let offering_iter = stmt.query_map([peer_id], |row| {
+        let (_, offering) = mappers::map_row_to_discovered_wasm_offering(row)?;
+        Ok(offering)
+    })?;
+
+    let mut offerings = Vec::new();
+    for offering in offering_iter {
+        offerings.push(offering?);
+    }
+
+    Ok(offerings)
+}
+
+/// Get all cached WASM offerings from all peers
+pub async fn get_all_cached_wasm_offerings()
+-> StorageResult<Vec<(String, crate::types::WasmOffering)>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT id, peer_id, name, description, ipfs_cid, parameters_json, resource_requirements_json,
+               version, discovered_at, last_seen_at
+        FROM discovered_wasm_offerings
+        ORDER BY peer_id, name
+        "#,
+    )?;
+
+    let offering_iter = stmt.query_map([], mappers::map_row_to_discovered_wasm_offering)?;
+
+    let mut offerings = Vec::new();
+    for offering in offering_iter {
+        offerings.push(offering?);
+    }
+
+    Ok(offerings)
+}
+
+/// Clean up stale discovered WASM offerings (older than max_age_secs)
+pub async fn cleanup_stale_wasm_offerings(max_age_secs: u64) -> StorageResult<usize> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let cutoff = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+        .saturating_sub(max_age_secs);
+
+    let rows_affected = conn.execute(
+        "DELETE FROM discovered_wasm_offerings WHERE last_seen_at < ?",
+        [cutoff as i64],
+    )?;
+
+    Ok(rows_affected)
+}
+
 #[cfg(test)]
 mod read_status_tests {
     use super::*;

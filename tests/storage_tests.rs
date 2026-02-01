@@ -2,6 +2,7 @@ use p2p_play::storage::*;
 use p2p_play::types::*;
 use tempfile::NamedTempFile;
 use tokio::sync::mpsc;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn test_write_and_read_stories() {
@@ -642,4 +643,364 @@ async fn test_bootstrap_config_validation_edge_cases() {
             .to_string(),
     );
     assert!(config.validate().is_ok());
+}
+
+// ============================================================================
+// WASM Offering Storage Tests
+// ============================================================================
+
+async fn setup_wasm_test_db() -> String {
+    let unique_db_path = format!("/tmp/test_wasm_{}.db", Uuid::new_v4());
+    unsafe {
+        std::env::set_var("TEST_DATABASE_PATH", &unique_db_path);
+    }
+
+    // Reset database connection to use the new path
+    reset_db_connection_for_testing().await.unwrap();
+
+    // Initialize the test database (this creates all tables)
+    ensure_stories_file_exists().await.unwrap();
+
+    unique_db_path
+}
+
+async fn cleanup_wasm_test_db(db_path: &str) {
+    unsafe {
+        std::env::remove_var("TEST_DATABASE_PATH");
+    }
+    let _ = std::fs::remove_file(db_path);
+}
+
+fn create_test_wasm_offering(name: &str, enabled: bool) -> WasmOffering {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    WasmOffering {
+        id: Uuid::new_v4().to_string(),
+        name: name.to_string(),
+        description: format!("Test offering: {}", name),
+        ipfs_cid: format!("Qm{}", Uuid::new_v4().to_string().replace("-", "")),
+        parameters: vec![],
+        resource_requirements: WasmResourceRequirements {
+            min_fuel: 1000,
+            max_fuel: 100000,
+            min_memory_mb: 16,
+            max_memory_mb: 256,
+            estimated_timeout_secs: 30,
+        },
+        version: "1.0.0".to_string(),
+        enabled,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+#[tokio::test]
+async fn test_create_and_read_wasm_offering() {
+    let db_path = setup_wasm_test_db().await;
+
+    // Create a test offering
+    let offering = create_test_wasm_offering("test-module", true);
+    create_wasm_offering(&offering).await.unwrap();
+
+    // Read all offerings
+    let offerings = read_wasm_offerings().await.unwrap();
+    assert_eq!(offerings.len(), 1);
+    assert_eq!(offerings[0].name, "test-module");
+    assert_eq!(offerings[0].id, offering.id);
+    assert!(offerings[0].enabled);
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_read_enabled_wasm_offerings_filters_disabled() {
+    let db_path = setup_wasm_test_db().await;
+
+    // Create one enabled and one disabled offering
+    let enabled_offering = create_test_wasm_offering("enabled-module", true);
+    let disabled_offering = create_test_wasm_offering("disabled-module", false);
+
+    create_wasm_offering(&enabled_offering).await.unwrap();
+    create_wasm_offering(&disabled_offering).await.unwrap();
+
+    // Read all offerings - should have 2
+    let all_offerings = read_wasm_offerings().await.unwrap();
+    assert_eq!(all_offerings.len(), 2);
+
+    // Read enabled offerings - should have 1
+    let enabled_offerings = read_enabled_wasm_offerings().await.unwrap();
+    assert_eq!(enabled_offerings.len(), 1);
+    assert_eq!(enabled_offerings[0].name, "enabled-module");
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_get_wasm_offering_by_id_found() {
+    let db_path = setup_wasm_test_db().await;
+
+    let offering = create_test_wasm_offering("findable-module", true);
+    let offering_id = offering.id.clone();
+    create_wasm_offering(&offering).await.unwrap();
+
+    // Get by ID
+    let result = get_wasm_offering_by_id(&offering_id).await.unwrap();
+    assert!(result.is_some());
+    let found = result.unwrap();
+    assert_eq!(found.id, offering_id);
+    assert_eq!(found.name, "findable-module");
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_get_wasm_offering_by_id_not_found() {
+    let db_path = setup_wasm_test_db().await;
+
+    // Try to get a non-existent offering
+    let result = get_wasm_offering_by_id("non-existent-id").await.unwrap();
+    assert!(result.is_none());
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_update_wasm_offering() {
+    let db_path = setup_wasm_test_db().await;
+
+    // Create an offering
+    let mut offering = create_test_wasm_offering("original-name", true);
+    create_wasm_offering(&offering).await.unwrap();
+
+    // Update the offering
+    offering.name = "updated-name".to_string();
+    offering.description = "Updated description".to_string();
+    offering.version = "2.0.0".to_string();
+    offering.enabled = false;
+
+    let updated = update_wasm_offering(&offering).await.unwrap();
+    assert!(updated);
+
+    // Verify the update
+    let result = get_wasm_offering_by_id(&offering.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.name, "updated-name");
+    assert_eq!(result.description, "Updated description");
+    assert_eq!(result.version, "2.0.0");
+    assert!(!result.enabled);
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_toggle_wasm_offering() {
+    let db_path = setup_wasm_test_db().await;
+
+    // Create an enabled offering
+    let offering = create_test_wasm_offering("toggleable-module", true);
+    let offering_id = offering.id.clone();
+    create_wasm_offering(&offering).await.unwrap();
+
+    // Toggle to disabled
+    let toggled = toggle_wasm_offering(&offering_id, false).await.unwrap();
+    assert!(toggled);
+
+    // Verify it's disabled
+    let result = get_wasm_offering_by_id(&offering_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!result.enabled);
+
+    // Toggle back to enabled
+    let toggled = toggle_wasm_offering(&offering_id, true).await.unwrap();
+    assert!(toggled);
+
+    // Verify it's enabled again
+    let result = get_wasm_offering_by_id(&offering_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(result.enabled);
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_delete_wasm_offering() {
+    let db_path = setup_wasm_test_db().await;
+
+    // Create an offering
+    let offering = create_test_wasm_offering("deletable-module", true);
+    let offering_id = offering.id.clone();
+    create_wasm_offering(&offering).await.unwrap();
+
+    // Verify it exists
+    let result = get_wasm_offering_by_id(&offering_id).await.unwrap();
+    assert!(result.is_some());
+
+    // Delete it
+    let deleted = delete_wasm_offering(&offering_id).await.unwrap();
+    assert!(deleted);
+
+    // Verify it's gone
+    let result = get_wasm_offering_by_id(&offering_id).await.unwrap();
+    assert!(result.is_none());
+
+    // Deleting again should return false
+    let deleted_again = delete_wasm_offering(&offering_id).await.unwrap();
+    assert!(!deleted_again);
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+// ============================================================================
+// Discovered WASM Offerings Cache Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_cache_discovered_wasm_offering() {
+    let db_path = setup_wasm_test_db().await;
+
+    let peer_id = "12D3KooWTestPeer1";
+    let offering = create_test_wasm_offering("cached-module", true);
+
+    // Cache the offering
+    cache_discovered_wasm_offering(peer_id, &offering)
+        .await
+        .unwrap();
+
+    // Verify it's cached
+    let cached = get_cached_wasm_offerings_by_peer(peer_id).await.unwrap();
+    assert_eq!(cached.len(), 1);
+    assert_eq!(cached[0].name, "cached-module");
+    assert_eq!(cached[0].id, offering.id);
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_cache_discovered_wasm_offering_updates_last_seen() {
+    let db_path = setup_wasm_test_db().await;
+
+    let peer_id = "12D3KooWTestPeer2";
+    let offering = create_test_wasm_offering("updatable-cached-module", true);
+
+    // Cache the offering twice
+    cache_discovered_wasm_offering(peer_id, &offering)
+        .await
+        .unwrap();
+
+    // Small delay to ensure time difference
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    cache_discovered_wasm_offering(peer_id, &offering)
+        .await
+        .unwrap();
+
+    // Should still only have one entry (INSERT OR REPLACE)
+    let cached = get_cached_wasm_offerings_by_peer(peer_id).await.unwrap();
+    assert_eq!(cached.len(), 1);
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_get_cached_wasm_offerings_by_peer() {
+    let db_path = setup_wasm_test_db().await;
+
+    let peer1 = "12D3KooWTestPeer3";
+    let peer2 = "12D3KooWTestPeer4";
+
+    // Cache offerings from two different peers
+    let offering1 = create_test_wasm_offering("peer1-module", true);
+    let offering2 = create_test_wasm_offering("peer2-module", true);
+
+    cache_discovered_wasm_offering(peer1, &offering1)
+        .await
+        .unwrap();
+    cache_discovered_wasm_offering(peer2, &offering2)
+        .await
+        .unwrap();
+
+    // Get offerings for peer1 only
+    let peer1_offerings = get_cached_wasm_offerings_by_peer(peer1).await.unwrap();
+    assert_eq!(peer1_offerings.len(), 1);
+    assert_eq!(peer1_offerings[0].name, "peer1-module");
+
+    // Get offerings for peer2 only
+    let peer2_offerings = get_cached_wasm_offerings_by_peer(peer2).await.unwrap();
+    assert_eq!(peer2_offerings.len(), 1);
+    assert_eq!(peer2_offerings[0].name, "peer2-module");
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_get_all_cached_wasm_offerings() {
+    let db_path = setup_wasm_test_db().await;
+
+    let peer1 = "12D3KooWTestPeer5";
+    let peer2 = "12D3KooWTestPeer6";
+
+    // Cache multiple offerings from different peers
+    let offering1 = create_test_wasm_offering("module-a", true);
+    let offering2 = create_test_wasm_offering("module-b", true);
+    let offering3 = create_test_wasm_offering("module-c", true);
+
+    cache_discovered_wasm_offering(peer1, &offering1)
+        .await
+        .unwrap();
+    cache_discovered_wasm_offering(peer1, &offering2)
+        .await
+        .unwrap();
+    cache_discovered_wasm_offering(peer2, &offering3)
+        .await
+        .unwrap();
+
+    // Get all cached offerings
+    let all_cached = get_all_cached_wasm_offerings().await.unwrap();
+    assert_eq!(all_cached.len(), 3);
+
+    // Verify the structure includes peer IDs
+    let peer_ids: Vec<&String> = all_cached.iter().map(|(peer_id, _)| peer_id).collect();
+    assert!(peer_ids.contains(&&peer1.to_string()));
+    assert!(peer_ids.contains(&&peer2.to_string()));
+
+    cleanup_wasm_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_cleanup_stale_wasm_offerings() {
+    let db_path = setup_wasm_test_db().await;
+
+    let peer_id = "12D3KooWTestPeer7";
+    let offering = create_test_wasm_offering("stale-module", true);
+
+    // Cache the offering
+    cache_discovered_wasm_offering(peer_id, &offering)
+        .await
+        .unwrap();
+
+    // Verify it exists
+    let cached = get_cached_wasm_offerings_by_peer(peer_id).await.unwrap();
+    assert_eq!(cached.len(), 1);
+
+    // Wait a moment so the offering's last_seen_at is in the past
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+    // Cleanup with 0 seconds max age (should delete everything older than now)
+    let cleaned = cleanup_stale_wasm_offerings(0).await.unwrap();
+    assert_eq!(cleaned, 1);
+
+    // Verify it's gone
+    let cached = get_cached_wasm_offerings_by_peer(peer_id).await.unwrap();
+    assert_eq!(cached.len(), 0);
+
+    cleanup_wasm_test_db(&db_path).await;
 }

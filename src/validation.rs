@@ -8,6 +8,15 @@ impl ContentLimits {
     pub const PEER_NAME_MAX: usize = 30;
     pub const DIRECT_MESSAGE_MAX: usize = 1_000;
     pub const NODE_DESCRIPTION_MAX: usize = 2_000;
+
+    // WASM offering limits
+    pub const WASM_OFFERING_NAME_MAX: usize = 100;
+    pub const WASM_OFFERING_DESCRIPTION_MAX: usize = 500;
+    pub const WASM_IPFS_CID_MAX: usize = 100;
+    pub const WASM_VERSION_MAX: usize = 20;
+    pub const WASM_PARAM_NAME_MAX: usize = 50;
+    pub const WASM_PARAM_TYPE_MAX: usize = 20;
+    pub const WASM_PARAM_DESCRIPTION_MAX: usize = 200;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -329,6 +338,200 @@ impl ContentValidator {
                 expected: "positive integer".to_string(),
             }),
         }
+    }
+
+    // ========================================================================
+    // WASM Offering Validation
+    // ========================================================================
+
+    /// Validate a WASM offering name
+    pub fn validate_wasm_offering_name(name: &str) -> ValidationResult<String> {
+        let sanitized = ContentSanitizer::sanitize_for_storage(name);
+
+        if sanitized.trim().is_empty() {
+            return Err(ValidationError::Empty);
+        }
+
+        if sanitized.len() > ContentLimits::WASM_OFFERING_NAME_MAX {
+            return Err(ValidationError::TooLong {
+                max_length: ContentLimits::WASM_OFFERING_NAME_MAX,
+                actual_length: sanitized.len(),
+            });
+        }
+
+        // WASM offering names should be alphanumeric with hyphens, underscores, and dots
+        let invalid_chars: Vec<char> = sanitized
+            .chars()
+            .filter(|&ch| !Self::is_valid_wasm_name_char(ch))
+            .collect();
+
+        if !invalid_chars.is_empty() {
+            return Err(ValidationError::InvalidCharacters { invalid_chars });
+        }
+
+        Ok(sanitized.trim().to_string())
+    }
+
+    /// Validate a WASM offering description
+    pub fn validate_wasm_offering_description(description: &str) -> ValidationResult<String> {
+        let sanitized = ContentSanitizer::sanitize_for_storage(description);
+
+        if sanitized.trim().is_empty() {
+            return Err(ValidationError::Empty);
+        }
+
+        if sanitized.len() > ContentLimits::WASM_OFFERING_DESCRIPTION_MAX {
+            return Err(ValidationError::TooLong {
+                max_length: ContentLimits::WASM_OFFERING_DESCRIPTION_MAX,
+                actual_length: sanitized.len(),
+            });
+        }
+
+        Ok(sanitized.trim().to_string())
+    }
+
+    /// Validate an IPFS CID
+    pub fn validate_ipfs_cid(cid: &str) -> ValidationResult<String> {
+        let sanitized = ContentSanitizer::sanitize_for_storage(cid);
+
+        if sanitized.trim().is_empty() {
+            return Err(ValidationError::Empty);
+        }
+
+        if sanitized.len() > ContentLimits::WASM_IPFS_CID_MAX {
+            return Err(ValidationError::TooLong {
+                max_length: ContentLimits::WASM_IPFS_CID_MAX,
+                actual_length: sanitized.len(),
+            });
+        }
+
+        // IPFS CID v0 starts with "Qm", CID v1 typically starts with "bafy"
+        if !sanitized.starts_with("Qm") && !sanitized.starts_with("bafy") {
+            return Err(ValidationError::InvalidFormat {
+                expected: "Valid IPFS CID (starting with Qm or bafy)".to_string(),
+            });
+        }
+
+        // CID v0 is base58btc encoded and typically 46 characters - which is not enforced here
+        // CID v1 can vary in length but should be alphanumeric
+        let is_valid = sanitized.chars().all(|c| c.is_alphanumeric());
+        if !is_valid {
+            return Err(ValidationError::InvalidFormat {
+                expected: "Alphanumeric IPFS CID".to_string(),
+            });
+        }
+
+        Ok(sanitized.trim().to_string())
+    }
+
+    /// Validate a semantic version string (X.Y.Z format)
+    pub fn validate_wasm_version(version: &str) -> ValidationResult<String> {
+        let sanitized = ContentSanitizer::sanitize_for_storage(version);
+
+        if sanitized.trim().is_empty() {
+            return Err(ValidationError::Empty);
+        }
+
+        if sanitized.len() > ContentLimits::WASM_VERSION_MAX {
+            return Err(ValidationError::TooLong {
+                max_length: ContentLimits::WASM_VERSION_MAX,
+                actual_length: sanitized.len(),
+            });
+        }
+
+        // Basic semantic version validation: should have numeric parts separated by dots
+        let parts: Vec<&str> = sanitized.split('.').collect();
+        if parts.len() < 2 || parts.len() > 4 {
+            return Err(ValidationError::InvalidFormat {
+                expected: "Semantic version (e.g., 1.0.0)".to_string(),
+            });
+        }
+
+        for part in &parts {
+            // Allow optional pre-release suffix like -alpha, -beta, -rc1
+            let numeric_part = part.split('-').next().unwrap_or(*part);
+            if !numeric_part.chars().all(|c| c.is_ascii_digit()) {
+                return Err(ValidationError::InvalidFormat {
+                    expected: "Semantic version with numeric components".to_string(),
+                });
+            }
+        }
+
+        Ok(sanitized.trim().to_string())
+    }
+
+    /// Validate a WASM parameter name
+    pub fn validate_wasm_param_name(name: &str) -> ValidationResult<String> {
+        let sanitized = ContentSanitizer::sanitize_for_storage(name)
+            .trim()
+            .to_string();
+
+        if sanitized.is_empty() {
+            return Err(ValidationError::Empty);
+        }
+
+        if sanitized.len() > ContentLimits::WASM_PARAM_NAME_MAX {
+            return Err(ValidationError::TooLong {
+                max_length: ContentLimits::WASM_PARAM_NAME_MAX,
+                actual_length: sanitized.len(),
+            });
+        }
+
+        // Parameter names should be alphanumeric with underscores (like identifiers)
+        let invalid_chars: Vec<char> = sanitized
+            .chars()
+            .filter(|&ch| !ch.is_alphanumeric() && ch != '_')
+            .collect();
+
+        if !invalid_chars.is_empty() {
+            return Err(ValidationError::InvalidCharacters { invalid_chars });
+        }
+
+        // First character should not be a digit
+        if sanitized
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
+            return Err(ValidationError::InvalidFormat {
+                expected: "Parameter name starting with letter or underscore".to_string(),
+            });
+        }
+
+        Ok(sanitized)
+    }
+
+    /// Validate a WASM parameter type
+    pub fn validate_wasm_param_type(param_type: &str) -> ValidationResult<String> {
+        let sanitized = ContentSanitizer::sanitize_for_storage(param_type);
+
+        if sanitized.trim().is_empty() {
+            return Err(ValidationError::Empty);
+        }
+
+        if sanitized.len() > ContentLimits::WASM_PARAM_TYPE_MAX {
+            return Err(ValidationError::TooLong {
+                max_length: ContentLimits::WASM_PARAM_TYPE_MAX,
+                actual_length: sanitized.len(),
+            });
+        }
+
+        // Valid parameter types
+        let valid_types = ["string", "bytes", "json", "int", "float", "bool", "file"];
+        let type_lower = sanitized.to_lowercase();
+
+        if !valid_types.contains(&type_lower.as_str()) {
+            return Err(ValidationError::InvalidFormat {
+                expected: format!("Valid parameter type (one of: {})", valid_types.join(", ")),
+            });
+        }
+
+        Ok(type_lower)
+    }
+
+    fn is_valid_wasm_name_char(ch: char) -> bool {
+        ch.is_alphanumeric() || matches!(ch, '-' | '_' | '.')
     }
 }
 
