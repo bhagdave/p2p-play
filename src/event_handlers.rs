@@ -1,3 +1,4 @@
+use crate::content_fetcher::GatewayFetcher;
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
@@ -15,6 +16,7 @@ use crate::network::{
     WasmExecutionResponse,
 };
 use crate::storage::{load_node_description, save_received_story};
+use crate::wasm_executor::{ExecutionRequest, WasmExecutionError, WasmExecutor};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
@@ -2369,19 +2371,105 @@ pub async fn handle_wasm_execution_event(
                         request.from_name
                     ));
 
-                    // TODO: Actual WASM execution would happen here using WasmExecutor
-                    // For now, return a placeholder response indicating the feature is not yet fully implemented
-                    let response = WasmExecutionResponse {
-                        success: false,
-                        stdout: Vec::new(),
-                        stderr: b"WASM execution not yet fully implemented".to_vec(),
-                        fuel_consumed: 0,
-                        exit_code: -1,
-                        error: Some("WASM execution not yet fully implemented".to_string()),
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
+                    // Determine resource limits: use offering defaults, allow request overrides
+                    let fuel_limit = request
+                        .fuel_limit
+                        .unwrap_or(offering.resource_requirements.max_fuel);
+                    let memory_limit_mb = request
+                        .memory_limit_mb
+                        .unwrap_or(offering.resource_requirements.max_memory_mb);
+                    let timeout_secs = request
+                        .timeout_secs
+                        .or(Some(offering.resource_requirements.estimated_timeout_secs));
+
+                    // Create executor with content fetcher
+                    let fetcher = Arc::new(GatewayFetcher::new());
+                    let executor = match WasmExecutor::new(fetcher) {
+                        Ok(exec) => exec,
+                        Err(e) => {
+                            error_logger
+                                .log_error(&format!("Failed to create WASM executor: {e}"));
+                            let response = WasmExecutionResponse {
+                                success: false,
+                                stdout: Vec::new(),
+                                stderr: Vec::new(),
+                                fuel_consumed: 0,
+                                exit_code: -1,
+                                error: Some(format!("Failed to initialize WASM executor: {e}")),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+                            let _ = swarm
+                                .behaviour_mut()
+                                .wasm_execution
+                                .send_response(channel, response);
+                            return;
+                        }
+                    };
+
+                    // Build execution request
+                    let exec_request = ExecutionRequest::new(request.ipfs_cid.clone())
+                        .with_input(request.input.clone())
+                        .with_fuel_limit(fuel_limit)
+                        .with_memory_limit_mb(memory_limit_mb)
+                        .with_args(request.args.clone());
+
+                    let exec_request = if let Some(timeout) = timeout_secs {
+                        exec_request.with_timeout_secs(Some(timeout))
+                    } else {
+                        exec_request
+                    };
+
+                    // Execute WASM module
+                    let response = match executor.execute(exec_request).await {
+                        Ok(result) => {
+                            ui_logger.log(format!(
+                                "{} WASM '{}' executed (fuel: {}, exit: {})",
+                                Icons::check(),
+                                offering.name,
+                                result.fuel_consumed,
+                                result.exit_code
+                            ));
+                            WasmExecutionResponse {
+                                success: result.exit_code == 0,
+                                stdout: result.stdout,
+                                stderr: result.stderr,
+                                fuel_consumed: result.fuel_consumed,
+                                exit_code: result.exit_code,
+                                error: None,
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            }
+                        }
+                        Err(e) => {
+                            let error_msg = format!("{e}");
+                            let fuel_consumed = match &e {
+                                WasmExecutionError::FuelExhausted { consumed } => *consumed,
+                                _ => 0,
+                            };
+                            ui_logger.log(format!(
+                                "{} WASM '{}' failed: {}",
+                                Icons::cross(),
+                                offering.name,
+                                error_msg
+                            ));
+                            WasmExecutionResponse {
+                                success: false,
+                                stdout: Vec::new(),
+                                stderr: error_msg.as_bytes().to_vec(),
+                                fuel_consumed,
+                                exit_code: -1,
+                                error: Some(error_msg),
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            }
+                        }
                     };
 
                     if let Err(e) = swarm
