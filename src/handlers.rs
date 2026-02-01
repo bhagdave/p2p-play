@@ -2584,7 +2584,10 @@ async fn handle_wasm_config(
                                 }
                             ));
                         }
-                        Err(_) => {}
+                        Err(e) => {
+                            error_logger.log_error(&format!("Failed to load config: {e}"));
+                            ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+                        }
                     }
                 }
             }
@@ -2631,7 +2634,10 @@ async fn handle_wasm_config(
                                 }
                             ));
                         }
-                        Err(_) => {}
+                        Err(e) => {
+                            error_logger.log_error(&format!("Failed to load config: {e}"));
+                            ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+                        }
                     }
                 }
             }
