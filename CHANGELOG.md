@@ -13,7 +13,7 @@ All changes to this project will be documented in this file.
   - **CRUD Operations**: Full create, read, update, delete operations for managing local WASM offerings
   - **Validation**: Comprehensive input validation for offering names, descriptions, IPFS CIDs (v0/v1), semantic versions, and parameter types
   - **Command Interface**: New `wasm` command with subcommands:
-    - `wasm create <name>|<desc>|<ipfs_cid>` - Create a new WASM offering
+    - `wasm create <name>|<desc>|<ipfs_cid>|<version>` - Create a new WASM offering
     - `wasm ls [local|remote|all]` - List WASM offerings
     - `wasm show <id>` - Show offering details including parameters and resource requirements
     - `wasm toggle <id>` - Enable/disable an offering
