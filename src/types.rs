@@ -1,5 +1,6 @@
 use crate::circuit_breaker;
 use crate::errors::ConfigResult;
+use crate::validation::ContentSanitizer;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
     NodeDescriptionRequest, NodeDescriptionResponse,
@@ -1192,6 +1193,19 @@ impl WasmOffering {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        // Sanitize and check for dangerous content
+        let sanitized_name = ContentSanitizer::sanitize_for_storage(&self.name);
+        if sanitized_name != self.name {
+            return Err(
+                "name contains invalid characters (control chars or ANSI escapes)".to_string(),
+            );
+        }
+
+        let sanitized_description = ContentSanitizer::sanitize_for_storage(&self.description);
+        if sanitized_description != self.description {
+            return Err("description contains invalid characters".to_string());
+        }
+
         if self.name.is_empty() {
             return Err("name cannot be empty".to_string());
         }
