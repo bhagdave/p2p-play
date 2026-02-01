@@ -324,31 +324,46 @@ async fn test_wasm_config_validation_success() {
 #[tokio::test]
 async fn test_wasm_config_validation_failures() {
     use p2p_play::types::WasmConfig;
-    
+
     // Test zero fuel limit
     let config = WasmConfig {
         default_fuel_limit: 0,
         ..Default::default()
     };
     assert!(config.validate().is_err());
-    assert!(config.validate().unwrap_err().contains("default_fuel_limit must be greater than 0"));
-    
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("default_fuel_limit must be greater than 0")
+    );
+
     // Test zero default memory
     let config = WasmConfig {
         default_memory_limit_mb: 0,
         ..Default::default()
     };
     assert!(config.validate().is_err());
-    assert!(config.validate().unwrap_err().contains("default_memory_limit_mb must be greater than 0"));
-    
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("default_memory_limit_mb must be greater than 0")
+    );
+
     // Test zero max memory
     let config = WasmConfig {
         max_memory_limit_mb: 0,
         ..Default::default()
     };
     assert!(config.validate().is_err());
-    assert!(config.validate().unwrap_err().contains("max_memory_limit_mb must be greater than 0"));
-    
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("max_memory_limit_mb must be greater than 0")
+    );
+
     // Test default exceeds max
     let config = WasmConfig {
         default_memory_limit_mb: 2048,
@@ -356,21 +371,31 @@ async fn test_wasm_config_validation_failures() {
         ..Default::default()
     };
     assert!(config.validate().is_err());
-    assert!(config.validate().unwrap_err().contains("must not exceed max_memory_limit_mb"));
-    
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("must not exceed max_memory_limit_mb")
+    );
+
     // Test zero timeout
     let config = WasmConfig {
         default_timeout_secs: 0,
         ..Default::default()
     };
     assert!(config.validate().is_err());
-    assert!(config.validate().unwrap_err().contains("default_timeout_secs must be greater than 0"));
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .contains("default_timeout_secs must be greater than 0")
+    );
 }
 
 #[tokio::test]
 async fn test_wasm_config_in_unified_config() {
     use p2p_play::types::UnifiedNetworkConfig;
-    
+
     let unified_config = UnifiedNetworkConfig::new();
     assert_eq!(unified_config.wasm.default_fuel_limit, 10_000_000);
     assert_eq!(unified_config.wasm.default_memory_limit_mb, 64);
@@ -381,25 +406,31 @@ async fn test_wasm_config_in_unified_config() {
 #[tokio::test]
 async fn test_wasm_config_serialization() {
     use p2p_play::types::WasmConfig;
-    
+
     let config = WasmConfig::new();
     let json = serde_json::to_string(&config).unwrap();
     let deserialized: WasmConfig = serde_json::from_str(&json).unwrap();
-    
+
     assert_eq!(config.default_fuel_limit, deserialized.default_fuel_limit);
-    assert_eq!(config.default_memory_limit_mb, deserialized.default_memory_limit_mb);
+    assert_eq!(
+        config.default_memory_limit_mb,
+        deserialized.default_memory_limit_mb
+    );
     assert_eq!(config.max_memory_limit_mb, deserialized.max_memory_limit_mb);
-    assert_eq!(config.default_timeout_secs, deserialized.default_timeout_secs);
+    assert_eq!(
+        config.default_timeout_secs,
+        deserialized.default_timeout_secs
+    );
 }
 
 #[tokio::test]
 async fn test_wasm_config_backward_compatibility() {
     use p2p_play::types::UnifiedNetworkConfig;
     use tempfile::NamedTempFile;
-    
+
     let temp_file = NamedTempFile::new().unwrap();
     let path = temp_file.path().to_str().unwrap();
-    
+
     // Write a config without wasm field (simulating old config)
     let old_config = r#"{
         "bootstrap": {
@@ -463,14 +494,13 @@ async fn test_wasm_config_backward_compatibility() {
         }
     }"#;
     fs::write(path, old_config).unwrap();
-    
+
     // Load config - should use defaults for wasm field
     let loaded_config = load_unified_network_config_from_path(path).await.unwrap();
-    
+
     // Verify wasm config got default values
     assert_eq!(loaded_config.wasm.default_fuel_limit, 10_000_000);
     assert_eq!(loaded_config.wasm.default_memory_limit_mb, 64);
     assert_eq!(loaded_config.wasm.max_memory_limit_mb, 1024);
     assert_eq!(loaded_config.wasm.default_timeout_secs, 30);
 }
-

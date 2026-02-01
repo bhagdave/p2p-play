@@ -70,7 +70,8 @@ pub fn create_test_swarm_with_keypair(
     let wasm_caps_protocol = StreamProtocol::new("/wasm-caps/1.0.0");
     let wasm_caps_protocols =
         iter::once((wasm_caps_protocol, request_response::ProtocolSupport::Full));
-    let wasm_capabilities = request_response::cbor::Behaviour::new(wasm_caps_protocols, cfg.clone());
+    let wasm_capabilities =
+        request_response::cbor::Behaviour::new(wasm_caps_protocols, cfg.clone());
 
     // WASM execution protocol
     let wasm_exec_protocol = StreamProtocol::new("/wasm-exec/1.0.0");

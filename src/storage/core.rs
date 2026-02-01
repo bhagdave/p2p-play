@@ -1643,8 +1643,8 @@ pub async fn get_cached_wasm_offerings_by_peer(
 }
 
 /// Get all cached WASM offerings from all peers
-pub async fn get_all_cached_wasm_offerings(
-) -> StorageResult<Vec<(String, crate::types::WasmOffering)>> {
+pub async fn get_all_cached_wasm_offerings()
+-> StorageResult<Vec<(String, crate::types::WasmOffering)>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 

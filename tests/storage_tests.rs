@@ -785,7 +785,10 @@ async fn test_update_wasm_offering() {
     assert!(updated);
 
     // Verify the update
-    let result = get_wasm_offering_by_id(&offering.id).await.unwrap().unwrap();
+    let result = get_wasm_offering_by_id(&offering.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(result.name, "updated-name");
     assert_eq!(result.description, "Updated description");
     assert_eq!(result.version, "2.0.0");
@@ -808,7 +811,10 @@ async fn test_toggle_wasm_offering() {
     assert!(toggled);
 
     // Verify it's disabled
-    let result = get_wasm_offering_by_id(&offering_id).await.unwrap().unwrap();
+    let result = get_wasm_offering_by_id(&offering_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(!result.enabled);
 
     // Toggle back to enabled
@@ -816,7 +822,10 @@ async fn test_toggle_wasm_offering() {
     assert!(toggled);
 
     // Verify it's enabled again
-    let result = get_wasm_offering_by_id(&offering_id).await.unwrap().unwrap();
+    let result = get_wasm_offering_by_id(&offering_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(result.enabled);
 
     cleanup_wasm_test_db(&db_path).await;
