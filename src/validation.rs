@@ -412,7 +412,7 @@ impl ContentValidator {
             });
         }
 
-        // CID v0 is base58btc encoded and should be 46 characters
+        // CID v0 is base58btc encoded and typically 46 characters - which is not enforced here
         // CID v1 can vary in length but should be alphanumeric
         let is_valid = sanitized.chars().all(|c| c.is_alphanumeric());
         if !is_valid {
