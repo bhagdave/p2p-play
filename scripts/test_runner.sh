@@ -53,6 +53,7 @@ run_test_suite "Running Crypto Error Tests..." "cargo test --test crypto_error_t
 run_test_suite "Running UI Tests..." "cargo test --test ui_tests" "1"
 run_test_suite "Running Handshake Protocol Tests..." "cargo test --test handshake_protocol_tests" "1"
 run_test_suite "Running Channel Sync Tests..." "cargo test --test channel_sync_tests" "1"
+run_test_suite "Running Storage Tests..." "cargo test --test storage_tests" "1"
 
 # Clean up test database after tests
 rm -f ./test_stories.db
