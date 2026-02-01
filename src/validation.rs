@@ -462,7 +462,9 @@ impl ContentValidator {
 
     /// Validate a WASM parameter name
     pub fn validate_wasm_param_name(name: &str) -> ValidationResult<String> {
-        let sanitized = ContentSanitizer::sanitize_for_storage(name).trim().to_string();
+        let sanitized = ContentSanitizer::sanitize_for_storage(name)
+            .trim()
+            .to_string();
 
         if sanitized.is_empty() {
             return Err(ValidationError::Empty);
@@ -486,7 +488,12 @@ impl ContentValidator {
         }
 
         // First character should not be a digit
-        if sanitized.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        if sanitized
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
             return Err(ValidationError::InvalidFormat {
                 expected: "Parameter name starting with letter or underscore".to_string(),
             });
@@ -516,10 +523,7 @@ impl ContentValidator {
 
         if !valid_types.contains(&type_lower.as_str()) {
             return Err(ValidationError::InvalidFormat {
-                expected: format!(
-                    "Valid parameter type (one of: {})",
-                    valid_types.join(", ")
-                ),
+                expected: format!("Valid parameter type (one of: {})", valid_types.join(", ")),
             });
         }
 

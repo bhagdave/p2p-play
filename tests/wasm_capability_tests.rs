@@ -102,7 +102,8 @@ fn test_wasm_parameter_with_default_value() {
     };
 
     let serialized = serde_json::to_string(&param).expect("Failed to serialize");
-    let deserialized: WasmParameter = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmParameter =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert_eq!(deserialized.default_value, Some("json".to_string()));
     assert!(!deserialized.required);
@@ -209,7 +210,8 @@ fn test_wasm_capabilities_response_no_offerings() {
     };
 
     let serialized = serde_json::to_string(&response).expect("Failed to serialize");
-    let deserialized: WasmCapabilitiesResponse = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmCapabilitiesResponse =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert!(!deserialized.wasm_enabled);
     assert!(deserialized.offerings.is_empty());
@@ -265,7 +267,8 @@ fn test_wasm_execution_request_minimal() {
     };
 
     let serialized = serde_json::to_string(&request).expect("Failed to serialize");
-    let deserialized: WasmExecutionRequest = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmExecutionRequest =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert!(deserialized.input.is_empty());
     assert!(deserialized.args.is_empty());
@@ -310,7 +313,8 @@ fn test_wasm_execution_response_failure() {
     };
 
     let serialized = serde_json::to_string(&response).expect("Failed to serialize");
-    let deserialized: WasmExecutionResponse = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmExecutionResponse =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert!(!deserialized.success);
     assert_eq!(deserialized.exit_code, 1);
@@ -363,11 +367,18 @@ fn test_validate_ipfs_cid() {
     use p2p_play::validation::ContentValidator;
 
     // Valid CIDv0 (starts with Qm)
-    assert!(ContentValidator::validate_ipfs_cid("QmTest1234567890abcdefghijklmnopqrstuvwxyz12").is_ok());
+    assert!(
+        ContentValidator::validate_ipfs_cid("QmTest1234567890abcdefghijklmnopqrstuvwxyz12").is_ok()
+    );
     assert!(ContentValidator::validate_ipfs_cid("QmShort").is_ok()); // Short CIDv0 is accepted
 
     // Valid CIDv1 (starts with bafy)
-    assert!(ContentValidator::validate_ipfs_cid("bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi").is_ok());
+    assert!(
+        ContentValidator::validate_ipfs_cid(
+            "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi"
+        )
+        .is_ok()
+    );
 
     // Invalid - empty
     assert!(ContentValidator::validate_ipfs_cid("").is_err());
@@ -406,7 +417,10 @@ fn test_validate_wasm_param_name() {
 
     // Valid - leading/trailing whitespace should be trimmed
     assert!(ContentValidator::validate_wasm_param_name("  input  ").is_ok());
-    assert_eq!(ContentValidator::validate_wasm_param_name("  valid_name  ").unwrap(), "valid_name");
+    assert_eq!(
+        ContentValidator::validate_wasm_param_name("  valid_name  ").unwrap(),
+        "valid_name"
+    );
 
     // Invalid - empty
     assert!(ContentValidator::validate_wasm_param_name("").is_err());
@@ -462,7 +476,8 @@ fn test_wasm_offering_with_empty_parameters() {
     };
 
     let serialized = serde_json::to_string(&offering).expect("Failed to serialize");
-    let deserialized: WasmOffering = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmOffering =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert!(deserialized.parameters.is_empty());
 }
@@ -483,7 +498,8 @@ fn test_wasm_offering_disabled() {
     };
 
     let serialized = serde_json::to_string(&offering).expect("Failed to serialize");
-    let deserialized: WasmOffering = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmOffering =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert!(!deserialized.enabled);
 }
@@ -505,7 +521,8 @@ fn test_wasm_execution_with_binary_data() {
     };
 
     let serialized = serde_json::to_string(&request).expect("Failed to serialize");
-    let deserialized: WasmExecutionRequest = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmExecutionRequest =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert_eq!(deserialized.input, binary_input);
 }
@@ -521,7 +538,8 @@ fn test_large_fuel_values() {
     };
 
     let serialized = serde_json::to_string(&requirements).expect("Failed to serialize");
-    let deserialized: WasmResourceRequirements = serde_json::from_str(&serialized).expect("Failed to deserialize");
+    let deserialized: WasmResourceRequirements =
+        serde_json::from_str(&serialized).expect("Failed to deserialize");
 
     assert_eq!(deserialized.max_fuel, u64::MAX);
 }

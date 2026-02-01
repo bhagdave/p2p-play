@@ -473,13 +473,15 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("dht peers to find closest peers in DHT".to_string());
     ui_logger.log("reload config to reload network configuration".to_string());
     ui_logger.log("--- WASM Capabilities ---".to_string());
-    ui_logger.log("wasm create <name>|<desc>|<ipfs_cid>|<version> to create WASM offering".to_string());
+    ui_logger
+        .log("wasm create <name>|<desc>|<ipfs_cid>|<version> to create WASM offering".to_string());
     ui_logger.log("wasm ls [local|remote|all] to list WASM offerings".to_string());
     ui_logger.log("wasm show <id> to show WASM offering details".to_string());
     ui_logger.log("wasm toggle <id> to enable/disable WASM offering".to_string());
     ui_logger.log("wasm delete <id> to delete WASM offering".to_string());
     ui_logger.log("wasm query <peer_alias> to query peer's WASM capabilities".to_string());
-    ui_logger.log("wasm run <peer_alias> <offering_id> [args...] to execute remote WASM".to_string());
+    ui_logger
+        .log("wasm run <peer_alias> <offering_id> [args...] to execute remote WASM".to_string());
     ui_logger.log("wasm config to show WASM configuration".to_string());
     ui_logger.log("quit to quit".to_string());
 }
@@ -1862,8 +1864,15 @@ pub async fn handle_wasm_command(
             handle_wasm_query(&parts[2..], swarm, peer_names, local_peer_name, ui_logger).await
         }
         "run" => {
-            handle_wasm_run(&parts[2..], swarm, peer_names, local_peer_name, ui_logger, error_logger)
-                .await
+            handle_wasm_run(
+                &parts[2..],
+                swarm,
+                peer_names,
+                local_peer_name,
+                ui_logger,
+                error_logger,
+            )
+            .await
         }
         "config" => handle_wasm_config(&parts[2..], ui_logger, error_logger).await,
         "help" | _ => show_wasm_usage(ui_logger),
@@ -1872,22 +1881,43 @@ pub async fn handle_wasm_command(
 
 fn show_wasm_usage(ui_logger: &UILogger) {
     ui_logger.log("WASM Commands:".to_string());
-    ui_logger.log("  wasm create <name>|<description>|<ipfs_cid>|<version> - Create new offering".to_string());
-    ui_logger.log("  wasm ls [local|remote|all]                            - List offerings".to_string());
-    ui_logger.log("  wasm show <id>                                        - Show offering details".to_string());
-    ui_logger.log("  wasm toggle <id>                                      - Enable/disable offering".to_string());
-    ui_logger.log("  wasm delete <id>                                      - Delete local offering".to_string());
-    ui_logger.log("  wasm param add <id> <name>|<type>|<desc>|<required>   - Add parameter to offering".to_string());
-    ui_logger.log("  wasm query <peer_alias>                               - Query peer's WASM capabilities".to_string());
-    ui_logger.log("  wasm run <peer_alias> <offering_id> [args...]         - Execute WASM on remote peer".to_string());
-    ui_logger.log("  wasm config [advertise|execute] [on|off|status]       - Configure WASM settings".to_string());
+    ui_logger.log(
+        "  wasm create <name>|<description>|<ipfs_cid>|<version> - Create new offering".to_string(),
+    );
+    ui_logger.log(
+        "  wasm ls [local|remote|all]                            - List offerings".to_string(),
+    );
+    ui_logger.log(
+        "  wasm show <id>                                        - Show offering details"
+            .to_string(),
+    );
+    ui_logger.log(
+        "  wasm toggle <id>                                      - Enable/disable offering"
+            .to_string(),
+    );
+    ui_logger.log(
+        "  wasm delete <id>                                      - Delete local offering"
+            .to_string(),
+    );
+    ui_logger.log(
+        "  wasm param add <id> <name>|<type>|<desc>|<required>   - Add parameter to offering"
+            .to_string(),
+    );
+    ui_logger.log(
+        "  wasm query <peer_alias>                               - Query peer's WASM capabilities"
+            .to_string(),
+    );
+    ui_logger.log(
+        "  wasm run <peer_alias> <offering_id> [args...]         - Execute WASM on remote peer"
+            .to_string(),
+    );
+    ui_logger.log(
+        "  wasm config [advertise|execute] [on|off|status]       - Configure WASM settings"
+            .to_string(),
+    );
 }
 
-async fn handle_wasm_create(
-    args: &[&str],
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+async fn handle_wasm_create(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
         ui_logger.log("Usage: wasm create <name>|<description>|<ipfs_cid>|<version>".to_string());
         return;
@@ -1899,7 +1929,9 @@ async fn handle_wasm_create(
 
     if parts.len() < 4 {
         ui_logger.log("Usage: wasm create <name>|<description>|<ipfs_cid>|<version>".to_string());
-        ui_logger.log("Example: wasm create echo-module|A simple echo module|QmXyz123|1.0.0".to_string());
+        ui_logger.log(
+            "Example: wasm create echo-module|A simple echo module|QmXyz123|1.0.0".to_string(),
+        );
         return;
     }
 
@@ -1968,79 +2000,71 @@ async fn handle_wasm_create(
     }
 }
 
-async fn handle_wasm_list(
-    args: &[&str],
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+async fn handle_wasm_list(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     let filter = args.first().copied().unwrap_or("all");
 
     match filter {
-        "local" => {
-            match crate::storage::read_wasm_offerings().await {
-                Ok(offerings) => {
-                    ui_logger.log(format!(
-                        "Local WASM Offerings ({}):",
-                        offerings.len()
-                    ));
-                    if offerings.is_empty() {
-                        ui_logger.log("  (no local offerings)".to_string());
-                    } else {
-                        for offering in offerings {
-                            let status = if offering.enabled {
-                                format!("{} enabled", Icons::check())
-                            } else {
-                                format!("{} disabled", Icons::cross())
-                            };
-                            ui_logger.log(format!(
-                                "  {} {} (v{}) [{}] - {}",
-                                Icons::chart(),
-                                offering.name,
-                                offering.version,
-                                status,
-                                offering.id
-                            ));
-                        }
+        "local" => match crate::storage::read_wasm_offerings().await {
+            Ok(offerings) => {
+                ui_logger.log(format!("Local WASM Offerings ({}):", offerings.len()));
+                if offerings.is_empty() {
+                    ui_logger.log("  (no local offerings)".to_string());
+                } else {
+                    for offering in offerings {
+                        let status = if offering.enabled {
+                            format!("{} enabled", Icons::check())
+                        } else {
+                            format!("{} disabled", Icons::cross())
+                        };
+                        ui_logger.log(format!(
+                            "  {} {} (v{}) [{}] - {}",
+                            Icons::chart(),
+                            offering.name,
+                            offering.version,
+                            status,
+                            offering.id
+                        ));
                     }
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to list local WASM offerings: {e}"));
-                    ui_logger.log(format!("{} Failed to list offerings", Icons::cross()));
-                }
             }
-        }
-        "remote" => {
-            match crate::storage::get_all_cached_wasm_offerings().await {
-                Ok(offerings) => {
-                    ui_logger.log(format!(
-                        "Discovered WASM Offerings ({}):",
-                        offerings.len()
-                    ));
-                    if offerings.is_empty() {
-                        ui_logger.log("  (no discovered offerings - use 'wasm query <peer>' to discover)".to_string());
-                    } else {
-                        let mut current_peer = String::new();
-                        for (peer_id, offering) in offerings {
-                            if peer_id != current_peer {
-                                ui_logger.log(format!("  From peer {}:", &peer_id[..12.min(peer_id.len())]));
-                                current_peer = peer_id;
-                            }
+            Err(e) => {
+                error_logger.log_error(&format!("Failed to list local WASM offerings: {e}"));
+                ui_logger.log(format!("{} Failed to list offerings", Icons::cross()));
+            }
+        },
+        "remote" => match crate::storage::get_all_cached_wasm_offerings().await {
+            Ok(offerings) => {
+                ui_logger.log(format!("Discovered WASM Offerings ({}):", offerings.len()));
+                if offerings.is_empty() {
+                    ui_logger.log(
+                        "  (no discovered offerings - use 'wasm query <peer>' to discover)"
+                            .to_string(),
+                    );
+                } else {
+                    let mut current_peer = String::new();
+                    for (peer_id, offering) in offerings {
+                        if peer_id != current_peer {
                             ui_logger.log(format!(
-                                "    {} {} (v{}) - {}",
-                                Icons::chart(),
-                                offering.name,
-                                offering.version,
-                                offering.description
+                                "  From peer {}:",
+                                &peer_id[..12.min(peer_id.len())]
                             ));
+                            current_peer = peer_id;
                         }
+                        ui_logger.log(format!(
+                            "    {} {} (v{}) - {}",
+                            Icons::chart(),
+                            offering.name,
+                            offering.version,
+                            offering.description
+                        ));
                     }
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to list cached WASM offerings: {e}"));
-                    ui_logger.log(format!("{} Failed to list offerings", Icons::cross()));
-                }
             }
-        }
+            Err(e) => {
+                error_logger.log_error(&format!("Failed to list cached WASM offerings: {e}"));
+                ui_logger.log(format!("{} Failed to list offerings", Icons::cross()));
+            }
+        },
         "all" | _ => {
             // Show both local and remote (inlined to avoid recursion)
             ui_logger.log("=== Local Offerings ===".to_string());
@@ -2079,12 +2103,18 @@ async fn handle_wasm_list(
                 Ok(offerings) => {
                     ui_logger.log(format!("Discovered WASM Offerings ({}):", offerings.len()));
                     if offerings.is_empty() {
-                        ui_logger.log("  (no discovered offerings - use 'wasm query <peer>' to discover)".to_string());
+                        ui_logger.log(
+                            "  (no discovered offerings - use 'wasm query <peer>' to discover)"
+                                .to_string(),
+                        );
                     } else {
                         let mut current_peer = String::new();
                         for (peer_id, offering) in offerings {
                             if peer_id != current_peer {
-                                ui_logger.log(format!("  From peer {}:", &peer_id[..12.min(peer_id.len())]));
+                                ui_logger.log(format!(
+                                    "  From peer {}:",
+                                    &peer_id[..12.min(peer_id.len())]
+                                ));
                                 current_peer = peer_id;
                             }
                             ui_logger.log(format!(
@@ -2106,11 +2136,7 @@ async fn handle_wasm_list(
     }
 }
 
-async fn handle_wasm_show(
-    args: &[&str],
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
         ui_logger.log("Usage: wasm show <id>".to_string());
         return;
@@ -2128,7 +2154,11 @@ async fn handle_wasm_show(
             ui_logger.log(format!("  IPFS CID: {}", offering.ipfs_cid));
             ui_logger.log(format!(
                 "  Status: {}",
-                if offering.enabled { "enabled" } else { "disabled" }
+                if offering.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
             ));
             ui_logger.log(format!("  Parameters: {}", offering.parameters.len()));
             for param in &offering.parameters {
@@ -2137,7 +2167,11 @@ async fn handle_wasm_show(
                     param.name,
                     param.param_type,
                     param.description,
-                    if param.required { "[required]" } else { "[optional]" }
+                    if param.required {
+                        "[required]"
+                    } else {
+                        "[optional]"
+                    }
                 ));
             }
             ui_logger.log(format!(
@@ -2159,11 +2193,7 @@ async fn handle_wasm_show(
     }
 }
 
-async fn handle_wasm_toggle(
-    args: &[&str],
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+async fn handle_wasm_toggle(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
         ui_logger.log("Usage: wasm toggle <id>".to_string());
         return;
@@ -2179,7 +2209,11 @@ async fn handle_wasm_toggle(
                 Ok(true) => {
                     ui_logger.log(format!(
                         "{} Offering '{}' is now {}",
-                        if new_state { Icons::check() } else { Icons::cross() },
+                        if new_state {
+                            Icons::check()
+                        } else {
+                            Icons::cross()
+                        },
                         offering.name,
                         if new_state { "enabled" } else { "disabled" }
                     ));
@@ -2203,11 +2237,7 @@ async fn handle_wasm_toggle(
     }
 }
 
-async fn handle_wasm_delete(
-    args: &[&str],
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
         ui_logger.log("Usage: wasm delete <id>".to_string());
         return;
@@ -2229,20 +2259,22 @@ async fn handle_wasm_delete(
     }
 }
 
-async fn handle_wasm_param(
-    args: &[&str],
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.len() < 2 {
-        ui_logger.log("Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>".to_string());
+        ui_logger.log(
+            "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
+                .to_string(),
+        );
         return;
     }
 
     match args[0] {
         "add" => {
             if args.len() < 3 {
-                ui_logger.log("Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>".to_string());
+                ui_logger.log(
+                    "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
+                        .to_string(),
+                );
                 return;
             }
 
@@ -2251,7 +2283,9 @@ async fn handle_wasm_param(
             let parts: Vec<&str> = param_spec.split('|').collect();
 
             if parts.len() < 4 {
-                ui_logger.log("Usage: wasm param add <id> <name>|<type>|<description>|<required>".to_string());
+                ui_logger.log(
+                    "Usage: wasm param add <id> <name>|<type>|<description>|<required>".to_string(),
+                );
                 ui_logger.log("Types: string, bytes, json, int, float, bool, file".to_string());
                 return;
             }
@@ -2321,7 +2355,10 @@ async fn handle_wasm_param(
             }
         }
         _ => {
-            ui_logger.log("Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>".to_string());
+            ui_logger.log(
+                "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
+                    .to_string(),
+            );
         }
     }
 }
@@ -2439,18 +2476,19 @@ async fn handle_wasm_run(
     }
 
     // Look up the offering from cache to get the CID
-    let cached_offerings = match crate::storage::get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
-        Ok(offerings) => offerings,
-        Err(e) => {
-            error_logger.log_error(&format!("Failed to get cached offerings: {e}"));
-            ui_logger.log(format!(
-                "{} Failed to find offering. Try 'wasm query {}' first.",
-                Icons::cross(),
-                peer_alias
-            ));
-            return;
-        }
-    };
+    let cached_offerings =
+        match crate::storage::get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
+            Ok(offerings) => offerings,
+            Err(e) => {
+                error_logger.log_error(&format!("Failed to get cached offerings: {e}"));
+                ui_logger.log(format!(
+                    "{} Failed to find offering. Try 'wasm query {}' first.",
+                    Icons::cross(),
+                    peer_alias
+                ));
+                return;
+            }
+        };
 
     let offering = cached_offerings.iter().find(|o| o.id == offering_id);
     let ipfs_cid = match offering {
@@ -2499,11 +2537,7 @@ async fn handle_wasm_run(
     ));
 }
 
-async fn handle_wasm_config(
-    args: &[&str],
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
         // Show current config
         match crate::storage::load_unified_network_config().await {
@@ -2546,102 +2580,88 @@ async fn handle_wasm_config(
     let value = args.get(1).copied().unwrap_or("status");
 
     match setting {
-        "advertise" => {
-            match value {
-                "on" => {
-                    if modify_config(ui_logger, error_logger, "wasm-advertise", |config| {
-                        config.wasm.capability.advertise_capabilities = true;
-                    })
-                    .await
-                    {
-                        ui_logger.log(format!(
-                            "{} WASM capability advertisement enabled",
-                            Icons::check()
-                        ));
-                    }
-                }
-                "off" => {
-                    if modify_config(ui_logger, error_logger, "wasm-advertise", |config| {
-                        config.wasm.capability.advertise_capabilities = false;
-                    })
-                    .await
-                    {
-                        ui_logger.log(format!(
-                            "{} WASM capability advertisement disabled",
-                            Icons::check()
-                        ));
-                    }
-                }
-                _ => {
-                    match crate::storage::load_unified_network_config().await {
-                        Ok(config) => {
-                            ui_logger.log(format!(
-                                "WASM capability advertisement is {}",
-                                if config.wasm.capability.advertise_capabilities {
-                                    "enabled"
-                                } else {
-                                    "disabled"
-                                }
-                            ));
-                        }
-                        Err(e) => {
-                            error_logger.log_error(&format!("Failed to load config: {e}"));
-                            ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                        }
-                    }
+        "advertise" => match value {
+            "on" => {
+                if modify_config(ui_logger, error_logger, "wasm-advertise", |config| {
+                    config.wasm.capability.advertise_capabilities = true;
+                })
+                .await
+                {
+                    ui_logger.log(format!(
+                        "{} WASM capability advertisement enabled",
+                        Icons::check()
+                    ));
                 }
             }
-        }
-        "execute" => {
-            match value {
-                "on" => {
-                    if modify_config(ui_logger, error_logger, "wasm-execute", |config| {
-                        config.wasm.capability.allow_remote_execution = true;
-                    })
-                    .await
-                    {
-                        ui_logger.log(format!(
-                            "{} Remote WASM execution enabled",
-                            Icons::check()
-                        ));
-                        ui_logger.log(format!(
-                            "{} Warning: This allows other peers to execute WASM on your node",
-                            Icons::warning()
-                        ));
-                    }
-                }
-                "off" => {
-                    if modify_config(ui_logger, error_logger, "wasm-execute", |config| {
-                        config.wasm.capability.allow_remote_execution = false;
-                    })
-                    .await
-                    {
-                        ui_logger.log(format!(
-                            "{} Remote WASM execution disabled",
-                            Icons::check()
-                        ));
-                    }
-                }
-                _ => {
-                    match crate::storage::load_unified_network_config().await {
-                        Ok(config) => {
-                            ui_logger.log(format!(
-                                "Remote WASM execution is {}",
-                                if config.wasm.capability.allow_remote_execution {
-                                    "enabled"
-                                } else {
-                                    "disabled"
-                                }
-                            ));
-                        }
-                        Err(e) => {
-                            error_logger.log_error(&format!("Failed to load config: {e}"));
-                            ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                        }
-                    }
+            "off" => {
+                if modify_config(ui_logger, error_logger, "wasm-advertise", |config| {
+                    config.wasm.capability.advertise_capabilities = false;
+                })
+                .await
+                {
+                    ui_logger.log(format!(
+                        "{} WASM capability advertisement disabled",
+                        Icons::check()
+                    ));
                 }
             }
-        }
+            _ => match crate::storage::load_unified_network_config().await {
+                Ok(config) => {
+                    ui_logger.log(format!(
+                        "WASM capability advertisement is {}",
+                        if config.wasm.capability.advertise_capabilities {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    ));
+                }
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to load config: {e}"));
+                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+                }
+            },
+        },
+        "execute" => match value {
+            "on" => {
+                if modify_config(ui_logger, error_logger, "wasm-execute", |config| {
+                    config.wasm.capability.allow_remote_execution = true;
+                })
+                .await
+                {
+                    ui_logger.log(format!("{} Remote WASM execution enabled", Icons::check()));
+                    ui_logger.log(format!(
+                        "{} Warning: This allows other peers to execute WASM on your node",
+                        Icons::warning()
+                    ));
+                }
+            }
+            "off" => {
+                if modify_config(ui_logger, error_logger, "wasm-execute", |config| {
+                    config.wasm.capability.allow_remote_execution = false;
+                })
+                .await
+                {
+                    ui_logger.log(format!("{} Remote WASM execution disabled", Icons::check()));
+                }
+            }
+            _ => match crate::storage::load_unified_network_config().await {
+                Ok(config) => {
+                    ui_logger.log(format!(
+                        "Remote WASM execution is {}",
+                        if config.wasm.capability.allow_remote_execution {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    ));
+                }
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to load config: {e}"));
+                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
+                }
+            },
+        },
         _ => {
             ui_logger.log("Usage: wasm config [advertise|execute] [on|off|status]".to_string());
         }

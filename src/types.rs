@@ -1,10 +1,10 @@
 use crate::circuit_breaker;
 use crate::errors::ConfigResult;
-use crate::validation::ContentSanitizer;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
     NodeDescriptionRequest, NodeDescriptionResponse,
 };
+use crate::validation::ContentSanitizer;
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
@@ -1157,12 +1157,7 @@ impl WasmResourceRequirements {
 }
 
 impl WasmOffering {
-    pub fn new(
-        name: String,
-        description: String,
-        ipfs_cid: String,
-        version: String,
-    ) -> Self {
+    pub fn new(name: String, description: String, ipfs_cid: String, version: String) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()

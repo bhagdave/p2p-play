@@ -350,7 +350,8 @@ pub fn create_swarm(
     let wasm_caps_protocol = StreamProtocol::new("/wasm-caps/1.0.0");
     let wasm_caps_protocols = iter::once((wasm_caps_protocol, wasm_caps_protocol_support));
 
-    let wasm_capabilities = request_response::cbor::Behaviour::new(wasm_caps_protocols, cfg.clone());
+    let wasm_capabilities =
+        request_response::cbor::Behaviour::new(wasm_caps_protocols, cfg.clone());
 
     // WASM remote execution protocol
     let wasm_exec_protocol_support = request_response::ProtocolSupport::Full;

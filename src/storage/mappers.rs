@@ -46,7 +46,7 @@ pub fn map_row_to_wasm_offering(row: &Row) -> Result<WasmOffering, rusqlite::Err
             Box::new(e),
         )
     })?;
-    
+
     let resource_requirements: WasmResourceRequirements =
         serde_json::from_str(&resource_requirements_json).map_err(|e| {
             rusqlite::Error::FromSqlConversionFailure(
@@ -104,8 +104,8 @@ pub fn map_row_to_discovered_wasm_offering(
         resource_requirements,
         version: row.get(7)?,
         enabled: true, // Discovered offerings are always considered enabled
-        created_at: row.get::<_, i64>(8)? as u64,   // discovered_at
-        updated_at: row.get::<_, i64>(9)? as u64,   // last_seen_at
+        created_at: row.get::<_, i64>(8)? as u64, // discovered_at
+        updated_at: row.get::<_, i64>(9)? as u64, // last_seen_at
     };
 
     Ok((peer_id, offering))
