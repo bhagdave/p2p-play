@@ -462,9 +462,9 @@ impl ContentValidator {
 
     /// Validate a WASM parameter name
     pub fn validate_wasm_param_name(name: &str) -> ValidationResult<String> {
-        let sanitized = ContentSanitizer::sanitize_for_storage(name);
+        let sanitized = ContentSanitizer::sanitize_for_storage(name).trim().to_string();
 
-        if sanitized.trim().is_empty() {
+        if sanitized.is_empty() {
             return Err(ValidationError::Empty);
         }
 
@@ -492,7 +492,7 @@ impl ContentValidator {
             });
         }
 
-        Ok(sanitized.trim().to_string())
+        Ok(sanitized)
     }
 
     /// Validate a WASM parameter type

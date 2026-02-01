@@ -404,8 +404,17 @@ fn test_validate_wasm_param_name() {
     assert!(ContentValidator::validate_wasm_param_name("output_format").is_ok());
     assert!(ContentValidator::validate_wasm_param_name("param1").is_ok());
 
+    // Valid - leading/trailing whitespace should be trimmed
+    assert!(ContentValidator::validate_wasm_param_name("  input  ").is_ok());
+    assert_eq!(ContentValidator::validate_wasm_param_name("  valid_name  ").unwrap(), "valid_name");
+
     // Invalid - empty
     assert!(ContentValidator::validate_wasm_param_name("").is_err());
+    assert!(ContentValidator::validate_wasm_param_name("   ").is_err()); // Only whitespace
+
+    // Invalid - starts with digit (even after trimming)
+    assert!(ContentValidator::validate_wasm_param_name("1param").is_err());
+    assert!(ContentValidator::validate_wasm_param_name("  1param  ").is_err()); // Leading whitespace before digit
 
     // Invalid - too long (over 50 chars)
     let long_name = "a".repeat(51);
