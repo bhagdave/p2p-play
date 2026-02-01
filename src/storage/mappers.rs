@@ -38,10 +38,23 @@ pub fn map_row_to_wasm_offering(row: &Row) -> Result<WasmOffering, rusqlite::Err
     let parameters_json: String = row.get(4)?;
     let resource_requirements_json: String = row.get(5)?;
 
-    let parameters: Vec<WasmParameter> = serde_json::from_str(&parameters_json).unwrap_or_default();
+    // deserialize parameters and throw error if the json is invalid
+    let parameters: Vec<WasmParameter> = serde_json::from_str(&parameters_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
+            parameters_json.len(),
+            rusqlite::types::Type::Text,
+            Box::new(e),
+        )
+    })?;
+    
     let resource_requirements: WasmResourceRequirements =
-        serde_json::from_str(&resource_requirements_json)
-            .unwrap_or_else(|_| WasmResourceRequirements::default_requirements());
+        serde_json::from_str(&resource_requirements_json).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                resource_requirements_json.len(),
+                rusqlite::types::Type::Text,
+                Box::new(e),
+            )
+        })?;
 
     Ok(WasmOffering {
         id: row.get(0)?,
@@ -66,10 +79,21 @@ pub fn map_row_to_discovered_wasm_offering(
     let parameters_json: String = row.get(5)?;
     let resource_requirements_json: String = row.get(6)?;
 
-    let parameters: Vec<WasmParameter> = serde_json::from_str(&parameters_json).unwrap_or_default();
+    let parameters: Vec<WasmParameter> = serde_json::from_str(&parameters_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
+            parameters_json.len(),
+            rusqlite::types::Type::Text,
+            Box::new(e),
+        )
+    })?;
     let resource_requirements: WasmResourceRequirements =
-        serde_json::from_str(&resource_requirements_json)
-            .unwrap_or_else(|_| WasmResourceRequirements::default_requirements());
+        serde_json::from_str(&resource_requirements_json).map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                resource_requirements_json.len(),
+                rusqlite::types::Type::Text,
+                Box::new(e),
+            )
+        })?;
 
     let offering = WasmOffering {
         id: row.get(0)?,
