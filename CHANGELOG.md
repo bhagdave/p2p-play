@@ -5,6 +5,25 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **WASM Capability Advertisement**: Enables P2P nodes to advertise WASM execution capabilities across the network
+  - **New Data Structures**: Added `WasmParameter`, `WasmResourceRequirements`, `WasmOffering`, and `WasmCapabilityConfig` types for defining WASM module offerings
+  - **Network Protocols**: Implemented `/wasm-caps/1.0.0` protocol for capability discovery and `/wasm-exec/1.0.0` protocol for remote execution requests
+  - **Handshake Extension**: Added `wasm_capable` field to handshake protocol to advertise WASM support during peer connection
+  - **Database Storage**: New `wasm_offerings` table for local offerings and `discovered_wasm_offerings` table for caching remote peer offerings
+  - **CRUD Operations**: Full create, read, update, delete operations for managing local WASM offerings
+  - **Validation**: Comprehensive input validation for offering names, descriptions, IPFS CIDs (v0/v1), semantic versions, and parameter types
+  - **Command Interface**: New `wasm` command with subcommands:
+    - `wasm create <name>|<desc>|<ipfs_cid>` - Create a new WASM offering
+    - `wasm ls [local|remote|all]` - List WASM offerings
+    - `wasm show <id>` - Show offering details including parameters and resource requirements
+    - `wasm toggle <id>` - Enable/disable an offering
+    - `wasm delete <id>` - Delete a local offering
+    - `wasm query <peer_alias>` - Query a peer's WASM capabilities
+    - `wasm run <peer_alias> <offering_id> [args...]` - Execute WASM on a remote peer
+    - `wasm config` - Show current WASM configuration
+  - **Event Handling**: Added handlers for WASM capability requests/responses and execution requests/responses
+  - **Security**: Resource limits enforced (fuel, memory, timeout), opt-in remote execution, CID verification
+  - **Test Coverage**: Added 22 new tests covering serialization, validation, and protocol types
 - **WASM Configuration Support**: Added WASM executor resource limits to the unified network configuration
   - **Centralized Configuration**: WASM resource limits defined as constants in `WasmConfig` struct, used by both configuration and executor
   - **Configurable Resource Limits**: `ExecutionRequest::with_config()` method allows creating requests with custom resource limits from configuration
