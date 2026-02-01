@@ -473,7 +473,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("dht peers to find closest peers in DHT".to_string());
     ui_logger.log("reload config to reload network configuration".to_string());
     ui_logger.log("--- WASM Capabilities ---".to_string());
-    ui_logger.log("wasm create <name>|<desc>|<ipfs_cid> to create WASM offering".to_string());
+    ui_logger.log("wasm create <name>|<desc>|<ipfs_cid>|<version> to create WASM offering".to_string());
     ui_logger.log("wasm ls [local|remote|all] to list WASM offerings".to_string());
     ui_logger.log("wasm show <id> to show WASM offering details".to_string());
     ui_logger.log("wasm toggle <id> to enable/disable WASM offering".to_string());
