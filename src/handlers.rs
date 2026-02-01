@@ -472,6 +472,15 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("dht bootstrap <multiaddr> to bootstrap directly with peer".to_string());
     ui_logger.log("dht peers to find closest peers in DHT".to_string());
     ui_logger.log("reload config to reload network configuration".to_string());
+    ui_logger.log("--- WASM Capabilities ---".to_string());
+    ui_logger.log("wasm create <name>|<desc>|<ipfs_cid> to create WASM offering".to_string());
+    ui_logger.log("wasm ls [local|remote|all] to list WASM offerings".to_string());
+    ui_logger.log("wasm show <id> to show WASM offering details".to_string());
+    ui_logger.log("wasm toggle <id> to enable/disable WASM offering".to_string());
+    ui_logger.log("wasm delete <id> to delete WASM offering".to_string());
+    ui_logger.log("wasm query <peer_alias> to query peer's WASM capabilities".to_string());
+    ui_logger.log("wasm run <peer_alias> <offering_id> [args...] to execute remote WASM".to_string());
+    ui_logger.log("wasm config to show WASM configuration".to_string());
     ui_logger.log("quit to quit".to_string());
 }
 
@@ -2033,12 +2042,66 @@ async fn handle_wasm_list(
             }
         }
         "all" | _ => {
-            // Show both local and remote
+            // Show both local and remote (inlined to avoid recursion)
             ui_logger.log("=== Local Offerings ===".to_string());
-            handle_wasm_list(&["local"], ui_logger, error_logger).await;
+            match crate::storage::read_wasm_offerings().await {
+                Ok(offerings) => {
+                    ui_logger.log(format!("Local WASM Offerings ({}):", offerings.len()));
+                    if offerings.is_empty() {
+                        ui_logger.log("  (no local offerings)".to_string());
+                    } else {
+                        for offering in &offerings {
+                            let status = if offering.enabled {
+                                format!("{} enabled", Icons::check())
+                            } else {
+                                format!("{} disabled", Icons::cross())
+                            };
+                            ui_logger.log(format!(
+                                "  {} {} (v{}) [{}] - {}",
+                                Icons::chart(),
+                                offering.name,
+                                offering.version,
+                                status,
+                                offering.id
+                            ));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to list local WASM offerings: {e}"));
+                    ui_logger.log(format!("{} Failed to list offerings", Icons::cross()));
+                }
+            }
+
             ui_logger.log("".to_string());
             ui_logger.log("=== Remote Offerings ===".to_string());
-            handle_wasm_list(&["remote"], ui_logger, error_logger).await;
+            match crate::storage::get_all_cached_wasm_offerings().await {
+                Ok(offerings) => {
+                    ui_logger.log(format!("Discovered WASM Offerings ({}):", offerings.len()));
+                    if offerings.is_empty() {
+                        ui_logger.log("  (no discovered offerings - use 'wasm query <peer>' to discover)".to_string());
+                    } else {
+                        let mut current_peer = String::new();
+                        for (peer_id, offering) in offerings {
+                            if peer_id != current_peer {
+                                ui_logger.log(format!("  From peer {}:", &peer_id[..12.min(peer_id.len())]));
+                                current_peer = peer_id;
+                            }
+                            ui_logger.log(format!(
+                                "    {} {} (v{}) - {}",
+                                Icons::chart(),
+                                offering.name,
+                                offering.version,
+                                offering.description
+                            ));
+                        }
+                    }
+                }
+                Err(e) => {
+                    error_logger.log_error(&format!("Failed to list cached WASM offerings: {e}"));
+                    ui_logger.log(format!("{} Failed to list offerings", Icons::cross()));
+                }
+            }
         }
     }
 }

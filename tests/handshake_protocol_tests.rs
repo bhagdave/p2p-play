@@ -7,6 +7,7 @@ fn test_handshake_request_serialization() {
         app_name: APP_NAME.to_string(),
         app_version: APP_VERSION.to_string(),
         peer_id: "test_peer_12345".to_string(),
+        wasm_capable: true,
     };
 
     // Test serialization
@@ -32,6 +33,7 @@ fn test_handshake_response_serialization() {
         accepted: true,
         app_name: APP_NAME.to_string(),
         app_version: APP_VERSION.to_string(),
+        wasm_capable: true,
     };
 
     // Test serialization
@@ -57,6 +59,7 @@ fn test_handshake_response_rejection() {
         accepted: false,
         app_name: "other-app".to_string(),
         app_version: "2.0.0".to_string(),
+        wasm_capable: false,
     };
 
     let serialized =
@@ -86,6 +89,7 @@ fn test_handshake_validation_logic() {
         app_name: APP_NAME.to_string(),
         app_version: APP_VERSION.to_string(),
         peer_id: "valid_peer".to_string(),
+        wasm_capable: true,
     };
 
     // Now we only check app name, not version
@@ -97,6 +101,7 @@ fn test_handshake_validation_logic() {
         app_name: "some-other-app".to_string(),
         app_version: APP_VERSION.to_string(),
         peer_id: "invalid_peer".to_string(),
+        wasm_capable: false,
     };
 
     let should_reject = invalid_request.app_name != APP_NAME;
@@ -107,6 +112,7 @@ fn test_handshake_validation_logic() {
         app_name: APP_NAME.to_string(),
         app_version: "2.0.0".to_string(),
         peer_id: "different_version_peer".to_string(),
+        wasm_capable: true,
     };
 
     // With relaxed version checking, only app name matters

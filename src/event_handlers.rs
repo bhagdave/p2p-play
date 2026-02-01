@@ -6,7 +6,7 @@ use crate::handlers::{
     handle_filter_stories, handle_get_description, handle_help, handle_list_channels,
     handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
     handle_search_stories, handle_set_auto_subscription, handle_set_name, handle_show_description,
-    handle_show_story, handle_subscribe_channel, handle_unsubscribe_channel,
+    handle_show_story, handle_subscribe_channel, handle_unsubscribe_channel, handle_wasm_command,
 };
 use crate::network::{
     APP_NAME, APP_VERSION, DirectMessageRequest, DirectMessageResponse, HandshakeRequest,
@@ -312,6 +312,10 @@ pub async fn handle_input_event(
                 pending_messages,
             )
             .await;
+        }
+        cmd if cmd.starts_with("wasm ") => {
+            handle_wasm_command(cmd, swarm, peer_names, local_peer_name, ui_logger, error_logger)
+                .await;
         }
         _ => ui_logger.log("unknown command".to_string()),
     }
@@ -2061,7 +2065,7 @@ pub async fn handle_wasm_capabilities_event(
     error_logger: &ErrorLogger,
 ) {
     match event {
-        request_response::Event::Message { peer, message } => {
+        request_response::Event::Message { peer, message, .. } => {
             match message {
                 request_response::Message::Request {
                     request,
@@ -2196,7 +2200,7 @@ pub async fn handle_wasm_execution_event(
     error_logger: &ErrorLogger,
 ) {
     match event {
-        request_response::Event::Message { peer, message } => {
+        request_response::Event::Message { peer, message, .. } => {
             match message {
                 request_response::Message::Request {
                     request,

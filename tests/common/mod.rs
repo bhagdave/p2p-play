@@ -64,7 +64,19 @@ pub fn create_test_swarm_with_keypair(
     let handshake_protocol = StreamProtocol::new("/p2p-play/handshake/1.0.0");
     let handshake_protocols =
         iter::once((handshake_protocol, request_response::ProtocolSupport::Full));
-    let handshake = request_response::cbor::Behaviour::new(handshake_protocols, cfg);
+    let handshake = request_response::cbor::Behaviour::new(handshake_protocols, cfg.clone());
+
+    // WASM capabilities protocol
+    let wasm_caps_protocol = StreamProtocol::new("/wasm-caps/1.0.0");
+    let wasm_caps_protocols =
+        iter::once((wasm_caps_protocol, request_response::ProtocolSupport::Full));
+    let wasm_capabilities = request_response::cbor::Behaviour::new(wasm_caps_protocols, cfg.clone());
+
+    // WASM execution protocol
+    let wasm_exec_protocol = StreamProtocol::new("/wasm-exec/1.0.0");
+    let wasm_exec_protocols =
+        iter::once((wasm_exec_protocol, request_response::ProtocolSupport::Full));
+    let wasm_execution = request_response::cbor::Behaviour::new(wasm_exec_protocols, cfg);
 
     // Create Kademlia DHT
     let store = libp2p::kad::store::MemoryStore::new(peer_id);
@@ -81,6 +93,8 @@ pub fn create_test_swarm_with_keypair(
         node_description,
         story_sync,
         handshake,
+        wasm_capabilities,
+        wasm_execution,
         kad,
     };
 
