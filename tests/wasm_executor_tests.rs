@@ -485,7 +485,7 @@ async fn test_validate_wasm_integration() {
 fn load_compiled_wasm_binary() -> Vec<u8> {
     let path = "test-wasm-add/target/wasm32-wasip1/release/test-wasm-add.wasm";
     std::fs::read(path)
-        .expect("Failed to read compiled WASM binary. Make sure to build with: cd test-wasm-add && cargo build --target wasm32-wasip1 --release")
+        .expect("Failed to read compiled WASM binary from 'test-wasm-add/target/wasm32-wasip1/release/test-wasm-add.wasm'. Ensure you have built it first by running: cd test-wasm-add && cargo build --target wasm32-wasip1 --release")
 }
 
 #[tokio::test]
