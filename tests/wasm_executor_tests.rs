@@ -480,3 +480,138 @@ async fn test_validate_wasm_integration() {
     let result = executor.execute(request).await;
     assert!(result.is_ok());
 }
+
+/// Load the compiled WASM binary for integration testing
+fn load_compiled_wasm_binary() -> Vec<u8> {
+    let path = "test-wasm-add/target/wasm32-wasip1/release/test-wasm-add.wasm";
+    std::fs::read(path)
+        .expect("Failed to read compiled WASM binary. Make sure to build with: cd test-wasm-add && cargo build --target wasm32-wasip1 --release")
+}
+
+#[tokio::test]
+async fn test_compiled_wasm_happy_path_addition() {
+    let wasm_bytes = load_compiled_wasm_binary();
+    let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+    let executor = WasmExecutor::new(fetcher).unwrap();
+
+    let args = vec!["add".to_string(), "3".to_string(), "5".to_string()];
+    let request = ExecutionRequest::new("test-cid".to_string()).with_args(args);
+    let result = executor.execute(request).await;
+
+    assert!(result.is_ok());
+    let execution_result = result.unwrap();
+    assert_eq!(execution_result.exit_code, 0);
+    
+    let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
+    assert!(stdout_str.contains("8"));
+    assert!(execution_result.fuel_consumed > 0);
+}
+
+#[tokio::test]
+async fn test_compiled_wasm_multiple_additions() {
+    let test_cases = vec![
+        (0, 0, 0),
+        (-1, 1, 0),
+        (100, 200, 300),
+        (-50, -25, -75),
+        (9999999, 1, 10000000),
+    ];
+
+    for (a, b, expected) in test_cases {
+        let wasm_bytes = load_compiled_wasm_binary();
+        let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+        let executor = WasmExecutor::new(fetcher).unwrap();
+
+        let args = vec!["add".to_string(), a.to_string(), b.to_string()];
+        let request = ExecutionRequest::new("test-cid".to_string()).with_args(args);
+        let result = executor.execute(request).await;
+
+        assert!(result.is_ok(), "Failed for {} + {}", a, b);
+        let execution_result = result.unwrap();
+        assert_eq!(execution_result.exit_code, 0, "Non-zero exit for {} + {}", a, b);
+        
+        let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
+        assert!(stdout_str.contains(&expected.to_string()), 
+               "Expected {} in stdout for {} + {}, got: {}", expected, a, b, stdout_str);
+    }
+}
+
+#[tokio::test]
+async fn test_compiled_wasm_missing_args() {
+    let test_cases = vec![
+        vec!["add".to_string()], // No args
+        vec!["add".to_string(), "5".to_string()], // Only one arg
+        vec![], // No args at all
+    ];
+
+    for args in test_cases {
+        let wasm_bytes = load_compiled_wasm_binary();
+        let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+        let executor = WasmExecutor::new(fetcher).unwrap();
+
+        let request = ExecutionRequest::new("test-cid".to_string()).with_args(args.clone());
+        let result = executor.execute(request).await;
+
+        assert!(result.is_ok(), "Execution should succeed but return non-zero exit code for args: {:?}", args);
+        let execution_result = result.unwrap();
+        assert_ne!(execution_result.exit_code, 0, "Expected non-zero exit code for missing args: {:?}", args);
+        
+        let stderr_str = String::from_utf8_lossy(&execution_result.stderr);
+        assert!(stderr_str.contains("Usage"), "Expected usage message in stderr for args: {:?}, got: {}", args, stderr_str);
+    }
+}
+
+#[tokio::test]
+async fn test_compiled_wasm_invalid_args() {
+    let test_cases = vec![
+        vec!["add".to_string(), "foo".to_string(), "5".to_string()],
+        vec!["add".to_string(), "3".to_string(), "bar".to_string()],
+        vec!["add".to_string(), "foo".to_string(), "bar".to_string()],
+        vec!["add".to_string(), "3.14".to_string(), "5".to_string()], // Float instead of int
+    ];
+
+    for args in test_cases {
+        let wasm_bytes = load_compiled_wasm_binary();
+        let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+        let executor = WasmExecutor::new(fetcher).unwrap();
+
+        let request = ExecutionRequest::new("test-cid".to_string()).with_args(args.clone());
+        let result = executor.execute(request).await;
+
+        assert!(result.is_ok(), "Execution should succeed but return non-zero exit code for invalid args: {:?}", args);
+        let execution_result = result.unwrap();
+        assert_ne!(execution_result.exit_code, 0, "Expected non-zero exit code for invalid args: {:?}", args);
+        
+        let stderr_str = String::from_utf8_lossy(&execution_result.stderr);
+        assert!(stderr_str.contains("Invalid"), "Expected error message in stderr for invalid args: {:?}, got: {}", args, stderr_str);
+    }
+}
+
+#[tokio::test]
+async fn test_compiled_wasm_fuel_consumption() {
+    let wasm_bytes = load_compiled_wasm_binary();
+    let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+    let executor = WasmExecutor::new(fetcher).unwrap();
+
+    let args = vec!["add".to_string(), "42".to_string(), "58".to_string()];
+    let request = ExecutionRequest::new("test-cid".to_string())
+        .with_args(args)
+        .with_fuel_limit(10_000_000);
+    let result = executor.execute(request).await;
+
+    assert!(result.is_ok());
+    let execution_result = result.unwrap();
+    assert_eq!(execution_result.exit_code, 0);
+    
+    // Verify fuel was consumed (should be reasonable for a real compiled binary)
+    assert!(execution_result.fuel_consumed > 0, "Expected fuel consumption > 0");
+    assert!(execution_result.fuel_consumed < 10_000_000, "Fuel consumption seems unreasonably high");
+    
+    // For a simple addition program, fuel should be in a reasonable range
+    // This is a sanity check that we're getting realistic fuel numbers for compiled WASM
+    assert!(execution_result.fuel_consumed > 100, "Expected at least some fuel consumption for compiled binary");
+    assert!(execution_result.fuel_consumed < 1_000_000, "Fuel consumption seems too high for simple addition");
+    
+    let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
+    assert!(stdout_str.contains("100")); // 42 + 58 = 100
+}
