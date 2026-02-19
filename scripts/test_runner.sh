@@ -7,17 +7,19 @@ export RUSTFLAGS="-A warnings"
 echo "🧪 Running P2P PLAY tests"
 echo "=================================="
 
+# Determine project root based on this script's location
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
 # Build WASM binary for integration tests
 echo "Building WASM binary for integration tests..."
 if command -v rustup &> /dev/null; then
     rustup target add wasm32-wasip1 &> /dev/null
 fi
-cd test-wasm-add && cargo build --target wasm32-wasip1 --release --quiet
-if [ $? -ne 0 ]; then
+if ! (cd "${PROJECT_ROOT}/test-wasm-add" && cargo build --target wasm32-wasip1 --release --quiet); then
     echo "❌ Failed to build WASM binary for integration tests"
     exit 1
 fi
-cd ..
 echo "✅ WASM binary built successfully"
 
 # Clean up any existing test database
