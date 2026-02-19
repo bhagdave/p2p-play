@@ -517,11 +517,11 @@ async fn test_compiled_wasm_multiple_additions() {
         (9999999, 1, 10000000),
     ];
 
-    for (a, b, expected) in test_cases {
-        let wasm_bytes = load_compiled_wasm_binary();
-        let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
-        let executor = WasmExecutor::new(fetcher).unwrap();
+    let wasm_bytes = load_compiled_wasm_binary();
+    let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+    let executor = WasmExecutor::new(fetcher).unwrap();
 
+    for (a, b, expected) in test_cases {
         let args = vec!["add".to_string(), a.to_string(), b.to_string()];
         let request = ExecutionRequest::new("test-cid".to_string()).with_args(args);
         let result = executor.execute(request).await;
@@ -544,11 +544,11 @@ async fn test_compiled_wasm_missing_args() {
         vec![], // No args at all
     ];
 
-    for args in test_cases {
-        let wasm_bytes = load_compiled_wasm_binary();
-        let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
-        let executor = WasmExecutor::new(fetcher).unwrap();
+    let wasm_bytes = load_compiled_wasm_binary();
+    let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+    let executor = WasmExecutor::new(fetcher).unwrap();
 
+    for args in test_cases {
         let request = ExecutionRequest::new("test-cid".to_string()).with_args(args.clone());
         let result = executor.execute(request).await;
 
@@ -570,11 +570,11 @@ async fn test_compiled_wasm_invalid_args() {
         vec!["add".to_string(), "3.14".to_string(), "5".to_string()], // Float instead of int
     ];
 
-    for args in test_cases {
-        let wasm_bytes = load_compiled_wasm_binary();
-        let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
-        let executor = WasmExecutor::new(fetcher).unwrap();
+    let wasm_bytes = load_compiled_wasm_binary();
+    let fetcher = Arc::new(MockContentFetcher::new(wasm_bytes));
+    let executor = WasmExecutor::new(fetcher).unwrap();
 
+    for args in test_cases {
         let request = ExecutionRequest::new("test-cid".to_string()).with_args(args.clone());
         let result = executor.execute(request).await;
 
