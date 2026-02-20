@@ -35,6 +35,12 @@ All changes to this project will be documented in this file.
   - **Validation**: Added comprehensive validation to ensure resource limits are properly configured
   - **Documentation**: Updated README.md and unified_network_config.json.example with WASM configuration details
   - **Test Coverage**: Added 6 new tests for WASM configuration validation and backward compatibility
+- **WASM Executor Integration Tests**: Added integration tests using a compiled WASM binary with `WasmExecutor`
+  - **Compiled Binary Tests**: Tests execute a real compiled WASM binary (`add.wasm`) to validate end-to-end execution correctness
+  - **Parameter Handling**: Tests cover integer, string, and mixed parameter type execution with the compiled binary
+  - **Resource Limit Enforcement**: Tests verify that fuel and memory limits are enforced when executing compiled binaries
+  - **Error Handling**: Tests validate proper error propagation for invalid inputs with real WASM execution
+  - **Config Integration**: Tests exercise `ExecutionRequest::with_config()` using compiled binaries and configured resource limits
 
 ## [0.10.6] - 2025-09-03
 
