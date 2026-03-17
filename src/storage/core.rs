@@ -81,8 +81,8 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
 
     {
         let state = DB_POOL_STATE.read().await;
-        if let Some((pool, stored_path)) = state.as_ref() {
-            if stored_path == &current_path {
+        if let Some((pool, stored_path)) = state.as_ref()
+            && stored_path == &current_path {
                 let _pooled_conn = pool
                     .get()
                     .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
@@ -98,7 +98,6 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
 
                 return Ok(Arc::new(Mutex::new(conn)));
             }
-        }
     }
 
     let pool = create_db_pool(&current_path)?;
@@ -241,11 +240,10 @@ async fn create_tables() -> StorageResult<()> {
 pub async fn ensure_stories_file_exists() -> StorageResult<()> {
     let db_path = get_database_path();
 
-    if let Some(parent) = std::path::Path::new(&db_path).parent() {
-        if !parent.exists() {
+    if let Some(parent) = std::path::Path::new(&db_path).parent()
+        && !parent.exists() {
             tokio::fs::create_dir_all(parent).await?;
         }
-    }
 
     let _conn = get_db_connection().await?;
     create_tables().await?;
@@ -383,7 +381,7 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
 
 pub async fn process_discovered_channels(
     channels: &[Channel],
-    peer_name: &str,
+    _peer_name: &str,
 ) -> StorageResult<usize> {
     if channels.is_empty() {
         return Ok(0);
@@ -398,12 +396,8 @@ pub async fn process_discovered_channels(
         match channel_exists(&channel.name).await {
             Ok(true) => {}
             Ok(false) => {
-                match create_channel(&channel.name, &channel.description, &channel.created_by).await
-                {
-                    Ok(_) => {
-                        saved_count += 1;
-                    }
-                    Err(_) => {}
+                if let Ok(_) = create_channel(&channel.name, &channel.description, &channel.created_by).await {
+                    saved_count += 1;
                 }
             }
             Err(_) => {}
@@ -529,8 +523,8 @@ pub async fn publish_story(
         )?;
         let story_result = stmt.query_row([&id.to_string()], mappers::map_row_to_story);
 
-        if let Ok(story) = story_result {
-            if let Err(e) = sender.send(story) {
+        if let Ok(story) = story_result
+            && let Err(e) = sender.send(story) {
                 let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
                 crate::log_network_error!(
                     error_logger,
@@ -539,7 +533,6 @@ pub async fn publish_story(
                     e
                 );
             }
-        }
     }
 
     Ok(())
@@ -878,18 +871,15 @@ fn create_or_find_conversation(
 
     match existing_result {
         Ok((id, current_peer_name)) => {
-            if let Some(names) = peer_names {
-                if let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>() {
-                    if let Some(actual_name) = names.get(&parsed_peer_id) {
-                        if current_peer_name == peer_id || current_peer_name != *actual_name {
+            if let Some(names) = peer_names
+                && let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>()
+                    && let Some(actual_name) = names.get(&parsed_peer_id)
+                        && (current_peer_name == peer_id || current_peer_name != *actual_name) {
                             conn.execute(
                                 "UPDATE conversations SET peer_name = ? WHERE id = ?",
                                 [actual_name, &id.to_string()],
                             )?;
                         }
-                    }
-                }
-            }
             Ok(id)
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => {

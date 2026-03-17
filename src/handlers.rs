@@ -83,7 +83,7 @@ where
                 match save_bootstrap_config(&config).await {
                     Ok(_) => true,
                     Err(e) => {
-                        ui_logger.log(format!("Failed to save bootstrap config: {e}"));
+                        ui_logger.log(format!("Failed to save {operation_name} bootstrap config: {e}"));
                         false
                     }
                 }
@@ -92,7 +92,7 @@ where
             }
         }
         Err(e) => {
-            ui_logger.log(format!("Failed to load bootstrap config: {e}"));
+            ui_logger.log(format!("Failed to load bootstrap config for {operation_name}: {e}"));
             false
         }
     }
@@ -394,20 +394,20 @@ pub async fn handle_delete_story(
                             successful_deletions += 1;
                         } else {
                             let failure_msg = format!("Story {id} not found");
-                            ui_logger.log(format!("{failure_msg}"));
+                            ui_logger.log(failure_msg.to_string());
                             failed_deletions.push(failure_msg);
                         }
                     }
                     Err(e) => {
                         let failure_msg = format!("Failed to delete story {id}: {e}");
-                        ui_logger.log(format!("{failure_msg}"));
+                        ui_logger.log(failure_msg.to_string());
                         error_logger.log_error(&failure_msg);
                         failed_deletions.push(failure_msg);
                     }
                 },
                 Err(e) => {
                     let failure_msg = format!("Invalid story ID: {e}");
-                    ui_logger.log(format!("{failure_msg}"));
+                    ui_logger.log(failure_msg.to_string());
                     failed_deletions.push(failure_msg);
                 }
             }
@@ -444,8 +444,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
         "search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private] to search stories"
             .to_string(),
     );
-    ui_logger
-        .log("  Example: search rust channel:tech author:alice recent:7 public".to_string());
+    ui_logger.log("  Example: search rust channel:tech author:alice recent:7 public".to_string());
     ui_logger.log("filter channel <name> | filter recent <days> to filter stories".to_string());
     ui_logger.log("  Example: filter channel general".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
@@ -850,8 +849,8 @@ pub async fn handle_direct_message_with_relay(
         }
 
         // 2. Try relay delivery if relay service is available and enabled
-        if let Some(relay_svc) = relay_service {
-            if relay_svc.config().enable_relay {
+        if let Some(relay_svc) = relay_service
+            && relay_svc.config().enable_relay {
                 let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
                     peer_id
                 } else {
@@ -891,7 +890,6 @@ pub async fn handle_direct_message_with_relay(
                     return;
                 }
             }
-        }
 
         // 3. Fall back to traditional queuing system for retry
         ui_logger.log(format!(
@@ -959,8 +957,8 @@ async fn try_relay_delivery(
             }
         }
         Err(e) => {
-            if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e {
-                if msg.contains("Public key not found") {
+            if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e
+                && msg.contains("Public key not found") {
                     ui_logger.log(format!(
                         "{} Cannot send secure message to offline peer '{to_name}'",
                         Icons::warning()
@@ -975,7 +973,6 @@ async fn try_relay_delivery(
                     ));
                     return false;
                 }
-            }
 
             ui_logger.log(format!(
                 "{} Failed to create relay message: {e}",
@@ -1334,11 +1331,8 @@ pub async fn handle_set_auto_subscription(
 }
 
 pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &str) {
-    match crate::storage::get_unread_counts_by_channel(peer_id).await {
-        Ok(unread_counts) => {
-            app.update_unread_counts(unread_counts);
-        }
-        Err(_) => {}
+    if let Ok(unread_counts) = crate::storage::get_unread_counts_by_channel(peer_id).await {
+        app.update_unread_counts(unread_counts);
     }
 }
 

@@ -956,15 +956,14 @@ impl App {
     }
 
     pub fn update_flash_indicator(&mut self) {
-        if self.flash_active {
-            if let Some(start_time) = self.flash_start_time {
+        if self.flash_active
+            && let Some(start_time) = self.flash_start_time {
                 let elapsed = start_time.elapsed().as_millis() as u64;
                 if elapsed >= self.notification_config.flash_duration_ms {
                     self.flash_active = false;
                     self.flash_start_time = None;
                 }
             }
-        }
     }
 
     pub fn update_conversations(&mut self, conversations: Vec<crate::types::Conversation>) {
@@ -979,8 +978,8 @@ impl App {
     }
 
     pub async fn display_conversation(&mut self, peer_id: &str) {
-        if let Ok(messages) = crate::storage::get_conversation_messages(peer_id).await {
-            if let Some(conversation) = self
+        if let Ok(messages) = crate::storage::get_conversation_messages(peer_id).await
+            && let Some(conversation) = self
                 .conversations
                 .iter()
                 .find(|c| c.peer_id == peer_id)
@@ -1031,7 +1030,6 @@ impl App {
                 self.add_to_log("".to_string());
                 self.view_mode = ViewMode::ConversationView(peer_id.to_string());
             }
-        }
     }
 
     pub fn try_autocomplete_peer_name(&mut self) {
@@ -1072,11 +1070,10 @@ impl App {
                 }
                 _ => {
                     self.add_to_log(format!("📋 Multiple matches: {}", matches.join(", ")));
-                    if let Some(common_prefix) = find_common_prefix(&matches) {
-                        if common_prefix.len() > partial_name.len() {
+                    if let Some(common_prefix) = find_common_prefix(&matches)
+                        && common_prefix.len() > partial_name.len() {
                             self.input = format!("msg {} ", common_prefix);
                         }
-                    }
                 }
             }
         }
@@ -1198,13 +1195,11 @@ impl App {
             } else {
                 total_lines.saturating_sub(available_height)
             }
+        } else if total_lines <= available_height {
+            0
         } else {
-            if total_lines <= available_height {
-                0
-            } else {
-                let max_scroll = total_lines.saturating_sub(available_height);
-                self.scroll_offset.min(max_scroll)
-            }
+            let max_scroll = total_lines.saturating_sub(available_height);
+            self.scroll_offset.min(max_scroll)
         }
     }
 
@@ -1337,13 +1332,11 @@ impl App {
                 } else {
                     total_lines.saturating_sub(actual_log_height)
                 }
+            } else if total_lines <= actual_log_height {
+                0
             } else {
-                if total_lines <= actual_log_height {
-                    0
-                } else {
-                    let max_scroll = total_lines.saturating_sub(actual_log_height);
-                    self.scroll_offset.min(max_scroll)
-                }
+                let max_scroll = total_lines.saturating_sub(actual_log_height);
+                self.scroll_offset.min(max_scroll)
             };
 
             let visible_start = scroll_offset;
@@ -1652,11 +1645,10 @@ pub async fn handle_ui_events(
     #[cfg(not(windows))]
     let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix
 
-    if event::poll(poll_timeout)? {
-        if let Some(app_event) = app.handle_event(event::read()?) {
+    if event::poll(poll_timeout)?
+        && let Some(app_event) = app.handle_event(event::read()?) {
             ui_sender.send(app_event)?;
         }
-    }
     Ok(())
 }
 

@@ -95,7 +95,10 @@ async fn run_app() -> AppResult<()> {
     // Load saved peer name if it exists
     let mut local_peer_name: Option<String> = match load_local_peer_name().await {
         Ok(None) => {
-            app.add_to_log("No saved peer name found. Type 'name <alias>' to set a human-readable name.".to_string());
+            app.add_to_log(
+                "No saved peer name found. Type 'name <alias>' to set a human-readable name."
+                    .to_string(),
+            );
             None
         }
         Ok(Some(name)) => {
@@ -146,12 +149,11 @@ async fn run_app() -> AppResult<()> {
 
     match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
         Ok(subscriptions) => {
-            if !subscriptions.contains(&"general".to_string()) {
-                if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
+            if !subscriptions.contains(&"general".to_string())
+                && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
                 {
                     error!("Failed to auto-subscribe to general channel: {e}");
                 }
-            }
         }
         Err(e) => {
             error!("Failed to check subscriptions: {e}");
@@ -287,12 +289,17 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
 }
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
-    let config_is_new = tokio::fs::metadata("unified_network_config.json").await.is_err();
+    let config_is_new = tokio::fs::metadata("unified_network_config.json")
+        .await
+        .is_err();
     if let Err(e) = ensure_unified_network_config_exists().await {
         error!("Failed to initialise unified network config: {e}");
         app.add_to_log(format!("Failed to initialise unified network config: {e}"));
     } else if config_is_new {
-        app.add_to_log("Created config: unified_network_config.json — edit to customise bootstrap peers".to_string());
+        app.add_to_log(
+            "Created config: unified_network_config.json — edit to customise bootstrap peers"
+                .to_string(),
+        );
     }
 
     match load_unified_network_config().await {

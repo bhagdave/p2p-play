@@ -1,5 +1,4 @@
 use crate::file_logger::FileLogger;
-use log::warn;
 
 pub struct ErrorLogger {
     logger: FileLogger,
