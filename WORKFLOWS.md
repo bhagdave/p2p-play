@@ -155,15 +155,11 @@ connect /ip4/192.168.1.10/tcp/PORT
 > 
 > **Finding the Peer ID**: In the TUI, your local peer ID is shown in the status bar. You can also run the `peer id` command from the input prompt to print it. The peer ID looks like `12D3KooW...`.
 
-After connecting, proceed with `ls p`, `ls c`, `create s`, `publish s <id>`, and `ls s all` as described in Workflow 1.
+After connecting, proceed with `create s`, `publish s <id>`, and `ls s all` as described in Workflow 1. Verify the connection in the **Connected Peers** TUI panel.
 
 ### Confirming Cross-Machine Discovery
 
-```
-ls c
-```
-
-Both peers should appear as connected. Stories published by one peer will be visible on the other after `ls s all`.
+Both peers should appear in the **Connected Peers** TUI panel once a connection is established. Stories published by one peer will be visible on the other after `ls s all`.
 
 ---
 
@@ -248,11 +244,7 @@ Once connected to the bootstrap peer, search the DHT for other nearby nodes:
 dht peers
 ```
 
-Then check your connected peers:
-
-```
-ls c
-```
+Then check your connected peers in the **Connected Peers** TUI panel, or look at the **Connected: N** count in the status bar.
 
 ### Step 5 — Share Stories Across the Internet
 
