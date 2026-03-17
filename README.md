@@ -138,12 +138,6 @@ cargo test
 - The TCP listener binds to `0.0.0.0` (all interfaces), so the node is reachable from other machines on the local network as expected.
 - mDNS peer discovery works out of the box on most distributions and macOS versions.
 
-### Terminal Requirements (all platforms)
-
-- **UTF-8 encoding**: Required for correct rendering of TUI borders and status icons.
-- **Minimum terminal size**: A minimum of **80 columns × 24 rows** is recommended. The multi-panel layout may wrap or truncate content in smaller terminals.
-- **Colour support**: 256-colour or true-colour terminal recommended for the best visual experience; the TUI will still function in basic 8-colour terminals.
-
 ## Project Origins
 
 This project was originally inspired by a [LogRocket blog post](https://blog.logrocket.com/libp2p-tutorial-build-a-peer-to-peer-app-in-rust/) and the linked [GitHub repository](https://github.com/zupzup/rust-peer-to-peer-example). However, the codebase has been considerably evolved and modernized since then, and may not resemble the original implementation.
