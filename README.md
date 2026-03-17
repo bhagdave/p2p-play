@@ -155,7 +155,7 @@ Most settings can be updated at runtime using the `reload config` command. A sma
 | Section | Fields requiring restart | Hot-reloadable fields |
 |---------|-------------------------|----------------------|
 | `bootstrap` | `bootstrap_peers` | `retry_interval_ms`, `max_retry_attempts`, `bootstrap_timeout_ms` |
-| `network` | `max_connections_per_peer`, `max_pending_incoming`, `max_pending_outgoing`, `max_established_total` | all other fields |
+| `network` | `max_connections_per_peer`, `max_pending_incoming`, `max_pending_outgoing`, `max_established_total`, `request_timeout_seconds`, `max_concurrent_streams`, `network_health_update_interval_seconds` | all other fields |
 | `ping` | `interval_secs`, `timeout_secs` | — |
 | `direct_message` | — | all fields |
 | `channel_auto_subscription` | — | all fields |
