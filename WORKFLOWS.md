@@ -176,13 +176,21 @@ Connecting across the internet requires peers to be reachable at a public IP add
 
 ### Step 1 — Identify the Bootstrap Peer's Address
 
-On the machine that will act as the bootstrap peer, start p2p-play and note the public listening address:
+On the machine that will act as the bootstrap peer, start p2p-play and look at the listen address it prints on startup. It will typically look like this on non-Windows systems:
 
 ```
-Local node is listening on /ip4/<PUBLIC_IP>/tcp/<PORT>
+Local node is listening on /ip4/0.0.0.0/tcp/4001
 ```
 
-The bootstrap peer's full multiaddr looks like:
+(On Windows you might see `127.0.0.1` instead of `0.0.0.0`.) This is the **bind address**, not your public internet address, and it is usually **not** directly reachable from other machines on the internet.
+
+To act as a public bootstrap peer:
+
+- Determine your machine's **public IP address or DNS name** (for example from your hosting provider or router configuration).
+- Ensure the TCP port used by p2p-play (e.g. `4001`) is **forwarded/open** on your router and firewall.
+- Combine that public IP/DNS and port with your peer ID to form the public bootstrap multiaddr.
+
+The bootstrap peer's full public multiaddr then looks like:
 
 ```
 /ip4/203.0.113.42/tcp/4001/p2p/12D3KooWExamplePeerID...
