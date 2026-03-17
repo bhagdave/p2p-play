@@ -80,13 +80,16 @@ async fn run_app() -> AppResult<()> {
     let mut app = initialise_ui()?;
     app.refresh_conversations().await;
 
-    let db_is_new = !std::path::Path::new("stories.db").exists();
+    let db_path = std::env::var("TEST_DATABASE_PATH")
+        .or_else(|_| std::env::var("DATABASE_PATH"))
+        .unwrap_or_else(|_| "stories.db".to_string());
+    let db_is_new = !std::path::Path::new(&db_path).exists();
     if let Err(e) = ensure_stories_file_exists().await {
         error!("Failed to initialise stories file: {e}");
         let _ = app.cleanup();
         process::exit(1);
     } else if db_is_new {
-        app.add_to_log("Created database: stories.db".to_string());
+        app.add_to_log(format!("Created database: {}", db_path));
     }
 
     // Load saved peer name if it exists
