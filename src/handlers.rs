@@ -441,10 +441,11 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("  Example: ls s".to_string());
     ui_logger.log("  Example: ls s all".to_string());
     ui_logger.log(
-        "search <query> [channel:<ch>] [recent:<days>] [public|private] to search stories"
+        "search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private] to search stories"
             .to_string(),
     );
-    ui_logger.log("  Example: search rust channel:tech recent:7 public".to_string());
+    ui_logger
+        .log("  Example: search rust channel:tech author:alice recent:7 public".to_string());
     ui_logger.log("filter channel <name> | filter recent <days> to filter stories".to_string());
     ui_logger.log("  Example: filter channel general".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
