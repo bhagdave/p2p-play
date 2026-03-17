@@ -82,17 +82,10 @@ name Bob
 
 After a few seconds, both instances should discover each other via mDNS. To confirm:
 
-```
-ls p
-```
+- Check the TUI status bar: the connected peer count should increase (for example, from `0` to `1`).
+- Open the **Connected Peers** panel in the TUI (see the key bindings/legend shown in the interface) and verify that the other instance (Alice or Bob) appears there with its peer ID and alias.
 
-Expected output includes Alice's or Bob's peer ID in the discovered-peers list.
-
-```
-ls c
-```
-
-Expected output shows the other peer under connected peers.
+Once you see the other peer listed in the Connected Peers view and the connected count is greater than zero, discovery is working correctly.
 
 ### Sharing a Story
 
