@@ -200,22 +200,30 @@ The bootstrap peer's full public multiaddr then looks like:
 
 ### Step 2 — Configure Bootstrap Peers
 
-On **each** other machine, edit (or create) `unified_network_config.json` in the working directory and add the bootstrap peer's address to the `bootstrap.bootstrap_peers` list:
+On **each** other machine, after you have run `cargo run` once (so that `unified_network_config.json` is generated), edit the existing `unified_network_config.json` in the working directory and add the bootstrap peer's address to the `bootstrap.bootstrap_peers` list.
+
+In the `bootstrap` section of that file, you should have something like:
 
 ```json
 {
-  "bootstrap": {
-    "bootstrap_peers": [
-      "/ip4/203.0.113.42/tcp/4001/p2p/12D3KooWExamplePeerID..."
-    ],
-    "retry_interval_ms": 5000,
-    "max_retry_attempts": 5,
-    "bootstrap_timeout_ms": 30000
-  }
+  "bootstrap_peers": [
+    "/ip4/203.0.113.42/tcp/4001/p2p/12D3KooWExamplePeerID..."
+  ],
+  "retry_interval_ms": 5000,
+  "max_retry_attempts": 5,
+  "bootstrap_timeout_ms": 30000
 }
 ```
 
-See `unified_network_config.json.example` for a complete example with all configuration sections.
+See `unified_network_config.json.example` for a complete example with all configuration sections. Do **not** remove other top-level sections (`network`, `ping`, `direct_message`, etc.) from your config file.
+
+Alternatively, you can add a bootstrap peer without manually editing the file by running:
+
+```text
+dht bootstrap add /ip4/203.0.113.42/tcp/4001/p2p/12D3KooWExamplePeerID...
+```
+
+This command updates `unified_network_config.json` for you.
 
 ### Step 3 — Start and Bootstrap
 
