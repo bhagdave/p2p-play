@@ -501,7 +501,7 @@ async fn test_compiled_wasm_happy_path_addition() {
     assert!(result.is_ok());
     let execution_result = result.unwrap();
     assert_eq!(execution_result.exit_code, 0);
-    
+
     let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
     assert!(stdout_str.contains("8"));
     assert!(execution_result.fuel_consumed > 0);
@@ -528,20 +528,30 @@ async fn test_compiled_wasm_multiple_additions() {
 
         assert!(result.is_ok(), "Failed for {} + {}", a, b);
         let execution_result = result.unwrap();
-        assert_eq!(execution_result.exit_code, 0, "Non-zero exit for {} + {}", a, b);
-        
+        assert_eq!(
+            execution_result.exit_code, 0,
+            "Non-zero exit for {} + {}",
+            a, b
+        );
+
         let stdout_str = String::from_utf8_lossy(&execution_result.stdout);
-        assert!(stdout_str.contains(&expected.to_string()), 
-               "Expected {} in stdout for {} + {}, got: {}", expected, a, b, stdout_str);
+        assert!(
+            stdout_str.contains(&expected.to_string()),
+            "Expected {} in stdout for {} + {}, got: {}",
+            expected,
+            a,
+            b,
+            stdout_str
+        );
     }
 }
 
 #[tokio::test]
 async fn test_compiled_wasm_missing_args() {
     let test_cases = vec![
-        vec!["add".to_string()], // No args
+        vec!["add".to_string()],                  // No args
         vec!["add".to_string(), "5".to_string()], // Only one arg
-        vec![], // No args at all
+        vec![],                                   // No args at all
     ];
 
     let wasm_bytes = load_compiled_wasm_binary();
@@ -552,12 +562,25 @@ async fn test_compiled_wasm_missing_args() {
         let request = ExecutionRequest::new("test-cid".to_string()).with_args(args.clone());
         let result = executor.execute(request).await;
 
-        assert!(result.is_ok(), "Execution should succeed but return non-zero exit code for args: {:?}", args);
+        assert!(
+            result.is_ok(),
+            "Execution should succeed but return non-zero exit code for args: {:?}",
+            args
+        );
         let execution_result = result.unwrap();
-        assert_ne!(execution_result.exit_code, 0, "Expected non-zero exit code for missing args: {:?}", args);
-        
+        assert_ne!(
+            execution_result.exit_code, 0,
+            "Expected non-zero exit code for missing args: {:?}",
+            args
+        );
+
         let stderr_str = String::from_utf8_lossy(&execution_result.stderr);
-        assert!(stderr_str.contains("Usage"), "Expected usage message in stderr for args: {:?}, got: {}", args, stderr_str);
+        assert!(
+            stderr_str.contains("Usage"),
+            "Expected usage message in stderr for args: {:?}, got: {}",
+            args,
+            stderr_str
+        );
     }
 }
 
@@ -578,12 +601,25 @@ async fn test_compiled_wasm_invalid_args() {
         let request = ExecutionRequest::new("test-cid".to_string()).with_args(args.clone());
         let result = executor.execute(request).await;
 
-        assert!(result.is_ok(), "Execution should succeed but return non-zero exit code for invalid args: {:?}", args);
+        assert!(
+            result.is_ok(),
+            "Execution should succeed but return non-zero exit code for invalid args: {:?}",
+            args
+        );
         let execution_result = result.unwrap();
-        assert_ne!(execution_result.exit_code, 0, "Expected non-zero exit code for invalid args: {:?}", args);
-        
+        assert_ne!(
+            execution_result.exit_code, 0,
+            "Expected non-zero exit code for invalid args: {:?}",
+            args
+        );
+
         let stderr_str = String::from_utf8_lossy(&execution_result.stderr);
-        assert!(stderr_str.contains("Invalid"), "Expected error message in stderr for invalid args: {:?}, got: {}", args, stderr_str);
+        assert!(
+            stderr_str.contains("Invalid"),
+            "Expected error message in stderr for invalid args: {:?}, got: {}",
+            args,
+            stderr_str
+        );
     }
 }
 
@@ -602,11 +638,14 @@ async fn test_compiled_wasm_fuel_consumption() {
     assert!(result.is_ok());
     let execution_result = result.unwrap();
     assert_eq!(execution_result.exit_code, 0);
-    
+
     // Verify fuel was consumed and did not exceed the configured fuel limit.
     // We intentionally avoid asserting tighter bounds here because fuel usage
     // is implementation-dependent and may change with compiler or runtime updates.
-    assert!(execution_result.fuel_consumed > 0, "Expected fuel consumption > 0");
+    assert!(
+        execution_result.fuel_consumed > 0,
+        "Expected fuel consumption > 0"
+    );
     assert!(
         execution_result.fuel_consumed < 10_000_000,
         "Fuel consumption should not exceed the configured fuel limit"

@@ -261,13 +261,12 @@ impl EventProcessor {
             },
             _ = self.bootstrap_status_log_interval.tick() => {
                 // Periodically log bootstrap status - use try_lock to avoid blocking
-                if let Ok(status) = auto_bootstrap.status.try_lock() {
-                    if !matches!(*status, crate::bootstrap::BootstrapStatus::NotStarted) {
+                if let Ok(status) = auto_bootstrap.status.try_lock()
+                    && !matches!(*status, crate::bootstrap::BootstrapStatus::NotStarted) {
                         drop(status); // Release lock before expensive operation
                         let status_msg = auto_bootstrap.get_status_string();
                         self.bootstrap_logger.log_status(&status_msg);
                     }
-                }
                 None
             },
             _ = self.dm_retry_interval.tick() => {
@@ -390,8 +389,8 @@ impl EventProcessor {
                 None
             }
             SwarmEvent::Dialing {
-                peer_id,
-                connection_id,
+                peer_id: _,
+                connection_id: _,
                 ..
             } => None,
             _ => None,
@@ -438,7 +437,7 @@ impl EventProcessor {
     async fn handle_connection_closed(
         &self,
         peer_id: PeerId,
-        cause: Option<&libp2p::swarm::ConnectionError>,
+        _cause: Option<&libp2p::swarm::ConnectionError>,
         swarm: &mut Swarm<StoryBehaviour>,
         peer_names: &mut HashMap<PeerId, String>,
         sorted_peer_names_cache: &mut SortedPeerNamesCache,

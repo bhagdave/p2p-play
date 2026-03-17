@@ -11,6 +11,12 @@ pub struct GatewayFetcher {
     client: reqwest::Client,
 }
 
+impl Default for GatewayFetcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GatewayFetcher {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
