@@ -107,7 +107,7 @@ Channel (leave blank for general): general
 After creation, publish the story to the network:
 
 ```
-ls s local
+ls s
 ```
 
 Note the story ID shown, then publish:
