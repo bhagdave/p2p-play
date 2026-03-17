@@ -90,7 +90,7 @@ Expected outcomes:
 
 ### Checks
 
-- `offering_id`, `ipfs_cid`, version, and resource constraints remain consistent across hops.
+- In capabilities responses, validate `WasmOffering.id` and associated metadata (`ipfs_cid`, version, resource constraints); in execution requests, validate `execution_request.offering_id` and ensure it matches the previously discovered `WasmOffering.id` and metadata across hops.
 - Timestamps are present and monotonic where expected.
 
 ## 4) Remote Execution Integration
