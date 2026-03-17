@@ -189,7 +189,7 @@ Controls the connection pool, stream limits, and maintenance intervals for the l
 
 | Field | Default | Valid range | Restart? |
 |-------|---------|-------------|---------|
-| `connection_maintenance_interval_seconds` | `300` | 10–3600 s | No |
+| `connection_maintenance_interval_seconds` | `30` | 10–3600 s | No |
 | `request_timeout_seconds` | `120` | 10–300 s | No |
 | `max_concurrent_streams` | `100` | 1–1000 | No |
 | `max_connections_per_peer` | `1` | 1–10 | **Yes** |
@@ -199,7 +199,7 @@ Controls the connection pool, stream limits, and maintenance intervals for the l
 | `connection_establishment_timeout_seconds` | `30` | 5–300 s | No |
 | `network_health_update_interval_seconds` | `15` | ≥ 1 s | No |
 
-- **`connection_maintenance_interval_seconds`** — How often (in seconds) the swarm performs housekeeping tasks such as pruning stale connections.
+- **`connection_maintenance_interval_seconds`** — How often (in seconds) the swarm performs housekeeping tasks such as pruning stale connections. **Note:** In the current implementation this interval is fixed at 30 seconds and the configuration value is ignored; changing it in the config file has no effect yet.
 - **`request_timeout_seconds`** — Maximum time to wait for a remote peer to respond to a network request before the request is considered failed.
 - **`max_concurrent_streams`** — Maximum number of simultaneous protocol streams that may be open over a single connection.
 - **`max_connections_per_peer`** — Hard cap on how many connections can exist to the same remote peer. Keeping this at `1` prevents resource waste.
