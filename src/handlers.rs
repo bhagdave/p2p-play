@@ -438,52 +438,92 @@ pub async fn handle_delete_story(
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
+    ui_logger.log("  Example: ls s".to_string());
+    ui_logger.log("  Example: ls s all".to_string());
     ui_logger.log(
-        "search <query> [channel:<ch>] [recent:<days>] [public|private] to search stories"
+        "search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private] to search stories"
             .to_string(),
     );
+    ui_logger
+        .log("  Example: search rust channel:tech author:alice recent:7 public".to_string());
     ui_logger.log("filter channel <name> | filter recent <days> to filter stories".to_string());
+    ui_logger.log("  Example: filter channel general".to_string());
     ui_logger.log("ls ch [available|unsubscribed] to list channels".to_string());
+    ui_logger.log("  Example: ls ch available".to_string());
     ui_logger.log("ls sub to list your subscriptions".to_string());
+    ui_logger.log("  Example: ls sub".to_string());
     ui_logger
         .log("create s name|header|body[|channel] to create and auto-publish story".to_string());
+    ui_logger.log("  Example: create s My Story|An intro|Story body here|general".to_string());
     ui_logger.log("create ch name|description to create channel".to_string());
+    ui_logger.log("  Example: create ch tech|A channel for technology stories".to_string());
     ui_logger.log("create desc <description> to create node description".to_string());
-    ui_logger.log("publish s to manually publish/re-publish story".to_string());
+    ui_logger.log("  Example: create desc A peer interested in open source".to_string());
+    ui_logger.log("publish s <id> to manually publish/re-publish story".to_string());
+    ui_logger.log("  Example: publish s 3".to_string());
     ui_logger.log("show story <id> to show story details".to_string());
+    ui_logger.log("  Example: show story 5".to_string());
     ui_logger.log("show desc to show your node description".to_string());
+    ui_logger.log("  Example: show desc".to_string());
     ui_logger.log("get desc <peer_alias> to get description from peer".to_string());
+    ui_logger.log("  Example: get desc alice".to_string());
     ui_logger.log("set auto-sub [on|off|status] to manage auto-subscription".to_string());
+    ui_logger.log("  Example: set auto-sub on".to_string());
     ui_logger
         .log("config auto-share [on|off|status] to control automatic story sharing".to_string());
+    ui_logger.log("  Example: config auto-share on".to_string());
     ui_logger.log("config sync-days <N> to set story sync timeframe (days)".to_string());
+    ui_logger.log("  Example: config sync-days 30".to_string());
     ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
+    ui_logger.log("  Example: delete s 1,2,5".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
+    ui_logger.log("  Example: sub tech".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
+    ui_logger.log("  Example: unsub tech".to_string());
     ui_logger.log("name <alias> to set your peer name".to_string());
+    ui_logger.log("  Example: name alice".to_string());
     ui_logger.log("peer id to show your full peer ID".to_string());
+    ui_logger.log("  Example: peer id".to_string());
     ui_logger.log("msg <peer_alias> <message> to send direct message".to_string());
+    ui_logger.log("  Example: msg alice Hello, are you there?".to_string());
     ui_logger.log("compose <peer_alias> to enter multi-line message composition mode".to_string());
+    ui_logger.log("  Example: compose alice".to_string());
     ui_logger.log(
         "Enhanced messaging: 'r' for quick reply, 'm' for message compose, Tab for auto-complete"
             .to_string(),
     );
     ui_logger.log("dht bootstrap add/remove/list/clear/retry - manage bootstrap peers".to_string());
+    ui_logger.log("  Example: dht bootstrap list".to_string());
     ui_logger.log("dht bootstrap <multiaddr> to bootstrap directly with peer".to_string());
+    ui_logger.log(
+        "  Example: dht bootstrap /ip4/104.131.131.82/tcp/4001/p2p/QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ"
+            .to_string(),
+    );
     ui_logger.log("dht peers to find closest peers in DHT".to_string());
+    ui_logger.log("  Example: dht peers".to_string());
     ui_logger.log("reload config to reload network configuration".to_string());
+    ui_logger.log("  Example: reload config".to_string());
     ui_logger.log("--- WASM Capabilities ---".to_string());
     ui_logger
         .log("wasm create <name>|<desc>|<ipfs_cid>|<version> to create WASM offering".to_string());
+    ui_logger.log("  Example: wasm create MyPlugin|A useful plugin|Qm.../v0.1.0|1.0.0".to_string());
     ui_logger.log("wasm ls [local|remote|all] to list WASM offerings".to_string());
+    ui_logger.log("  Example: wasm ls all".to_string());
     ui_logger.log("wasm show <id> to show WASM offering details".to_string());
+    ui_logger.log("  Example: wasm show 2".to_string());
     ui_logger.log("wasm toggle <id> to enable/disable WASM offering".to_string());
+    ui_logger.log("  Example: wasm toggle 2".to_string());
     ui_logger.log("wasm delete <id> to delete WASM offering".to_string());
+    ui_logger.log("  Example: wasm delete 2".to_string());
     ui_logger.log("wasm query <peer_alias> to query peer's WASM capabilities".to_string());
+    ui_logger.log("  Example: wasm query alice".to_string());
     ui_logger
         .log("wasm run <peer_alias> <offering_id> [args...] to execute remote WASM".to_string());
+    ui_logger.log("  Example: wasm run alice 3 hello world".to_string());
     ui_logger.log("wasm config to show WASM configuration".to_string());
+    ui_logger.log("  Example: wasm config".to_string());
     ui_logger.log("quit to quit".to_string());
+    ui_logger.log("  Example: quit".to_string());
 }
 
 pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
