@@ -37,9 +37,16 @@ name Alice
 You should see log output similar to:
 
 ```
-Local node is listening on /ip4/127.0.0.1/tcp/<PORT>
-Local node is listening on /ip4/<LAN_IP>/tcp/<PORT>
+Local node is listening on /ip4/0.0.0.0/tcp/<PORT>
 ```
+
+On non-Windows systems, `0.0.0.0` means the node is listening on all local interfaces, so other peers on your LAN can reach you via your machine's LAN IP at that port. On Windows, the log will typically show:
+
+```
+Local node is listening on /ip4/127.0.0.1/tcp/<PORT>
+```
+
+which means the node is only reachable from the local machine unless additional networking configuration is applied.
 
 **Terminal 2 — Instance B**
 
