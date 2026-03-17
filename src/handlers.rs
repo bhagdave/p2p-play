@@ -458,7 +458,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("  Example: create ch tech|A channel for technology stories".to_string());
     ui_logger.log("create desc <description> to create node description".to_string());
     ui_logger.log("  Example: create desc A peer interested in open source".to_string());
-    ui_logger.log("publish s to manually publish/re-publish story".to_string());
+    ui_logger.log("publish s <id> to manually publish/re-publish story".to_string());
     ui_logger.log("  Example: publish s 3".to_string());
     ui_logger.log("show story <id> to show story details".to_string());
     ui_logger.log("  Example: show story 5".to_string());
