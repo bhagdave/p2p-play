@@ -28,7 +28,7 @@ mod tests {
         let area = buffer.area;
         for y in area.top()..area.bottom() {
             for x in area.left()..area.right() {
-                if buffer.get(x, y).symbol == symbol {
+                if buffer.get(x, y).symbol() == symbol {
                     return true;
                 }
             }
