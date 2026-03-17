@@ -46,11 +46,23 @@ Local node is listening on /ip4/<LAN_IP>/tcp/<PORT>
 Open a second terminal in the same directory, then run the application. The two instances must use separate working directories so their configuration files and databases do not conflict:
 
 ```bash
-# Create a separate directory for the second instance
-mkdir /tmp/p2p-instance-b
-cp -n unified_network_config.json.example /tmp/p2p-instance-b/unified_network_config.json 2>/dev/null || true
-cd /tmp/p2p-instance-b
-cargo run --manifest-path /path/to/p2p-play/Cargo.toml
+# From the project directory (where Cargo.toml lives)
+# Create a separate directory for the second instance next to the project
+mkdir -p ../p2p-instance-b
+cp unified_network_config.json.example ../p2p-instance-b/unified_network_config.json
+cd ../p2p-instance-b
+cargo run --manifest-path ../p2p-play/Cargo.toml
+```
+
+Or, on Windows using PowerShell:
+
+```powershell
+# From the project directory (where Cargo.toml lives)
+# Create a separate directory for the second instance next to the project
+New-Item -ItemType Directory -Path ..\p2p-instance-b -Force | Out-Null
+Copy-Item -Path .\unified_network_config.json.example -Destination ..\p2p-instance-b\unified_network_config.json -Force
+Set-Location ..\p2p-instance-b
+cargo run --manifest-path ..\p2p-play\Cargo.toml
 ```
 
 Set a name for this instance:
