@@ -84,7 +84,7 @@ Expected outcomes:
 
 - **Single offering**: A advertises one module, B discovers exact metadata.
 - **Multiple offerings**: A advertises several modules; B receives complete list.
-- **Parameter inclusion toggle**: request with and without parameters; response structure matches request intent.
+- **Parameter inclusion toggle (TODO / future behavior)**: when implemented, requests with and without parameters should yield responses that respect the `include_parameters` flag. Currently, the capabilities responder ignores this flag and always returns full offerings (including parameters), so tests SHOULD NOT expect different response shapes based on the toggle yet.
 - **Stale offering refresh**: updated offering metadata (version/description) propagates after refresh.
 - **Disabled offering visibility**: disabled offerings are not returned to remote peers.
 
