@@ -18,7 +18,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
@@ -1367,6 +1367,15 @@ impl App {
                 .wrap(ratatui::widgets::Wrap { trim: false })
                 .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(output, main_chunks[0]);
+
+            if total_lines > actual_log_height {
+                let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(actual_log_height))
+                    .position(scroll_offset);
+                let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                    .begin_symbol(Some("↑"))
+                    .end_symbol(Some("↓"));
+                f.render_stateful_widget(scrollbar, main_chunks[0], &mut scrollbar_state);
+            }
 
             let side_chunks = Layout::default()
                 .direction(Direction::Vertical)
