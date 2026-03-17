@@ -92,10 +92,10 @@ async fn run_app() -> AppResult<()> {
             app.add_to_log("No saved peer name found. Type 'name <alias>' to set a human-readable name.".to_string());
             None
         }
-        Ok(Some(ref name)) => {
+        Ok(Some(name)) => {
             app.add_to_log(format!("Loaded saved peer name: {name}"));
             app.update_local_peer_name(Some(name.clone()));
-            Some(name.clone())
+            Some(name)
         }
         Err(e) => {
             error!("Failed to load saved peer name: {e}");
