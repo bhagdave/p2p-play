@@ -33,6 +33,15 @@ P2P-Play is a peer-to-peer story sharing application built with Rust using the [
 - **Story Creation Wizard**: Step-by-step interactive story creation process
 - **Multi-panel View**: Separate sections for peers, stories, logs, and input
 
+## Terminal Requirements
+
+P2P-Play uses [ratatui](https://github.com/ratatui-org/ratatui) for its terminal user interface. The following requirements must be met for correct rendering:
+
+- **Minimum terminal size**: 80×24 columns×rows recommended — ratatui layouts may panic or render incorrectly in smaller terminals.
+- **UTF-8 encoding**: The terminal must support UTF-8. On Windows CMD, run `chcp 65001` before launching, or switch to [Windows Terminal](https://aka.ms/terminal) which enables UTF-8 by default.
+- **Colour support**: 256-colour mode is recommended for the best visual experience. Terminals limited to 16 colours will fall back gracefully but some visual indicators (e.g. unread message highlights) may appear less distinct.
+- **Known working terminals**: iTerm2, GNOME Terminal, Windows Terminal, Alacritty, kitty.
+
 ## Available Commands
 
 The application provides an interactive command-line interface with the following commands:
@@ -81,6 +90,40 @@ cargo run
 # Run with debug logging
 RUST_LOG=debug cargo run
 ```
+
+### Quick Start
+
+Once the application is running, follow these five steps to get up and running quickly:
+
+1. **Set your peer name** — Give yourself a human-readable alias so other peers can identify you:
+   ```
+   name <alias>
+   ```
+   *Example:* `name alice`
+
+2. **Discover peers** — On a local network, mDNS handles peer discovery automatically. You should see nearby peers appear in the peers panel within a few seconds. To connect to a peer on a different network, use a bootstrap peer address:
+   ```
+   connect <multiaddr>
+   ```
+   *Example:* `connect /ip4/1.2.3.4/tcp/4001/p2p/QmPeerID...`
+
+3. **Check connected peers** — Verify you have peers available to share stories with:
+   ```
+   ls c
+   ```
+
+4. **Create a story** — Launch the interactive story creation wizard:
+   ```
+   create s
+   ```
+   Follow the prompts to enter a name, header, body, and channel for your story.
+
+5. **Publish your story** — Share your story with all connected peers using the story ID shown after creation:
+   ```
+   publish s <story_id>
+   ```
+
+For a full list of commands, type `help` inside the application or see the [Available Commands](#available-commands) section.
 
 ### Testing
 ```bash
