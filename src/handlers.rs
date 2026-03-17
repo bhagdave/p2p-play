@@ -438,7 +438,8 @@ pub async fn handle_delete_story(
 
 pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("ls s to list stories".to_string());
-    ui_logger.log("  Example: ls s local".to_string());
+    ui_logger.log("  Example: ls s".to_string());
+    ui_logger.log("  Example: ls s all".to_string());
     ui_logger.log(
         "search <query> [channel:<ch>] [recent:<days>] [public|private] to search stories"
             .to_string(),
