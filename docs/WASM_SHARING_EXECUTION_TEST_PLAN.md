@@ -174,7 +174,7 @@ Expected outcomes:
 
 - [ ] WASM capability tests pass.
 - [ ] WASM executor tests pass.
-- [ ] No protocol schema drift in request/response JSON.
+- [ ] No Serde schema drift in request/response types (JSON/CBOR).
 - [ ] At least one successful remote execution in integration environment.
 - [ ] At least one failure scenario each for fetch, validation, timeout, and fuel.
 - [ ] Logs/telemetry verified for one success and one failure path.
