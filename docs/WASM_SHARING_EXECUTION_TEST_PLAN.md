@@ -69,7 +69,7 @@ Expected outcomes:
 ### Scenarios
 
 1. WASM advertising disabled on node A (`advertise_capabilities=false`): node B should not discover offerings from A.
-2. Remote execution disabled on node A (`accept_execution_requests=false`): execution requests should be rejected with explicit error response.
+2. Remote execution disabled on node A (`config.wasm.capability.allow_remote_execution=false`, or `wasm config execute off` via CLI): execution requests should be rejected with explicit error response.
 3. Invalid config values (fuel/memory/timeout limits) fail validation at startup or config-check boundaries.
 4. Max concurrent execution limit is enforced when multiple requests are sent simultaneously.
 
