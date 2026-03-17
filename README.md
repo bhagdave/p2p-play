@@ -33,6 +33,15 @@ P2P-Play is a peer-to-peer story sharing application built with Rust using the [
 - **Story Creation Wizard**: Step-by-step interactive story creation process
 - **Multi-panel View**: Separate sections for peers, stories, logs, and input
 
+## Terminal Requirements
+
+P2P-Play uses [ratatui](https://github.com/ratatui-org/ratatui) for its terminal user interface. The following requirements must be met for correct rendering:
+
+- **Minimum terminal size**: 80×24 columns×rows recommended — ratatui layouts may panic or render incorrectly in smaller terminals.
+- **UTF-8 encoding**: The terminal must support UTF-8. On Windows CMD, run `chcp 65001` before launching, or switch to [Windows Terminal](https://aka.ms/terminal) which enables UTF-8 by default.
+- **Colour support**: 256-colour mode is recommended for the best visual experience. Terminals limited to 16 colours will fall back gracefully but some visual indicators (e.g. unread message highlights) may appear less distinct.
+- **Known working terminals**: iTerm2, GNOME Terminal, Windows Terminal, Alacritty, kitty.
+
 ## Available Commands
 
 The application provides an interactive command-line interface with the following commands:
