@@ -1022,9 +1022,7 @@ pub async fn handle_request_response_event(
                             }
 
                             // Remove successful message from retry queue
-                            let _before_count = queue.len();
                             queue.retain(|msg| msg.target_peer_id != peer);
-                            let _after_count = queue.len();
                         }
 
                         ui_logger.log(format!("{} Message delivered to {}", Icons::check(), peer));

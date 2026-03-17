@@ -109,7 +109,7 @@ impl CircuitBreaker {
         }
     }
 
-    pub async fn on_failure(&self, _error: &str) {
+    pub async fn on_failure(&self, error: &str) {
         let mut state = self.state.lock().await;
         state.total_failures += 1;
         state.last_failure_time = Some(Instant::now());
@@ -119,8 +119,8 @@ impl CircuitBreaker {
                 state.failure_count += 1;
                 if state.failure_count >= self.config.failure_threshold {
                     warn!(
-                        "Circuit breaker {} opening due to failures ({})",
-                        self.config.name, state.failure_count
+                        "Circuit breaker {} opening due to failures ({}), Last error: {}",
+                        self.config.name, state.failure_count, error
                     );
                     state.state = CircuitState::Open {
                         opened_at: Instant::now(),
@@ -129,8 +129,8 @@ impl CircuitBreaker {
             }
             CircuitState::HalfOpen => {
                 warn!(
-                    "Circuit breaker {} failed in HalfOpen state, returning to Open",
-                    self.config.name
+                    "Circuit breaker {} failed in HalfOpen state, returning to Open, Last error: {}",
+                    self.config.name, error
                 );
                 state.state = CircuitState::Open {
                     opened_at: Instant::now(),

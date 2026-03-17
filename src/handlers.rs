@@ -73,7 +73,7 @@ where
     }
 }
 
-async fn modify_bootstrap_config<F>(ui_logger: &UILogger, _operation_name: &str, modifier: F) -> bool
+async fn modify_bootstrap_config<F>(ui_logger: &UILogger, operation_name: &str, modifier: F) -> bool
 where
     F: FnOnce(&mut crate::types::BootstrapConfig) -> bool,
 {
@@ -83,7 +83,7 @@ where
                 match save_bootstrap_config(&config).await {
                     Ok(_) => true,
                     Err(e) => {
-                        ui_logger.log(format!("Failed to save bootstrap config: {e}"));
+                        ui_logger.log(format!("Failed to save {operation_name} bootstrap config: {e}"));
                         false
                     }
                 }
@@ -92,7 +92,7 @@ where
             }
         }
         Err(e) => {
-            ui_logger.log(format!("Failed to load bootstrap config: {e}"));
+            ui_logger.log(format!("Failed to load bootstrap config for {operation_name}: {e}"));
             false
         }
     }
