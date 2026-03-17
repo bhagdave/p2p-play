@@ -129,7 +129,7 @@ cargo test
 
 ### Windows
 
-- **TCP listener binding**: On Windows, the application binds the TCP listener to `127.0.0.1` (localhost only) instead of `0.0.0.0` (all interfaces). This is intentional to avoid common port-conflict errors on Windows, but it means the node is **only reachable from the same machine**. Peers on other machines on your local network will not be able to discover or connect to a Windows node via its TCP listener address. mDNS peer discovery is unaffected for peers already sharing the same subnet.
+- **TCP listener binding**: On Windows, the application binds the TCP listener to `127.0.0.1` (localhost only) instead of `0.0.0.0` (all interfaces). This is intentional to avoid common port-conflict errors on Windows, but it means the node is **only reachable from the same machine**. Peers on other machines on your local network will not be able to connect to a Windows node that is listening only on `127.0.0.1`. mDNS may still allow those peers to *discover* the Windows node on the local subnet, but it will typically advertise only a loopback address, so connection attempts from other machines will fail.
 - **mDNS limitations**: mDNS may be blocked by the Windows Firewall by default. If peer discovery is not working, check that your firewall allows mDNS traffic (UDP port 5353).
 - **Terminal (UTF-8)**: The TUI uses UTF-8 characters (borders, icons, status indicators). Ensure your terminal emulator is set to UTF-8 encoding. Windows Terminal and recent versions of PowerShell support this out of the box; the legacy Command Prompt (`cmd.exe`) may display garbled characters.
 
