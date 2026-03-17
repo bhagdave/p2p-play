@@ -84,6 +84,42 @@ async fn test_handle_help() {
     assert!(messages.iter().any(|m| m.contains("dht bootstrap")));
     assert!(messages.iter().any(|m| m.contains("dht peers")));
     assert!(messages.iter().any(|m| m.contains("quit")));
+    // Verify that example lines are included for key commands
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Example: msg alice Hello, are you there?"))
+    );
+    assert!(messages.iter().any(|m| m.contains("Example: publish s 3")));
+    assert!(messages.iter().any(|m| m.contains("Example: show story 5")));
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Example: delete s 1,2,5"))
+    );
+    assert!(messages.iter().any(|m| m.contains("Example: name alice")));
+    assert!(messages.iter().any(|m| m.contains("Example: sub tech")));
+    assert!(messages.iter().any(|m| m.contains("Example: wasm ls all")));
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Example: create s My Story"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Example: filter channel general"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Example: search rust channel:tech"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| m.contains("Example: wasm run alice 3 hello world"))
+    );
 }
 
 #[test]
