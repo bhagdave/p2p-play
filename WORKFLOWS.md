@@ -148,10 +148,12 @@ Local node is listening on /ip4/192.168.1.10/tcp/PORT
 On **Machine B**, use the `connect` command to dial Machine A directly:
 
 ```
-connect /ip4/192.168.1.10/tcp/PORT/p2p/<PEER_ID_OF_A>
+connect /ip4/192.168.1.10/tcp/PORT
 ```
 
-> **Finding the Peer ID**: The peer ID is logged at startup as part of the listening address, or visible in the log output when the node starts. It looks like `12D3KooW...`.
+> **Optional peer ID suffix**: The `connect` command accepts both plain transport addresses like `/ip4/192.168.1.10/tcp/PORT` and full peer multiaddrs like `/ip4/192.168.1.10/tcp/PORT/p2p/<PEER_ID_OF_A>`. The `/p2p/<PEER_ID_OF_A>` suffix is optional.
+> 
+> **Finding the Peer ID**: In the TUI, your local peer ID is shown in the status bar. You can also run the `peer id` command from the input prompt to print it. The peer ID looks like `12D3KooW...`.
 
 After connecting, proceed with `ls p`, `ls c`, `create s`, `publish s <id>`, and `ls s all` as described in Workflow 1.
 
