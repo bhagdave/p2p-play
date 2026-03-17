@@ -51,6 +51,15 @@ The application provides an interactive command-line interface with the followin
 | `help` | Show all available commands |
 | `quit` | Exit the application |
 
+## Common Workflows
+
+Looking for step-by-step guides? See **[WORKFLOWS.md](WORKFLOWS.md)** for:
+
+- [Local testing — two instances on one machine](WORKFLOWS.md#1-local-testing--two-instances-on-one-machine)
+- [LAN deployment — two machines on the same network](WORKFLOWS.md#2-lan-deployment--two-machines-on-the-same-network)
+- [Internet connectivity — bootstrap peers and DHT](WORKFLOWS.md#3-internet-connectivity--bootstrap-peers-and-dht)
+- [Channel workflow — create, subscribe, and publish](WORKFLOWS.md#4-channel-workflow--create-subscribe-and-publish)
+
 ## Getting Started
 
 ### Prerequisites
