@@ -82,6 +82,25 @@ cargo test
 ./scripts/test_runner.sh
 ```
 
+## Platform Notes
+
+### Windows
+
+- **TCP listener binding**: On Windows, the application binds the TCP listener to `127.0.0.1` (localhost only) instead of `0.0.0.0` (all interfaces). This is intentional to avoid common port-conflict errors on Windows, but it means the node is **only reachable from the same machine**. Peers on other machines on your local network will not be able to discover or connect to a Windows node via its TCP listener address. mDNS peer discovery is unaffected for peers already sharing the same subnet.
+- **mDNS limitations**: mDNS may be blocked by the Windows Firewall by default. If peer discovery is not working, check that your firewall allows mDNS traffic (UDP port 5353).
+- **Terminal (UTF-8)**: The TUI uses UTF-8 characters (borders, icons, status indicators). Ensure your terminal emulator is set to UTF-8 encoding. Windows Terminal and recent versions of PowerShell support this out of the box; the legacy Command Prompt (`cmd.exe`) may display garbled characters.
+
+### Linux / macOS
+
+- The TCP listener binds to `0.0.0.0` (all interfaces), so the node is reachable from other machines on the local network as expected.
+- mDNS peer discovery works out of the box on most distributions and macOS versions.
+
+### Terminal Requirements (all platforms)
+
+- **UTF-8 encoding**: Required for correct rendering of TUI borders and status icons.
+- **Minimum terminal size**: A minimum of **80 columns × 24 rows** is recommended. The multi-panel layout may wrap or truncate content in smaller terminals.
+- **Colour support**: 256-colour or true-colour terminal recommended for the best visual experience; the TUI will still function in basic 8-colour terminals.
+
 ## Project Origins
 
 This project was originally inspired by a [LogRocket blog post](https://blog.logrocket.com/libp2p-tutorial-build-a-peer-to-peer-app-in-rust/) and the linked [GitHub repository](https://github.com/zupzup/rust-peer-to-peer-example). However, the codebase has been considerably evolved and modernized since then, and may not resemble the original implementation.
