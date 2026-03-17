@@ -351,16 +351,13 @@ After another peer subscribes to `my-channel` and you run `ls s all`, you should
 | Goal | Command |
 |---|---|
 | Set your display name | `name <alias>` |
-| List discovered peers | `ls p` |
-| List connected peers | `ls c` |
 | Create a story | `create s` |
-| List your local stories | `ls s local` |
+| List your local stories | `ls s` |
 | Publish a story | `publish s <story_id>` |
 | Request stories from peers | `ls s all` |
-| Connect to a specific peer | `connect <multiaddr>` |
 | Bootstrap DHT from a peer | `dht bootstrap <multiaddr>` |
 | Create a channel | `create ch <name>\|<description>` |
-| List channels | `ls ch` |
+| List channels | `ls ch [available\|unsubscribed]` |
 | Subscribe to a channel | `sub <channel>` |
 | Unsubscribe from a channel | `unsub <channel>` |
 | Send a direct message | `msg <peer_alias> <message>` |
