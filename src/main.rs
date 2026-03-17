@@ -86,6 +86,24 @@ async fn run_app() -> AppResult<()> {
         process::exit(1);
     }
 
+    // Load saved peer name if it exists
+    let mut local_peer_name: Option<String> = match load_local_peer_name().await {
+        Ok(None) => {
+            app.add_to_log("No saved peer name found. Type 'name <alias>' to set a human-readable name.".to_string());
+            None
+        }
+        Ok(Some(ref name)) => {
+            app.add_to_log(format!("Loaded saved peer name: {name}"));
+            app.update_local_peer_name(Some(name.clone()));
+            Some(name.clone())
+        }
+        Err(e) => {
+            error!("Failed to load saved peer name: {e}");
+            app.add_to_log(format!("Failed to load saved peer name: {e}"));
+            None
+        }
+    };
+
     let (channels, loggers) = setup_communication_channels();
 
     let unified_config = load_configuration(&mut app).await;
@@ -102,22 +120,6 @@ async fn run_app() -> AppResult<()> {
 
     // Initialise direct message retry queue using config from unified_config
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
-
-    // Load saved peer name if it exists
-    let mut local_peer_name: Option<String> = match load_local_peer_name().await {
-        Ok(saved_name) => {
-            if let Some(ref name) = saved_name {
-                app.add_to_log(format!("Loaded saved peer name: {name}"));
-                app.update_local_peer_name(saved_name.clone());
-            }
-            saved_name
-        }
-        Err(e) => {
-            error!("Failed to load saved peer name: {e}");
-            app.add_to_log(format!("Failed to load saved peer name: {e}"));
-            None
-        }
-    };
 
     let mut auto_bootstrap = AutoBootstrap::new();
     auto_bootstrap
