@@ -6,6 +6,7 @@ All changes to this project will be documented in this file.
 
 ### Added
 - **UI/UX Improvement**: Added a startup message to the user if an alias has not already been set.
+  - Added first-run TUI log messages to make users aware when core files (DB/config/logs) are created/initialized, improving transparency during initial app startup
 - **Documentation: `unified_network_config.json` field reference**: Expanded the README Configuration section with per-field documentation covering all 10 configuration sections. Each section now includes a reference table listing the default value, valid range, and whether a restart or hot-reload applies. Includes a top-level summary table of restart requirements, field-level prose descriptions, and three copy-paste deployment profile examples (local testing, LAN, internet-facing). Updated `unified_network_config.json.example` to match current code defaults and added the previously missing `wasm.capability` sub-section.
 - **Common Workflows Documentation**: Added `WORKFLOWS.md` with step-by-step guides for the most common use cases
   - Local testing: run two instances on the same machine using mDNS auto-discovery

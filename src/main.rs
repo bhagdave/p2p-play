@@ -80,10 +80,16 @@ async fn run_app() -> AppResult<()> {
     let mut app = initialise_ui()?;
     app.refresh_conversations().await;
 
+    let db_path = std::env::var("TEST_DATABASE_PATH")
+        .or_else(|_| std::env::var("DATABASE_PATH"))
+        .unwrap_or_else(|_| "stories.db".to_string());
+    let db_is_new = !std::path::Path::new(&db_path).exists();
     if let Err(e) = ensure_stories_file_exists().await {
         error!("Failed to initialise stories file: {e}");
         let _ = app.cleanup();
         process::exit(1);
+    } else if db_is_new {
+        app.add_to_log(format!("Created database: {}", db_path));
     }
 
     // Load saved peer name if it exists
@@ -104,7 +110,15 @@ async fn run_app() -> AppResult<()> {
         }
     };
 
+    let errors_log_is_new = !std::path::Path::new("errors.log").exists();
+    let bootstrap_log_is_new = !std::path::Path::new("bootstrap.log").exists();
     let (channels, loggers) = setup_communication_channels();
+    if errors_log_is_new {
+        app.add_to_log("Logging errors to: errors.log".to_string());
+    }
+    if bootstrap_log_is_new {
+        app.add_to_log("Logging bootstrap activity to: bootstrap.log".to_string());
+    }
 
     let unified_config = load_configuration(&mut app).await;
 
@@ -273,9 +287,12 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
 }
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
+    let config_is_new = tokio::fs::metadata("unified_network_config.json").await.is_err();
     if let Err(e) = ensure_unified_network_config_exists().await {
         error!("Failed to initialise unified network config: {e}");
         app.add_to_log(format!("Failed to initialise unified network config: {e}"));
+    } else if config_is_new {
+        app.add_to_log("Created config: unified_network_config.json — edit to customise bootstrap peers".to_string());
     }
 
     match load_unified_network_config().await {
