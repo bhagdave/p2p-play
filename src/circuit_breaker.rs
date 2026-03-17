@@ -109,7 +109,7 @@ impl CircuitBreaker {
         }
     }
 
-    pub async fn on_failure(&self, error: &str) {
+    pub async fn on_failure(&self, _error: &str) {
         let mut state = self.state.lock().await;
         state.total_failures += 1;
         state.last_failure_time = Some(Instant::now());

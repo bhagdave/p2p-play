@@ -85,8 +85,8 @@ impl ContentSanitizer {
         let mut chars = text.chars().peekable();
 
         while let Some(ch) = chars.next() {
-            if ch == '\x1b' {
-                if let Some(&next_ch) = chars.peek() {
+            if ch == '\x1b'
+                && let Some(&next_ch) = chars.peek() {
                     match next_ch {
                         '[' => {
                             chars.next(); // consume '['
@@ -121,7 +121,6 @@ impl ContentSanitizer {
                     }
                     continue;
                 }
-            }
             result.push(ch);
         }
 

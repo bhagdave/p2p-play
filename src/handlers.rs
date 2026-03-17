@@ -73,7 +73,7 @@ where
     }
 }
 
-async fn modify_bootstrap_config<F>(ui_logger: &UILogger, operation_name: &str, modifier: F) -> bool
+async fn modify_bootstrap_config<F>(ui_logger: &UILogger, _operation_name: &str, modifier: F) -> bool
 where
     F: FnOnce(&mut crate::types::BootstrapConfig) -> bool,
 {
@@ -394,20 +394,20 @@ pub async fn handle_delete_story(
                             successful_deletions += 1;
                         } else {
                             let failure_msg = format!("Story {id} not found");
-                            ui_logger.log(format!("{failure_msg}"));
+                            ui_logger.log(failure_msg.to_string());
                             failed_deletions.push(failure_msg);
                         }
                     }
                     Err(e) => {
                         let failure_msg = format!("Failed to delete story {id}: {e}");
-                        ui_logger.log(format!("{failure_msg}"));
+                        ui_logger.log(failure_msg.to_string());
                         error_logger.log_error(&failure_msg);
                         failed_deletions.push(failure_msg);
                     }
                 },
                 Err(e) => {
                     let failure_msg = format!("Invalid story ID: {e}");
-                    ui_logger.log(format!("{failure_msg}"));
+                    ui_logger.log(failure_msg.to_string());
                     failed_deletions.push(failure_msg);
                 }
             }
@@ -849,8 +849,8 @@ pub async fn handle_direct_message_with_relay(
         }
 
         // 2. Try relay delivery if relay service is available and enabled
-        if let Some(relay_svc) = relay_service {
-            if relay_svc.config().enable_relay {
+        if let Some(relay_svc) = relay_service
+            && relay_svc.config().enable_relay {
                 let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
                     peer_id
                 } else {
@@ -890,7 +890,6 @@ pub async fn handle_direct_message_with_relay(
                     return;
                 }
             }
-        }
 
         // 3. Fall back to traditional queuing system for retry
         ui_logger.log(format!(
@@ -958,8 +957,8 @@ async fn try_relay_delivery(
             }
         }
         Err(e) => {
-            if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e {
-                if msg.contains("Public key not found") {
+            if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e
+                && msg.contains("Public key not found") {
                     ui_logger.log(format!(
                         "{} Cannot send secure message to offline peer '{to_name}'",
                         Icons::warning()
@@ -974,7 +973,6 @@ async fn try_relay_delivery(
                     ));
                     return false;
                 }
-            }
 
             ui_logger.log(format!(
                 "{} Failed to create relay message: {e}",
@@ -1333,11 +1331,8 @@ pub async fn handle_set_auto_subscription(
 }
 
 pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &str) {
-    match crate::storage::get_unread_counts_by_channel(peer_id).await {
-        Ok(unread_counts) => {
-            app.update_unread_counts(unread_counts);
-        }
-        Err(_) => {}
+    if let Ok(unread_counts) = crate::storage::get_unread_counts_by_channel(peer_id).await {
+        app.update_unread_counts(unread_counts);
     }
 }
 

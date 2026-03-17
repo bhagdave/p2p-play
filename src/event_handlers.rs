@@ -469,8 +469,8 @@ pub async fn handle_floodsub_event(
                     }
                 }
             } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
-                if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>() {
-                    if peer_id != *PEER_ID {
+                if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>()
+                    && peer_id != *PEER_ID {
                         debug!("Received peer name '{}' from {}", peer_name.name, peer_id);
 
                         // Only update the peer name if it's new or has actually changed
@@ -503,7 +503,6 @@ pub async fn handle_floodsub_event(
                             sorted_peer_names_cache.update(peer_names);
                         }
                     }
-                }
             } else if let Ok(published_channel) =
                 serde_json::from_slice::<PublishedChannel>(&msg.data)
             {
@@ -1023,9 +1022,9 @@ pub async fn handle_request_response_event(
                             }
 
                             // Remove successful message from retry queue
-                            let before_count = queue.len();
+                            let _before_count = queue.len();
                             queue.retain(|msg| msg.target_peer_id != peer);
-                            let after_count = queue.len();
+                            let _after_count = queue.len();
                         }
 
                         ui_logger.log(format!("{} Message delivered to {}", Icons::check(), peer));
@@ -2498,11 +2497,10 @@ pub async fn handle_wasm_execution_event(
                                 ));
                             }
                         }
-                        if !response.stderr.is_empty() {
-                            if let Ok(stderr_str) = String::from_utf8(response.stderr.clone()) {
+                        if !response.stderr.is_empty()
+                            && let Ok(stderr_str) = String::from_utf8(response.stderr.clone()) {
                                 ui_logger.log(format!("stderr: {}", stderr_str));
                             }
-                        }
                     } else {
                         ui_logger.log(format!(
                             "{} WASM execution failed: {}",
@@ -2772,15 +2770,14 @@ pub async fn process_pending_messages(
                 .find(|(_, name)| name == &&msg.target_name)
             {
                 // Update the message with the real PeerId
-                if let Ok(mut queue) = pending_messages.lock() {
-                    if let Some(stored_msg) = queue
+                if let Ok(mut queue) = pending_messages.lock()
+                    && let Some(stored_msg) = queue
                         .iter_mut()
                         .find(|m| m.target_name == msg.target_name && m.is_placeholder_peer_id)
                     {
                         stored_msg.target_peer_id = *real_peer_id;
                         stored_msg.is_placeholder_peer_id = false;
                     }
-                }
                 *real_peer_id
             } else {
                 // Peer not connected or name not known yet, skip this retry
