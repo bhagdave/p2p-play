@@ -155,7 +155,7 @@ Most settings can be updated at runtime using the `reload config` command. A sma
 | Section | Fields requiring restart | Hot-reloadable fields |
 |---------|-------------------------|----------------------|
 | `bootstrap` | `bootstrap_peers` | `retry_interval_ms`, `max_retry_attempts`, `bootstrap_timeout_ms` |
-| `network` | `max_connections_per_peer`, `max_pending_incoming`, `max_pending_outgoing`, `max_established_total`, `request_timeout_seconds`, `max_concurrent_streams`, `network_health_update_interval_seconds` | all other fields |
+| `network` | `request_timeout_seconds`, `max_concurrent_streams`, `max_connections_per_peer`, `max_pending_incoming`, `max_pending_outgoing`, `max_established_total`, `network_health_update_interval_seconds` | — ² |
 | `ping` | `interval_secs`, `timeout_secs` | — |
 | `direct_message` | — | all fields |
 | `channel_auto_subscription` | — | all fields |
@@ -164,6 +164,8 @@ Most settings can be updated at runtime using the `reload config` command. A sma
 | `auto_share` | — | all fields |
 | `circuit_breaker` | — | all fields |
 | `wasm` | — | all fields |
+
+² `connection_maintenance_interval_seconds` and `connection_establishment_timeout_seconds` are read and validated when the config is loaded, but their values are **not applied at runtime** (see the Network Configuration section below for details). They are reserved for future use.
 
 ### Configuration Sections
 
@@ -190,14 +192,14 @@ Controls the connection pool, stream limits, and maintenance intervals for the l
 | Field | Default | Valid range | Restart? |
 |-------|---------|-------------|---------|
 | `connection_maintenance_interval_seconds` | `30` | 10–3600 s | No |
-| `request_timeout_seconds` | `120` | 10–300 s | No |
-| `max_concurrent_streams` | `100` | 1–1000 | No |
+| `request_timeout_seconds` | `120` | 10–300 s | **Yes** |
+| `max_concurrent_streams` | `100` | 1–1000 | **Yes** |
 | `max_connections_per_peer` | `1` | 1–10 | **Yes** |
 | `max_pending_incoming` | `10` | ≥ 1 | **Yes** |
 | `max_pending_outgoing` | `10` | ≥ 1 | **Yes** |
 | `max_established_total` | `100` | ≥ 1 | **Yes** |
-| `connection_establishment_timeout_seconds` | `30` | 5–300 s | No |
-| `network_health_update_interval_seconds` | `15` | ≥ 1 s | No |
+| `connection_establishment_timeout_seconds` | `30` | 5–300 s | N/A ² |
+| `network_health_update_interval_seconds` | `15` | ≥ 1 s | **Yes** |
 
 - **`connection_maintenance_interval_seconds`** — How often (in seconds) the swarm performs housekeeping tasks such as pruning stale connections. **Note:** In the current implementation this interval is fixed at 30 seconds and the configuration value is ignored; changing it in the config file has no effect yet.
 - **`request_timeout_seconds`** — Maximum time to wait for a remote peer to respond to a network request before the request is considered failed.
@@ -206,7 +208,7 @@ Controls the connection pool, stream limits, and maintenance intervals for the l
 - **`max_pending_incoming`** — Maximum number of inbound connections that are being established but not yet fully negotiated.
 - **`max_pending_outgoing`** — Maximum number of outbound connections that are being dialled but not yet fully established.
 - **`max_established_total`** — Total connection pool size across all peers. Increase for high-traffic nodes; reduce on resource-constrained hardware.
-- **`connection_establishment_timeout_seconds`** — Seconds to wait for a TCP/QUIC handshake to complete before aborting the attempt.
+- **`connection_establishment_timeout_seconds`** — Intended timeout (in seconds) for TCP/QUIC handshakes. **Note:** this config value is range-validated on load but not currently passed to the network stack at runtime. Reserved for future use.
 - **`network_health_update_interval_seconds`** — How often the application refreshes internal network health metrics.
 
 #### Ping Configuration
