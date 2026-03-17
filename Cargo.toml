@@ -19,7 +19,7 @@ bytes = "1.11"
 rusqlite = { version = "0.29", features = ["bundled"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.22"
-ratatui = "0.27"
+ratatui = "0.30"
 crossterm = "0.27"
 chrono = { version = "0.4", features = ["serde"] }
 chacha20poly1305 = "0.10"
