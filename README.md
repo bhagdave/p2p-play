@@ -73,6 +73,40 @@ cargo run
 RUST_LOG=debug cargo run
 ```
 
+### Quick Start
+
+Once the application is running, follow these five steps to get up and running quickly:
+
+1. **Set your peer name** — Give yourself a human-readable alias so other peers can identify you:
+   ```
+   name <alias>
+   ```
+   *Example:* `name alice`
+
+2. **Discover peers** — On a local network, mDNS handles peer discovery automatically. You should see nearby peers appear in the peers panel within a few seconds. To connect to a peer on a different network, use a bootstrap peer address:
+   ```
+   connect <multiaddr>
+   ```
+   *Example:* `connect /ip4/1.2.3.4/tcp/4001/p2p/QmPeerID...`
+
+3. **Check connected peers** — Verify you have peers available to share stories with:
+   ```
+   ls c
+   ```
+
+4. **Create a story** — Launch the interactive story creation wizard:
+   ```
+   create s
+   ```
+   Follow the prompts to enter a name, header, body, and channel for your story.
+
+5. **Publish your story** — Share your story with all connected peers using the story ID shown after creation:
+   ```
+   publish s <story_id>
+   ```
+
+For a full list of commands, type `help` inside the application or see the [Available Commands](#available-commands) section.
+
 ### Testing
 ```bash
 # Run all tests
