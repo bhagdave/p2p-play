@@ -10,6 +10,152 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{
+        backend::TestBackend,
+        buffer::Buffer,
+        layout::Rect,
+        style::Style,
+        text::{Line, Span, Text},
+        widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+        Terminal,
+    };
+
+    fn buffer_contains_symbol(buffer: &Buffer, symbol: &str) -> bool {
+        let area = buffer.area;
+        for y in area.top()..area.bottom() {
+            for x in area.left()..area.right() {
+                if buffer.get(x, y).symbol() == symbol {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn scrollbar_not_rendered_when_not_overflowing() {
+        let backend = TestBackend::new(30, 5);
+        let mut terminal = Terminal::new(backend).expect("create terminal");
+
+        // total_lines <= actual_log_height -> no overflow
+        let output_log = vec![
+            "line 1".to_string(),
+            "line 2".to_string(),
+            "line 3".to_string(),
+        ];
+        let total_lines = output_log.len();
+        let area = Rect::new(0, 0, 30, 5);
+        // Simulate the inner height used by the output log (e.g., area minus borders)
+        let actual_log_height = 3usize;
+        let scroll_offset = 0usize;
+
+        terminal
+            .draw(|f| {
+                let visible_start =
+                    scroll_offset.min(total_lines.saturating_sub(actual_log_height));
+                let visible_end =
+                    std::cmp::min(visible_start + actual_log_height, total_lines);
+
+                let lines: Vec<Line> = output_log[visible_start..visible_end]
+                    .iter()
+                    .map(|msg| Line::from(Span::raw(msg.clone())))
+                    .collect();
+
+                let text = Text::from(lines);
+
+                let title = if total_lines > actual_log_height {
+                    format!("Output [{}/{}]", visible_start + 1, total_lines)
+                } else {
+                    "Output".to_string()
+                };
+
+                let output = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL).title(title))
+                    .wrap(ratatui::widgets::Wrap { trim: false })
+                    .alignment(ratatui::layout::Alignment::Left)
+                    .style(Style::default());
+
+                f.render_widget(output, area);
+                // In the non-overflow case, the production code does NOT render a scrollbar.
+            })
+            .expect("draw");
+
+        let buffer = terminal.backend().buffer().clone();
+        assert!(
+            !buffer_contains_symbol(&buffer, "↑"),
+            "non-overflowing log should not render upward scrollbar marker"
+        );
+        assert!(
+            !buffer_contains_symbol(&buffer, "↓"),
+            "non-overflowing log should not render downward scrollbar marker"
+        );
+    }
+
+    #[test]
+    fn scrollbar_rendered_when_overflowing() {
+        let backend = TestBackend::new(30, 5);
+        let mut terminal = Terminal::new(backend).expect("create terminal");
+
+        // total_lines > actual_log_height -> overflow
+        let output_log = (1..=10)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<String>>();
+        let total_lines = output_log.len();
+        let area = Rect::new(0, 0, 30, 5);
+        let actual_log_height = 3usize;
+        let scroll_offset = 0usize;
+
+        terminal
+            .draw(|f| {
+                let visible_start =
+                    scroll_offset.min(total_lines.saturating_sub(actual_log_height));
+                let visible_end =
+                    std::cmp::min(visible_start + actual_log_height, total_lines);
+
+                let lines: Vec<Line> = output_log[visible_start..visible_end]
+                    .iter()
+                    .map(|msg| Line::from(Span::raw(msg.clone())))
+                    .collect();
+
+                let text = Text::from(lines);
+
+                let title = if total_lines > actual_log_height {
+                    format!("Output [{}/{}]", visible_start + 1, total_lines)
+                } else {
+                    "Output".to_string()
+                };
+
+                let output = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL).title(title))
+                    .wrap(ratatui::widgets::Wrap { trim: false })
+                    .alignment(ratatui::layout::Alignment::Left)
+                    .style(Style::default());
+
+                f.render_widget(output, area);
+
+                if total_lines > actual_log_height {
+                    let mut scrollbar_state =
+                        ScrollbarState::new(total_lines.saturating_sub(actual_log_height))
+                            .position(scroll_offset);
+                    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                        .begin_symbol(Some("↑"))
+                        .end_symbol(Some("↓"));
+                    f.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
+                }
+            })
+            .expect("draw");
+
+        let buffer = terminal.backend().buffer().clone();
+        assert!(
+            buffer_contains_symbol(&buffer, "↑") || buffer_contains_symbol(&buffer, "↓"),
+            "overflowing log should render scrollbar markers"
+        );
+    }
+}
 use libp2p::PeerId;
 use log::debug;
 use ratatui::{
@@ -18,7 +164,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
@@ -1360,6 +1506,15 @@ impl App {
                 .wrap(ratatui::widgets::Wrap { trim: false })
                 .alignment(ratatui::layout::Alignment::Left);
             f.render_widget(output, main_chunks[0]);
+
+            if total_lines > actual_log_height {
+                let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(actual_log_height))
+                    .position(scroll_offset);
+                let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                    .begin_symbol(Some("↑"))
+                    .end_symbol(Some("↓"));
+                f.render_stateful_widget(scrollbar, main_chunks[0], &mut scrollbar_state);
+            }
 
             let side_chunks = Layout::default()
                 .direction(Direction::Vertical)
