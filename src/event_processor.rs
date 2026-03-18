@@ -25,7 +25,6 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
 
-const CONNECTION_MAINTENANCE_INTERVAL_SECS: u64 = 30;
 const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
 const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
@@ -95,7 +94,7 @@ impl EventProcessor {
             story_sender,
             ui_sender,
             connection_maintenance_interval: interval(Duration::from_secs(
-                CONNECTION_MAINTENANCE_INTERVAL_SECS,
+                network_config.connection_maintenance_interval_seconds,
             )),
             bootstrap_retry_interval: interval(Duration::from_secs(BOOTSTRAP_RETRY_INTERVAL_SECS)),
             bootstrap_status_log_interval: interval(Duration::from_secs(
