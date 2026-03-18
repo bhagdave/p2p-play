@@ -15,13 +15,13 @@ use crossterm::{
 mod tests {
     use super::*;
     use ratatui::{
+        Terminal,
         backend::TestBackend,
         buffer::Buffer,
         layout::Rect,
         style::Style,
         text::{Line, Span, Text},
         widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
-        Terminal,
     };
 
     fn buffer_contains_symbol(buffer: &Buffer, symbol: &str) -> bool {
@@ -57,8 +57,7 @@ mod tests {
             .draw(|f| {
                 let visible_start =
                     scroll_offset.min(total_lines.saturating_sub(actual_log_height));
-                let visible_end =
-                    std::cmp::min(visible_start + actual_log_height, total_lines);
+                let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
 
                 let lines: Vec<Line> = output_log[visible_start..visible_end]
                     .iter()
@@ -113,8 +112,7 @@ mod tests {
             .draw(|f| {
                 let visible_start =
                     scroll_offset.min(total_lines.saturating_sub(actual_log_height));
-                let visible_end =
-                    std::cmp::min(visible_start + actual_log_height, total_lines);
+                let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
 
                 let lines: Vec<Line> = output_log[visible_start..visible_end]
                     .iter()
@@ -164,7 +162,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{
+        Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState,
+    },
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
@@ -216,6 +217,8 @@ pub struct App {
     pub scroll_offset: usize,
     pub auto_scroll: bool,
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
+    pub bootstrap_status_display: String,
+    pub mdns_active: bool,
     pub conversations: Vec<crate::types::Conversation>,
     pub unread_message_count: usize,
     pub input_history: Vec<String>,
@@ -317,6 +320,8 @@ impl App {
             scroll_offset: 0,
             auto_scroll: true, // Start with auto-scroll enabled
             network_health: None,
+            bootstrap_status_display: "--".to_string(),
+            mdns_active: false,
             conversations: Vec::new(),
             unread_message_count: 0,
             input_history: Vec::new(),
@@ -887,6 +892,10 @@ impl App {
         self.network_health = Some(network_health);
     }
 
+    pub fn update_bootstrap_status_display(&mut self, status: String) {
+        self.bootstrap_status_display = status;
+    }
+
     pub fn enter_channel(&mut self, channel_name: String) {
         self.view_mode = ViewMode::Stories(channel_name);
         self.list_state.select(Some(0));
@@ -1103,13 +1112,14 @@ impl App {
 
     pub fn update_flash_indicator(&mut self) {
         if self.flash_active
-            && let Some(start_time) = self.flash_start_time {
-                let elapsed = start_time.elapsed().as_millis() as u64;
-                if elapsed >= self.notification_config.flash_duration_ms {
-                    self.flash_active = false;
-                    self.flash_start_time = None;
-                }
+            && let Some(start_time) = self.flash_start_time
+        {
+            let elapsed = start_time.elapsed().as_millis() as u64;
+            if elapsed >= self.notification_config.flash_duration_ms {
+                self.flash_active = false;
+                self.flash_start_time = None;
             }
+        }
     }
 
     pub fn update_conversations(&mut self, conversations: Vec<crate::types::Conversation>) {
@@ -1130,52 +1140,52 @@ impl App {
                 .iter()
                 .find(|c| c.peer_id == peer_id)
                 .cloned()
-            {
-                self.add_to_log("".to_string());
-                self.add_to_log(format!(
-                    "{} ═══════════════ CONVERSATION WITH {} ═══════════════",
-                    Icons::speech(),
-                    conversation.peer_name
-                ));
-                self.add_to_log("".to_string());
+        {
+            self.add_to_log("".to_string());
+            self.add_to_log(format!(
+                "{} ═══════════════ CONVERSATION WITH {} ═══════════════",
+                Icons::speech(),
+                conversation.peer_name
+            ));
+            self.add_to_log("".to_string());
 
-                for msg in messages {
-                    let time_str = {
-                        let datetime = UNIX_EPOCH + Duration::from_secs(msg.timestamp);
-                        let local_datetime = DateTime::<Local>::from(datetime);
-                        if self.notification_config.enhanced_timestamps {
-                            local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
-                        } else {
-                            local_datetime.format("%Y-%m-%d %H:%M").to_string()
-                        }
+            for msg in messages {
+                let time_str = {
+                    let datetime = UNIX_EPOCH + Duration::from_secs(msg.timestamp);
+                    let local_datetime = DateTime::<Local>::from(datetime);
+                    if self.notification_config.enhanced_timestamps {
+                        local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                    } else {
+                        local_datetime.format("%Y-%m-%d %H:%M").to_string()
+                    }
+                };
+
+                let direction = if msg.is_outgoing { "→" } else { "←" };
+                let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
+
+                let status_indicator =
+                    if msg.is_outgoing && self.notification_config.show_delivery_status {
+                        format!(" {}", Icons::checkmark()) // Simple delivered indicator
+                    } else {
+                        String::new()
                     };
 
-                    let direction = if msg.is_outgoing { "→" } else { "←" };
-                    let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
-
-                    let status_indicator =
-                        if msg.is_outgoing && self.notification_config.show_delivery_status {
-                            format!(" {}", Icons::checkmark()) // Simple delivered indicator
-                        } else {
-                            String::new()
-                        };
-
-                    self.add_to_log(format!(
-                        "{} [{}] {} {}{}",
-                        direction,
-                        time_str,
-                        if msg.is_outgoing {
-                            "You"
-                        } else {
-                            &conversation.peer_name
-                        },
-                        sanitized_message,
-                        status_indicator
-                    ));
-                }
-                self.add_to_log("".to_string());
-                self.view_mode = ViewMode::ConversationView(peer_id.to_string());
+                self.add_to_log(format!(
+                    "{} [{}] {} {}{}",
+                    direction,
+                    time_str,
+                    if msg.is_outgoing {
+                        "You"
+                    } else {
+                        &conversation.peer_name
+                    },
+                    sanitized_message,
+                    status_indicator
+                ));
             }
+            self.add_to_log("".to_string());
+            self.view_mode = ViewMode::ConversationView(peer_id.to_string());
+        }
     }
 
     pub fn try_autocomplete_peer_name(&mut self) {
@@ -1217,9 +1227,10 @@ impl App {
                 _ => {
                     self.add_to_log(format!("📋 Multiple matches: {}", matches.join(", ")));
                     if let Some(common_prefix) = find_common_prefix(&matches)
-                        && common_prefix.len() > partial_name.len() {
-                            self.input = format!("msg {} ", common_prefix);
-                        }
+                        && common_prefix.len() > partial_name.len()
+                    {
+                        self.input = format!("msg {} ", common_prefix);
+                    }
                 }
             }
         }
@@ -1387,15 +1398,14 @@ impl App {
                 .split(f.size());
 
             let version = env!("CARGO_PKG_VERSION");
-            let network_health_text = if let Some(ref health) = self.network_health {
-                if health.overall_healthy {
-                    format!("{} Network OK", Icons::network_healthy())
-                } else {
-                    format!("{} Network Issues ({}/{})", Icons::network_issues(), health.failed_operations, health.total_operations)
-                }
-            } else {
-                format!("{} Network Status Unknown", Icons::network_unknown())
-            };
+            let bootstrap_text = format!("Bootstrap: {}", self.bootstrap_status_display);
+            let mdns_text = if self.mdns_active { "mDNS: active" } else { "mDNS: searching" };
+            let network_status_text = format!(
+                "Network: {} peers | {} | {}",
+                self.peers.len(),
+                bootstrap_text,
+                mdns_text
+            );
 
             let message_indicator = if self.unread_message_count > 0 {
                 if self.flash_active {
@@ -1409,12 +1419,11 @@ impl App {
 
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play v{} | Peer: {} ({}) | Connected: {} | {} | Mode: {} | AUTO: {}{}",
+                    "P2P-Play v{} | Peer: {} ({}) | {} | Mode: {} | AUTO: {}{}",
                     version,
                     name,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
-                    self.peers.len(),
-                    network_health_text,
+                    network_status_text,
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
@@ -1427,11 +1436,10 @@ impl App {
                 )
             } else {
                 format!(
-                    "P2P-Play v{} | Peer ID: {} | Connected: {} | {} | Mode: {} | AUTO: {}{}",
+                    "P2P-Play v{} | Peer ID: {} | {} | Mode: {} | AUTO: {}{}",
                     version,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
-                    self.peers.len(),
-                    network_health_text,
+                    network_status_text,
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
@@ -1801,9 +1809,10 @@ pub async fn handle_ui_events(
     let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix
 
     if event::poll(poll_timeout)?
-        && let Some(app_event) = app.handle_event(event::read()?) {
-            ui_sender.send(app_event)?;
-        }
+        && let Some(app_event) = app.handle_event(event::read()?)
+    {
+        ui_sender.send(app_event)?;
+    }
     Ok(())
 }
 

@@ -179,6 +179,11 @@ impl EventProcessor {
                 app.update_peers(peer_names.clone());
                 app.update_local_peer_name(local_peer_name.clone());
             }
+
+            // Keep bootstrap status display up-to-date every loop iteration
+            app.update_bootstrap_status_display(
+                auto_bootstrap.get_bootstrap_short_status().to_string(),
+            );
         }
     }
 
@@ -310,6 +315,13 @@ impl EventProcessor {
                 Some(EventType::FloodsubEvent(event))
             }
             SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => {
+                // Track mDNS discovery status for the TUI status bar
+                match &event {
+                    libp2p::mdns::Event::Discovered(_) | libp2p::mdns::Event::Expired(_) => {
+                        app.mdns_active =
+                            swarm.behaviour().mdns.discovered_nodes().next().is_some();
+                    }
+                }
                 Some(EventType::MdnsEvent(event))
             }
             SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(event)) => {

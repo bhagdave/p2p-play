@@ -258,6 +258,17 @@ impl AutoBootstrap {
         }
     }
 
+    /// Returns a short, stable label for display in the TUI status bar.
+    pub fn get_bootstrap_short_status(&self) -> &'static str {
+        let status = self.status.lock().unwrap();
+        match &*status {
+            BootstrapStatus::NotStarted => "--",
+            BootstrapStatus::InProgress { .. } => "Connecting",
+            BootstrapStatus::Connected { .. } => "OK",
+            BootstrapStatus::Failed { .. } => "Failed",
+        }
+    }
+
     pub fn reset(&mut self) {
         {
             let mut status = self.status.lock().unwrap();
