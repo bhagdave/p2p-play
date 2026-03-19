@@ -57,6 +57,9 @@ All changes to this project will be documented in this file.
   - **Error Handling**: Tests validate proper error propagation for invalid inputs with real WASM execution
   - **Config Integration**: Tests exercise `ExecutionRequest::with_config()` using compiled binaries and configured resource limits
 
+### Fixed
+- **Configuration wiring**: `connection_maintenance_interval_seconds` from `unified_network_config.json` is now correctly applied at runtime. Previously the `EventProcessor` ignored this setting and always used a hardcoded 30-second constant; it now uses the configured value (default 300 s, valid range 10–3600 s).
+
 ## [0.10.6] - 2025-09-03
 
 ### Added
