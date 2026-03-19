@@ -151,9 +151,9 @@ async fn run_app() -> AppResult<()> {
         Ok(subscriptions) => {
             if !subscriptions.contains(&"general".to_string())
                 && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
-                {
-                    error!("Failed to auto-subscribe to general channel: {e}");
-                }
+            {
+                error!("Failed to auto-subscribe to general channel: {e}");
+            }
         }
         Err(e) => {
             error!("Failed to check subscriptions: {e}");
@@ -310,7 +310,7 @@ async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
         Err(e) => {
             error!("Failed to load unified network config: {e}");
             app.add_to_log(format!(
-                "Failed to load unified network config: {e}, using defaults"
+                "Config error: {e} — Edit unified_network_config.json to fix. Using defaults for all settings."
             ));
             UnifiedNetworkConfig::new()
         }

@@ -257,7 +257,7 @@ impl EventProcessor {
             _ = self.bootstrap_retry_interval.tick() => {
                 // Automatic bootstrap retry - only if should retry and time is right
                 if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
-                    run_auto_bootstrap_with_retry(auto_bootstrap, swarm, &self.bootstrap_logger, &self.error_logger).await;
+                    run_auto_bootstrap_with_retry(auto_bootstrap, swarm, &self.bootstrap_logger, &self.error_logger, &self.ui_logger).await;
                 }
                 None
             },

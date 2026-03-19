@@ -1,5 +1,5 @@
 use crate::bootstrap_logger::BootstrapLogger;
-use crate::handlers::extract_peer_id_from_multiaddr;
+use crate::handlers::{UILogger, extract_peer_id_from_multiaddr};
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
 use libp2p::swarm::Swarm;
@@ -296,6 +296,7 @@ pub async fn run_auto_bootstrap_with_retry(
     swarm: &mut Swarm<StoryBehaviour>,
     bootstrap_logger: &BootstrapLogger,
     error_logger: &crate::error_logger::ErrorLogger,
+    ui_logger: &UILogger,
 ) {
     if !auto_bootstrap.should_retry() {
         return;
@@ -314,6 +315,18 @@ pub async fn run_auto_bootstrap_with_retry(
     } else {
         // Bootstrap failed immediately, schedule retry
         auto_bootstrap.schedule_next_retry();
+
+        if auto_bootstrap.should_retry() {
+            let retry_count = *auto_bootstrap.retry_count.lock().unwrap();
+            ui_logger.log(format!(
+                "Bootstrap attempt {retry_count} failed — will retry. Check bootstrap.log for details."
+            ));
+        } else {
+            ui_logger.log(
+                "Bootstrap failed — check bootstrap.log or add peers to unified_network_config.json"
+                    .to_string(),
+            );
+        }
     }
 }
 

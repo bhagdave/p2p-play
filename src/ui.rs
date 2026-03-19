@@ -15,13 +15,13 @@ use crossterm::{
 mod tests {
     use super::*;
     use ratatui::{
+        Terminal,
         backend::TestBackend,
         buffer::Buffer,
         layout::Rect,
         style::Style,
         text::{Line, Span, Text},
         widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
-        Terminal,
     };
 
     fn buffer_contains_symbol(buffer: &Buffer, symbol: &str) -> bool {
@@ -57,8 +57,7 @@ mod tests {
             .draw(|f| {
                 let visible_start =
                     scroll_offset.min(total_lines.saturating_sub(actual_log_height));
-                let visible_end =
-                    std::cmp::min(visible_start + actual_log_height, total_lines);
+                let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
 
                 let lines: Vec<Line> = output_log[visible_start..visible_end]
                     .iter()
@@ -113,8 +112,7 @@ mod tests {
             .draw(|f| {
                 let visible_start =
                     scroll_offset.min(total_lines.saturating_sub(actual_log_height));
-                let visible_end =
-                    std::cmp::min(visible_start + actual_log_height, total_lines);
+                let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
 
                 let lines: Vec<Line> = output_log[visible_start..visible_end]
                     .iter()
@@ -164,7 +162,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{
+        Block, Borders, List, ListItem, ListState, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState,
+    },
 };
 use std::collections::HashMap;
 use std::io::{self, Stdout};
@@ -1111,13 +1112,14 @@ impl App {
 
     pub fn update_flash_indicator(&mut self) {
         if self.flash_active
-            && let Some(start_time) = self.flash_start_time {
-                let elapsed = start_time.elapsed().as_millis() as u64;
-                if elapsed >= self.notification_config.flash_duration_ms {
-                    self.flash_active = false;
-                    self.flash_start_time = None;
-                }
+            && let Some(start_time) = self.flash_start_time
+        {
+            let elapsed = start_time.elapsed().as_millis() as u64;
+            if elapsed >= self.notification_config.flash_duration_ms {
+                self.flash_active = false;
+                self.flash_start_time = None;
             }
+        }
     }
 
     pub fn update_conversations(&mut self, conversations: Vec<crate::types::Conversation>) {
@@ -1138,52 +1140,52 @@ impl App {
                 .iter()
                 .find(|c| c.peer_id == peer_id)
                 .cloned()
-            {
-                self.add_to_log("".to_string());
-                self.add_to_log(format!(
-                    "{} ═══════════════ CONVERSATION WITH {} ═══════════════",
-                    Icons::speech(),
-                    conversation.peer_name
-                ));
-                self.add_to_log("".to_string());
+        {
+            self.add_to_log("".to_string());
+            self.add_to_log(format!(
+                "{} ═══════════════ CONVERSATION WITH {} ═══════════════",
+                Icons::speech(),
+                conversation.peer_name
+            ));
+            self.add_to_log("".to_string());
 
-                for msg in messages {
-                    let time_str = {
-                        let datetime = UNIX_EPOCH + Duration::from_secs(msg.timestamp);
-                        let local_datetime = DateTime::<Local>::from(datetime);
-                        if self.notification_config.enhanced_timestamps {
-                            local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
-                        } else {
-                            local_datetime.format("%Y-%m-%d %H:%M").to_string()
-                        }
+            for msg in messages {
+                let time_str = {
+                    let datetime = UNIX_EPOCH + Duration::from_secs(msg.timestamp);
+                    let local_datetime = DateTime::<Local>::from(datetime);
+                    if self.notification_config.enhanced_timestamps {
+                        local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
+                    } else {
+                        local_datetime.format("%Y-%m-%d %H:%M").to_string()
+                    }
+                };
+
+                let direction = if msg.is_outgoing { "→" } else { "←" };
+                let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
+
+                let status_indicator =
+                    if msg.is_outgoing && self.notification_config.show_delivery_status {
+                        format!(" {}", Icons::checkmark()) // Simple delivered indicator
+                    } else {
+                        String::new()
                     };
 
-                    let direction = if msg.is_outgoing { "→" } else { "←" };
-                    let sanitized_message = ContentSanitizer::sanitize_for_display(&msg.message);
-
-                    let status_indicator =
-                        if msg.is_outgoing && self.notification_config.show_delivery_status {
-                            format!(" {}", Icons::checkmark()) // Simple delivered indicator
-                        } else {
-                            String::new()
-                        };
-
-                    self.add_to_log(format!(
-                        "{} [{}] {} {}{}",
-                        direction,
-                        time_str,
-                        if msg.is_outgoing {
-                            "You"
-                        } else {
-                            &conversation.peer_name
-                        },
-                        sanitized_message,
-                        status_indicator
-                    ));
-                }
-                self.add_to_log("".to_string());
-                self.view_mode = ViewMode::ConversationView(peer_id.to_string());
+                self.add_to_log(format!(
+                    "{} [{}] {} {}{}",
+                    direction,
+                    time_str,
+                    if msg.is_outgoing {
+                        "You"
+                    } else {
+                        &conversation.peer_name
+                    },
+                    sanitized_message,
+                    status_indicator
+                ));
             }
+            self.add_to_log("".to_string());
+            self.view_mode = ViewMode::ConversationView(peer_id.to_string());
+        }
     }
 
     pub fn try_autocomplete_peer_name(&mut self) {
@@ -1225,9 +1227,10 @@ impl App {
                 _ => {
                     self.add_to_log(format!("📋 Multiple matches: {}", matches.join(", ")));
                     if let Some(common_prefix) = find_common_prefix(&matches)
-                        && common_prefix.len() > partial_name.len() {
-                            self.input = format!("msg {} ", common_prefix);
-                        }
+                        && common_prefix.len() > partial_name.len()
+                    {
+                        self.input = format!("msg {} ", common_prefix);
+                    }
                 }
             }
         }
@@ -1804,9 +1807,10 @@ pub async fn handle_ui_events(
     let poll_timeout = std::time::Duration::from_millis(16); // Keep fast polling on Unix
 
     if event::poll(poll_timeout)?
-        && let Some(app_event) = app.handle_event(event::read()?) {
-            ui_sender.send(app_event)?;
-        }
+        && let Some(app_event) = app.handle_event(event::read()?)
+    {
+        ui_sender.send(app_event)?;
+    }
     Ok(())
 }
 
