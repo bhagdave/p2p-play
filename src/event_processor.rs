@@ -64,6 +64,11 @@ pub struct EventProcessor {
 
     // Verified P2P-Play peers (only these are shown in UI)
     verified_p2p_play_peers: Arc<Mutex<HashMap<PeerId, String>>>,
+
+    // Session-lifetime cache of user-set peer aliases keyed by PeerId.
+    // Survives peer disconnections so that the alias is restored immediately
+    // on the next connection without waiting for the peer to re-broadcast it.
+    known_peer_names: HashMap<PeerId, String>,
 }
 
 impl EventProcessor {
@@ -114,6 +119,7 @@ impl EventProcessor {
             network_circuit_breakers,
             pending_handshake_peers: Arc::new(Mutex::new(HashMap::new())),
             verified_p2p_play_peers: Arc::new(Mutex::new(HashMap::new())),
+            known_peer_names: HashMap::new(),
         }
     }
 
@@ -174,6 +180,10 @@ impl EventProcessor {
                     sorted_peer_names_cache,
                 )
                 .await;
+
+                // Restore any previously learned aliases for reconnecting peers and
+                // learn new aliases from peers that just broadcast their name.
+                self.sync_known_peer_names(peer_names, sorted_peer_names_cache);
 
                 app.update_peers(peer_names.clone());
                 app.update_local_peer_name(local_peer_name.clone());
@@ -444,7 +454,7 @@ impl EventProcessor {
 
     #[allow(clippy::too_many_arguments)]
     async fn handle_connection_closed(
-        &self,
+        &mut self,
         peer_id: PeerId,
         _cause: Option<&libp2p::swarm::ConnectionError>,
         swarm: &mut Swarm<StoryBehaviour>,
@@ -465,12 +475,65 @@ impl EventProcessor {
         let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
         verified_peers.remove(&peer_id);
 
-        if let Some(_name) = peer_names.remove(&peer_id) {
+        if let Some(name) = peer_names.remove(&peer_id) {
+            // Persist user-set aliases so they are restored on the next connection
+            // without waiting for the peer to re-broadcast its name.
+            if Self::is_user_set_peer_name(&name) {
+                self.known_peer_names.insert(peer_id, name);
+            }
             sorted_peer_names_cache.update(peer_names);
             app.update_peers(peer_names.clone());
         }
 
         trigger_immediate_connection_maintenance(swarm, &self.error_logger).await;
+    }
+
+    /// Returns `true` when `name` is a user-set alias rather than the auto-generated
+    /// `"Peer_<peer_id>"` placeholder.  User-set names are validated to be at most
+    /// `PEER_NAME_MAX` characters (currently 30), while the placeholder is always
+    /// longer (5 + ~52 chars for the base58-encoded PeerId).
+    fn is_user_set_peer_name(name: &str) -> bool {
+        name.len() <= crate::validation::ContentLimits::PEER_NAME_MAX
+    }
+
+    /// Keeps `known_peer_names` and `peer_names` in sync so that user-set aliases
+    /// survive peer disconnections within a session.
+    ///
+    /// * **Learn**: any real alias present in `peer_names` is saved into
+    ///   `known_peer_names` so it is available if the peer disconnects and reconnects.
+    /// * **Restore**: any peer in `peer_names` that still has the default placeholder
+    ///   gets its previously learned alias applied immediately, without waiting for
+    ///   the peer to re-broadcast its name.
+    fn sync_known_peer_names(
+        &mut self,
+        peer_names: &mut HashMap<PeerId, String>,
+        sorted_peer_names_cache: &mut SortedPeerNamesCache,
+    ) {
+        // Pass 1 – learn new / updated real aliases from the active peer map.
+        for (peer_id, name) in peer_names.iter() {
+            if Self::is_user_set_peer_name(name) {
+                let known = self.known_peer_names.get(peer_id);
+                // Insert when the peer has no cached name or when their name has changed.
+                if !known.is_some_and(|k| k == name) {
+                    self.known_peer_names.insert(*peer_id, name.clone());
+                }
+            }
+        }
+
+        // Pass 2 – restore known aliases for peers that joined with a placeholder.
+        let mut names_updated = false;
+        for (peer_id, name) in peer_names.iter_mut() {
+            if let Some(known_name) = self.known_peer_names.get(peer_id) {
+                if name != known_name {
+                    *name = known_name.clone();
+                    names_updated = true;
+                }
+            }
+        }
+
+        if names_updated {
+            sorted_peer_names_cache.update(peer_names);
+        }
     }
 
     async fn handle_outgoing_connection_error(
