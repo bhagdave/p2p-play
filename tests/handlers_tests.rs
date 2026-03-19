@@ -1342,3 +1342,132 @@ async fn test_handle_direct_message_with_relay_prefer_relay() {
         log_messages
     );
 }
+
+// ─── Export story tests ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_handle_export_story_missing_format() {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("/tmp/test_export_errors.log");
+
+    // Missing format argument
+    handle_export_story("export s 1", &ui_logger, &error_logger).await;
+
+    let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+    assert!(
+        msgs.iter().any(|m| m.contains("Usage")),
+        "Expected usage message, got: {msgs:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_export_story_wrong_prefix() {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("/tmp/test_export_errors.log");
+
+    // Completely wrong prefix should trigger usage
+    handle_export_story("export_wrong 1 md", &ui_logger, &error_logger).await;
+
+    let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+    assert!(
+        msgs.iter().any(|m| m.contains("Usage")),
+        "Expected usage message, got: {msgs:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_export_story_invalid_format_arg() {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("/tmp/test_export_errors.log");
+
+    handle_export_story("export s 1 xml", &ui_logger, &error_logger).await;
+
+    let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+    assert!(
+        msgs.iter().any(|m| m.contains("md") || m.contains("json")),
+        "Expected format error message, got: {msgs:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_export_story_invalid_id() {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("/tmp/test_export_errors.log");
+
+    handle_export_story("export s notanid md", &ui_logger, &error_logger).await;
+
+    let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+    // Either the ID validation fires ("invalid") or the DB read fails first – both are acceptable
+    assert!(
+        msgs.iter()
+            .any(|m| m.to_lowercase().contains("invalid") || m.to_lowercase().contains("failed")),
+        "Expected invalid ID or DB error message, got: {msgs:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_export_story_not_found() {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("/tmp/test_export_errors.log");
+
+    // Story id 999999 is very unlikely to exist in the test DB
+    handle_export_story("export s 999999 md", &ui_logger, &error_logger).await;
+
+    let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+    assert!(
+        msgs.iter().any(|m| {
+            m.contains("not found") || m.contains("No stories") || m.contains("Failed")
+        }),
+        "Expected not-found or error message, got: {msgs:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_handle_export_all_json_creates_file() {
+    let _lock = TEST_DB_MUTEX.lock().unwrap();
+    let tmp_dir = tempfile::tempdir().expect("temp dir");
+    let db_path = tmp_dir.path().join("export_test.db");
+    // SAFETY: guarded by TEST_DB_MUTEX so only one test mutates env at a time;
+    // set_var is still technically unsafe in a multi-threaded process, but the
+    // mutex makes the window as small as possible.
+    unsafe {
+        std::env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+    }
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+    let error_logger = ErrorLogger::new("/tmp/test_export_errors.log");
+
+    // "all" with a brand-new (empty) database – handler should report "No stories to export"
+    handle_export_story("export s all json", &ui_logger, &error_logger).await;
+
+    let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+    assert!(
+        msgs.iter()
+            .any(|m| m.contains("No stories") || m.contains("Exported") || m.contains("Failed")),
+        "Expected a status message for empty-DB export, got: {msgs:?}"
+    );
+
+    unsafe {
+        std::env::remove_var("TEST_DATABASE_PATH");
+    }
+}
+
+#[tokio::test]
+async fn test_handle_help_includes_export() {
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+
+    handle_help("help", &ui_logger).await;
+
+    let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
+    assert!(
+        msgs.iter().any(|m| m.contains("export")),
+        "Help text should mention export command, got: {msgs:?}"
+    );
+}

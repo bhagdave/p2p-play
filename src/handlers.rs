@@ -475,6 +475,10 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("  Example: config sync-days 30".to_string());
     ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
     ui_logger.log("  Example: delete s 1,2,5".to_string());
+    ui_logger
+        .log("export s <id|all> <md|json> to export stories to ./exports/".to_string());
+    ui_logger.log("  Example: export s 3 md".to_string());
+    ui_logger.log("  Example: export s all json".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
     ui_logger.log("  Example: sub tech".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
@@ -1776,6 +1780,156 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
         }
     } else {
         ui_logger.log("Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]".to_string());
+    }
+}
+
+pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
+    // Accepted forms:
+    //   export s <id> md
+    //   export s <id> json
+    //   export s all md
+    //   export s all json
+    let rest = match cmd.strip_prefix("export s ") {
+        Some(r) => r.trim(),
+        None => {
+            ui_logger.log(
+                "Usage: export s <id|all> <md|json>  (exports to ./exports/)".to_string(),
+            );
+            return;
+        }
+    };
+
+    let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+    if parts.len() != 2 {
+        ui_logger.log("Usage: export s <id|all> <md|json>".to_string());
+        return;
+    }
+
+    let target = parts[0].trim();
+    let format = parts[1].trim().to_lowercase();
+
+    if format != "md" && format != "json" {
+        ui_logger.log("Format must be 'md' or 'json'".to_string());
+        return;
+    }
+
+    let stories = match read_local_stories().await {
+        Ok(s) => s,
+        Err(e) => {
+            error_logger.log_error(&format!("Failed to read stories for export: {e}"));
+            ui_logger.log(format!("{} Failed to read stories: {e}", Icons::cross()));
+            return;
+        }
+    };
+
+    // Resolve the list of stories to export
+    let to_export: Vec<&crate::types::Story> = if target == "all" {
+        stories.iter().collect()
+    } else {
+        match ContentValidator::validate_story_id(target) {
+            Ok(id) => match stories.iter().find(|s| s.id == id) {
+                Some(s) => vec![s],
+                None => {
+                    ui_logger.log(format!("Story with id {id} not found"));
+                    return;
+                }
+            },
+            Err(e) => {
+                ui_logger.log(format!("Invalid story ID: {e}"));
+                return;
+            }
+        }
+    };
+
+    if to_export.is_empty() {
+        ui_logger.log("No stories to export".to_string());
+        return;
+    }
+
+    // Ensure the exports directory exists
+    let export_dir = std::path::Path::new("./exports");
+    if let Err(e) = std::fs::create_dir_all(export_dir) {
+        error_logger.log_error(&format!("Failed to create exports directory: {e}"));
+        ui_logger.log(format!("{} Failed to create exports directory: {e}", Icons::cross()));
+        return;
+    }
+
+    match format.as_str() {
+        "json" => {
+            // All-in-one JSON file when exporting multiple stories; single file for one story
+            let path = if target == "all" {
+                export_dir.join("stories.json")
+            } else {
+                export_dir.join(format!("story_{}.json", to_export[0].id))
+            };
+
+            let content = if to_export.len() == 1 {
+                match serde_json::to_string_pretty(to_export[0]) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        ui_logger.log(format!("{} Failed to serialize story: {e}", Icons::cross()));
+                        return;
+                    }
+                }
+            } else {
+                match serde_json::to_string_pretty(&to_export) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        ui_logger.log(format!("{} Failed to serialize stories: {e}", Icons::cross()));
+                        return;
+                    }
+                }
+            };
+
+            if let Err(e) = std::fs::write(&path, content) {
+                error_logger.log_error(&format!("Failed to write export file: {e}"));
+                ui_logger.log(format!("{} Failed to write file: {e}", Icons::cross()));
+                return;
+            }
+
+            ui_logger.log(format!(
+                "{} Exported {} {} to {}",
+                Icons::book(),
+                to_export.len(),
+                if to_export.len() == 1 { "story" } else { "stories" },
+                path.display()
+            ));
+        }
+        "md" => {
+            // One Markdown file per story
+            let mut exported = 0usize;
+            for story in &to_export {
+                let safe_name: String = story
+                    .name
+                    .chars()
+                    .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+                    .collect();
+                let filename = format!("story_{}_{}.md", story.id, safe_name);
+                let path = export_dir.join(&filename);
+
+                let content = format!(
+                    "# {}\n\n**Channel:** {}\n\n## Header\n\n{}\n\n## Body\n\n{}\n",
+                    story.name, story.channel, story.header, story.body
+                );
+
+                if let Err(e) = std::fs::write(&path, content) {
+                    error_logger.log_error(&format!("Failed to write {filename}: {e}"));
+                    ui_logger.log(format!("{} Failed to write {filename}: {e}", Icons::cross()));
+                    continue;
+                }
+                exported += 1;
+            }
+
+            ui_logger.log(format!(
+                "{} Exported {}/{} {} as Markdown to {}/",
+                Icons::book(),
+                exported,
+                to_export.len(),
+                if to_export.len() == 1 { "story" } else { "stories" },
+                export_dir.display()
+            ));
+        }
+        _ => unreachable!(),
     }
 }
 
