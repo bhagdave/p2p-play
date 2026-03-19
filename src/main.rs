@@ -3,6 +3,7 @@ mod bootstrap_logger;
 mod circuit_breaker;
 mod content_fetcher;
 mod crypto;
+mod data_dir;
 mod error_logger;
 mod errors;
 mod event_handlers;
@@ -36,6 +37,8 @@ use storage::{
 use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::App;
 
+use clap::Parser;
+use data_dir::get_data_path;
 use libp2p::{PeerId, Swarm};
 use log::error;
 use std::collections::HashMap;
@@ -44,8 +47,50 @@ use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
+/// Peer-to-peer story sharing application.
+#[derive(Parser, Debug)]
+#[command(name = "p2p-play", about = "Peer-to-peer story sharing application")]
+struct Cli {
+    /// Directory for storing data files (database, logs, config, and peer key).
+    /// The directory is created automatically if it does not exist.
+    #[arg(long, value_name = "PATH")]
+    data_dir: Option<std::path::PathBuf>,
+}
+
 #[tokio::main]
 async fn main() {
+    let cli = Cli::parse();
+
+    if let Some(data_dir) = cli.data_dir {
+        if let Err(e) = std::fs::create_dir_all(&data_dir) {
+            eprintln!(
+                "Failed to create data directory '{}': {}",
+                data_dir.display(),
+                e
+            );
+            std::process::exit(1);
+        }
+        // Canonicalize to an absolute path so relative --data-dir values work
+        // regardless of later working-directory changes.
+        let canonical = match std::fs::canonicalize(&data_dir) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!(
+                    "Failed to resolve data directory '{}': {}",
+                    data_dir.display(),
+                    e
+                );
+                std::process::exit(1);
+            }
+        };
+        // Safety: setting an env var is safe here because no other threads
+        // exist yet — we are still in single-threaded main() before the
+        // Tokio runtime spawns anything.
+        unsafe {
+            std::env::set_var("DATA_DIR", canonical.to_string_lossy().as_ref());
+        }
+    }
+
     if let Err(e) = run_app().await {
         eprintln!("Application error: {e}");
         // Log the error chain for debugging
@@ -82,7 +127,7 @@ async fn run_app() -> AppResult<()> {
 
     let db_path = std::env::var("TEST_DATABASE_PATH")
         .or_else(|_| std::env::var("DATABASE_PATH"))
-        .unwrap_or_else(|_| "stories.db".to_string());
+        .unwrap_or_else(|_| get_data_path("stories.db"));
     let db_is_new = !std::path::Path::new(&db_path).exists();
     if let Err(e) = ensure_stories_file_exists().await {
         error!("Failed to initialise stories file: {e}");
@@ -113,14 +158,20 @@ async fn run_app() -> AppResult<()> {
         }
     };
 
-    let errors_log_is_new = !std::path::Path::new("errors.log").exists();
-    let bootstrap_log_is_new = !std::path::Path::new("bootstrap.log").exists();
+    let errors_log_is_new = !std::path::Path::new(&get_data_path("errors.log")).exists();
+    let bootstrap_log_is_new = !std::path::Path::new(&get_data_path("bootstrap.log")).exists();
     let (channels, loggers) = setup_communication_channels();
     if errors_log_is_new {
-        app.add_to_log("Logging errors to: errors.log".to_string());
+        app.add_to_log(format!(
+            "Logging errors to: {}",
+            get_data_path("errors.log")
+        ));
     }
     if bootstrap_log_is_new {
-        app.add_to_log("Logging bootstrap activity to: bootstrap.log".to_string());
+        app.add_to_log(format!(
+            "Logging bootstrap activity to: {}",
+            get_data_path("bootstrap.log")
+        ));
     }
 
     let unified_config = load_configuration(&mut app).await;
@@ -151,9 +202,9 @@ async fn run_app() -> AppResult<()> {
         Ok(subscriptions) => {
             if !subscriptions.contains(&"general".to_string())
                 && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
-                {
-                    error!("Failed to auto-subscribe to general channel: {e}");
-                }
+            {
+                error!("Failed to auto-subscribe to general channel: {e}");
+            }
         }
         Err(e) => {
             error!("Failed to check subscriptions: {e}");
@@ -281,25 +332,24 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
 
     let loggers = Loggers {
         ui_logger: handlers::UILogger::new(ui_log_sender),
-        error_logger: ErrorLogger::new("errors.log"),
-        bootstrap_logger: BootstrapLogger::new("bootstrap.log"),
+        error_logger: ErrorLogger::new(&get_data_path("errors.log")),
+        bootstrap_logger: BootstrapLogger::new(&get_data_path("bootstrap.log")),
     };
 
     (channels, loggers)
 }
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
-    let config_is_new = tokio::fs::metadata("unified_network_config.json")
-        .await
-        .is_err();
+    let config_path = get_data_path("unified_network_config.json");
+    let config_is_new = tokio::fs::metadata(&config_path).await.is_err();
     if let Err(e) = ensure_unified_network_config_exists().await {
         error!("Failed to initialise unified network config: {e}");
         app.add_to_log(format!("Failed to initialise unified network config: {e}"));
     } else if config_is_new {
-        app.add_to_log(
-            "Created config: unified_network_config.json — edit to customise bootstrap peers"
-                .to_string(),
-        );
+        app.add_to_log(format!(
+            "Created config: {} — edit to customise bootstrap peers",
+            config_path
+        ));
     }
 
     match load_unified_network_config().await {
