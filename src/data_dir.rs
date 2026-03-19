@@ -5,9 +5,17 @@
 /// If `DATA_DIR` is not set, the filename is returned as-is, which resolves
 /// to the current working directory (preserving the previous default behaviour).
 pub fn get_data_path(filename: &str) -> String {
-    if let Ok(data_dir) = std::env::var("DATA_DIR") {
-        let path = std::path::Path::new(&data_dir).join(filename);
-        path.to_string_lossy().into_owned()
+    build_data_path(std::env::var("DATA_DIR").ok().as_deref(), filename)
+}
+
+/// Inner helper used by `get_data_path` and by unit tests (which need to
+/// inject a specific directory without touching the process environment).
+pub(crate) fn build_data_path(data_dir: Option<&str>, filename: &str) -> String {
+    if let Some(dir) = data_dir {
+        std::path::Path::new(dir)
+            .join(filename)
+            .to_string_lossy()
+            .into_owned()
     } else {
         filename.to_string()
     }
@@ -18,30 +26,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_get_data_path_fallback() {
-        // When DATA_DIR is not set, the filename is returned unchanged.
-        // We test the logic without mutating the environment.
-        let result_no_dir = {
-            // Simulate get_data_path with no env var
-            let data_dir: Option<String> = None;
-            match data_dir {
-                Some(d) => std::path::Path::new(&d)
-                    .join("stories.db")
-                    .to_string_lossy()
-                    .into_owned(),
-                None => "stories.db".to_string(),
-            }
-        };
-        assert_eq!(result_no_dir, "stories.db");
+    fn test_build_data_path_no_dir() {
+        assert_eq!(build_data_path(None, "stories.db"), "stories.db");
+        assert_eq!(build_data_path(None, "errors.log"), "errors.log");
+        assert_eq!(build_data_path(None, "peer_key"), "peer_key");
     }
 
     #[test]
-    fn test_get_data_path_with_dir() {
-        let data_dir = "/tmp/test-data";
-        let path = std::path::Path::new(data_dir).join("stories.db");
-        assert_eq!(path.to_string_lossy(), "/tmp/test-data/stories.db");
+    fn test_build_data_path_with_dir() {
+        assert_eq!(
+            build_data_path(Some("/tmp/test-data"), "stories.db"),
+            "/tmp/test-data/stories.db"
+        );
+        assert_eq!(
+            build_data_path(Some("/tmp/test-data"), "errors.log"),
+            "/tmp/test-data/errors.log"
+        );
+        assert_eq!(
+            build_data_path(Some("/tmp/test-data"), "peer_key"),
+            "/tmp/test-data/peer_key"
+        );
+    }
 
-        let path2 = std::path::Path::new(data_dir).join("errors.log");
-        assert_eq!(path2.to_string_lossy(), "/tmp/test-data/errors.log");
+    #[test]
+    fn test_build_data_path_relative_dir() {
+        let result = build_data_path(Some("relative/dir"), "stories.db");
+        assert!(result.ends_with("stories.db"));
+        assert!(result.contains("relative/dir"));
+    }
+
+    #[test]
+    fn test_get_data_path_returns_filename_when_no_data_dir() {
+        // If DATA_DIR is not set in this test's environment, the filename
+        // is returned unchanged.  We cannot guarantee DATA_DIR is absent
+        // in all CI environments, so we test the inner helper directly and
+        // only assert on get_data_path() when DATA_DIR is absent.
+        if std::env::var("DATA_DIR").is_err() {
+            assert_eq!(get_data_path("stories.db"), "stories.db");
+            assert_eq!(get_data_path("errors.log"), "errors.log");
+        } else {
+            // DATA_DIR is set (e.g. by another test or the environment); just
+            // verify that get_data_path returns a path ending with the filename.
+            let result = get_data_path("stories.db");
+            assert!(result.ends_with("stories.db"));
+        }
     }
 }

@@ -57,8 +57,11 @@ struct Cli {
     data_dir: Option<std::path::PathBuf>,
 }
 
-#[tokio::main]
-async fn main() {
+// Synchronous entry-point so that the Tokio runtime is started *after*
+// the data directory is resolved and the DATA_DIR env var is set.
+// This guarantees that the env-var write happens before any worker threads
+// are spawned, making the `set_var` call free of data races.
+fn main() {
     let cli = Cli::parse();
 
     if let Some(data_dir) = cli.data_dir {
@@ -83,26 +86,33 @@ async fn main() {
                 std::process::exit(1);
             }
         };
-        // Safety: setting an env var is safe here because no other threads
-        // exist yet — we are still in single-threaded main() before the
-        // Tokio runtime spawns anything.
+        // SAFETY: No other threads exist at this point — the Tokio runtime
+        // has not been started yet, so this call is free of data races.
         unsafe {
             std::env::set_var("DATA_DIR", canonical.to_string_lossy().as_ref());
         }
     }
 
-    if let Err(e) = run_app().await {
-        eprintln!("Application error: {e}");
-        // Log the error chain for debugging
-        let mut source = e.source();
-        let mut indent = 1;
-        while let Some(err) = source {
-            eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
-            source = err.source();
-            indent += 1;
+    // Build the Tokio runtime manually (equivalent to #[tokio::main]).
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build Tokio runtime");
+
+    rt.block_on(async {
+        if let Err(e) = run_app().await {
+            eprintln!("Application error: {e}");
+            // Log the error chain for debugging
+            let mut source = e.source();
+            let mut indent = 1;
+            while let Some(err) = source {
+                eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
+                source = err.source();
+                indent += 1;
+            }
+            std::process::exit(1);
         }
-        std::process::exit(1);
-    }
+    });
 }
 
 fn initialise_ui() -> AppResult<App> {
