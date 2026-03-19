@@ -523,6 +523,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_bootstrap_short_status() {
+        let bootstrap = AutoBootstrap::new();
+
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "--");
+
+        {
+            let mut status = bootstrap.status.lock().unwrap();
+            *status = BootstrapStatus::InProgress {
+                attempts: 1,
+                last_attempt: Instant::now(),
+            };
+        }
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "Connecting");
+
+        {
+            let mut status = bootstrap.status.lock().unwrap();
+            *status = BootstrapStatus::Connected {
+                peer_count: 3,
+                connected_at: Instant::now(),
+            };
+        }
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "OK");
+
+        {
+            let mut status = bootstrap.status.lock().unwrap();
+            *status = BootstrapStatus::Failed {
+                attempts: 2,
+                last_error: "timeout".to_string(),
+            };
+        }
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "Failed");
+    }
+
     #[tokio::test]
     async fn test_initialise_without_config_file() {
         let mut bootstrap = AutoBootstrap::new();

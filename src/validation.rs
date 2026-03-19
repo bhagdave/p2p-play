@@ -86,42 +86,41 @@ impl ContentSanitizer {
 
         while let Some(ch) = chars.next() {
             if ch == '\x1b'
-                && let Some(&next_ch) = chars.peek()
-            {
-                match next_ch {
-                    '[' => {
-                        chars.next(); // consume '['
-                        #[allow(clippy::while_let_on_iterator)]
-                        while let Some(seq_ch) = chars.next() {
-                            if seq_ch.is_ascii_alphabetic() || seq_ch == '~' {
-                                break;
+                && let Some(&next_ch) = chars.peek() {
+                    match next_ch {
+                        '[' => {
+                            chars.next(); // consume '['
+                            #[allow(clippy::while_let_on_iterator)]
+                            while let Some(seq_ch) = chars.next() {
+                                if seq_ch.is_ascii_alphabetic() || seq_ch == '~' {
+                                    break;
+                                }
+                            }
+                        }
+                        ']' => {
+                            chars.next(); // consume ']'
+                            #[allow(clippy::while_let_on_iterator)]
+                            while let Some(seq_ch) = chars.next() {
+                                if seq_ch == '\x07' {
+                                    break;
+                                } else if seq_ch == '\x1b' && chars.peek() == Some(&'\\') {
+                                    chars.next(); // consume '\'
+                                    break;
+                                }
+                            }
+                        }
+                        '(' | ')' | '*' | '+' => {
+                            chars.next(); // consume intermediate
+                            chars.next(); // consume final char
+                        }
+                        _ => {
+                            if next_ch.is_ascii_alphabetic() {
+                                chars.next(); // consume the character
                             }
                         }
                     }
-                    ']' => {
-                        chars.next(); // consume ']'
-                        #[allow(clippy::while_let_on_iterator)]
-                        while let Some(seq_ch) = chars.next() {
-                            if seq_ch == '\x07' {
-                                break;
-                            } else if seq_ch == '\x1b' && chars.peek() == Some(&'\\') {
-                                chars.next(); // consume '\'
-                                break;
-                            }
-                        }
-                    }
-                    '(' | ')' | '*' | '+' => {
-                        chars.next(); // consume intermediate
-                        chars.next(); // consume final char
-                    }
-                    _ => {
-                        if next_ch.is_ascii_alphabetic() {
-                            chars.next(); // consume the character
-                        }
-                    }
+                    continue;
                 }
-                continue;
-            }
             result.push(ch);
         }
 

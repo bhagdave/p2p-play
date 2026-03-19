@@ -181,9 +181,7 @@ impl EventProcessor {
             }
 
             // Keep bootstrap status display up-to-date every loop iteration
-            app.update_bootstrap_status_display(
-                auto_bootstrap.get_bootstrap_short_status().to_string(),
-            );
+            app.update_bootstrap_status_display(auto_bootstrap.get_bootstrap_short_status());
         }
     }
 
