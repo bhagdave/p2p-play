@@ -216,6 +216,8 @@ pub struct App {
     pub scroll_offset: usize,
     pub auto_scroll: bool,
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
+    pub bootstrap_status_display: &'static str,
+    pub mdns_active: bool,
     pub conversations: Vec<crate::types::Conversation>,
     pub unread_message_count: usize,
     pub input_history: Vec<String>,
@@ -317,6 +319,8 @@ impl App {
             scroll_offset: 0,
             auto_scroll: true, // Start with auto-scroll enabled
             network_health: None,
+            bootstrap_status_display: "--",
+            mdns_active: false,
             conversations: Vec::new(),
             unread_message_count: 0,
             input_history: Vec::new(),
@@ -887,6 +891,10 @@ impl App {
         self.network_health = Some(network_health);
     }
 
+    pub fn update_bootstrap_status_display(&mut self, status: &'static str) {
+        self.bootstrap_status_display = status;
+    }
+
     pub fn enter_channel(&mut self, channel_name: String) {
         self.view_mode = ViewMode::Stories(channel_name);
         self.list_state.select(Some(0));
@@ -1387,15 +1395,12 @@ impl App {
                 .split(f.size());
 
             let version = env!("CARGO_PKG_VERSION");
-            let network_health_text = if let Some(ref health) = self.network_health {
-                if health.overall_healthy {
-                    format!("{} Network OK", Icons::network_healthy())
-                } else {
-                    format!("{} Network Issues ({}/{})", Icons::network_issues(), health.failed_operations, health.total_operations)
-                }
-            } else {
-                format!("{} Network Status Unknown", Icons::network_unknown())
-            };
+            let network_status_text = format!(
+                "Network: {} peers | Bootstrap: {} | mDNS: {}",
+                self.peers.len(),
+                self.bootstrap_status_display,
+                if self.mdns_active { "active" } else { "searching" }
+            );
 
             let message_indicator = if self.unread_message_count > 0 {
                 if self.flash_active {
@@ -1409,12 +1414,11 @@ impl App {
 
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play v{} | Peer: {} ({}) | Connected: {} | {} | Mode: {} | AUTO: {}{}",
+                    "P2P-Play v{} | Peer: {} ({}) | {} | Mode: {} | AUTO: {}{}",
                     version,
                     name,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
-                    self.peers.len(),
-                    network_health_text,
+                    network_status_text,
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",
@@ -1427,11 +1431,10 @@ impl App {
                 )
             } else {
                 format!(
-                    "P2P-Play v{} | Peer ID: {} | Connected: {} | {} | Mode: {} | AUTO: {}{}",
+                    "P2P-Play v{} | Peer ID: {} | {} | Mode: {} | AUTO: {}{}",
                     version,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
-                    self.peers.len(),
-                    network_health_text,
+                    network_status_text,
                     match self.input_mode {
                         InputMode::Normal => "Normal",
                         InputMode::Editing => "Editing",

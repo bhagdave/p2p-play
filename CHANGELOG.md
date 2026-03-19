@@ -5,6 +5,9 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Network status in TUI status bar**: The header now displays real-time network connectivity information — `Network: X peers | Bootstrap: OK | mDNS: active` — so users can see whether networking is working without reading `bootstrap.log`. Bootstrap state (`--`, `Connecting`, `OK`, `Failed`) is derived from Kademlia DHT events; mDNS state reflects whether peers have been discovered on the local network.
+
+### Added
 - **UI/UX Improvement**: Added a visual scrollbar to the output pane so users can see their scroll position when navigating with cursor keys. The scrollbar appears on the right edge of the output pane whenever the log content exceeds the visible height, with ↑/↓ markers at the top and bottom of the scroll track. The existing `Output [N/Total]` title indicator is preserved alongside the new scrollbar.
 - **UI/UX Improvement**: Added a startup message to the user if an alias has not already been set.
   - Added first-run TUI log messages to make users aware when core files (DB/config/logs) are created/initialized, improving transparency during initial app startup

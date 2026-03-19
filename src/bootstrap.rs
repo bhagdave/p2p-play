@@ -258,6 +258,17 @@ impl AutoBootstrap {
         }
     }
 
+    /// Returns a short, stable label for display in the TUI status bar.
+    pub fn get_bootstrap_short_status(&self) -> &'static str {
+        let status = self.status.lock().unwrap();
+        match &*status {
+            BootstrapStatus::NotStarted => "--",
+            BootstrapStatus::InProgress { .. } => "Connecting",
+            BootstrapStatus::Connected { .. } => "OK",
+            BootstrapStatus::Failed { .. } => "Failed",
+        }
+    }
+
     pub fn reset(&mut self) {
         {
             let mut status = self.status.lock().unwrap();
@@ -510,6 +521,40 @@ mod tests {
             bootstrap.get_status_string(),
             "DHT: Failed after 3 attempts (timeout)"
         );
+    }
+
+    #[test]
+    fn test_bootstrap_short_status() {
+        let bootstrap = AutoBootstrap::new();
+
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "--");
+
+        {
+            let mut status = bootstrap.status.lock().unwrap();
+            *status = BootstrapStatus::InProgress {
+                attempts: 1,
+                last_attempt: Instant::now(),
+            };
+        }
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "Connecting");
+
+        {
+            let mut status = bootstrap.status.lock().unwrap();
+            *status = BootstrapStatus::Connected {
+                peer_count: 3,
+                connected_at: Instant::now(),
+            };
+        }
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "OK");
+
+        {
+            let mut status = bootstrap.status.lock().unwrap();
+            *status = BootstrapStatus::Failed {
+                attempts: 2,
+                last_error: "timeout".to_string(),
+            };
+        }
+        assert_eq!(bootstrap.get_bootstrap_short_status(), "Failed");
     }
 
     #[tokio::test]
