@@ -25,7 +25,6 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
 
-const CONNECTION_MAINTENANCE_INTERVAL_SECS: u64 = 30;
 const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
 const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 const DM_RETRY_INTERVAL_SECS: u64 = 10;
@@ -95,7 +94,7 @@ impl EventProcessor {
             story_sender,
             ui_sender,
             connection_maintenance_interval: interval(Duration::from_secs(
-                CONNECTION_MAINTENANCE_INTERVAL_SECS,
+                network_config.connection_maintenance_interval_seconds,
             )),
             bootstrap_retry_interval: interval(Duration::from_secs(BOOTSTRAP_RETRY_INTERVAL_SECS)),
             bootstrap_status_log_interval: interval(Duration::from_secs(
@@ -774,5 +773,59 @@ mod tests {
         assert_eq!(event_processor.dm_config.retry_interval_seconds, 10);
         assert!(event_processor.dm_config.enable_connection_retries);
         assert!(event_processor.dm_config.enable_timed_retries);
+    }
+
+    #[tokio::test]
+    async fn test_connection_maintenance_interval_uses_config() {
+        let (_, ui_rcv) = mpsc::unbounded_channel();
+        let (_, ui_log_rcv) = mpsc::unbounded_channel();
+        let (_, response_rcv) = mpsc::unbounded_channel();
+        let (_, story_rcv) = mpsc::unbounded_channel();
+        let (response_sender, _) = mpsc::unbounded_channel();
+        let (story_sender, _) = mpsc::unbounded_channel();
+        let (ui_sender, _) = mpsc::unbounded_channel();
+        let (ui_log_sender, _) = mpsc::unbounded_channel();
+
+        let dm_config = DirectMessageConfig::default();
+        let pending_messages = Arc::new(Mutex::new(Vec::new()));
+        let ui_logger = UILogger::new(ui_log_sender);
+        let error_logger = ErrorLogger::new("test_errors.log");
+        let bootstrap_logger = BootstrapLogger::new("test_bootstrap.log");
+        let cb_config = crate::types::NetworkCircuitBreakerConfig {
+            enabled: false,
+            ..Default::default()
+        };
+        let network_circuit_breakers =
+            crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+
+        // Use a distinctive non-default value to prove the config is wired, not hardcoded
+        let network_config = crate::types::NetworkConfig {
+            connection_maintenance_interval_seconds: 120,
+            ..Default::default()
+        };
+
+        let ep = EventProcessor::new(
+            ui_rcv,
+            ui_log_rcv,
+            response_rcv,
+            story_rcv,
+            response_sender,
+            story_sender,
+            ui_sender,
+            &network_config,
+            dm_config,
+            pending_messages,
+            ui_logger,
+            error_logger,
+            bootstrap_logger,
+            None,
+            network_circuit_breakers,
+        );
+
+        assert_eq!(
+            ep.connection_maintenance_interval.period(),
+            Duration::from_secs(120),
+            "connection_maintenance_interval should reflect network_config value, not a hardcoded constant"
+        );
     }
 }
