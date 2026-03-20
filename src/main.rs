@@ -151,9 +151,9 @@ async fn run_app() -> AppResult<()> {
         Ok(subscriptions) => {
             if !subscriptions.contains(&"general".to_string())
                 && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
-            {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
+                {
+                    error!("Failed to auto-subscribe to general channel: {e}");
+                }
         }
         Err(e) => {
             error!("Failed to check subscriptions: {e}");

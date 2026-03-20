@@ -5,6 +5,7 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Session peer alias persistence**: When a peer disconnects and reconnects, their display name is now restored immediately from a session-lifetime in-memory cache rather than showing the default `Peer_<id>` placeholder until the peer re-broadcasts their alias. The cache is keyed by `PeerId` and is held in `EventProcessor` for the duration of the application run; no disk persistence is required.
 - **Network status in TUI status bar**: The header now displays real-time network connectivity information — `Network: X peers | Bootstrap: OK | mDNS: active` — so users can see whether networking is working without reading `bootstrap.log`. Bootstrap state (`--`, `Connecting`, `OK`, `Failed`) is derived from Kademlia DHT events; mDNS state reflects whether peers have been discovered on the local network.
 
 ### Added
