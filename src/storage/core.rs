@@ -25,7 +25,13 @@ fn get_database_path() -> String {
         return db_path;
     }
 
-    crate::data_dir::get_data_path("stories.db")
+    // When DATA_DIR is set, place the DB there; otherwise use the previous
+    // default so that Path::parent() is never an empty string and
+    // create_dir_all("") cannot fail at startup.
+    match std::env::var("DATA_DIR") {
+        Ok(_) => crate::data_dir::get_data_path("stories.db"),
+        Err(_) => "./stories.db".to_string(),
+    }
 }
 
 type DbPool = Pool<SqliteConnectionManager>;
