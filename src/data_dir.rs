@@ -34,25 +34,24 @@ mod tests {
 
     #[test]
     fn test_build_data_path_with_dir() {
-        assert_eq!(
-            build_data_path(Some("/tmp/test-data"), "stories.db"),
-            "/tmp/test-data/stories.db"
-        );
-        assert_eq!(
-            build_data_path(Some("/tmp/test-data"), "errors.log"),
-            "/tmp/test-data/errors.log"
-        );
-        assert_eq!(
-            build_data_path(Some("/tmp/test-data"), "peer_key"),
-            "/tmp/test-data/peer_key"
-        );
+        let dir = std::path::Path::new("test-data");
+        for filename in &["stories.db", "errors.log", "peer_key"] {
+            let result = std::path::PathBuf::from(build_data_path(
+                Some(dir.to_str().unwrap()),
+                filename,
+            ));
+            assert_eq!(result, dir.join(filename));
+        }
     }
 
     #[test]
     fn test_build_data_path_relative_dir() {
-        let result = build_data_path(Some("relative/dir"), "stories.db");
-        assert!(result.ends_with("stories.db"));
-        assert!(result.contains("relative/dir"));
+        let result_path =
+            std::path::PathBuf::from(build_data_path(Some("relative/dir"), "stories.db"));
+        let expected = std::path::PathBuf::from("relative")
+            .join("dir")
+            .join("stories.db");
+        assert!(result_path.ends_with(&expected));
     }
 
     #[test]
