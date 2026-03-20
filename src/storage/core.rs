@@ -25,7 +25,13 @@ fn get_database_path() -> String {
         return db_path;
     }
 
-    "./stories.db".to_string()
+    // When DATA_DIR is set, place the DB there; otherwise use the previous
+    // default so that Path::parent() is never an empty string and
+    // create_dir_all("") cannot fail at startup.
+    match std::env::var("DATA_DIR") {
+        Ok(_) => crate::data_dir::get_data_path("stories.db"),
+        Err(_) => "./stories.db".to_string(),
+    }
 }
 
 type DbPool = Pool<SqliteConnectionManager>;
@@ -530,7 +536,9 @@ pub async fn publish_story(
         if let Ok(story) = story_result
             && let Err(e) = sender.send(story)
         {
-            let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+            let error_logger = crate::error_logger::ErrorLogger::new(
+                &crate::data_dir::get_data_path("errors.log"),
+            );
             crate::log_network_error!(
                 error_logger,
                 "storage",
@@ -1023,7 +1031,11 @@ pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<Bootst
 }
 
 pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
-    save_unified_network_config_to_path(config, "unified_network_config.json").await
+    save_unified_network_config_to_path(
+        config,
+        &crate::data_dir::get_data_path("unified_network_config.json"),
+    )
+    .await
 }
 
 pub async fn save_unified_network_config_to_path(
@@ -1039,7 +1051,10 @@ pub async fn save_unified_network_config_to_path(
 }
 
 pub async fn load_unified_network_config() -> StorageResult<UnifiedNetworkConfig> {
-    load_unified_network_config_from_path("unified_network_config.json").await
+    load_unified_network_config_from_path(&crate::data_dir::get_data_path(
+        "unified_network_config.json",
+    ))
+    .await
 }
 
 pub async fn load_unified_network_config_from_path(
@@ -1062,10 +1077,8 @@ pub async fn load_unified_network_config_from_path(
 }
 
 pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
-    if tokio::fs::metadata("unified_network_config.json")
-        .await
-        .is_err()
-    {
+    let path = crate::data_dir::get_data_path("unified_network_config.json");
+    if tokio::fs::metadata(&path).await.is_err() {
         let default_config = UnifiedNetworkConfig::default();
         save_unified_network_config(&default_config).await?;
     }
