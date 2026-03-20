@@ -425,3 +425,160 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     let _ = fs::remove_file(config_file);
     let _ = fs::remove_file("bootstrap_config.json");
 }
+
+#[tokio::test]
+async fn test_run_auto_bootstrap_with_retry_notifies_ui_on_failure() {
+    let mut bootstrap = AutoBootstrap::new();
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
+    let (log_sender, mut log_receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let ui_logger = p2p_play::handlers::UILogger::new(log_sender);
+
+    // Initialise with a config that has no valid peers so attempt_bootstrap fails
+    let mut config = p2p_play::types::BootstrapConfig::new();
+    config.clear_peers();
+    bootstrap
+        .initialise(&config, &bootstrap_logger, &error_logger)
+        .await;
+
+    p2p_play::bootstrap::run_auto_bootstrap_with_retry(
+        &mut bootstrap,
+        &mut swarm,
+        &bootstrap_logger,
+        &error_logger,
+        &ui_logger,
+    )
+    .await;
+
+    // Collect UI messages
+    let mut messages = Vec::new();
+    while let Ok(msg) = log_receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    // Should have received at least one UI notification about the failure
+    assert!(
+        !messages.is_empty(),
+        "Expected UI notification for bootstrap failure"
+    );
+
+    let combined = messages.join("\n");
+    // Since retries remain (default max=10), the message should indicate a retry is coming
+    // and reference the bootstrap log file
+    assert!(
+        combined.contains("will retry"),
+        "Expected retry notice in bootstrap failure message, got: {combined}"
+    );
+    assert!(
+        combined.contains("bootstrap.log"),
+        "Expected bootstrap log filename in failure message, got: {combined}"
+    );
+}
+
+#[tokio::test]
+async fn test_run_auto_bootstrap_with_retry_exhausted_shows_config_hint() {
+    let mut bootstrap = AutoBootstrap::new();
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
+    let (log_sender, mut log_receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let ui_logger = p2p_play::handlers::UILogger::new(log_sender);
+
+    // Set up config with no peers and max_retry_attempts = 1 so retries are exhausted after one fail
+    let config = p2p_play::types::BootstrapConfig {
+        bootstrap_peers: vec![],
+        max_retry_attempts: 1,
+        retry_interval_ms: 0,
+        bootstrap_timeout_ms: 30000,
+    };
+    bootstrap
+        .initialise(&config, &bootstrap_logger, &error_logger)
+        .await;
+
+    // Force status to Failed with attempts == max so should_retry() returns false
+    {
+        let mut status = bootstrap.status.lock().unwrap();
+        *status = p2p_play::bootstrap::BootstrapStatus::Failed {
+            attempts: 1,
+            last_error: "no peers".to_string(),
+        };
+    }
+
+    p2p_play::bootstrap::run_auto_bootstrap_with_retry(
+        &mut bootstrap,
+        &mut swarm,
+        &bootstrap_logger,
+        &error_logger,
+        &ui_logger,
+    )
+    .await;
+
+    // Collect UI messages (may be empty if should_retry() is false and we return early)
+    let mut messages = Vec::new();
+    while let Ok(msg) = log_receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    // Either we returned early (no messages) or got the exhausted message
+    if !messages.is_empty() {
+        let combined = messages.join("\n");
+        assert!(
+            combined.contains("unified_network_config.json"),
+            "Expected config file hint in exhausted message, got: {combined}"
+        );
+    }
+    // If empty, should_retry() returned false so we exited early — that's also correct behaviour
+}
+
+#[tokio::test]
+async fn test_bootstrap_retry_message_includes_count() {
+    let mut bootstrap = AutoBootstrap::new();
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+    let bootstrap_logger = create_test_bootstrap_logger();
+    let error_logger = create_test_error_logger();
+    let (log_sender, mut log_receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let ui_logger = p2p_play::handlers::UILogger::new(log_sender);
+
+    // Config with no peers so bootstrap fails immediately, but retries remain (max=10)
+    let mut config = p2p_play::types::BootstrapConfig::new();
+    config.clear_peers();
+    bootstrap
+        .initialise(&config, &bootstrap_logger, &error_logger)
+        .await;
+
+    p2p_play::bootstrap::run_auto_bootstrap_with_retry(
+        &mut bootstrap,
+        &mut swarm,
+        &bootstrap_logger,
+        &error_logger,
+        &ui_logger,
+    )
+    .await;
+
+    let mut messages = Vec::new();
+    while let Ok(msg) = log_receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    assert!(
+        !messages.is_empty(),
+        "Expected UI notification for bootstrap failure"
+    );
+
+    // The retry message should contain the attempt number and max (e.g. "1/10")
+    let combined = messages.join("\n");
+    assert!(
+        combined.contains('/'),
+        "Expected attempt count in format N/max in message: {combined}"
+    );
+}

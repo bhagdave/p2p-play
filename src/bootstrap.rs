@@ -7,6 +7,8 @@ use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum BootstrapStatus {
     #[default]
@@ -171,6 +173,13 @@ impl AutoBootstrap {
         }
     }
 
+    pub fn max_retry_attempts(&self) -> u32 {
+        self.config
+            .as_ref()
+            .map(|c| c.max_retry_attempts)
+            .unwrap_or(0)
+    }
+
     pub fn is_retry_time(&self) -> bool {
         let next_retry_time = self.next_retry_time.lock().unwrap();
         match *next_retry_time {
@@ -318,14 +327,14 @@ pub async fn run_auto_bootstrap_with_retry(
 
         if auto_bootstrap.should_retry() {
             let retry_count = *auto_bootstrap.retry_count.lock().unwrap();
+            let max_retries = auto_bootstrap.max_retry_attempts();
             ui_logger.log(format!(
-                "Bootstrap attempt {retry_count} failed — will retry. Check bootstrap.log for details."
+                "Bootstrap attempt {retry_count}/{max_retries} failed — will retry. Check {BOOTSTRAP_LOG_FILE} for details."
             ));
         } else {
-            ui_logger.log(
-                "Bootstrap failed — check bootstrap.log or add peers to unified_network_config.json"
-                    .to_string(),
-            );
+            ui_logger.log(format!(
+                "Bootstrap failed — check {BOOTSTRAP_LOG_FILE} or add peers to unified_network_config.json"
+            ));
         }
     }
 }

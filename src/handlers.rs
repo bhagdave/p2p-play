@@ -83,9 +83,7 @@ where
                 match save_bootstrap_config(&config).await {
                     Ok(_) => true,
                     Err(e) => {
-                        ui_logger.log(format!(
-                            "Failed to save {operation_name} bootstrap config: {e}"
-                        ));
+                        ui_logger.log(format!("Failed to save {operation_name} bootstrap config: {e}"));
                         false
                     }
                 }
@@ -94,9 +92,7 @@ where
             }
         }
         Err(e) => {
-            ui_logger.log(format!(
-                "Failed to load bootstrap config for {operation_name}: {e}"
-            ));
+            ui_logger.log(format!("Failed to load bootstrap config for {operation_name}: {e}"));
             false
         }
     }
@@ -854,47 +850,46 @@ pub async fn handle_direct_message_with_relay(
 
         // 2. Try relay delivery if relay service is available and enabled
         if let Some(relay_svc) = relay_service
-            && relay_svc.config().enable_relay
-        {
-            let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
-                peer_id
-            } else {
-                // For unknown peers, we can't encrypt directly to them yet
-                ui_logger.log(format!(
-                    "{} Cannot relay to unknown peer '{to_name}' - peer not in network",
-                    Icons::cross()
-                ));
-                ui_logger.log(format!(
-                    "{} Queueing message for {to_name} - will retry when peer connects",
-                    Icons::envelope()
-                ));
-                queue_message_for_retry(
+            && relay_svc.config().enable_relay {
+                let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
+                    peer_id
+                } else {
+                    // For unknown peers, we can't encrypt directly to them yet
+                    ui_logger.log(format!(
+                        "{} Cannot relay to unknown peer '{to_name}' - peer not in network",
+                        Icons::cross()
+                    ));
+                    ui_logger.log(format!(
+                        "{} Queueing message for {to_name} - will retry when peer connects",
+                        Icons::envelope()
+                    ));
+                    queue_message_for_retry(
+                        &from_name,
+                        &to_name,
+                        &message,
+                        &target_peer_info,
+                        dm_config,
+                        pending_messages,
+                        ui_logger,
+                    );
+                    return;
+                };
+
+                // Try relay delivery
+                if try_relay_delivery(
+                    swarm,
+                    relay_svc,
                     &from_name,
                     &to_name,
                     &message,
-                    &target_peer_info,
-                    dm_config,
-                    pending_messages,
+                    &relay_target_peer_id,
                     ui_logger,
-                );
-                return;
-            };
-
-            // Try relay delivery
-            if try_relay_delivery(
-                swarm,
-                relay_svc,
-                &from_name,
-                &to_name,
-                &message,
-                &relay_target_peer_id,
-                ui_logger,
-            )
-            .await
-            {
-                return;
+                )
+                .await
+                {
+                    return;
+                }
             }
-        }
 
         // 3. Fall back to traditional queuing system for retry
         ui_logger.log(format!(
@@ -963,22 +958,21 @@ async fn try_relay_delivery(
         }
         Err(e) => {
             if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e
-                && msg.contains("Public key not found")
-            {
-                ui_logger.log(format!(
-                    "{} Cannot send secure message to offline peer '{to_name}'",
-                    Icons::warning()
-                ));
-                ui_logger.log(format!(
+                && msg.contains("Public key not found") {
+                    ui_logger.log(format!(
+                        "{} Cannot send secure message to offline peer '{to_name}'",
+                        Icons::warning()
+                    ));
+                    ui_logger.log(format!(
                         "{} Message queued - will be delivered when {to_name} comes online and security keys are exchanged",
                         Icons::envelope()
                     ));
-                ui_logger.log(format!(
-                    "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
-                    Icons::memo()
-                ));
-                return false;
-            }
+                    ui_logger.log(format!(
+                        "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
+                        Icons::memo()
+                    ));
+                    return false;
+                }
 
             ui_logger.log(format!(
                 "{} Failed to create relay message: {e}",
@@ -1364,7 +1358,7 @@ pub async fn establish_direct_connection(
                     }
                 }
                 Err(e) => ui_logger.log(format!(
-                    "Failed to dial {addr_str}: {e} — verify the address format, e.g. /ip4/HOST/tcp/PORT/p2p/PEER_ID"
+                    "Failed to dial {addr_str}: {e} — check the peer is online and reachable"
                 )),
             }
         }

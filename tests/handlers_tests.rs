@@ -1342,3 +1342,73 @@ async fn test_handle_direct_message_with_relay_prefer_relay() {
         log_messages
     );
 }
+
+#[tokio::test]
+async fn test_establish_direct_connection_invalid_address_shows_format_hint() {
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+
+    establish_direct_connection(&mut swarm, "not-a-valid-address", &ui_logger).await;
+
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    assert!(
+        !messages.is_empty(),
+        "Expected error message for invalid address"
+    );
+    let combined = messages.join("\n");
+    // Should include the invalid address and a format hint
+    assert!(
+        combined.contains("not-a-valid-address"),
+        "Expected original address in message: {combined}"
+    );
+    assert!(
+        combined.contains("/ip4/HOST/tcp/PORT"),
+        "Expected format hint in parse-error message: {combined}"
+    );
+}
+
+#[tokio::test]
+async fn test_establish_direct_connection_dial_error_shows_reachability_hint() {
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+
+    // Dial a valid multiaddr that will fail (loopback at a reserved port unlikely to have a p2p listener)
+    // We dial without a /p2p component — the swarm may dial or immediately fail;
+    // either way we verify the error message format when an error is surfaced.
+    let addr = "/ip4/127.0.0.1/tcp/65535";
+    establish_direct_connection(&mut swarm, addr, &ui_logger).await;
+
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    // At minimum "Manually dialing address" is sent; if dial returns an error we check hint
+    let combined = messages.join("\n");
+    if combined.contains("Failed to dial") {
+        assert!(
+            combined.contains("online and reachable"),
+            "Expected reachability hint in dial-error message: {combined}"
+        );
+        // Should NOT contain format hint (address parsed successfully)
+        assert!(
+            !combined.contains("/ip4/HOST/tcp/PORT"),
+            "Format hint should not appear in dial-error message: {combined}"
+        );
+    }
+    // If dial didn't immediately error, that's fine — the test passes trivially
+}

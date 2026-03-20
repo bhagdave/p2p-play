@@ -44,6 +44,9 @@ use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
+const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
+const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
+
 #[tokio::main]
 async fn main() {
     if let Err(e) = run_app().await {
@@ -114,13 +117,13 @@ async fn run_app() -> AppResult<()> {
     };
 
     let errors_log_is_new = !std::path::Path::new("errors.log").exists();
-    let bootstrap_log_is_new = !std::path::Path::new("bootstrap.log").exists();
+    let bootstrap_log_is_new = !std::path::Path::new(BOOTSTRAP_LOG_FILE).exists();
     let (channels, loggers) = setup_communication_channels();
     if errors_log_is_new {
         app.add_to_log("Logging errors to: errors.log".to_string());
     }
     if bootstrap_log_is_new {
-        app.add_to_log("Logging bootstrap activity to: bootstrap.log".to_string());
+        app.add_to_log(format!("Logging bootstrap activity to: {BOOTSTRAP_LOG_FILE}"));
     }
 
     let unified_config = load_configuration(&mut app).await;
@@ -151,9 +154,9 @@ async fn run_app() -> AppResult<()> {
         Ok(subscriptions) => {
             if !subscriptions.contains(&"general".to_string())
                 && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
-            {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
+                {
+                    error!("Failed to auto-subscribe to general channel: {e}");
+                }
         }
         Err(e) => {
             error!("Failed to check subscriptions: {e}");
@@ -282,24 +285,21 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
     let loggers = Loggers {
         ui_logger: handlers::UILogger::new(ui_log_sender),
         error_logger: ErrorLogger::new("errors.log"),
-        bootstrap_logger: BootstrapLogger::new("bootstrap.log"),
+        bootstrap_logger: BootstrapLogger::new(BOOTSTRAP_LOG_FILE),
     };
 
     (channels, loggers)
 }
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
-    let config_is_new = tokio::fs::metadata("unified_network_config.json")
-        .await
-        .is_err();
+    let config_is_new = tokio::fs::metadata(UNIFIED_CONFIG_FILE).await.is_err();
     if let Err(e) = ensure_unified_network_config_exists().await {
         error!("Failed to initialise unified network config: {e}");
         app.add_to_log(format!("Failed to initialise unified network config: {e}"));
     } else if config_is_new {
-        app.add_to_log(
-            "Created config: unified_network_config.json — edit to customise bootstrap peers"
-                .to_string(),
-        );
+        app.add_to_log(format!(
+            "Created config: {UNIFIED_CONFIG_FILE} — edit to customise bootstrap peers"
+        ));
     }
 
     match load_unified_network_config().await {
@@ -310,7 +310,7 @@ async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
         Err(e) => {
             error!("Failed to load unified network config: {e}");
             app.add_to_log(format!(
-                "Config error: {e} — Edit unified_network_config.json to fix. Using defaults for all settings."
+                "Config error: {e} — Edit {UNIFIED_CONFIG_FILE} to fix. Using defaults for all settings."
             ));
             UnifiedNetworkConfig::new()
         }
