@@ -83,7 +83,9 @@ where
                 match save_bootstrap_config(&config).await {
                     Ok(_) => true,
                     Err(e) => {
-                        ui_logger.log(format!("Failed to save {operation_name} bootstrap config: {e}"));
+                        ui_logger.log(format!(
+                            "Failed to save {operation_name} bootstrap config: {e}"
+                        ));
                         false
                     }
                 }
@@ -92,7 +94,9 @@ where
             }
         }
         Err(e) => {
-            ui_logger.log(format!("Failed to load bootstrap config for {operation_name}: {e}"));
+            ui_logger.log(format!(
+                "Failed to load bootstrap config for {operation_name}: {e}"
+            ));
             false
         }
     }
@@ -475,8 +479,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("  Example: config sync-days 30".to_string());
     ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
     ui_logger.log("  Example: delete s 1,2,5".to_string());
-    ui_logger
-        .log("export s <id|all> <md|json> to export stories to ./exports/".to_string());
+    ui_logger.log("export s <id|all> <md|json> to export stories to ./exports/".to_string());
     ui_logger.log("  Example: export s 3 md".to_string());
     ui_logger.log("  Example: export s all json".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
@@ -854,46 +857,47 @@ pub async fn handle_direct_message_with_relay(
 
         // 2. Try relay delivery if relay service is available and enabled
         if let Some(relay_svc) = relay_service
-            && relay_svc.config().enable_relay {
-                let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
-                    peer_id
-                } else {
-                    // For unknown peers, we can't encrypt directly to them yet
-                    ui_logger.log(format!(
-                        "{} Cannot relay to unknown peer '{to_name}' - peer not in network",
-                        Icons::cross()
-                    ));
-                    ui_logger.log(format!(
-                        "{} Queueing message for {to_name} - will retry when peer connects",
-                        Icons::envelope()
-                    ));
-                    queue_message_for_retry(
-                        &from_name,
-                        &to_name,
-                        &message,
-                        &target_peer_info,
-                        dm_config,
-                        pending_messages,
-                        ui_logger,
-                    );
-                    return;
-                };
-
-                // Try relay delivery
-                if try_relay_delivery(
-                    swarm,
-                    relay_svc,
+            && relay_svc.config().enable_relay
+        {
+            let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
+                peer_id
+            } else {
+                // For unknown peers, we can't encrypt directly to them yet
+                ui_logger.log(format!(
+                    "{} Cannot relay to unknown peer '{to_name}' - peer not in network",
+                    Icons::cross()
+                ));
+                ui_logger.log(format!(
+                    "{} Queueing message for {to_name} - will retry when peer connects",
+                    Icons::envelope()
+                ));
+                queue_message_for_retry(
                     &from_name,
                     &to_name,
                     &message,
-                    &relay_target_peer_id,
+                    &target_peer_info,
+                    dm_config,
+                    pending_messages,
                     ui_logger,
-                )
-                .await
-                {
-                    return;
-                }
+                );
+                return;
+            };
+
+            // Try relay delivery
+            if try_relay_delivery(
+                swarm,
+                relay_svc,
+                &from_name,
+                &to_name,
+                &message,
+                &relay_target_peer_id,
+                ui_logger,
+            )
+            .await
+            {
+                return;
             }
+        }
 
         // 3. Fall back to traditional queuing system for retry
         ui_logger.log(format!(
@@ -962,21 +966,22 @@ async fn try_relay_delivery(
         }
         Err(e) => {
             if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e
-                && msg.contains("Public key not found") {
-                    ui_logger.log(format!(
-                        "{} Cannot send secure message to offline peer '{to_name}'",
-                        Icons::warning()
-                    ));
-                    ui_logger.log(format!(
+                && msg.contains("Public key not found")
+            {
+                ui_logger.log(format!(
+                    "{} Cannot send secure message to offline peer '{to_name}'",
+                    Icons::warning()
+                ));
+                ui_logger.log(format!(
                         "{} Message queued - will be delivered when {to_name} comes online and security keys are exchanged",
                         Icons::envelope()
                     ));
-                    ui_logger.log(format!(
-                        "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
-                        Icons::memo()
-                    ));
-                    return false;
-                }
+                ui_logger.log(format!(
+                    "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
+                    Icons::memo()
+                ));
+                return false;
+            }
 
             ui_logger.log(format!(
                 "{} Failed to create relay message: {e}",
@@ -1783,7 +1788,12 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
     }
 }
 
-pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
+pub async fn handle_export_story(
+    cmd: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+    export_dir: &std::path::Path,
+) {
     // Accepted forms:
     //   export s <id> md
     //   export s <id> json
@@ -1792,9 +1802,8 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
     let rest = match cmd.strip_prefix("export s ") {
         Some(r) => r.trim(),
         None => {
-            ui_logger.log(
-                "Usage: export s <id|all> <md|json>  (exports to ./exports/)".to_string(),
-            );
+            ui_logger
+                .log("Usage: export s <id|all> <md|json>  (exports to ./exports/)".to_string());
             return;
         }
     };
@@ -1845,10 +1854,12 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
     // Ensure the exports directory exists before any early-return, so the directory is always
     // created on demand even when there are no stories to export (uses async I/O to avoid
     // blocking the executor thread).
-    let export_dir = std::path::Path::new("./exports");
     if let Err(e) = tokio::fs::create_dir_all(export_dir).await {
         error_logger.log_error(&format!("Failed to create exports directory: {e}"));
-        ui_logger.log(format!("{} Failed to create exports directory: {e}", Icons::cross()));
+        ui_logger.log(format!(
+            "{} Failed to create exports directory: {e}",
+            Icons::cross()
+        ));
         return;
     }
 
@@ -1872,7 +1883,10 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
                 match serde_json::to_string_pretty(&to_export) {
                     Ok(s) => s,
                     Err(e) => {
-                        ui_logger.log(format!("{} Failed to serialize stories: {e}", Icons::cross()));
+                        ui_logger.log(format!(
+                            "{} Failed to serialize stories: {e}",
+                            Icons::cross()
+                        ));
                         return;
                     }
                 }
@@ -1896,7 +1910,11 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
                 "{} Exported {} {} to {}",
                 Icons::book(),
                 to_export.len(),
-                if to_export.len() == 1 { "story" } else { "stories" },
+                if to_export.len() == 1 {
+                    "story"
+                } else {
+                    "stories"
+                },
                 path.display()
             ));
         }
@@ -1907,7 +1925,13 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
                 let safe_name: String = story
                     .name
                     .chars()
-                    .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+                    .map(|c| {
+                        if c.is_alphanumeric() || c == '-' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
                     .collect();
                 let filename = format!("story_{}_{}.md", story.id, safe_name);
                 let path = export_dir.join(&filename);
@@ -1935,7 +1959,10 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
 
                 if let Err(e) = tokio::fs::write(&path, content).await {
                     error_logger.log_error(&format!("Failed to write {filename}: {e}"));
-                    ui_logger.log(format!("{} Failed to write {filename}: {e}", Icons::cross()));
+                    ui_logger.log(format!(
+                        "{} Failed to write {filename}: {e}",
+                        Icons::cross()
+                    ));
                     continue;
                 }
                 exported += 1;
@@ -1946,7 +1973,11 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
                 Icons::book(),
                 exported,
                 to_export.len(),
-                if to_export.len() == 1 { "story" } else { "stories" },
+                if to_export.len() == 1 {
+                    "story"
+                } else {
+                    "stories"
+                },
                 export_dir.display()
             ));
         }
