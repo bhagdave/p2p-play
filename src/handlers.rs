@@ -1350,10 +1350,22 @@ pub async fn establish_direct_connection(
     addr_str: &str,
     ui_logger: &UILogger,
 ) {
+    establish_direct_connection_impl(swarm, addr_str, ui_logger, |s, a| s.dial(a)).await;
+}
+
+/// Inner implementation that accepts an injectable dial function for testability.
+pub async fn establish_direct_connection_impl<F>(
+    swarm: &mut Swarm<StoryBehaviour>,
+    addr_str: &str,
+    ui_logger: &UILogger,
+    dial_fn: F,
+) where
+    F: FnOnce(&mut Swarm<StoryBehaviour>, libp2p::Multiaddr) -> Result<(), libp2p::swarm::DialError>,
+{
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
             ui_logger.log(format!("Manually dialing address: {addr}"));
-            match swarm.dial(addr) {
+            match dial_fn(swarm, addr) {
                 Ok(_) => {
                     ui_logger.log("Dialing initiated successfully".to_string());
 
@@ -1366,10 +1378,14 @@ pub async fn establish_direct_connection(
                             .add_node_to_partial_view(peer);
                     }
                 }
-                Err(e) => ui_logger.log(format!("Failed to dial: {e}")),
+                Err(e) => ui_logger.log(format!(
+                    "Failed to dial {addr_str}: {e} — check the peer is online and reachable"
+                )),
             }
         }
-        Err(e) => ui_logger.log(format!("Failed to parse address: {e}")),
+        Err(e) => ui_logger.log(format!(
+            "Invalid address '{addr_str}': {e} — expected a multiaddr, e.g. /ip4/HOST/tcp/PORT/p2p/PEER_ID"
+        )),
     }
 }
 

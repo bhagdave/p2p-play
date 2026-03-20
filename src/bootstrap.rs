@@ -1,11 +1,14 @@
 use crate::bootstrap_logger::BootstrapLogger;
-use crate::handlers::extract_peer_id_from_multiaddr;
+use crate::handlers::{UILogger, extract_peer_id_from_multiaddr};
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
 use libp2p::swarm::Swarm;
 use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
+const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum BootstrapStatus {
@@ -171,6 +174,13 @@ impl AutoBootstrap {
         }
     }
 
+    pub fn max_retry_attempts(&self) -> u32 {
+        self.config
+            .as_ref()
+            .map(|c| c.max_retry_attempts)
+            .unwrap_or(0)
+    }
+
     pub fn is_retry_time(&self) -> bool {
         let next_retry_time = self.next_retry_time.lock().unwrap();
         match *next_retry_time {
@@ -296,6 +306,7 @@ pub async fn run_auto_bootstrap_with_retry(
     swarm: &mut Swarm<StoryBehaviour>,
     bootstrap_logger: &BootstrapLogger,
     error_logger: &crate::error_logger::ErrorLogger,
+    ui_logger: &UILogger,
 ) {
     if !auto_bootstrap.should_retry() {
         return;
@@ -314,6 +325,18 @@ pub async fn run_auto_bootstrap_with_retry(
     } else {
         // Bootstrap failed immediately, schedule retry
         auto_bootstrap.schedule_next_retry();
+
+        if auto_bootstrap.should_retry() {
+            let max_retries = auto_bootstrap.max_retry_attempts();
+            ui_logger.log(format!(
+                "Bootstrap attempt failed — will retry (up to {max_retries} attempts). Check {BOOTSTRAP_LOG_FILE} for details."
+            ));
+        } else {
+            let max_retries = auto_bootstrap.max_retry_attempts();
+            ui_logger.log(format!(
+                "Bootstrap failed after reaching the maximum of {max_retries} attempts — check {BOOTSTRAP_LOG_FILE} or add peers to {UNIFIED_CONFIG_FILE}"
+            ));
+        }
     }
 }
 

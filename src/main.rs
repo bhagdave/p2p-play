@@ -47,6 +47,9 @@ use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
+const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
+const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
+
 /// Peer-to-peer story sharing application.
 #[derive(Parser, Debug)]
 #[command(name = "p2p-play", about = "Peer-to-peer story sharing application")]
@@ -169,7 +172,7 @@ async fn run_app() -> AppResult<()> {
     };
 
     let errors_log_is_new = !std::path::Path::new(&get_data_path("errors.log")).exists();
-    let bootstrap_log_is_new = !std::path::Path::new(&get_data_path("bootstrap.log")).exists();
+    let bootstrap_log_is_new = !std::path::Path::new(&get_data_path(BOOTSTRAP_LOG_FILE)).exists();
     let (channels, loggers) = setup_communication_channels();
     if errors_log_is_new {
         app.add_to_log(format!(
@@ -180,7 +183,7 @@ async fn run_app() -> AppResult<()> {
     if bootstrap_log_is_new {
         app.add_to_log(format!(
             "Logging bootstrap activity to: {}",
-            get_data_path("bootstrap.log")
+            get_data_path(BOOTSTRAP_LOG_FILE)
         ));
     }
 
@@ -343,14 +346,14 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
     let loggers = Loggers {
         ui_logger: handlers::UILogger::new(ui_log_sender),
         error_logger: ErrorLogger::new(&get_data_path("errors.log")),
-        bootstrap_logger: BootstrapLogger::new(&get_data_path("bootstrap.log")),
+        bootstrap_logger: BootstrapLogger::new(&get_data_path(BOOTSTRAP_LOG_FILE)),
     };
 
     (channels, loggers)
 }
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
-    let config_path = get_data_path("unified_network_config.json");
+    let config_path = get_data_path(UNIFIED_CONFIG_FILE);
     let config_is_new = tokio::fs::metadata(&config_path).await.is_err();
     if let Err(e) = ensure_unified_network_config_exists().await {
         error!("Failed to initialise unified network config: {e}");
@@ -370,7 +373,7 @@ async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
         Err(e) => {
             error!("Failed to load unified network config: {e}");
             app.add_to_log(format!(
-                "Failed to load unified network config: {e}, using defaults"
+                "Config error: {e} — Edit {config_path} to fix. Using defaults for all settings."
             ));
             UnifiedNetworkConfig::new()
         }

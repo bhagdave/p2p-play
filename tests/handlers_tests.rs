@@ -1522,3 +1522,77 @@ async fn test_handle_help_includes_export() {
         "Help text should mention export command, got: {msgs:?}"
     );
 }
+
+#[tokio::test]
+async fn test_establish_direct_connection_invalid_address_shows_format_hint() {
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+
+    establish_direct_connection(&mut swarm, "not-a-valid-address", &ui_logger).await;
+
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    assert!(
+        !messages.is_empty(),
+        "Expected error message for invalid address"
+    );
+    let combined = messages.join("\n");
+    // Should include the invalid address and a format hint
+    assert!(
+        combined.contains("not-a-valid-address"),
+        "Expected original address in message: {combined}"
+    );
+    assert!(
+        combined.contains("/ip4/HOST/tcp/PORT"),
+        "Expected format hint in parse-error message: {combined}"
+    );
+}
+
+#[tokio::test]
+async fn test_establish_direct_connection_dial_error_shows_reachability_hint() {
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm =
+        create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+
+    // Use establish_direct_connection_impl with a dial closure that forces an immediate error,
+    // ensuring the error-path message is deterministically exercised regardless of swarm state.
+    p2p_play::handlers::establish_direct_connection_impl(
+        &mut swarm,
+        "/ip4/127.0.0.1/tcp/4001",
+        &ui_logger,
+        |_swarm, _addr| Err(libp2p::swarm::DialError::NoAddresses),
+    )
+    .await;
+
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    let combined = messages.join("\n");
+    assert!(
+        !messages.is_empty(),
+        "Expected at least one UI message for dial error"
+    );
+    assert!(
+        combined.contains("check the peer is online and reachable"),
+        "Expected reachability hint in dial-error message: {combined}"
+    );
+    // Should NOT contain format hint (address parsed successfully, only format hint on parse error)
+    assert!(
+        !combined.contains("/ip4/HOST/tcp/PORT"),
+        "Format hint should not appear in dial-error message: {combined}"
+    );
+}
