@@ -1386,29 +1386,33 @@ async fn test_establish_direct_connection_dial_error_shows_reachability_hint() {
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
 
-    // Dial a valid multiaddr that will fail (loopback at a reserved port unlikely to have a p2p listener)
-    // We dial without a /p2p component — the swarm may dial or immediately fail;
-    // either way we verify the error message format when an error is surfaced.
-    let addr = "/ip4/127.0.0.1/tcp/65535";
-    establish_direct_connection(&mut swarm, addr, &ui_logger).await;
+    // Use establish_direct_connection_impl with a dial closure that forces an immediate error,
+    // ensuring the error-path message is deterministically exercised regardless of swarm state.
+    p2p_play::handlers::establish_direct_connection_impl(
+        &mut swarm,
+        "/ip4/127.0.0.1/tcp/4001",
+        &ui_logger,
+        |_swarm, _addr| Err(libp2p::swarm::DialError::NoAddresses),
+    )
+    .await;
 
     let mut messages = Vec::new();
     while let Ok(msg) = receiver.try_recv() {
         messages.push(msg);
     }
 
-    // At minimum "Manually dialing address" is sent; if dial returns an error we check hint
     let combined = messages.join("\n");
-    if combined.contains("Failed to dial") {
-        assert!(
-            combined.contains("online and reachable"),
-            "Expected reachability hint in dial-error message: {combined}"
-        );
-        // Should NOT contain format hint (address parsed successfully)
-        assert!(
-            !combined.contains("/ip4/HOST/tcp/PORT"),
-            "Format hint should not appear in dial-error message: {combined}"
-        );
-    }
-    // If dial didn't immediately error, that's fine — the test passes trivially
+    assert!(
+        !messages.is_empty(),
+        "Expected at least one UI message for dial error"
+    );
+    assert!(
+        combined.contains("check the peer is online and reachable"),
+        "Expected reachability hint in dial-error message: {combined}"
+    );
+    // Should NOT contain format hint (address parsed successfully, only format hint on parse error)
+    assert!(
+        !combined.contains("/ip4/HOST/tcp/PORT"),
+        "Format hint should not appear in dial-error message: {combined}"
+    );
 }

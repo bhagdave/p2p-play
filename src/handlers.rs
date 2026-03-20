@@ -1341,10 +1341,22 @@ pub async fn establish_direct_connection(
     addr_str: &str,
     ui_logger: &UILogger,
 ) {
+    establish_direct_connection_impl(swarm, addr_str, ui_logger, |s, a| s.dial(a)).await;
+}
+
+/// Inner implementation that accepts an injectable dial function for testability.
+pub async fn establish_direct_connection_impl<F>(
+    swarm: &mut Swarm<StoryBehaviour>,
+    addr_str: &str,
+    ui_logger: &UILogger,
+    dial_fn: F,
+) where
+    F: FnOnce(&mut Swarm<StoryBehaviour>, libp2p::Multiaddr) -> Result<(), libp2p::swarm::DialError>,
+{
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {
             ui_logger.log(format!("Manually dialing address: {addr}"));
-            match swarm.dial(addr) {
+            match dial_fn(swarm, addr) {
                 Ok(_) => {
                     ui_logger.log("Dialing initiated successfully".to_string());
 
