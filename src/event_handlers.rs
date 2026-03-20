@@ -4,10 +4,11 @@ use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
     handle_config_sync_days, handle_create_channel, handle_create_description,
     handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
-    handle_filter_stories, handle_get_description, handle_help, handle_list_channels,
-    handle_list_stories, handle_list_subscriptions, handle_publish_story, handle_reload_config,
-    handle_search_stories, handle_set_auto_subscription, handle_set_name, handle_show_description,
-    handle_show_story, handle_subscribe_channel, handle_unsubscribe_channel, handle_wasm_command,
+    handle_export_story, handle_filter_stories, handle_get_description, handle_help,
+    handle_list_channels, handle_list_stories, handle_list_subscriptions, handle_publish_story,
+    handle_reload_config, handle_search_stories, handle_set_auto_subscription, handle_set_name,
+    handle_show_description, handle_show_story, handle_subscribe_channel,
+    handle_unsubscribe_channel, handle_wasm_command,
 };
 use crate::network::{
     APP_NAME, APP_VERSION, DirectMessageRequest, DirectMessageResponse, HandshakeRequest,
@@ -229,6 +230,15 @@ pub async fn handle_input_event(
         }
         cmd if cmd.starts_with("delete s") => {
             return handle_delete_story(cmd, ui_logger, error_logger).await;
+        }
+        cmd if cmd.starts_with("export s") => {
+            handle_export_story(
+                cmd,
+                ui_logger,
+                error_logger,
+                std::path::Path::new("./exports"),
+            )
+            .await
         }
         cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
         cmd if cmd.starts_with("peer id") => ui_logger.log(format!("Local Peer ID: {}", *PEER_ID)),
@@ -470,39 +480,40 @@ pub async fn handle_floodsub_event(
                 }
             } else if let Ok(peer_name) = serde_json::from_slice::<PeerName>(&msg.data) {
                 if let Ok(peer_id) = peer_name.peer_id.parse::<PeerId>()
-                    && peer_id != *PEER_ID {
-                        debug!("Received peer name '{}' from {}", peer_name.name, peer_id);
+                    && peer_id != *PEER_ID
+                {
+                    debug!("Received peer name '{}' from {}", peer_name.name, peer_id);
 
-                        // Only update the peer name if it's new or has actually changed
-                        let mut names_changed = false;
-                        peer_names
-                            .entry(peer_id)
-                            .and_modify(|existing_name| {
-                                if existing_name != &peer_name.name {
-                                    debug!(
-                                        "Peer {} name changed from '{}' to '{}'",
-                                        peer_id, existing_name, peer_name.name
-                                    );
-                                    *existing_name = peer_name.name.clone();
-                                    names_changed = true;
-                                } else {
-                                    debug!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
-                                }
-                            })
-                            .or_insert_with(|| {
+                    // Only update the peer name if it's new or has actually changed
+                    let mut names_changed = false;
+                    peer_names
+                        .entry(peer_id)
+                        .and_modify(|existing_name| {
+                            if existing_name != &peer_name.name {
                                 debug!(
-                                    "Setting peer {} name to '{}' (first time)",
-                                    peer_id, peer_name.name
+                                    "Peer {} name changed from '{}' to '{}'",
+                                    peer_id, existing_name, peer_name.name
                                 );
+                                *existing_name = peer_name.name.clone();
                                 names_changed = true;
-                                peer_name.name.clone()
-                            });
+                            } else {
+                                debug!("Peer {} name unchanged: '{}'", peer_id, peer_name.name);
+                            }
+                        })
+                        .or_insert_with(|| {
+                            debug!(
+                                "Setting peer {} name to '{}' (first time)",
+                                peer_id, peer_name.name
+                            );
+                            names_changed = true;
+                            peer_name.name.clone()
+                        });
 
-                        // Update the cache if peer names changed
-                        if names_changed {
-                            sorted_peer_names_cache.update(peer_names);
-                        }
+                    // Update the cache if peer names changed
+                    if names_changed {
+                        sorted_peer_names_cache.update(peer_names);
                     }
+                }
             } else if let Ok(published_channel) =
                 serde_json::from_slice::<PublishedChannel>(&msg.data)
             {
@@ -2497,9 +2508,10 @@ pub async fn handle_wasm_execution_event(
                             }
                         }
                         if !response.stderr.is_empty()
-                            && let Ok(stderr_str) = String::from_utf8(response.stderr.clone()) {
-                                ui_logger.log(format!("stderr: {}", stderr_str));
-                            }
+                            && let Ok(stderr_str) = String::from_utf8(response.stderr.clone())
+                        {
+                            ui_logger.log(format!("stderr: {}", stderr_str));
+                        }
                     } else {
                         ui_logger.log(format!(
                             "{} WASM execution failed: {}",
@@ -2773,10 +2785,10 @@ pub async fn process_pending_messages(
                     && let Some(stored_msg) = queue
                         .iter_mut()
                         .find(|m| m.target_name == msg.target_name && m.is_placeholder_peer_id)
-                    {
-                        stored_msg.target_peer_id = *real_peer_id;
-                        stored_msg.is_placeholder_peer_id = false;
-                    }
+                {
+                    stored_msg.target_peer_id = *real_peer_id;
+                    stored_msg.is_placeholder_peer_id = false;
+                }
                 *real_peer_id
             } else {
                 // Peer not connected or name not known yet, skip this retry

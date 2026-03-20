@@ -83,7 +83,9 @@ where
                 match save_bootstrap_config(&config).await {
                     Ok(_) => true,
                     Err(e) => {
-                        ui_logger.log(format!("Failed to save {operation_name} bootstrap config: {e}"));
+                        ui_logger.log(format!(
+                            "Failed to save {operation_name} bootstrap config: {e}"
+                        ));
                         false
                     }
                 }
@@ -92,7 +94,9 @@ where
             }
         }
         Err(e) => {
-            ui_logger.log(format!("Failed to load bootstrap config for {operation_name}: {e}"));
+            ui_logger.log(format!(
+                "Failed to load bootstrap config for {operation_name}: {e}"
+            ));
             false
         }
     }
@@ -475,6 +479,9 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     ui_logger.log("  Example: config sync-days 30".to_string());
     ui_logger.log("delete s <id1>[,<id2>,<id3>...] to delete one or more stories".to_string());
     ui_logger.log("  Example: delete s 1,2,5".to_string());
+    ui_logger.log("export s <id|all> <md|json> to export stories to ./exports/".to_string());
+    ui_logger.log("  Example: export s 3 md".to_string());
+    ui_logger.log("  Example: export s all json".to_string());
     ui_logger.log("sub <channel> to subscribe to channel".to_string());
     ui_logger.log("  Example: sub tech".to_string());
     ui_logger.log("unsub <channel> to unsubscribe from channel".to_string());
@@ -850,46 +857,47 @@ pub async fn handle_direct_message_with_relay(
 
         // 2. Try relay delivery if relay service is available and enabled
         if let Some(relay_svc) = relay_service
-            && relay_svc.config().enable_relay {
-                let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
-                    peer_id
-                } else {
-                    // For unknown peers, we can't encrypt directly to them yet
-                    ui_logger.log(format!(
-                        "{} Cannot relay to unknown peer '{to_name}' - peer not in network",
-                        Icons::cross()
-                    ));
-                    ui_logger.log(format!(
-                        "{} Queueing message for {to_name} - will retry when peer connects",
-                        Icons::envelope()
-                    ));
-                    queue_message_for_retry(
-                        &from_name,
-                        &to_name,
-                        &message,
-                        &target_peer_info,
-                        dm_config,
-                        pending_messages,
-                        ui_logger,
-                    );
-                    return;
-                };
-
-                // Try relay delivery
-                if try_relay_delivery(
-                    swarm,
-                    relay_svc,
+            && relay_svc.config().enable_relay
+        {
+            let relay_target_peer_id = if let Some((peer_id, _)) = target_peer_info {
+                peer_id
+            } else {
+                // For unknown peers, we can't encrypt directly to them yet
+                ui_logger.log(format!(
+                    "{} Cannot relay to unknown peer '{to_name}' - peer not in network",
+                    Icons::cross()
+                ));
+                ui_logger.log(format!(
+                    "{} Queueing message for {to_name} - will retry when peer connects",
+                    Icons::envelope()
+                ));
+                queue_message_for_retry(
                     &from_name,
                     &to_name,
                     &message,
-                    &relay_target_peer_id,
+                    &target_peer_info,
+                    dm_config,
+                    pending_messages,
                     ui_logger,
-                )
-                .await
-                {
-                    return;
-                }
+                );
+                return;
+            };
+
+            // Try relay delivery
+            if try_relay_delivery(
+                swarm,
+                relay_svc,
+                &from_name,
+                &to_name,
+                &message,
+                &relay_target_peer_id,
+                ui_logger,
+            )
+            .await
+            {
+                return;
             }
+        }
 
         // 3. Fall back to traditional queuing system for retry
         ui_logger.log(format!(
@@ -958,21 +966,22 @@ async fn try_relay_delivery(
         }
         Err(e) => {
             if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e
-                && msg.contains("Public key not found") {
-                    ui_logger.log(format!(
-                        "{} Cannot send secure message to offline peer '{to_name}'",
-                        Icons::warning()
-                    ));
-                    ui_logger.log(format!(
+                && msg.contains("Public key not found")
+            {
+                ui_logger.log(format!(
+                    "{} Cannot send secure message to offline peer '{to_name}'",
+                    Icons::warning()
+                ));
+                ui_logger.log(format!(
                         "{} Message queued - will be delivered when {to_name} comes online and security keys are exchanged",
                         Icons::envelope()
                     ));
-                    ui_logger.log(format!(
-                        "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
-                        Icons::memo()
-                    ));
-                    return false;
-                }
+                ui_logger.log(format!(
+                    "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
+                    Icons::memo()
+                ));
+                return false;
+            }
 
             ui_logger.log(format!(
                 "{} Failed to create relay message: {e}",
@@ -1792,6 +1801,203 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
         }
     } else {
         ui_logger.log("Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]".to_string());
+    }
+}
+
+pub async fn handle_export_story(
+    cmd: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+    export_dir: &std::path::Path,
+) {
+    // Accepted forms:
+    //   export s <id> md
+    //   export s <id> json
+    //   export s all md
+    //   export s all json
+    let rest = match cmd.strip_prefix("export s ") {
+        Some(r) => r.trim(),
+        None => {
+            ui_logger
+                .log("Usage: export s <id|all> <md|json>  (exports to ./exports/)".to_string());
+            return;
+        }
+    };
+
+    let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+    if parts.len() != 2 {
+        ui_logger.log("Usage: export s <id|all> <md|json>".to_string());
+        return;
+    }
+
+    let target = parts[0].trim();
+    let format = parts[1].trim().to_lowercase();
+
+    if format != "md" && format != "json" {
+        ui_logger.log("Format must be 'md' or 'json'".to_string());
+        return;
+    }
+
+    let stories = match read_local_stories().await {
+        Ok(s) => s,
+        Err(e) => {
+            error_logger.log_error(&format!("Failed to read stories for export: {e}"));
+            ui_logger.log(format!("{} Failed to read stories: {e}", Icons::cross()));
+            return;
+        }
+    };
+
+    // Resolve the list of stories to export
+    let export_all = target == "all";
+    let to_export: Vec<&crate::types::Story> = if export_all {
+        stories.iter().collect()
+    } else {
+        match ContentValidator::validate_story_id(target) {
+            Ok(id) => match stories.iter().find(|s| s.id == id) {
+                Some(s) => vec![s],
+                None => {
+                    ui_logger.log(format!("Story with id {id} not found"));
+                    return;
+                }
+            },
+            Err(e) => {
+                ui_logger.log(format!("Invalid story ID: {e}"));
+                return;
+            }
+        }
+    };
+
+    // Ensure the exports directory exists before any early-return, so the directory is always
+    // created on demand even when there are no stories to export (uses async I/O to avoid
+    // blocking the executor thread).
+    if let Err(e) = tokio::fs::create_dir_all(export_dir).await {
+        error_logger.log_error(&format!("Failed to create exports directory: {e}"));
+        ui_logger.log(format!(
+            "{} Failed to create exports directory: {e}",
+            Icons::cross()
+        ));
+        return;
+    }
+
+    if to_export.is_empty() {
+        ui_logger.log("No stories to export".to_string());
+        return;
+    }
+
+    match format.as_str() {
+        "json" => {
+            // `export s all json` always produces a JSON array, regardless of how many
+            // stories happen to exist, so that consumers can rely on a stable shape.
+            // `export s <id> json` produces a single JSON object.
+            let path = if export_all {
+                export_dir.join("stories.json")
+            } else {
+                export_dir.join(format!("story_{}.json", to_export[0].id))
+            };
+
+            let content = if export_all {
+                match serde_json::to_string_pretty(&to_export) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        ui_logger.log(format!(
+                            "{} Failed to serialize stories: {e}",
+                            Icons::cross()
+                        ));
+                        return;
+                    }
+                }
+            } else {
+                match serde_json::to_string_pretty(to_export[0]) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        ui_logger.log(format!("{} Failed to serialize story: {e}", Icons::cross()));
+                        return;
+                    }
+                }
+            };
+
+            if let Err(e) = tokio::fs::write(&path, content).await {
+                error_logger.log_error(&format!("Failed to write export file: {e}"));
+                ui_logger.log(format!("{} Failed to write file: {e}", Icons::cross()));
+                return;
+            }
+
+            ui_logger.log(format!(
+                "{} Exported {} {} to {}",
+                Icons::book(),
+                to_export.len(),
+                if to_export.len() == 1 {
+                    "story"
+                } else {
+                    "stories"
+                },
+                path.display()
+            ));
+        }
+        "md" => {
+            // One Markdown file per story, with YAML front-matter for metadata
+            let mut exported = 0usize;
+            for story in &to_export {
+                let safe_name: String = story
+                    .name
+                    .chars()
+                    .map(|c| {
+                        if c.is_alphanumeric() || c == '-' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                let filename = format!("story_{}_{}.md", story.id, safe_name);
+                let path = export_dir.join(&filename);
+
+                let content = format!(
+                    "---\n\
+                     id: {id}\n\
+                     channel: {channel}\n\
+                     public: {public}\n\
+                     created_at: {created_at}\n\
+                     ---\n\n\
+                     # {name}\n\n\
+                     ## Header\n\n\
+                     {header}\n\n\
+                     ## Body\n\n\
+                     {body}\n",
+                    id = story.id,
+                    channel = story.channel,
+                    public = story.public,
+                    created_at = story.created_at,
+                    name = story.name,
+                    header = story.header,
+                    body = story.body
+                );
+
+                if let Err(e) = tokio::fs::write(&path, content).await {
+                    error_logger.log_error(&format!("Failed to write {filename}: {e}"));
+                    ui_logger.log(format!(
+                        "{} Failed to write {filename}: {e}",
+                        Icons::cross()
+                    ));
+                    continue;
+                }
+                exported += 1;
+            }
+
+            ui_logger.log(format!(
+                "{} Exported {}/{} {} as Markdown to {}/",
+                Icons::book(),
+                exported,
+                to_export.len(),
+                if to_export.len() == 1 {
+                    "story"
+                } else {
+                    "stories"
+                },
+                export_dir.display()
+            ));
+        }
+        _ => unreachable!(),
     }
 }
 

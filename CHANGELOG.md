@@ -5,6 +5,12 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Story export (`export s`)**: Export local stories to the `./exports/` directory in Markdown or JSON format.
+  - `export s <id> md` — single story as a Markdown file with YAML front-matter (id, channel, public, created_at)
+  - `export s <id> json` — single story as a JSON object file
+  - `export s all md` — all local stories as individual `.md` files
+  - `export s all json` — all local stories as a JSON array in `stories.json`
+  - The `exports/` directory is created automatically on first use and is excluded from version control via `.gitignore`.
 - **`--data-dir <PATH>` CLI flag**: All data files (`stories.db`, `errors.log`, `bootstrap.log`, `unified_network_config.json`, `peer_key`) are now written to the specified directory instead of the current working directory. The directory is created automatically if it does not exist. This enables multi-instance deployments, XDG-compliant installs on Linux, and cleaner separation of data from the working directory. Example: `p2p-play --data-dir ~/.local/share/p2p-play`.
 - **Session peer alias persistence**: When a peer disconnects and reconnects, their display name is now restored immediately from a session-lifetime in-memory cache rather than showing the default `Peer_<id>` placeholder until the peer re-broadcasts their alias. The cache is keyed by `PeerId` and is held in `EventProcessor` for the duration of the application run; no disk persistence is required.
 - **Network status in TUI status bar**: The header now displays real-time network connectivity information — `Network: X peers | Bootstrap: OK | mDNS: active` — so users can see whether networking is working without reading `bootstrap.log`. Bootstrap state (`--`, `Connecting`, `OK`, `Failed`) is derived from Kademlia DHT events; mDNS state reflects whether peers have been discovered on the local network.
