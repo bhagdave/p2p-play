@@ -135,8 +135,7 @@ fn test_peer_name_lookup() {
 /// User-set names are validated to be at most PEER_NAME_MAX (30) characters,
 /// while the default placeholder "Peer_<PeerId>" is always longer.
 fn is_user_set_peer_name(name: &str) -> bool {
-    const PEER_NAME_MAX: usize = 30;
-    name.len() <= PEER_NAME_MAX
+    name.len() <= p2p_play::validation::ContentLimits::PEER_NAME_MAX
 }
 
 /// Simulates the sync_known_peer_names logic:
