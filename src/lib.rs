@@ -3,6 +3,7 @@ pub mod bootstrap_logger;
 pub mod circuit_breaker;
 pub mod content_fetcher;
 pub mod crypto;
+pub mod data_dir;
 pub mod error_logger;
 pub mod errors;
 pub mod event_handlers;

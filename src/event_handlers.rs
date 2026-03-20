@@ -657,7 +657,8 @@ pub async fn handle_floodsub_event(
                         }
                         Err(e) => {
                             // Create error logger for spawned task
-                            let error_logger_for_task = ErrorLogger::new("errors.log");
+                            let error_logger_for_task =
+                                ErrorLogger::new(&crate::data_dir::get_data_path("errors.log"));
                             crate::log_network_error!(
                                 error_logger_for_task,
                                 "storage",
@@ -2647,7 +2648,7 @@ pub async fn trigger_immediate_connection_maintenance(
 // Helper function that needs to be accessible - copied from main.rs
 pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, receiver: String) {
     tokio::spawn(async move {
-        let error_logger = ErrorLogger::new("errors.log");
+        let error_logger = ErrorLogger::new(&crate::data_dir::get_data_path("errors.log"));
         // Read stories and subscriptions separately to avoid Send issues
         let stories = match crate::storage::read_local_stories().await {
             Ok(stories) => stories,

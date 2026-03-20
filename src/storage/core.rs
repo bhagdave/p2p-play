@@ -25,7 +25,13 @@ fn get_database_path() -> String {
         return db_path;
     }
 
-    "./stories.db".to_string()
+    // When DATA_DIR is set, place the DB there; otherwise use the previous
+    // default so that Path::parent() is never an empty string and
+    // create_dir_all("") cannot fail at startup.
+    match std::env::var("DATA_DIR") {
+        Ok(_) => crate::data_dir::get_data_path("stories.db"),
+        Err(_) => "./stories.db".to_string(),
+    }
 }
 
 type DbPool = Pool<SqliteConnectionManager>;
@@ -82,22 +88,23 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     {
         let state = DB_POOL_STATE.read().await;
         if let Some((pool, stored_path)) = state.as_ref()
-            && stored_path == &current_path {
-                let _pooled_conn = pool
-                    .get()
-                    .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
+            && stored_path == &current_path
+        {
+            let _pooled_conn = pool
+                .get()
+                .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
 
-                let conn = Connection::open(&current_path)?;
-                conn.execute_batch(
-                    "PRAGMA foreign_keys = ON;
+            let conn = Connection::open(&current_path)?;
+            conn.execute_batch(
+                "PRAGMA foreign_keys = ON;
                      PRAGMA synchronous = NORMAL;
                      PRAGMA cache_size = -64000;
                      PRAGMA temp_store = MEMORY;
                      PRAGMA journal_mode = WAL;",
-                )?;
+            )?;
 
-                return Ok(Arc::new(Mutex::new(conn)));
-            }
+            return Ok(Arc::new(Mutex::new(conn)));
+        }
     }
 
     let pool = create_db_pool(&current_path)?;
@@ -241,9 +248,10 @@ pub async fn ensure_stories_file_exists() -> StorageResult<()> {
     let db_path = get_database_path();
 
     if let Some(parent) = std::path::Path::new(&db_path).parent()
-        && !parent.exists() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
+        && !parent.exists()
+    {
+        tokio::fs::create_dir_all(parent).await?;
+    }
 
     let _conn = get_db_connection().await?;
     create_tables().await?;
@@ -396,7 +404,9 @@ pub async fn process_discovered_channels(
         match channel_exists(&channel.name).await {
             Ok(true) => {}
             Ok(false) => {
-                if let Ok(_) = create_channel(&channel.name, &channel.description, &channel.created_by).await {
+                if let Ok(_) =
+                    create_channel(&channel.name, &channel.description, &channel.created_by).await
+                {
                     saved_count += 1;
                 }
             }
@@ -524,15 +534,18 @@ pub async fn publish_story(
         let story_result = stmt.query_row([&id.to_string()], mappers::map_row_to_story);
 
         if let Ok(story) = story_result
-            && let Err(e) = sender.send(story) {
-                let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
-                crate::log_network_error!(
-                    error_logger,
-                    "storage",
-                    "error sending story for broadcast: {}",
-                    e
-                );
-            }
+            && let Err(e) = sender.send(story)
+        {
+            let error_logger = crate::error_logger::ErrorLogger::new(
+                &crate::data_dir::get_data_path("errors.log"),
+            );
+            crate::log_network_error!(
+                error_logger,
+                "storage",
+                "error sending story for broadcast: {}",
+                e
+            );
+        }
     }
 
     Ok(())
@@ -873,13 +886,14 @@ fn create_or_find_conversation(
         Ok((id, current_peer_name)) => {
             if let Some(names) = peer_names
                 && let Ok(parsed_peer_id) = peer_id.parse::<libp2p::PeerId>()
-                    && let Some(actual_name) = names.get(&parsed_peer_id)
-                        && (current_peer_name == peer_id || current_peer_name != *actual_name) {
-                            conn.execute(
-                                "UPDATE conversations SET peer_name = ? WHERE id = ?",
-                                [actual_name, &id.to_string()],
-                            )?;
-                        }
+                && let Some(actual_name) = names.get(&parsed_peer_id)
+                && (current_peer_name == peer_id || current_peer_name != *actual_name)
+            {
+                conn.execute(
+                    "UPDATE conversations SET peer_name = ? WHERE id = ?",
+                    [actual_name, &id.to_string()],
+                )?;
+            }
             Ok(id)
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => {
@@ -1017,7 +1031,11 @@ pub async fn load_bootstrap_config_from_path(path: &str) -> StorageResult<Bootst
 }
 
 pub async fn save_unified_network_config(config: &UnifiedNetworkConfig) -> StorageResult<()> {
-    save_unified_network_config_to_path(config, "unified_network_config.json").await
+    save_unified_network_config_to_path(
+        config,
+        &crate::data_dir::get_data_path("unified_network_config.json"),
+    )
+    .await
 }
 
 pub async fn save_unified_network_config_to_path(
@@ -1033,7 +1051,10 @@ pub async fn save_unified_network_config_to_path(
 }
 
 pub async fn load_unified_network_config() -> StorageResult<UnifiedNetworkConfig> {
-    load_unified_network_config_from_path("unified_network_config.json").await
+    load_unified_network_config_from_path(&crate::data_dir::get_data_path(
+        "unified_network_config.json",
+    ))
+    .await
 }
 
 pub async fn load_unified_network_config_from_path(
@@ -1056,10 +1077,8 @@ pub async fn load_unified_network_config_from_path(
 }
 
 pub async fn ensure_unified_network_config_exists() -> StorageResult<()> {
-    if tokio::fs::metadata("unified_network_config.json")
-        .await
-        .is_err()
-    {
+    let path = crate::data_dir::get_data_path("unified_network_config.json");
+    if tokio::fs::metadata(&path).await.is_err() {
         let default_config = UnifiedNetworkConfig::default();
         save_unified_network_config(&default_config).await?;
     }

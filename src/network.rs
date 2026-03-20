@@ -145,34 +145,38 @@ pub struct WasmExecutionResponse {
     pub timestamp: u64,
 }
 
-pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| match fs::read("peer_key") {
-    Ok(bytes) => match identity::Keypair::from_protobuf_encoding(&bytes) {
-        Ok(keypair) => keypair,
-        Err(e) => {
-            warn!("Error loading keypair: {e}, generating new one");
-            generate_and_save_keypair()
-        }
-    },
-    Err(_) => generate_and_save_keypair(),
+pub static KEYS: Lazy<identity::Keypair> = Lazy::new(|| {
+    let peer_key_path = crate::data_dir::get_data_path("peer_key");
+    match fs::read(&peer_key_path) {
+        Ok(bytes) => match identity::Keypair::from_protobuf_encoding(&bytes) {
+            Ok(keypair) => keypair,
+            Err(e) => {
+                warn!("Error loading keypair: {e}, generating new one");
+                generate_and_save_keypair(&peer_key_path)
+            }
+        },
+        Err(_) => generate_and_save_keypair(&peer_key_path),
+    }
 });
 
 pub static PEER_ID: Lazy<PeerId> = Lazy::new(|| PeerId::from(KEYS.public()));
 pub static TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("stories"));
 pub static RELAY_TOPIC: Lazy<Topic> = Lazy::new(|| Topic::new("relay"));
 
-fn generate_and_save_keypair() -> identity::Keypair {
+fn generate_and_save_keypair(peer_key_path: &str) -> identity::Keypair {
     let keypair = identity::Keypair::generate_ed25519();
+    let errors_log_path = crate::data_dir::get_data_path("errors.log");
 
     match keypair.to_protobuf_encoding() {
-        Ok(bytes) => match fs::write("peer_key", bytes) {
+        Ok(bytes) => match fs::write(peer_key_path, bytes) {
             Ok(_) => {}
             Err(e) => {
-                let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+                let error_logger = crate::error_logger::ErrorLogger::new(&errors_log_path);
                 error_logger.log_error(&format!("Failed to save keypair: {e}"));
             }
         },
         Err(e) => {
-            let error_logger = crate::error_logger::ErrorLogger::new("errors.log");
+            let error_logger = crate::error_logger::ErrorLogger::new(&errors_log_path);
             error_logger.log_error(&format!("Failed to encode keypair: {e}"));
         }
     }
