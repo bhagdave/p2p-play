@@ -1842,16 +1842,18 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
         }
     };
 
-    if to_export.is_empty() {
-        ui_logger.log("No stories to export".to_string());
-        return;
-    }
-
-    // Ensure the exports directory exists (uses async I/O to avoid blocking the executor thread)
+    // Ensure the exports directory exists before any early-return, so the directory is always
+    // created on demand even when there are no stories to export (uses async I/O to avoid
+    // blocking the executor thread).
     let export_dir = std::path::Path::new("./exports");
     if let Err(e) = tokio::fs::create_dir_all(export_dir).await {
         error_logger.log_error(&format!("Failed to create exports directory: {e}"));
         ui_logger.log(format!("{} Failed to create exports directory: {e}", Icons::cross()));
+        return;
+    }
+
+    if to_export.is_empty() {
+        ui_logger.log("No stories to export".to_string());
         return;
     }
 
