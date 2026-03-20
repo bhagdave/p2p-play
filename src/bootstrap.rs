@@ -327,14 +327,14 @@ pub async fn run_auto_bootstrap_with_retry(
         auto_bootstrap.schedule_next_retry();
 
         if auto_bootstrap.should_retry() {
-            let retry_count = *auto_bootstrap.retry_count.lock().unwrap();
             let max_retries = auto_bootstrap.max_retry_attempts();
             ui_logger.log(format!(
-                "Bootstrap attempt {retry_count}/{max_retries} failed — will retry. Check {BOOTSTRAP_LOG_FILE} for details."
+                "Bootstrap attempt failed — will retry (up to {max_retries} attempts). Check {BOOTSTRAP_LOG_FILE} for details."
             ));
         } else {
+            let max_retries = auto_bootstrap.max_retry_attempts();
             ui_logger.log(format!(
-                "Bootstrap failed — check {BOOTSTRAP_LOG_FILE} or add peers to {UNIFIED_CONFIG_FILE}"
+                "Bootstrap failed after reaching the maximum of {max_retries} attempts — check {BOOTSTRAP_LOG_FILE} or add peers to {UNIFIED_CONFIG_FILE}"
             ));
         }
     }

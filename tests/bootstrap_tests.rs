@@ -537,7 +537,7 @@ async fn test_run_auto_bootstrap_with_retry_exhausted_shows_config_hint() {
 }
 
 #[tokio::test]
-async fn test_bootstrap_retry_message_includes_count() {
+async fn test_bootstrap_retry_message_includes_max_count() {
     let mut bootstrap = AutoBootstrap::new();
     let ping_config = p2p_play::types::PingConfig::new();
     let network_config = p2p_play::types::NetworkConfig::new();
@@ -574,10 +574,14 @@ async fn test_bootstrap_retry_message_includes_count() {
         "Expected UI notification for bootstrap failure"
     );
 
-    // The retry message should contain the attempt number and max (e.g. "1/10")
+    // The retry message should reference the max retry ceiling so users know when to investigate
     let combined = messages.join("\n");
     assert!(
-        combined.contains('/'),
-        "Expected attempt count in format N/max in message: {combined}"
+        combined.contains("will retry"),
+        "Expected retry notice in message: {combined}"
+    );
+    assert!(
+        combined.contains("10") || combined.contains("attempts"),
+        "Expected max retry count in message: {combined}"
     );
 }

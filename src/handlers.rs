@@ -1363,7 +1363,7 @@ pub async fn establish_direct_connection(
             }
         }
         Err(e) => ui_logger.log(format!(
-            "Invalid address '{addr_str}': {e} — use format /ip4/HOST/tcp/PORT/p2p/PEER_ID"
+            "Invalid address '{addr_str}': {e} — expected a multiaddr, e.g. /ip4/HOST/tcp/PORT/p2p/PEER_ID"
         )),
     }
 }
