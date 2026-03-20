@@ -491,9 +491,12 @@ async fn test_run_auto_bootstrap_with_retry_exhausted_shows_config_hint() {
     let (log_sender, mut log_receiver) = tokio::sync::mpsc::unbounded_channel::<String>();
     let ui_logger = p2p_play::handlers::UILogger::new(log_sender);
 
-    // Set up config with no peers and max_retry_attempts = 1 so retries are exhausted after one fail
+    // A valid multiaddr WITHOUT a /p2p peer-ID component means attempt_bootstrap
+    // will: increment retry_count to 1, set Failed { attempts: 1 }, return false.
+    // With max_retry_attempts = 1, schedule_next_retry + should_retry() gives
+    // false (1 < 1 == false), so the exhausted "Bootstrap failed" message is logged.
     let config = p2p_play::types::BootstrapConfig {
-        bootstrap_peers: vec![],
+        bootstrap_peers: vec!["/ip4/127.0.0.1/tcp/19999".to_string()],
         max_retry_attempts: 1,
         retry_interval_ms: 0,
         bootstrap_timeout_ms: 30000,
@@ -501,15 +504,6 @@ async fn test_run_auto_bootstrap_with_retry_exhausted_shows_config_hint() {
     bootstrap
         .initialise(&config, &bootstrap_logger, &error_logger)
         .await;
-
-    // Force status to Failed with attempts == max so should_retry() returns false
-    {
-        let mut status = bootstrap.status.lock().unwrap();
-        *status = p2p_play::bootstrap::BootstrapStatus::Failed {
-            attempts: 1,
-            last_error: "no peers".to_string(),
-        };
-    }
 
     p2p_play::bootstrap::run_auto_bootstrap_with_retry(
         &mut bootstrap,
@@ -520,21 +514,26 @@ async fn test_run_auto_bootstrap_with_retry_exhausted_shows_config_hint() {
     )
     .await;
 
-    // Collect UI messages (may be empty if should_retry() is false and we return early)
     let mut messages = Vec::new();
     while let Ok(msg) = log_receiver.try_recv() {
         messages.push(msg);
     }
 
-    // Either we returned early (no messages) or got the exhausted message
-    if !messages.is_empty() {
-        let combined = messages.join("\n");
-        assert!(
-            combined.contains("unified_network_config.json"),
-            "Expected config file hint in exhausted message, got: {combined}"
-        );
-    }
-    // If empty, should_retry() returned false so we exited early — that's also correct behaviour
+    assert!(
+        !messages.is_empty(),
+        "Expected UI notification when all bootstrap retries are exhausted"
+    );
+
+    let combined = messages.join("\n");
+    assert!(
+        combined.contains("unified_network_config.json"),
+        "Expected config file hint in exhausted message, got: {combined}"
+    );
+    // Should NOT contain "will retry" since retries are exhausted
+    assert!(
+        !combined.contains("will retry"),
+        "Exhausted message should not say 'will retry', got: {combined}"
+    );
 }
 
 #[tokio::test]

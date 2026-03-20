@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
+const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum BootstrapStatus {
@@ -333,7 +334,7 @@ pub async fn run_auto_bootstrap_with_retry(
             ));
         } else {
             ui_logger.log(format!(
-                "Bootstrap failed — check {BOOTSTRAP_LOG_FILE} or add peers to unified_network_config.json"
+                "Bootstrap failed — check {BOOTSTRAP_LOG_FILE} or add peers to {UNIFIED_CONFIG_FILE}"
             ));
         }
     }
