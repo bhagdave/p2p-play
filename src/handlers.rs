@@ -1823,7 +1823,8 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
     };
 
     // Resolve the list of stories to export
-    let to_export: Vec<&crate::types::Story> = if target == "all" {
+    let export_all = target == "all";
+    let to_export: Vec<&crate::types::Story> = if export_all {
         stories.iter().collect()
     } else {
         match ContentValidator::validate_story_id(target) {
@@ -1846,9 +1847,9 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
         return;
     }
 
-    // Ensure the exports directory exists
+    // Ensure the exports directory exists (uses async I/O to avoid blocking the executor thread)
     let export_dir = std::path::Path::new("./exports");
-    if let Err(e) = std::fs::create_dir_all(export_dir) {
+    if let Err(e) = tokio::fs::create_dir_all(export_dir).await {
         error_logger.log_error(&format!("Failed to create exports directory: {e}"));
         ui_logger.log(format!("{} Failed to create exports directory: {e}", Icons::cross()));
         return;
@@ -1856,22 +1857,16 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
 
     match format.as_str() {
         "json" => {
-            // All-in-one JSON file when exporting multiple stories; single file for one story
-            let path = if target == "all" {
+            // `export s all json` always produces a JSON array, regardless of how many
+            // stories happen to exist, so that consumers can rely on a stable shape.
+            // `export s <id> json` produces a single JSON object.
+            let path = if export_all {
                 export_dir.join("stories.json")
             } else {
                 export_dir.join(format!("story_{}.json", to_export[0].id))
             };
 
-            let content = if to_export.len() == 1 {
-                match serde_json::to_string_pretty(to_export[0]) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        ui_logger.log(format!("{} Failed to serialize story: {e}", Icons::cross()));
-                        return;
-                    }
-                }
-            } else {
+            let content = if export_all {
                 match serde_json::to_string_pretty(&to_export) {
                     Ok(s) => s,
                     Err(e) => {
@@ -1879,9 +1874,17 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
                         return;
                     }
                 }
+            } else {
+                match serde_json::to_string_pretty(to_export[0]) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        ui_logger.log(format!("{} Failed to serialize story: {e}", Icons::cross()));
+                        return;
+                    }
+                }
             };
 
-            if let Err(e) = std::fs::write(&path, content) {
+            if let Err(e) = tokio::fs::write(&path, content).await {
                 error_logger.log_error(&format!("Failed to write export file: {e}"));
                 ui_logger.log(format!("{} Failed to write file: {e}", Icons::cross()));
                 return;
@@ -1896,7 +1899,7 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
             ));
         }
         "md" => {
-            // One Markdown file per story
+            // One Markdown file per story, with YAML front-matter for metadata
             let mut exported = 0usize;
             for story in &to_export {
                 let safe_name: String = story
@@ -1908,11 +1911,27 @@ pub async fn handle_export_story(cmd: &str, ui_logger: &UILogger, error_logger: 
                 let path = export_dir.join(&filename);
 
                 let content = format!(
-                    "# {}\n\n**Channel:** {}\n\n## Header\n\n{}\n\n## Body\n\n{}\n",
-                    story.name, story.channel, story.header, story.body
+                    "---\n\
+                     id: {id}\n\
+                     channel: {channel}\n\
+                     public: {public}\n\
+                     created_at: {created_at}\n\
+                     ---\n\n\
+                     # {name}\n\n\
+                     ## Header\n\n\
+                     {header}\n\n\
+                     ## Body\n\n\
+                     {body}\n",
+                    id = story.id,
+                    channel = story.channel,
+                    public = story.public,
+                    created_at = story.created_at,
+                    name = story.name,
+                    header = story.header,
+                    body = story.body
                 );
 
-                if let Err(e) = std::fs::write(&path, content) {
+                if let Err(e) = tokio::fs::write(&path, content).await {
                     error_logger.log_error(&format!("Failed to write {filename}: {e}"));
                     ui_logger.log(format!("{} Failed to write {filename}: {e}", Icons::cross()));
                     continue;

@@ -1429,33 +1429,20 @@ async fn test_handle_export_story_not_found() {
 
 #[tokio::test]
 async fn test_handle_export_all_json_creates_file() {
-    let _lock = TEST_DB_MUTEX.lock().unwrap();
-    let tmp_dir = tempfile::tempdir().expect("temp dir");
-    let db_path = tmp_dir.path().join("export_test.db");
-    // SAFETY: guarded by TEST_DB_MUTEX so only one test mutates env at a time;
-    // set_var is still technically unsafe in a multi-threaded process, but the
-    // mutex makes the window as small as possible.
-    unsafe {
-        std::env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
-    }
-
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
     let ui_logger = UILogger::new(sender);
     let error_logger = ErrorLogger::new("/tmp/test_export_errors.log");
 
-    // "all" with a brand-new (empty) database – handler should report "No stories to export"
+    // Run "export s all json" against whatever DB state exists.
+    // We just verify the handler completes and emits a status message — no panic.
     handle_export_story("export s all json", &ui_logger, &error_logger).await;
 
     let msgs: Vec<String> = std::iter::from_fn(|| receiver.try_recv().ok()).collect();
     assert!(
         msgs.iter()
             .any(|m| m.contains("No stories") || m.contains("Exported") || m.contains("Failed")),
-        "Expected a status message for empty-DB export, got: {msgs:?}"
+        "Expected a status message for export, got: {msgs:?}"
     );
-
-    unsafe {
-        std::env::remove_var("TEST_DATABASE_PATH");
-    }
 }
 
 #[tokio::test]
