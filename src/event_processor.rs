@@ -848,6 +848,141 @@ mod tests {
         assert!(event_processor.dm_config.enable_timed_retries);
     }
 
+    // -----------------------------------------------------------------------
+    // Tests for session-lifetime peer alias persistence
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_is_user_set_peer_name_detects_placeholders() {
+        let peer_id = PeerId::random();
+        let default_name = format!("Peer_{peer_id}");
+        assert!(
+            !EventProcessor::is_user_set_peer_name(&default_name),
+            "default placeholder should NOT be treated as a user-set name"
+        );
+    }
+
+    #[test]
+    fn test_is_user_set_peer_name_accepts_real_aliases() {
+        assert!(EventProcessor::is_user_set_peer_name("Alice"));
+        assert!(EventProcessor::is_user_set_peer_name("bob_123"));
+        // Exact boundary: a 30-character name should be accepted.
+        assert!(EventProcessor::is_user_set_peer_name(&"x".repeat(30)));
+        // One over the boundary should be rejected.
+        assert!(!EventProcessor::is_user_set_peer_name(&"x".repeat(31)));
+    }
+
+    #[tokio::test]
+    async fn test_alias_persists_after_disconnect_and_reconnect() {
+        let mut ep = create_test_event_processor();
+        let mut peer_names: HashMap<PeerId, String> = HashMap::new();
+        let mut cache = SortedPeerNamesCache::new();
+        let peer_id = PeerId::random();
+
+        // First connection: peer broadcasts real alias.
+        peer_names.insert(peer_id, "Alice".to_string());
+        ep.sync_known_peer_names(&mut peer_names, &mut cache);
+        assert_eq!(ep.known_peer_names.get(&peer_id), Some(&"Alice".to_string()));
+
+        // Disconnection: save alias (mirrors handle_connection_closed logic) and remove peer.
+        if let Some(name) = peer_names.remove(&peer_id) {
+            if EventProcessor::is_user_set_peer_name(&name) {
+                ep.known_peer_names.insert(peer_id, name);
+            }
+        }
+        assert!(peer_names.is_empty(), "peer should be gone from active map");
+        assert_eq!(
+            ep.known_peer_names.get(&peer_id),
+            Some(&"Alice".to_string()),
+            "known cache should still hold the alias after disconnect"
+        );
+
+        // Reconnection with placeholder: alias is restored by sync.
+        peer_names.insert(peer_id, format!("Peer_{peer_id}"));
+        ep.sync_known_peer_names(&mut peer_names, &mut cache);
+        assert_eq!(
+            peer_names.get(&peer_id),
+            Some(&"Alice".to_string()),
+            "alias should be restored on reconnection without waiting for re-broadcast"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_alias_update_propagates_to_known_cache() {
+        let mut ep = create_test_event_processor();
+        let mut peer_names: HashMap<PeerId, String> = HashMap::new();
+        let mut cache = SortedPeerNamesCache::new();
+        let peer_id = PeerId::random();
+
+        // Peer connects and sets initial alias.
+        peer_names.insert(peer_id, "Alice".to_string());
+        ep.sync_known_peer_names(&mut peer_names, &mut cache);
+        assert_eq!(ep.known_peer_names.get(&peer_id), Some(&"Alice".to_string()));
+
+        // Peer changes alias to "Bob" in the same session.
+        peer_names.insert(peer_id, "Bob".to_string());
+        ep.sync_known_peer_names(&mut peer_names, &mut cache);
+
+        // Both the active map and the cache should show the updated alias.
+        assert_eq!(ep.known_peer_names.get(&peer_id), Some(&"Bob".to_string()));
+        assert_eq!(peer_names.get(&peer_id), Some(&"Bob".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_peer_without_alias_stays_as_placeholder() {
+        let mut ep = create_test_event_processor();
+        let mut peer_names: HashMap<PeerId, String> = HashMap::new();
+        let mut cache = SortedPeerNamesCache::new();
+        let peer_id = PeerId::random();
+        let placeholder = format!("Peer_{peer_id}");
+
+        // Peer connects but never broadcasts a real alias.
+        peer_names.insert(peer_id, placeholder.clone());
+        ep.sync_known_peer_names(&mut peer_names, &mut cache);
+
+        assert!(
+            ep.known_peer_names.is_empty(),
+            "placeholder should not pollute the known cache"
+        );
+        assert_eq!(peer_names.get(&peer_id), Some(&placeholder));
+    }
+
+    #[tokio::test]
+    async fn test_multiple_peers_independent_caching() {
+        let mut ep = create_test_event_processor();
+        let mut peer_names: HashMap<PeerId, String> = HashMap::new();
+        let mut cache = SortedPeerNamesCache::new();
+        let peer_a = PeerId::random();
+        let peer_b = PeerId::random();
+
+        // Both peers connect and set aliases.
+        peer_names.insert(peer_a, "Alice".to_string());
+        peer_names.insert(peer_b, "Bob".to_string());
+        ep.sync_known_peer_names(&mut peer_names, &mut cache);
+
+        // Only peer_a disconnects.
+        if let Some(name) = peer_names.remove(&peer_a) {
+            if EventProcessor::is_user_set_peer_name(&name) {
+                ep.known_peer_names.insert(peer_a, name);
+            }
+        }
+
+        // peer_b is still active; peer_a's alias is in the cache.
+        assert_eq!(peer_names.get(&peer_b), Some(&"Bob".to_string()));
+        assert_eq!(
+            ep.known_peer_names.get(&peer_a),
+            Some(&"Alice".to_string())
+        );
+
+        // peer_a reconnects with placeholder.
+        peer_names.insert(peer_a, format!("Peer_{peer_a}"));
+        ep.sync_known_peer_names(&mut peer_names, &mut cache);
+
+        // peer_a gets their alias back; peer_b is unaffected.
+        assert_eq!(peer_names.get(&peer_a), Some(&"Alice".to_string()));
+        assert_eq!(peer_names.get(&peer_b), Some(&"Bob".to_string()));
+    }
+
     #[tokio::test]
     async fn test_connection_maintenance_interval_uses_config() {
         let (_, ui_rcv) = mpsc::unbounded_channel();
