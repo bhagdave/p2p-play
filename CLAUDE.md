@@ -90,6 +90,7 @@ cargo machete
 - Automatic bootstrap with configurable retry logic and peer management
 - Persistent peer key storage in `peer_key` file with Ed25519 keypairs
 - `unified_network_config.json` — primary config for bootstrap peers, connection limits, and ping settings; auto-created on first run; reload at runtime with `reload config` command
+- Legacy per-feature config files (for example, `bootstrap_config.json`) may still be recognized for backward compatibility, but `unified_network_config.json` takes precedence when both are present
 - CLI `--data-dir <path>` flag overrides default location for `stories.db` and log files
 
 ### Data Storage
