@@ -59,7 +59,7 @@ cargo machete
 - **network.rs**: P2P networking setup using libp2p with floodsub, mDNS, ping, Kademlia DHT, and request-response protocols. Manages peer key persistence and swarm creation
 - **relay.rs**: Circuit relay support for NAT traversal
 - **network_circuit_breakers.rs**: Circuit breaker patterns for connection resilience
-- **storage.rs**: SQLite-based data persistence for stories, channels, subscriptions, and peer information. Supports dynamic database paths for testing
+- **storage/**: SQLite-based data persistence for stories, channels, subscriptions, and peer information. Supports dynamic database paths for testing
 - **handlers.rs**: Command handlers for user interactions including peer management, story operations, direct messaging, and channel subscriptions
 - **types.rs**: Data structures and event types including stories, channels, direct messages, and bootstrap configuration
 - **validation.rs**: Input and data validation helpers
