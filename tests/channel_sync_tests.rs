@@ -1,5 +1,6 @@
 use p2p_play::storage::{
-    create_channel, get_channels_for_stories, process_discovered_channels, read_channels,
+    clear_database_for_testing, create_channel, get_channels_for_stories,
+    process_discovered_channels, read_channels,
 };
 use p2p_play::types::{Channel, Story};
 use std::collections::HashSet;
@@ -10,50 +11,13 @@ async fn setup_test_environment() {
     unsafe {
         std::env::set_var("TEST_DATABASE_PATH", TEST_DB_PATH);
     }
-
-    // Reset pool BEFORE deleting the file — on Windows, the r2d2 pool holds file
-    // locks that prevent deletion until all connections are closed.
-    p2p_play::storage::reset_db_connection_for_testing()
-        .await
-        .unwrap();
-
-    // Now safe to delete; on Windows this may still fail if the OS hasn't fully
-    // released the locks yet, so we also clear all table data below.
-    cleanup_test_db();
-
-    // Initialize the database schema
-    let conn_arc = p2p_play::storage::get_db_connection().await.unwrap();
-    let conn = conn_arc.lock().await;
-    p2p_play::migrations::create_tables(&conn).unwrap();
-
-    // Explicitly clear all data so tests start from a known-empty state even if
-    // the file could not be deleted (e.g. lingering locks on Windows).
-    let _ = conn.execute("DELETE FROM story_read_status", []);
-    let _ = conn.execute("DELETE FROM channel_subscriptions", []);
-    let _ = conn.execute("DELETE FROM direct_messages", []);
-    let _ = conn.execute("DELETE FROM conversations", []);
-    let _ = conn.execute("DELETE FROM stories", []);
-    conn.execute("DELETE FROM channels", []).unwrap();
-    conn.execute("DELETE FROM peer_name", []).unwrap();
-    conn.execute(
-        "INSERT OR IGNORE INTO channels (name, description, created_by, created_at) \
-         VALUES ('general', 'Default general discussion channel', 'system', 0)",
-        [],
-    )
-    .unwrap();
-
-    drop(conn);
+    clear_database_for_testing().await.unwrap();
 }
 
 async fn teardown_test_environment() {
-    // Reset the pool first to release file locks before attempting deletion.
     p2p_play::storage::reset_db_connection_for_testing()
         .await
         .unwrap();
-    cleanup_test_db();
-}
-
-fn cleanup_test_db() {
     let _ = std::fs::remove_file(TEST_DB_PATH);
 }
 
