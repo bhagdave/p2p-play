@@ -7,23 +7,50 @@ use std::collections::HashSet;
 const TEST_DB_PATH: &str = "./test_channel_sync.db";
 
 async fn setup_test_environment() {
-    // Clean up any existing test database first
-    cleanup_test_db();
-
     unsafe {
         std::env::set_var("TEST_DATABASE_PATH", TEST_DB_PATH);
     }
 
-    // Reset any cached database connections since we changed the environment variable
+    // Reset pool BEFORE deleting the file — on Windows, the r2d2 pool holds file
+    // locks that prevent deletion until all connections are closed.
     p2p_play::storage::reset_db_connection_for_testing()
         .await
         .unwrap();
 
-    // Initialize the database by ensuring we have a connection and creating tables
+    // Now safe to delete; on Windows this may still fail if the OS hasn't fully
+    // released the locks yet, so we also clear all table data below.
+    cleanup_test_db();
+
+    // Initialize the database schema
     let conn_arc = p2p_play::storage::get_db_connection().await.unwrap();
     let conn = conn_arc.lock().await;
     p2p_play::migrations::create_tables(&conn).unwrap();
-    drop(conn); // Ensure connection is released
+
+    // Explicitly clear all data so tests start from a known-empty state even if
+    // the file could not be deleted (e.g. lingering locks on Windows).
+    let _ = conn.execute("DELETE FROM story_read_status", []);
+    let _ = conn.execute("DELETE FROM channel_subscriptions", []);
+    let _ = conn.execute("DELETE FROM direct_messages", []);
+    let _ = conn.execute("DELETE FROM conversations", []);
+    let _ = conn.execute("DELETE FROM stories", []);
+    conn.execute("DELETE FROM channels", []).unwrap();
+    conn.execute("DELETE FROM peer_name", []).unwrap();
+    conn.execute(
+        "INSERT OR IGNORE INTO channels (name, description, created_by, created_at) \
+         VALUES ('general', 'Default general discussion channel', 'system', 0)",
+        [],
+    )
+    .unwrap();
+
+    drop(conn);
+}
+
+async fn teardown_test_environment() {
+    // Reset the pool first to release file locks before attempting deletion.
+    p2p_play::storage::reset_db_connection_for_testing()
+        .await
+        .unwrap();
+    cleanup_test_db();
 }
 
 fn cleanup_test_db() {
@@ -38,7 +65,7 @@ async fn test_get_channels_for_stories_empty_list() {
     let channels = get_channels_for_stories(&stories).await.unwrap();
     assert!(channels.is_empty());
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -96,7 +123,7 @@ async fn test_get_channels_for_stories_with_existing_channels() {
     assert!(channel_names.contains("tech"));
     assert!(channel_names.contains("science"));
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -124,7 +151,7 @@ async fn test_get_channels_for_stories_with_non_existent_channels() {
     assert_eq!(channels[0].description, "Channel: nonexistent");
     assert_eq!(channels[0].created_by, "unknown");
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -158,7 +185,7 @@ async fn test_process_discovered_channels() {
     assert!(channel_names.contains("newchannel2"));
     assert!(channel_names.contains("general")); // The default channel should also exist
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -198,7 +225,7 @@ async fn test_process_discovered_channels_with_duplicates() {
     assert!(channel_names.contains("existing"));
     assert!(channel_names.contains("newchannel"));
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -240,7 +267,7 @@ async fn test_process_discovered_channels_with_invalid_data() {
     assert!(channel_names.contains("goodchannel"));
     assert!(channel_names.contains("general"));
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -253,5 +280,5 @@ async fn test_process_discovered_channels_empty_list() {
         .unwrap();
     assert_eq!(saved_count, 0);
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
