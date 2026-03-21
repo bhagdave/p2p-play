@@ -55,10 +55,16 @@ cargo machete
 
 ### Core Components
 - **main.rs**: Application entry point with main event loop handling UI events, network events, and peer communication. Includes automatic bootstrap retry logic and connection maintenance
+- **lib.rs**: Shared library logic re-exported for tests and modules
 - **network.rs**: P2P networking setup using libp2p with floodsub, mDNS, ping, Kademlia DHT, and request-response protocols. Manages peer key persistence and swarm creation
-- **storage.rs**: SQLite-based data persistence for stories, channels, subscriptions, and peer information. Supports dynamic database paths for testing
+- **relay.rs**: Circuit relay support for NAT traversal
+- **network_circuit_breakers.rs**: Circuit breaker patterns for connection resilience
+- **storage/**: SQLite-based data persistence for stories, channels, subscriptions, and peer information. Supports dynamic database paths for testing
 - **handlers.rs**: Command handlers for user interactions including peer management, story operations, direct messaging, and channel subscriptions
 - **types.rs**: Data structures and event types including stories, channels, direct messages, and bootstrap configuration
+- **validation.rs**: Input and data validation helpers
+- **errors.rs**: Unified error types used across modules
+- **crypto.rs**: Cryptographic utilities
 - **ui.rs**: Terminal-based user interface using ratatui with input handling, multiple display panes, and real-time updates
 - **bootstrap.rs**: Automatic bootstrap connection management with retry logic and status tracking
 - **event_handlers.rs**: Event processing logic for different network and application events
@@ -83,7 +89,9 @@ cargo machete
 - Request-response protocols for direct messaging and node descriptions
 - Automatic bootstrap with configurable retry logic and peer management
 - Persistent peer key storage in `peer_key` file with Ed25519 keypairs
-- Bootstrap configuration in `bootstrap_config.json`
+- `unified_network_config.json` — primary config for bootstrap peers, connection limits, and ping settings; auto-created on first run; reload at runtime with `reload config` command
+- Legacy per-feature config files (for example, `bootstrap_config.json`) may still be recognized for backward compatibility, but `unified_network_config.json` takes precedence when both are present
+- CLI `--data-dir <path>` flag overrides default location for `stories.db` and log files
 
 ### Data Storage
 - SQLite database (`stories.db`) for persistent story, channel, and subscription storage
@@ -149,6 +157,7 @@ The application uses multiple logging mechanisms:
 - **Unit tests** (`cargo test --lib`): Individual component testing for storage, networking, types, and handlers
 - **Integration tests** (`cargo test --test integration_tests`): End-to-end functionality testing with isolated test database
 - **Test runner script** (`./scripts/test_runner.sh`): Comprehensive test execution with proper cleanup
+- **Shared test helpers** in `tests/common/` — reuse for fixtures, database setup, and common assertions
 - **Separate test database**: Uses `TEST_DATABASE_PATH` environment variable to isolate test data
 - **Mock objects**: Testing network behavior and peer interactions
 - **Coverage reporting**: Tarpaulin integration for test coverage analysis (`tarpaulin.toml`)

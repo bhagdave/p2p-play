@@ -12,8 +12,6 @@
 - `cargo run` — launch the TUI node (use `RUST_LOG=debug cargo run` for verbose logs).
 - `./scripts/test_runner.sh` — runs the curated test matrix with `TEST_DATABASE_PATH=./test_stories.db` and serializes suites that need isolation.
 - `cargo test` — quick local check; target a suite with `cargo test --test conversation_tests -- --nocapture`.
-- `cargo fmt --check` / `cargo fmt` — enforce Rustfmt.
-- `cargo clippy` — lint with repo defaults; fix warnings before opening a PR.
 - `./scripts/test_coverage.sh` — generate tarpaulin HTML coverage (output `tarpaulin-report.html`).
 
 ## Coding Style & Naming Conventions
