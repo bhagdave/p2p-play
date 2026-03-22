@@ -12,6 +12,7 @@ impl BootstrapLogger {
         }
     }
 
+    #[allow(dead_code)]
     pub fn file_path(&self) -> &str {
         self.logger.file_path()
     }
@@ -37,6 +38,7 @@ impl BootstrapLogger {
         self.logger.log_with_category("BOOTSTRAP_ERROR", message);
     }
 
+    #[allow(dead_code)]
     pub fn clear_log(&self) -> std::io::Result<()> {
         self.logger.clear_log()
     }
