@@ -11,6 +11,7 @@ impl ErrorLogger {
         }
     }
 
+    #[allow(dead_code)]
     pub fn file_path(&self) -> &str {
         self.logger.file_path()
     }
@@ -29,6 +30,7 @@ impl ErrorLogger {
             .log_with_category_fmt(&format!("NETWORK_ERROR [{}]", source), args);
     }
 
+    #[allow(dead_code)]
     pub fn clear_log(&self) -> std::io::Result<()> {
         self.logger.clear_log()
     }
