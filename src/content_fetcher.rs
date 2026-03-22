@@ -30,6 +30,7 @@ impl GatewayFetcher {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_gateway(gateway_url: &str) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))
