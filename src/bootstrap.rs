@@ -1,4 +1,5 @@
 use crate::bootstrap_logger::BootstrapLogger;
+use crate::constants::BOOTSTRAP_LOG_FILE;
 use crate::handlers::{UILogger, extract_peer_id_from_multiaddr};
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
@@ -7,7 +8,6 @@ use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
 const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
 
 #[derive(Debug, Clone, PartialEq, Default)]
