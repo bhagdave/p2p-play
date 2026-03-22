@@ -3,7 +3,6 @@ use std::time::Duration;
 
 pub trait ContentFetcher: Send + Sync {
     async fn fetch(&self, cid: &str) -> Result<Vec<u8>, FetchError>;
-    async fn resolve_ipns(&self, name: &str) -> Result<String, FetchError>;
 }
 
 pub struct GatewayFetcher {
@@ -56,19 +55,6 @@ impl ContentFetcher for GatewayFetcher {
         let bytes = response.bytes().await?.to_vec();
 
         Ok(bytes)
-    }
-
-    async fn resolve_ipns(&self, name: &str) -> Result<String, FetchError> {
-        // Gateways support IPNS resolution via redirect
-        let url = format!("{}/ipns/{}", self.gateway_url, name);
-        let response = self.client.head(&url).send().await?;
-
-        let final_url = response.url().path();
-        let cid = final_url
-            .strip_prefix("/ipfs/")
-            .ok_or_else(|| FetchError::InvalidCid(name.to_string()))?;
-
-        Ok(cid.to_string())
     }
 }
 
