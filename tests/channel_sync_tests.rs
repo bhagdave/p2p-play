@@ -1,5 +1,6 @@
 use p2p_play::storage::{
-    create_channel, get_channels_for_stories, process_discovered_channels, read_channels,
+    clear_database_for_testing, create_channel, get_channels_for_stories,
+    process_discovered_channels, read_channels,
 };
 use p2p_play::types::{Channel, Story};
 use std::collections::HashSet;
@@ -7,26 +8,16 @@ use std::collections::HashSet;
 const TEST_DB_PATH: &str = "./test_channel_sync.db";
 
 async fn setup_test_environment() {
-    // Clean up any existing test database first
-    cleanup_test_db();
-
     unsafe {
         std::env::set_var("TEST_DATABASE_PATH", TEST_DB_PATH);
     }
+    clear_database_for_testing().await.unwrap();
+}
 
-    // Reset any cached database connections since we changed the environment variable
+async fn teardown_test_environment() {
     p2p_play::storage::reset_db_connection_for_testing()
         .await
         .unwrap();
-
-    // Initialize the database by ensuring we have a connection and creating tables
-    let conn_arc = p2p_play::storage::get_db_connection().await.unwrap();
-    let conn = conn_arc.lock().await;
-    p2p_play::migrations::create_tables(&conn).unwrap();
-    drop(conn); // Ensure connection is released
-}
-
-fn cleanup_test_db() {
     let _ = std::fs::remove_file(TEST_DB_PATH);
 }
 
@@ -38,7 +29,7 @@ async fn test_get_channels_for_stories_empty_list() {
     let channels = get_channels_for_stories(&stories).await.unwrap();
     assert!(channels.is_empty());
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -96,7 +87,7 @@ async fn test_get_channels_for_stories_with_existing_channels() {
     assert!(channel_names.contains("tech"));
     assert!(channel_names.contains("science"));
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -124,7 +115,7 @@ async fn test_get_channels_for_stories_with_non_existent_channels() {
     assert_eq!(channels[0].description, "Channel: nonexistent");
     assert_eq!(channels[0].created_by, "unknown");
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -158,7 +149,7 @@ async fn test_process_discovered_channels() {
     assert!(channel_names.contains("newchannel2"));
     assert!(channel_names.contains("general")); // The default channel should also exist
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -198,7 +189,7 @@ async fn test_process_discovered_channels_with_duplicates() {
     assert!(channel_names.contains("existing"));
     assert!(channel_names.contains("newchannel"));
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -240,7 +231,7 @@ async fn test_process_discovered_channels_with_invalid_data() {
     assert!(channel_names.contains("goodchannel"));
     assert!(channel_names.contains("general"));
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
 
 #[tokio::test]
@@ -253,5 +244,5 @@ async fn test_process_discovered_channels_empty_list() {
         .unwrap();
     assert_eq!(saved_count, 0);
 
-    cleanup_test_db();
+    teardown_test_environment().await;
 }
