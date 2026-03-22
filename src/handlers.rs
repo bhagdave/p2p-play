@@ -146,10 +146,6 @@ impl SortedPeerNamesCache {
     pub fn get_sorted_names(&self) -> &[String] {
         &self.sorted_names
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.sorted_names.is_empty()
-    }
 }
 
 pub async fn handle_list_stories(
