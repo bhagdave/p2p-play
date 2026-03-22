@@ -1,5 +1,6 @@
 mod bootstrap;
 mod bootstrap_logger;
+mod constants;
 mod circuit_breaker;
 mod content_fetcher;
 mod crypto;
@@ -48,7 +49,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
-const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
+use constants::BOOTSTRAP_LOG_FILE;
 
 /// Peer-to-peer story sharing application.
 #[derive(Parser, Debug)]

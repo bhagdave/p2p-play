@@ -1,6 +1,7 @@
 pub mod bootstrap;
 pub mod bootstrap_logger;
 pub mod circuit_breaker;
+pub mod constants;
 pub mod content_fetcher;
 pub mod crypto;
 pub mod data_dir;
