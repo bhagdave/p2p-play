@@ -148,7 +148,6 @@ impl CircuitBreaker {
     pub async fn get_state(&self) -> CircuitBreakerInfo {
         let state = self.state.lock().await;
         CircuitBreakerInfo {
-            name: self.config.name.clone(),
             state: state.state.clone(),
             failure_count: state.failure_count,
             success_count: state.success_count,
@@ -160,7 +159,6 @@ impl CircuitBreaker {
             } else {
                 0.0
             },
-            last_failure_time: state.last_failure_time,
         }
     }
 
