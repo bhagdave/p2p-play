@@ -204,15 +204,15 @@ impl CircuitBreaker {
 
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerInfo {
-    pub name: String,
     pub state: CircuitState,
     pub failure_count: u32,
     pub success_count: u32,
     pub total_requests: u64,
+    #[allow(dead_code)]
     pub total_failures: u64,
+    #[allow(dead_code)]
     pub total_successes: u64,
     pub failure_rate: f64,
-    pub last_failure_time: Option<Instant>,
 }
 
 impl CircuitBreakerInfo {
