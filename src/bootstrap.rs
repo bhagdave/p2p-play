@@ -279,6 +279,7 @@ impl AutoBootstrap {
         }
     }
 
+    #[allow(dead_code)]
     pub fn reset(&mut self) {
         {
             let mut status = self.status.lock().unwrap();
