@@ -61,9 +61,6 @@ match crypto_service.encrypt_message(message, &unknown_peer) {
     Err(CryptoError::EncryptionFailed(msg)) => {
         // Handle encryption failure
     }
-    Err(CryptoError::KeyConversionFailed(msg)) => {
-        // Handle key conversion issues
-    }
     Err(other) => {
         // Handle other crypto errors
     }

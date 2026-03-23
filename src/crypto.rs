@@ -55,7 +55,6 @@ pub enum CryptoError {
     DecryptionFailed(String),
     SignatureFailed(String),
     VerificationFailed(String),
-    KeyConversionFailed(String),
     InvalidInput(String),
 }
 
@@ -66,7 +65,6 @@ impl std::fmt::Display for CryptoError {
             CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {msg}"),
             CryptoError::SignatureFailed(msg) => write!(f, "Signature failed: {msg}"),
             CryptoError::VerificationFailed(msg) => write!(f, "Verification failed: {msg}"),
-            CryptoError::KeyConversionFailed(msg) => write!(f, "Key conversion failed: {msg}"),
             CryptoError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
         }
     }
@@ -83,6 +81,7 @@ impl CryptoService {
     }
 
     /// Add a peer's public key to the cache for encryption
+    #[allow(dead_code)]
     pub fn add_peer_public_key(
         &mut self,
         peer_id: PeerId,
@@ -308,11 +307,12 @@ impl CryptoService {
         Ok(is_valid)
     }
 
+    #[allow(dead_code)]
     pub fn public_key_from_peer_id(&self, peer_id: &PeerId) -> Result<Vec<u8>, CryptoError> {
         if let Some(public_key) = self.peer_public_keys.get(peer_id) {
             Ok(public_key.clone())
         } else {
-            Err(CryptoError::KeyConversionFailed(format!(
+            Err(CryptoError::InvalidInput(format!(
                 "Public key not found for peer {peer_id}"
             )))
         }
