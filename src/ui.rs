@@ -1236,67 +1236,10 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     pub fn mark_messages_as_read(&mut self) {
         // Reset unread count when user views messages
         self.unread_message_count = 0;
-    }
-
-    /// Display a user-friendly error message in the UI log
-    pub fn display_error(&mut self, error: &crate::errors::AppError) {
-        use crate::errors::{AppError, ConfigError, NetworkError, StorageError, UIError};
-
-        let user_message = match error {
-            AppError::Storage(StorageError::StoryNotFound { id }) => {
-                format!("{} Story #{id} not found", Icons::cross())
-            }
-            AppError::Storage(StorageError::ChannelNotFound { name }) => {
-                format!("{} Channel '{}' not found", Icons::cross(), name)
-            }
-            AppError::Storage(StorageError::DatabaseConnection { reason }) => {
-                format!("{} Database connection failed: {}", Icons::cross(), reason)
-            }
-            AppError::Storage(StorageError::FileIO(_)) => {
-                format!(
-                    "{} File operation failed - check permissions",
-                    Icons::cross()
-                )
-            }
-            AppError::Network(NetworkError::SwarmCreation { reason }) => {
-                format!("{} Network setup failed: {}", Icons::cross(), reason)
-            }
-            AppError::Network(NetworkError::PeerConnectionFailed { peer_id }) => {
-                format!("{} Failed to connect to peer {}", Icons::cross(), peer_id)
-            }
-            AppError::Network(NetworkError::BroadcastFailed { reason }) => {
-                format!("{} Message broadcast failed: {}", Icons::cross(), reason)
-            }
-            AppError::UI(UIError::TerminalInit(_)) => {
-                format!(
-                    "{} Terminal initialization failed - check terminal compatibility",
-                    Icons::cross()
-                )
-            }
-            AppError::Config(ConfigError::FileNotFound { path }) => {
-                format!("{} Configuration file not found: {}", Icons::cross(), path)
-            }
-            AppError::Config(ConfigError::Validation { reason }) => {
-                format!("{} Invalid configuration: {}", Icons::cross(), reason)
-            }
-            AppError::Crypto(crypto_error) => {
-                format!("{} Encryption error: {}", Icons::cross(), crypto_error)
-            }
-            AppError::Relay(relay_error) => {
-                format!("{} Relay error: {}", Icons::cross(), relay_error)
-            }
-            _ => {
-                // Fallback for other errors
-                format!("{} Error: {}", Icons::cross(), error)
-            }
-        };
-
-        self.add_to_log(user_message);
-
-        debug!("Detailed error: {error:#}");
     }
 
     pub fn start_story_creation(&mut self) {
@@ -1324,23 +1267,6 @@ impl App {
         self.input_mode = InputMode::Normal;
         self.input.clear();
         self.add_to_log(format!("{} Story creation cancelled", Icons::cross()));
-    }
-
-    pub fn get_current_step_prompt(&self) -> String {
-        match &self.input_mode {
-            InputMode::CreatingStory { step, .. } => match step {
-                StoryCreationStep::Name => format!("{} Enter story name:", Icons::memo()),
-                StoryCreationStep::Header => format!("{} Enter story header:", Icons::document()),
-                StoryCreationStep::Body => format!("{} Enter story body:", Icons::book()),
-                StoryCreationStep::Channel => {
-                    format!(
-                        "{} Enter channel (or press Enter for 'general'):",
-                        Icons::folder()
-                    )
-                }
-            },
-            _ => "".to_string(),
-        }
     }
 
     fn calculate_current_scroll_position(&self, available_height: usize) -> usize {

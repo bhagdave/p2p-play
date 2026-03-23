@@ -17,6 +17,7 @@ pub type Stories = Vec<Story>;
 /// Information about a peer awaiting handshake completion
 #[derive(Debug, Clone)]
 pub struct PendingHandshakePeer {
+    #[allow(dead_code)]
     pub peer_id: PeerId,
     pub connection_time: Instant,
     pub endpoint: libp2p::core::ConnectedPoint,
@@ -103,6 +104,7 @@ pub struct DirectMessage {
 pub struct Conversation {
     pub peer_id: String,
     pub peer_name: String,
+    #[allow(dead_code)]
     pub messages: Vec<DirectMessage>,
     pub unread_count: usize,
     pub last_activity: u64, // timestamp
@@ -152,14 +154,6 @@ pub struct ChannelSubscription {
     pub peer_id: String,
     pub channel_name: String,
     pub subscribed_at: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct StoryReadStatus {
-    pub story_id: usize,
-    pub peer_id: String,
-    pub read_at: u64,
-    pub channel_name: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -364,6 +358,7 @@ pub struct PendingDirectMessage {
 }
 
 pub type Channels = Vec<Channel>;
+#[allow(dead_code)]
 pub type ChannelSubscriptions = Vec<ChannelSubscription>;
 
 #[derive(Debug, PartialEq)]
@@ -391,6 +386,7 @@ pub enum EventType {
         >,
     ),
     HandshakeEvent(request_response::Event<HandshakeRequest, HandshakeResponse>),
+    #[allow(dead_code)]
     WasmCapabilitiesEvent(
         request_response::Event<
             crate::network::WasmCapabilitiesRequest,
@@ -730,22 +726,6 @@ impl ChannelSubscription {
             peer_id,
             channel_name,
             subscribed_at,
-        }
-    }
-}
-
-impl StoryReadStatus {
-    pub fn new(story_id: usize, peer_id: String, channel_name: String) -> Self {
-        let read_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            story_id,
-            peer_id,
-            read_at,
-            channel_name,
         }
     }
 }
