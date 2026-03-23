@@ -143,8 +143,10 @@ pub struct ExecutionResult {
 #[derive(Debug, Clone)]
 pub struct WasmExecutorConfig {
     /// Enable module caching
+    #[allow(dead_code)]
     pub enable_cache: bool,
     /// Maximum number of cached modules
+    #[allow(dead_code)]
     pub max_cached_modules: usize,
 }
 
@@ -179,6 +181,7 @@ impl<F: ContentFetcher> WasmExecutor<F> {
     }
 
     /// Create a new WASM executor with custom configuration
+    #[allow(dead_code)]
     pub fn with_config(fetcher: Arc<F>, config: WasmExecutorConfig) -> WasmResult<Self> {
         Self::with_configs(fetcher, config, WasmConfig::new())
     }
