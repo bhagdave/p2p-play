@@ -211,7 +211,9 @@ pub enum StoryBehaviourEvent {
     NodeDescription(request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>),
     StorySync(request_response::Event<StorySyncRequest, StorySyncResponse>),
     Handshake(request_response::Event<HandshakeRequest, HandshakeResponse>),
+    #[allow(dead_code)]
     WasmCapabilities(request_response::Event<WasmCapabilitiesRequest, WasmCapabilitiesResponse>),
+    #[allow(dead_code)]
     WasmExecution(request_response::Event<WasmExecutionRequest, WasmExecutionResponse>),
     Kad(kad::Event),
 }

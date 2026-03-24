@@ -191,6 +191,7 @@ impl RelayService {
         });
     }
 
+    #[allow(dead_code)]
     pub fn cleanup_pending_confirmations(&mut self) {
         let timeout = Duration::from_millis(self.config.relay_timeout_ms);
         let now = Instant::now();
@@ -203,6 +204,7 @@ impl RelayService {
         &self.config
     }
 
+    #[allow(dead_code)]
     pub fn crypto_service(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }

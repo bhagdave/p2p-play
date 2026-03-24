@@ -203,8 +203,11 @@ impl CircuitBreaker {
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerInfo {
     pub state: CircuitState,
+    #[allow(dead_code)]
     pub failure_count: u32,
+    #[allow(dead_code)]
     pub success_count: u32,
+    #[allow(dead_code)]
     pub total_requests: u64,
     #[allow(dead_code)]
     pub total_failures: u64,
@@ -218,6 +221,7 @@ impl CircuitBreakerInfo {
         matches!(self.state, CircuitState::Closed) && self.failure_rate < 0.5
     }
 
+    #[allow(dead_code)]
     pub fn status_string(&self) -> String {
         match &self.state {
             CircuitState::Closed => {

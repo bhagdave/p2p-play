@@ -672,6 +672,7 @@ pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> StorageResult<()> {
     let json = serde_json::to_string(name)?;
     fs::write(path, &json).await?;
@@ -692,6 +693,7 @@ pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
     }
 }
 
+#[allow(dead_code)]
 pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<String>> {
     match fs::read(path).await {
         Ok(content) => {
@@ -932,6 +934,7 @@ fn create_or_find_conversation(
     }
 }
 
+#[allow(dead_code)]
 pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -947,6 +950,7 @@ pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories
     Ok(stories)
 }
 
+#[allow(dead_code)]
 pub async fn clear_database_for_testing() -> StorageResult<()> {
     reset_db_connection_for_testing().await?;
 
@@ -1138,6 +1142,7 @@ pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMa
     Ok(unread_counts)
 }
 
+#[allow(dead_code)]
 pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1687,6 +1692,7 @@ pub async fn get_all_cached_wasm_offerings()
 }
 
 /// Clean up stale discovered WASM offerings (older than max_age_secs)
+#[allow(dead_code)]
 pub async fn cleanup_stale_wasm_offerings(max_age_secs: u64) -> StorageResult<usize> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
