@@ -2,8 +2,14 @@ use crate::errors::FetchError;
 use std::time::Duration;
 
 pub trait ContentFetcher: Send + Sync {
-    async fn fetch(&self, cid: &str) -> Result<Vec<u8>, FetchError>;
-    async fn resolve_ipns(&self, name: &str) -> Result<String, FetchError>;
+    fn fetch(
+        &self,
+        cid: &str,
+    ) -> impl std::future::Future<Output = Result<Vec<u8>, FetchError>> + Send;
+    fn resolve_ipns(
+        &self,
+        name: &str,
+    ) -> impl std::future::Future<Output = Result<String, FetchError>> + Send;
 }
 
 pub struct GatewayFetcher {
