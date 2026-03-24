@@ -4,7 +4,6 @@ use crate::network::{
     DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
     NodeDescriptionRequest, NodeDescriptionResponse,
 };
-use crate::validation::ContentSanitizer;
 use libp2p::floodsub::Event;
 use libp2p::{PeerId, kad, mdns, ping, request_response};
 use serde::{Deserialize, Serialize};
@@ -393,6 +392,7 @@ pub enum EventType {
             crate::network::WasmCapabilitiesResponse,
         >,
     ),
+    #[allow(dead_code)]
     WasmExecutionEvent(
         request_response::Event<
             crate::network::WasmExecutionRequest,
@@ -401,13 +401,18 @@ pub enum EventType {
     ),
     KadEvent(kad::Event),
     PublishStory(Story),
+    #[allow(dead_code)]
     PeerName(PeerName),
+    #[allow(dead_code)]
     DirectMessage(DirectMessage),
+    #[allow(dead_code)]
     Channel(Channel),
+    #[allow(dead_code)]
     ChannelSubscription(ChannelSubscription),
 }
 
 impl Story {
+    #[allow(dead_code)]
     pub fn new(id: usize, name: String, header: String, body: String, public: bool) -> Self {
         let created_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -426,6 +431,7 @@ impl Story {
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_with_channel(
         id: usize,
         name: String,
@@ -451,48 +457,26 @@ impl Story {
         }
     }
 
-    pub fn new_with_auto_share(
-        id: usize,
-        name: String,
-        header: String,
-        body: String,
-        public: bool,
-        channel: String,
-        auto_share: Option<bool>,
-    ) -> Self {
-        let created_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            id,
-            name,
-            header,
-            body,
-            public,
-            channel,
-            created_at,
-            auto_share,
-        }
-    }
-
+    #[allow(dead_code)]
     pub fn is_public(&self) -> bool {
         self.public
     }
 
+    #[allow(dead_code)]
     pub fn set_public(&mut self, public: bool) {
         self.public = public;
     }
 }
 
 impl ListRequest {
+    #[allow(dead_code)]
     pub fn new_all() -> Self {
         Self {
             mode: ListMode::ALL,
         }
     }
 
+    #[allow(dead_code)]
     pub fn new_one(peer_id: String) -> Self {
         Self {
             mode: ListMode::One(peer_id),
@@ -501,6 +485,7 @@ impl ListRequest {
 }
 
 impl ListResponse {
+    #[allow(dead_code)]
     pub fn new(mode: ListMode, receiver: String, data: Stories) -> Self {
         Self {
             mode,
@@ -511,6 +496,7 @@ impl ListResponse {
 }
 
 impl PublishedStory {
+    #[allow(dead_code)]
     pub fn new(story: Story, publisher: String) -> Self {
         Self { story, publisher }
     }
@@ -577,6 +563,7 @@ impl PeerName {
 }
 
 impl DirectMessage {
+    #[allow(dead_code)]
     pub fn new(
         from_peer_id: String,
         from_name: String,
@@ -644,22 +631,6 @@ impl RelayMessage {
     }
 }
 
-impl RelayConfirmation {
-    pub fn new(message_id: String, delivered_to: String, relay_path_length: u8) -> Self {
-        let delivery_timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-
-        Self {
-            message_id,
-            delivered_to,
-            relay_path_length,
-            delivery_timestamp,
-        }
-    }
-}
-
 impl RelayConfig {
     pub fn new() -> Self {
         Self {
@@ -716,6 +687,7 @@ impl Channel {
 }
 
 impl ChannelSubscription {
+    #[allow(dead_code)]
     pub fn new(peer_id: String, channel_name: String) -> Self {
         let subscribed_at = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -800,6 +772,7 @@ impl NetworkConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
@@ -816,6 +789,7 @@ impl NetworkConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn save_to_file(&self, path: &str) -> ConfigResult<()> {
         let content = serde_json::to_string_pretty(self)?;
         std::fs::write(path, content)?;
@@ -1083,29 +1057,9 @@ impl WasmParameter {
         }
     }
 
-    pub fn with_default(mut self, default_value: String) -> Self {
-        self.default_value = Some(default_value);
-        self
-    }
 }
 
 impl WasmResourceRequirements {
-    pub fn new(
-        min_fuel: u64,
-        max_fuel: u64,
-        min_memory_mb: u32,
-        max_memory_mb: u32,
-        estimated_timeout_secs: u64,
-    ) -> Self {
-        Self {
-            min_fuel,
-            max_fuel,
-            min_memory_mb,
-            max_memory_mb,
-            estimated_timeout_secs,
-        }
-    }
-
     pub fn default_requirements() -> Self {
         Self {
             min_fuel: 1_000_000,
@@ -1116,24 +1070,6 @@ impl WasmResourceRequirements {
         }
     }
 
-    pub fn validate(&self) -> Result<(), String> {
-        if self.min_fuel > self.max_fuel {
-            return Err(format!(
-                "min_fuel ({}) must not exceed max_fuel ({})",
-                self.min_fuel, self.max_fuel
-            ));
-        }
-        if self.min_memory_mb > self.max_memory_mb {
-            return Err(format!(
-                "min_memory_mb ({}) must not exceed max_memory_mb ({})",
-                self.min_memory_mb, self.max_memory_mb
-            ));
-        }
-        if self.estimated_timeout_secs == 0 {
-            return Err("estimated_timeout_secs must be greater than 0".to_string());
-        }
-        Ok(())
-    }
 }
 
 impl WasmOffering {
@@ -1157,52 +1093,6 @@ impl WasmOffering {
         }
     }
 
-    pub fn with_parameters(mut self, parameters: Vec<WasmParameter>) -> Self {
-        self.parameters = parameters;
-        self
-    }
-
-    pub fn with_resource_requirements(mut self, requirements: WasmResourceRequirements) -> Self {
-        self.resource_requirements = requirements;
-        self
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        // Sanitize and check for dangerous content
-        let sanitized_name = ContentSanitizer::sanitize_for_storage(&self.name);
-        if sanitized_name != self.name {
-            return Err(
-                "name contains invalid characters (control chars or ANSI escapes)".to_string(),
-            );
-        }
-
-        let sanitized_description = ContentSanitizer::sanitize_for_storage(&self.description);
-        if sanitized_description != self.description {
-            return Err("description contains invalid characters".to_string());
-        }
-
-        if self.name.is_empty() {
-            return Err("name cannot be empty".to_string());
-        }
-        if self.name.len() > 100 {
-            return Err("name must not exceed 100 characters".to_string());
-        }
-        if self.description.len() > 500 {
-            return Err("description must not exceed 500 characters".to_string());
-        }
-        if self.ipfs_cid.is_empty() {
-            return Err("ipfs_cid cannot be empty".to_string());
-        }
-        // Basic IPFS CID validation (starts with Qm for v0 or bafy for v1)
-        if !self.ipfs_cid.starts_with("Qm") && !self.ipfs_cid.starts_with("bafy") {
-            return Err("ipfs_cid must be a valid IPFS CID (starting with Qm or bafy)".to_string());
-        }
-        if self.version.is_empty() {
-            return Err("version cannot be empty".to_string());
-        }
-        self.resource_requirements.validate()?;
-        Ok(())
-    }
 }
 
 impl WasmCapabilityConfig {
@@ -1305,6 +1195,7 @@ impl PingConfig {
     }
 
     /// Load ping configuration from a file, falling back to defaults if file doesn't exist
+    #[allow(dead_code)]
     pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
@@ -1377,6 +1268,7 @@ impl UnifiedNetworkConfig {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn load_from_file(path: &str) -> ConfigResult<Self> {
         match std::fs::read_to_string(path) {
             Ok(content) => {
@@ -1393,6 +1285,7 @@ impl UnifiedNetworkConfig {
         }
     }
 
+    #[allow(dead_code)]
     pub fn save_to_file(&self, path: &str) -> ConfigResult<()> {
         self.validate()
             .map_err(|e| format!("Configuration validation failed: {e}"))?;
@@ -1641,6 +1534,7 @@ impl Icons {
     }
 
     /// Network healthy indicator
+    #[allow(dead_code)]
     pub fn network_healthy() -> &'static str {
         #[cfg(windows)]
         return "[NET-OK]";
@@ -1649,6 +1543,7 @@ impl Icons {
     }
 
     /// Network issues indicator
+    #[allow(dead_code)]
     pub fn network_issues() -> &'static str {
         #[cfg(windows)]
         return "[NET-ERR]";
@@ -1657,6 +1552,7 @@ impl Icons {
     }
 
     /// Network status unknown indicator
+    #[allow(dead_code)]
     pub fn network_unknown() -> &'static str {
         #[cfg(windows)]
         return "[NET-?]";
