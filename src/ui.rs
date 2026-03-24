@@ -1321,7 +1321,7 @@ impl App {
                     Constraint::Min(0),    // Main area
                     Constraint::Length(3), // Input area
                 ])
-                .split(f.size());
+                .split(f.area());
 
             let version = env!("CARGO_PKG_VERSION");
             let network_status_text = format!(
