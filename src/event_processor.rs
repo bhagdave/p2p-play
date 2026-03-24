@@ -514,7 +514,7 @@ impl EventProcessor {
             if Self::is_user_set_peer_name(name) {
                 let known = self.known_peer_names.get(peer_id);
                 // Insert when the peer has no cached name or when their name has changed.
-                if !known.is_some_and(|k| k == name) {
+                if known.is_none_or(|k| k != name) {
                     self.known_peer_names.insert(*peer_id, name.clone());
                 }
             }
@@ -523,12 +523,11 @@ impl EventProcessor {
         // Pass 2 – restore known aliases for peers that joined with a placeholder.
         let mut names_updated = false;
         for (peer_id, name) in peer_names.iter_mut() {
-            if let Some(known_name) = self.known_peer_names.get(peer_id) {
-                if name != known_name {
+            if let Some(known_name) = self.known_peer_names.get(peer_id)
+                && name != known_name {
                     *name = known_name.clone();
                     names_updated = true;
                 }
-            }
         }
 
         if names_updated {
