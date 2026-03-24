@@ -1056,7 +1056,6 @@ impl WasmParameter {
             default_value: None,
         }
     }
-
 }
 
 impl WasmResourceRequirements {
@@ -1069,7 +1068,6 @@ impl WasmResourceRequirements {
             estimated_timeout_secs: WasmConfig::DEFAULT_TIMEOUT_SECS,
         }
     }
-
 }
 
 impl WasmOffering {
@@ -1092,7 +1090,6 @@ impl WasmOffering {
             updated_at: now,
         }
     }
-
 }
 
 impl WasmCapabilityConfig {
