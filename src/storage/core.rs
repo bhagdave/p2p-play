@@ -127,115 +127,6 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     Ok(conn_arc)
 }
 
-pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
-    let mut state = DB_POOL_STATE.write().await;
-    *state = None;
-    // Add a small delay to ensure any pending database operations complete
-    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-    Ok(())
-}
-
-pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
-    let state = DB_POOL_STATE.read().await;
-    if let Some((pool, _)) = state.as_ref() {
-        let state = pool.state();
-        Some((state.connections, state.idle_connections, pool.max_size()))
-    } else {
-        None
-    }
-}
-
-pub async fn with_transaction<F, R>(f: F) -> StorageResult<R>
-where
-    F: FnOnce(&Connection) -> StorageResult<R>,
-{
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    conn.execute("BEGIN TRANSACTION", [])?;
-
-    match f(&conn) {
-        Ok(result) => {
-            conn.execute("COMMIT", [])?;
-            Ok(result)
-        }
-        Err(e) => {
-            let _ = conn.execute("ROLLBACK", []);
-            Err(e)
-        }
-    }
-}
-
-pub async fn with_read_transaction<F, R>(f: F) -> StorageResult<R>
-where
-    F: FnOnce(&Connection) -> StorageResult<R>,
-{
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    conn.execute("BEGIN DEFERRED", [])?;
-
-    match f(&conn) {
-        Ok(result) => {
-            conn.execute("COMMIT", [])?;
-            Ok(result)
-        }
-        Err(e) => {
-            // Rollback on error
-            let _ = conn.execute("ROLLBACK", []);
-            Err(e)
-        }
-    }
-}
-
-pub async fn init_test_database() -> StorageResult<()> {
-    reset_db_connection_for_testing().await?;
-    ensure_stories_file_exists().await?;
-
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    conn.execute("PRAGMA foreign_keys = OFF", [])?;
-
-    let table_exists = |table_name: &str| -> StorageResult<bool> {
-        let mut stmt = conn.prepare(&format!(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
-        ))?;
-        let exists = stmt.exists([])?;
-        Ok(exists)
-    };
-
-    if table_exists("direct_messages")? {
-        conn.execute("DELETE FROM direct_messages", [])?;
-    }
-    if table_exists("conversations")? {
-        conn.execute("DELETE FROM conversations", [])?;
-    }
-    if table_exists("channel_subscriptions")? {
-        conn.execute("DELETE FROM channel_subscriptions", [])?;
-    }
-    if table_exists("channels")? {
-        conn.execute("DELETE FROM channels", [])?;
-    }
-    if table_exists("stories")? {
-        conn.execute("DELETE FROM stories", [])?;
-    }
-    if table_exists("peer_name")? {
-        conn.execute("DELETE FROM peer_name", [])?;
-    }
-    if table_exists("story_read_status")? {
-        conn.execute("DELETE FROM story_read_status", [])?;
-    }
-
-    conn.execute("PRAGMA foreign_keys = ON", [])?;
-
-    drop(conn); // Release the lock
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
-
-    Ok(())
-}
-
 async fn create_tables() -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -272,29 +163,6 @@ pub async fn read_local_stories() -> StorageResult<Stories> {
     }
 
     Ok(stories)
-}
-
-pub async fn read_local_stories_from_path(path: &str) -> StorageResult<Stories> {
-    // For test compatibility, if path points to a JSON file, read it as JSON
-    if path.ends_with(".json") {
-        let content = fs::read(path).await?;
-        let result = serde_json::from_slice(&content)?;
-        Ok(result)
-    } else {
-        // Treat as SQLite database path - create a temporary connection
-        let conn = Connection::open(path)?;
-
-        let mut stmt = conn
-            .prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
-        let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
-
-        let mut stories = Vec::new();
-        for story in story_iter {
-            stories.push(story?);
-        }
-
-        Ok(stories)
-    }
 }
 
 pub async fn read_local_stories_for_sync(
@@ -417,41 +285,6 @@ pub async fn process_discovered_channels(
     Ok(saved_count)
 }
 
-pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
-    if path.ends_with(".json") {
-        let json = serde_json::to_string(&stories)?;
-        fs::write(path, &json).await?;
-        Ok(())
-    } else {
-        let conn = Connection::open(path)?;
-
-        migrations::create_tables(&conn)?;
-
-        conn.execute("DELETE FROM stories", [])?;
-
-        for story in stories {
-            conn.execute(
-                "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    &story.id.to_string(),
-                    &story.name,
-                    &story.header,
-                    &story.body,
-                    &(if story.public {
-                        "1".to_string()
-                    } else {
-                        "0".to_string()
-                    }),
-                    &story.channel,
-                    &story.created_at.to_string(),
-                ],
-            )?;
-        }
-
-        Ok(())
-    }
-}
-
 pub async fn create_new_story_with_channel(
     name: &str,
     header: &str,
@@ -484,35 +317,6 @@ pub async fn create_new_story_with_channel(
     )?;
 
     Ok(())
-}
-
-pub async fn create_new_story_in_path(
-    name: &str,
-    header: &str,
-    body: &str,
-    path: &str,
-) -> StorageResult<usize> {
-    let mut local_stories: Vec<Story> =
-        read_local_stories_from_path(path).await.unwrap_or_default();
-    let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-        Some(v) => v.id + 1,
-        None => 0,
-    };
-    local_stories.push(Story {
-        id: new_id,
-        name: name.to_owned(),
-        header: header.to_owned(),
-        body: body.to_owned(),
-        public: false,
-        channel: "general".to_string(),
-        created_at: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
-        auto_share: None, // Use global setting by default
-    });
-    write_local_stories_to_path(&local_stories, path).await?;
-    Ok(new_id)
 }
 
 pub async fn publish_story(
@@ -564,22 +368,6 @@ pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
     }
 }
 
-pub async fn publish_story_in_path(id: usize, path: &str) -> StorageResult<Option<Story>> {
-    let mut local_stories = read_local_stories_from_path(path).await?;
-    let mut published_story = None;
-
-    for story in local_stories.iter_mut() {
-        if story.id == id {
-            story.public = true;
-            published_story = Some(story.clone());
-            break;
-        }
-    }
-
-    write_local_stories_to_path(&local_stories, path).await?;
-    Ok(published_story)
-}
-
 pub async fn save_received_story(story: Story) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
 
@@ -616,40 +404,6 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
     Ok(())
 }
 
-pub async fn save_received_story_to_path(mut story: Story, path: &str) -> StorageResult<usize> {
-    let mut local_stories: Vec<Story> =
-        read_local_stories_from_path(path).await.unwrap_or_default();
-
-    let already_exists = local_stories
-        .iter()
-        .any(|s| s.name == story.name && s.header == story.header && s.body == story.body);
-
-    if !already_exists {
-        let new_id = match local_stories.iter().max_by_key(|r| r.id) {
-            Some(v) => v.id + 1,
-            None => 0,
-        };
-        story.id = new_id;
-        story.public = true;
-        if story.created_at == 0 {
-            story.created_at = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
-        }
-
-        local_stories.push(story);
-        write_local_stories_to_path(&local_stories, path).await?;
-        Ok(new_id)
-    } else {
-        let existing = local_stories
-            .iter()
-            .find(|s| s.name == story.name && s.header == story.header && s.body == story.body)
-            .unwrap();
-        Ok(existing.id)
-    }
-}
-
 pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -659,12 +413,6 @@ pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
         [name],
     )?;
 
-    Ok(())
-}
-
-pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> StorageResult<()> {
-    let json = serde_json::to_string(name)?;
-    fs::write(path, &json).await?;
     Ok(())
 }
 
@@ -679,16 +427,6 @@ pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
         Ok(name) => Ok(Some(name)),
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e.into()),
-    }
-}
-
-pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<String>> {
-    match fs::read(path).await {
-        Ok(content) => {
-            let name: String = serde_json::from_slice(&content)?;
-            Ok(Some(name))
-        }
-        Err(_) => Ok(None), // File doesn't exist or can't be read, return None
     }
 }
 
@@ -922,48 +660,6 @@ fn create_or_find_conversation(
     }
 }
 
-pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    let mut stmt = conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories WHERE channel = ? AND public = 1 ORDER BY created_at DESC")?;
-    let story_iter = stmt.query_map([channel_name], mappers::map_row_to_story)?;
-
-    let mut stories = Vec::new();
-    for story in story_iter {
-        stories.push(story?);
-    }
-
-    Ok(stories)
-}
-
-pub async fn clear_database_for_testing() -> StorageResult<()> {
-    reset_db_connection_for_testing().await?;
-
-    ensure_stories_file_exists().await?;
-
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    conn.execute("DELETE FROM direct_messages", [])?; // Clear first - has FK to conversations
-    conn.execute("DELETE FROM conversations", [])?; // Clear second - referenced by direct_messages
-    conn.execute("DELETE FROM story_read_status", [])?; // Clear third - has FKs to stories and channels
-    conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear fourth - has FK to channels
-    conn.execute("DELETE FROM stories", [])?; // Clear fifth - referenced by story_read_status
-    conn.execute("DELETE FROM channels", [])?; // Clear sixth - referenced by subscriptions and read_status
-    conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
-
-    conn.execute(
-        r#"
-        INSERT INTO channels (name, description, created_by, created_at)
-        VALUES ('general', 'Default general discussion channel', 'system', 0)
-        "#,
-        [],
-    )?;
-
-    Ok(())
-}
-
 pub async fn save_node_description(description: &str) -> StorageResult<()> {
     if description.len() > 1024 {
         return Err("Description exceeds 1024 bytes limit".into());
@@ -1126,18 +822,6 @@ pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMa
     }
 
     Ok(unread_counts)
-}
-
-pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
-
-    let mut stmt =
-        conn.prepare("SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?")?;
-
-    let count: i64 = stmt.query_row([&story_id.to_string(), peer_id], mappers::map_row_to_i64)?;
-
-    Ok(count > 0)
 }
 
 pub async fn get_conversations_with_status() -> StorageResult<Vec<crate::types::Conversation>> {
@@ -1676,28 +1360,362 @@ pub async fn get_all_cached_wasm_offerings()
     Ok(offerings)
 }
 
-/// Clean up stale discovered WASM offerings (older than max_age_secs)
-pub async fn cleanup_stale_wasm_offerings(max_age_secs: u64) -> StorageResult<usize> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
 
-    let cutoff = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-        .saturating_sub(max_age_secs);
+#[cfg(any(test, feature = "test-utils"))]
+pub use test_utils::*;
 
-    let rows_affected = conn.execute(
-        "DELETE FROM discovered_wasm_offerings WHERE last_seen_at < ?",
-        [cutoff as i64],
-    )?;
+#[cfg(any(test, feature = "test-utils"))]
+pub mod test_utils {
+    use crate::errors::StorageResult;
+    use crate::storage::mappers;
+    use crate::types::{Stories, Story};
+    use rusqlite::Connection;
+    use tokio::fs;
 
-    Ok(rows_affected)
+    pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
+        let mut state = super::DB_POOL_STATE.write().await;
+        *state = None;
+        // Add a small delay to ensure any pending database operations complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        Ok(())
+    }
+
+    pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
+        let state = super::DB_POOL_STATE.read().await;
+        if let Some((pool, _)) = state.as_ref() {
+            let state = pool.state();
+            Some((state.connections, state.idle_connections, pool.max_size()))
+        } else {
+            None
+        }
+    }
+
+    pub async fn with_transaction<F, R>(f: F) -> StorageResult<R>
+    where
+        F: FnOnce(&Connection) -> StorageResult<R>,
+    {
+        let conn_arc = super::get_db_connection().await?;
+        let conn = conn_arc.lock().await;
+
+        conn.execute("BEGIN TRANSACTION", [])?;
+
+        match f(&conn) {
+            Ok(result) => {
+                conn.execute("COMMIT", [])?;
+                Ok(result)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn with_read_transaction<F, R>(f: F) -> StorageResult<R>
+    where
+        F: FnOnce(&Connection) -> StorageResult<R>,
+    {
+        let conn_arc = super::get_db_connection().await?;
+        let conn = conn_arc.lock().await;
+
+        conn.execute("BEGIN DEFERRED", [])?;
+
+        match f(&conn) {
+            Ok(result) => {
+                conn.execute("COMMIT", [])?;
+                Ok(result)
+            }
+            Err(e) => {
+                // Rollback on error
+                let _ = conn.execute("ROLLBACK", []);
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn init_test_database() -> StorageResult<()> {
+        reset_db_connection_for_testing().await?;
+        super::ensure_stories_file_exists().await?;
+
+        let conn_arc = super::get_db_connection().await?;
+        let conn = conn_arc.lock().await;
+
+        conn.execute("PRAGMA foreign_keys = OFF", [])?;
+
+        let table_exists = |table_name: &str| -> StorageResult<bool> {
+            let mut stmt = conn.prepare(&format!(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'"
+            ))?;
+            let exists = stmt.exists([])?;
+            Ok(exists)
+        };
+
+        if table_exists("direct_messages")? {
+            conn.execute("DELETE FROM direct_messages", [])?;
+        }
+        if table_exists("conversations")? {
+            conn.execute("DELETE FROM conversations", [])?;
+        }
+        if table_exists("channel_subscriptions")? {
+            conn.execute("DELETE FROM channel_subscriptions", [])?;
+        }
+        if table_exists("channels")? {
+            conn.execute("DELETE FROM channels", [])?;
+        }
+        if table_exists("stories")? {
+            conn.execute("DELETE FROM stories", [])?;
+        }
+        if table_exists("peer_name")? {
+            conn.execute("DELETE FROM peer_name", [])?;
+        }
+        if table_exists("story_read_status")? {
+            conn.execute("DELETE FROM story_read_status", [])?;
+        }
+
+        conn.execute("PRAGMA foreign_keys = ON", [])?;
+
+        drop(conn); // Release the lock
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+
+        Ok(())
+    }
+
+    pub async fn read_local_stories_from_path(path: &str) -> StorageResult<Stories> {
+        // For test compatibility, if path points to a JSON file, read it as JSON
+        if path.ends_with(".json") {
+            let content = fs::read(path).await?;
+            let result = serde_json::from_slice(&content)?;
+            Ok(result)
+        } else {
+            // Treat as SQLite database path - create a temporary connection
+            let conn = Connection::open(path)?;
+
+            let mut stmt = conn.prepare(
+                "SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC",
+            )?;
+            let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
+
+            let mut stories = Vec::new();
+            for story in story_iter {
+                stories.push(story?);
+            }
+
+            Ok(stories)
+        }
+    }
+
+    pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
+        if path.ends_with(".json") {
+            let json = serde_json::to_string(&stories)?;
+            fs::write(path, &json).await?;
+            Ok(())
+        } else {
+            let conn = Connection::open(path)?;
+
+            crate::migrations::create_tables(&conn)?;
+
+            conn.execute("DELETE FROM stories", [])?;
+
+            for story in stories {
+                conn.execute(
+                    "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        &story.id.to_string(),
+                        &story.name,
+                        &story.header,
+                        &story.body,
+                        &(if story.public { "1".to_string() } else { "0".to_string() }),
+                        &story.channel,
+                        &story.created_at.to_string(),
+                    ],
+                )?;
+            }
+
+            Ok(())
+        }
+    }
+
+    pub async fn create_new_story_in_path(
+        name: &str,
+        header: &str,
+        body: &str,
+        path: &str,
+    ) -> StorageResult<usize> {
+        let mut local_stories: Vec<Story> =
+            read_local_stories_from_path(path).await.unwrap_or_default();
+        let new_id = match local_stories.iter().max_by_key(|r| r.id) {
+            Some(v) => v.id + 1,
+            None => 0,
+        };
+        local_stories.push(Story {
+            id: new_id,
+            name: name.to_owned(),
+            header: header.to_owned(),
+            body: body.to_owned(),
+            public: false,
+            channel: "general".to_string(),
+            created_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            auto_share: None,
+        });
+        write_local_stories_to_path(&local_stories, path).await?;
+        Ok(new_id)
+    }
+
+    pub async fn publish_story_in_path(id: usize, path: &str) -> StorageResult<Option<Story>> {
+        let mut local_stories = read_local_stories_from_path(path).await?;
+        let mut published_story = None;
+
+        for story in local_stories.iter_mut() {
+            if story.id == id {
+                story.public = true;
+                published_story = Some(story.clone());
+                break;
+            }
+        }
+
+        write_local_stories_to_path(&local_stories, path).await?;
+        Ok(published_story)
+    }
+
+    pub async fn save_received_story_to_path(
+        mut story: Story,
+        path: &str,
+    ) -> StorageResult<usize> {
+        let mut local_stories: Vec<Story> =
+            read_local_stories_from_path(path).await.unwrap_or_default();
+
+        let already_exists = local_stories
+            .iter()
+            .any(|s| s.name == story.name && s.header == story.header && s.body == story.body);
+
+        if !already_exists {
+            let new_id = match local_stories.iter().max_by_key(|r| r.id) {
+                Some(v) => v.id + 1,
+                None => 0,
+            };
+            story.id = new_id;
+            story.public = true;
+            if story.created_at == 0 {
+                story.created_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+            }
+
+            local_stories.push(story);
+            write_local_stories_to_path(&local_stories, path).await?;
+            Ok(new_id)
+        } else {
+            let existing = local_stories
+                .iter()
+                .find(|s| s.name == story.name && s.header == story.header && s.body == story.body)
+                .unwrap();
+            Ok(existing.id)
+        }
+    }
+
+    pub async fn save_local_peer_name_to_path(name: &str, path: &str) -> StorageResult<()> {
+        let json = serde_json::to_string(name)?;
+        fs::write(path, &json).await?;
+        Ok(())
+    }
+
+    pub async fn load_local_peer_name_from_path(path: &str) -> StorageResult<Option<String>> {
+        match fs::read(path).await {
+            Ok(content) => {
+                let name: String = serde_json::from_slice(&content)?;
+                Ok(Some(name))
+            }
+            Err(_) => Ok(None), // File doesn't exist or can't be read, return None
+        }
+    }
+
+    pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
+        let conn_arc = super::get_db_connection().await?;
+        let conn = conn_arc.lock().await;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE channel = ? AND public = 1 ORDER BY created_at DESC",
+        )?;
+        let story_iter = stmt.query_map([channel_name], mappers::map_row_to_story)?;
+
+        let mut stories = Vec::new();
+        for story in story_iter {
+            stories.push(story?);
+        }
+
+        Ok(stories)
+    }
+
+    pub async fn clear_database_for_testing() -> StorageResult<()> {
+        reset_db_connection_for_testing().await?;
+
+        super::ensure_stories_file_exists().await?;
+
+        let conn_arc = super::get_db_connection().await?;
+        let conn = conn_arc.lock().await;
+
+        conn.execute("DELETE FROM direct_messages", [])?; // Clear first - has FK to conversations
+        conn.execute("DELETE FROM conversations", [])?; // Clear second - referenced by direct_messages
+        conn.execute("DELETE FROM story_read_status", [])?; // Clear third - has FKs to stories and channels
+        conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear fourth - has FK to channels
+        conn.execute("DELETE FROM stories", [])?; // Clear fifth - referenced by story_read_status
+        conn.execute("DELETE FROM channels", [])?; // Clear sixth - referenced by subscriptions and read_status
+        conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
+
+        conn.execute(
+            r#"
+        INSERT INTO channels (name, description, created_by, created_at)
+        VALUES ('general', 'Default general discussion channel', 'system', 0)
+        "#,
+            [],
+        )?;
+
+        Ok(())
+    }
+
+    pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
+        let conn_arc = super::get_db_connection().await?;
+        let conn = conn_arc.lock().await;
+
+        let mut stmt = conn.prepare(
+            "SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?",
+        )?;
+
+        let count: i64 =
+            stmt.query_row([&story_id.to_string(), peer_id], mappers::map_row_to_i64)?;
+
+        Ok(count > 0)
+    }
+
+    /// Clean up stale discovered WASM offerings (older than max_age_secs)
+    pub async fn cleanup_stale_wasm_offerings(max_age_secs: u64) -> StorageResult<usize> {
+        let conn_arc = super::get_db_connection().await?;
+        let conn = conn_arc.lock().await;
+
+        let cutoff = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+            .saturating_sub(max_age_secs);
+
+        let rows_affected = conn.execute(
+            "DELETE FROM discovered_wasm_offerings WHERE last_seen_at < ?",
+            [cutoff as i64],
+        )?;
+
+        Ok(rows_affected)
+    }
 }
 
 #[cfg(test)]
 mod read_status_tests {
     use super::*;
+    use super::test_utils::*;
     use std::env;
     use tempfile::TempDir;
 

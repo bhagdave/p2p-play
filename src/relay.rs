@@ -22,10 +22,7 @@ pub enum RelayAction {
 
 #[derive(Debug)]
 pub enum RelayError {
-    EncryptionFailed(String),
-    DecryptionFailed(String),
     RateLimitExceeded,
-    MaxHopsExceeded,
     InvalidMessage(String),
     CryptoError(CryptoError),
 }
@@ -33,10 +30,7 @@ pub enum RelayError {
 impl std::fmt::Display for RelayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RelayError::EncryptionFailed(msg) => write!(f, "Relay encryption failed: {msg}"),
-            RelayError::DecryptionFailed(msg) => write!(f, "Relay decryption failed: {msg}"),
             RelayError::RateLimitExceeded => write!(f, "Rate limit exceeded for relay"),
-            RelayError::MaxHopsExceeded => write!(f, "Maximum hop count exceeded"),
             RelayError::InvalidMessage(msg) => write!(f, "Invalid relay message: {msg}"),
             RelayError::CryptoError(err) => write!(f, "Crypto error in relay: {err}"),
         }
@@ -197,6 +191,7 @@ impl RelayService {
         });
     }
 
+    #[allow(dead_code)]
     pub fn cleanup_pending_confirmations(&mut self) {
         let timeout = Duration::from_millis(self.config.relay_timeout_ms);
         let now = Instant::now();
@@ -209,6 +204,7 @@ impl RelayService {
         &self.config
     }
 
+    #[allow(dead_code)]
     pub fn crypto_service(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }

@@ -66,6 +66,7 @@ impl NetworkCircuitBreakers {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn can_execute(&self, operation: &str) -> bool {
         if let Some(circuit_breaker) = self.get(operation) {
             circuit_breaker.can_execute().await
@@ -74,18 +75,21 @@ impl NetworkCircuitBreakers {
         }
     }
 
+    #[allow(dead_code)]
     pub async fn on_success(&self, operation: &str) {
         if let Some(circuit_breaker) = self.get(operation) {
             circuit_breaker.on_success().await;
         }
     }
 
+    #[allow(dead_code)]
     pub async fn on_failure(&self, operation: &str, error: &str) {
         if let Some(circuit_breaker) = self.get(operation) {
             circuit_breaker.on_failure(error).await;
         }
     }
 
+    #[allow(dead_code)]
     pub async fn get_all_status(&self) -> HashMap<String, CircuitBreakerInfo> {
         let mut status = HashMap::new();
 
@@ -97,6 +101,7 @@ impl NetworkCircuitBreakers {
         status
     }
 
+    #[allow(dead_code)]
     pub async fn has_failures(&self) -> bool {
         if !self.enabled {
             return false;
@@ -118,16 +123,14 @@ impl NetworkCircuitBreakers {
                 total_operations: 0,
                 healthy_operations: 0,
                 failed_operations: 0,
-                details: HashMap::new(),
             };
         }
 
         let mut total_operations = 0;
         let mut healthy_operations = 0;
         let mut failed_operations = 0;
-        let mut details = HashMap::new();
 
-        for (operation, circuit_breaker) in &self.breakers {
+        for circuit_breaker in self.breakers.values() {
             let info = circuit_breaker.get_state().await;
             total_operations += 1;
 
@@ -136,8 +139,6 @@ impl NetworkCircuitBreakers {
             } else {
                 failed_operations += 1;
             }
-
-            details.insert(operation.clone(), info.status_string());
         }
 
         NetworkHealthSummary {
@@ -145,7 +146,6 @@ impl NetworkCircuitBreakers {
             total_operations,
             healthy_operations,
             failed_operations,
-            details,
         }
     }
 }
@@ -153,14 +153,17 @@ impl NetworkCircuitBreakers {
 #[derive(Debug, Clone)]
 pub struct NetworkHealthSummary {
     pub overall_healthy: bool,
+    #[allow(dead_code)]
     pub total_operations: usize,
+    #[allow(dead_code)]
     pub healthy_operations: usize,
+    #[allow(dead_code)]
     pub failed_operations: usize,
-    pub details: HashMap<String, String>,
 }
 
 impl NetworkHealthSummary {
     /// Get a human-readable health status
+    #[allow(dead_code)]
     pub fn status_string(&self) -> String {
         if self.overall_healthy {
             format!(
@@ -173,16 +176,5 @@ impl NetworkHealthSummary {
                 self.failed_operations, self.total_operations
             )
         }
-    }
-
-    /// Get detailed status for UI display
-    pub fn detailed_status(&self) -> Vec<String> {
-        let mut status = vec![self.status_string()];
-
-        for (operation, detail) in &self.details {
-            status.push(format!("  {operation}: {detail}"));
-        }
-
-        status
     }
 }

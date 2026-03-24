@@ -36,10 +36,8 @@ mod tests {
     fn test_build_data_path_with_dir() {
         let dir = std::path::Path::new("test-data");
         for filename in &["stories.db", "errors.log", "peer_key"] {
-            let result = std::path::PathBuf::from(build_data_path(
-                Some(dir.to_str().unwrap()),
-                filename,
-            ));
+            let result =
+                std::path::PathBuf::from(build_data_path(Some(dir.to_str().unwrap()), filename));
             assert_eq!(result, dir.join(filename));
         }
     }

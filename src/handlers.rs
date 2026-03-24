@@ -146,10 +146,6 @@ impl SortedPeerNamesCache {
     pub fn get_sorted_names(&self) -> &[String] {
         &self.sorted_names
     }
-
-    pub fn is_empty(&self) -> bool {
-        self.sorted_names.is_empty()
-    }
 }
 
 pub async fn handle_list_stories(
@@ -1360,7 +1356,10 @@ pub async fn establish_direct_connection_impl<F>(
     ui_logger: &UILogger,
     dial_fn: F,
 ) where
-    F: FnOnce(&mut Swarm<StoryBehaviour>, libp2p::Multiaddr) -> Result<(), libp2p::swarm::DialError>,
+    F: FnOnce(
+        &mut Swarm<StoryBehaviour>,
+        libp2p::Multiaddr,
+    ) -> Result<(), libp2p::swarm::DialError>,
 {
     match addr_str.parse::<libp2p::Multiaddr>() {
         Ok(addr) => {

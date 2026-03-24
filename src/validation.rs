@@ -6,6 +6,7 @@ impl ContentLimits {
     pub const STORY_BODY_MAX: usize = 10_000;
     pub const CHANNEL_NAME_MAX: usize = 50;
     pub const PEER_NAME_MAX: usize = 30;
+    #[allow(dead_code)]
     pub const DIRECT_MESSAGE_MAX: usize = 1_000;
     pub const NODE_DESCRIPTION_MAX: usize = 2_000;
 
@@ -16,7 +17,6 @@ impl ContentLimits {
     pub const WASM_VERSION_MAX: usize = 20;
     pub const WASM_PARAM_NAME_MAX: usize = 50;
     pub const WASM_PARAM_TYPE_MAX: usize = 20;
-    pub const WASM_PARAM_DESCRIPTION_MAX: usize = 200;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,8 +29,11 @@ pub enum ValidationError {
     InvalidCharacters {
         invalid_chars: Vec<char>,
     },
+    #[allow(dead_code)]
     ContainsControlCharacters,
+    #[allow(dead_code)]
     ContainsAnsiEscapes,
+    #[allow(dead_code)]
     ContainsBinaryData,
     InvalidFormat {
         expected: String,

@@ -2,8 +2,15 @@ use crate::errors::FetchError;
 use std::time::Duration;
 
 pub trait ContentFetcher: Send + Sync {
-    async fn fetch(&self, cid: &str) -> Result<Vec<u8>, FetchError>;
-    async fn resolve_ipns(&self, name: &str) -> Result<String, FetchError>;
+    fn fetch(
+        &self,
+        cid: &str,
+    ) -> impl std::future::Future<Output = Result<Vec<u8>, FetchError>> + Send;
+    #[allow(dead_code)]
+    fn resolve_ipns(
+        &self,
+        name: &str,
+    ) -> impl std::future::Future<Output = Result<String, FetchError>> + Send;
 }
 
 pub struct GatewayFetcher {
@@ -30,6 +37,7 @@ impl GatewayFetcher {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_gateway(gateway_url: &str) -> Self {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(30))

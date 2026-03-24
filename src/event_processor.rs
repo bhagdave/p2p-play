@@ -514,7 +514,7 @@ impl EventProcessor {
             if Self::is_user_set_peer_name(name) {
                 let known = self.known_peer_names.get(peer_id);
                 // Insert when the peer has no cached name or when their name has changed.
-                if !known.is_some_and(|k| k == name) {
+                if known.is_none_or(|k| k != name) {
                     self.known_peer_names.insert(*peer_id, name.clone());
                 }
             }
@@ -523,12 +523,11 @@ impl EventProcessor {
         // Pass 2 – restore known aliases for peers that joined with a placeholder.
         let mut names_updated = false;
         for (peer_id, name) in peer_names.iter_mut() {
-            if let Some(known_name) = self.known_peer_names.get(peer_id) {
-                if name != known_name {
+            if let Some(known_name) = self.known_peer_names.get(peer_id)
+                && name != known_name {
                     *name = known_name.clone();
                     names_updated = true;
                 }
-            }
         }
 
         if names_updated {
@@ -882,7 +881,10 @@ mod tests {
         // First connection: peer broadcasts real alias.
         peer_names.insert(peer_id, "Alice".to_string());
         ep.sync_known_peer_names(&mut peer_names, &mut cache);
-        assert_eq!(ep.known_peer_names.get(&peer_id), Some(&"Alice".to_string()));
+        assert_eq!(
+            ep.known_peer_names.get(&peer_id),
+            Some(&"Alice".to_string())
+        );
 
         // Disconnection: save alias (mirrors handle_connection_closed logic) and remove peer.
         if let Some(name) = peer_names.remove(&peer_id) {
@@ -917,7 +919,10 @@ mod tests {
         // Peer connects and sets initial alias.
         peer_names.insert(peer_id, "Alice".to_string());
         ep.sync_known_peer_names(&mut peer_names, &mut cache);
-        assert_eq!(ep.known_peer_names.get(&peer_id), Some(&"Alice".to_string()));
+        assert_eq!(
+            ep.known_peer_names.get(&peer_id),
+            Some(&"Alice".to_string())
+        );
 
         // Peer changes alias to "Bob" in the same session.
         peer_names.insert(peer_id, "Bob".to_string());
@@ -969,10 +974,7 @@ mod tests {
 
         // peer_b is still active; peer_a's alias is in the cache.
         assert_eq!(peer_names.get(&peer_b), Some(&"Bob".to_string()));
-        assert_eq!(
-            ep.known_peer_names.get(&peer_a),
-            Some(&"Alice".to_string())
-        );
+        assert_eq!(ep.known_peer_names.get(&peer_a), Some(&"Alice".to_string()));
 
         // peer_a reconnects with placeholder.
         peer_names.insert(peer_a, format!("Peer_{peer_a}"));

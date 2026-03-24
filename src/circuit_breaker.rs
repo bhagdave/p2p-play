@@ -148,7 +148,6 @@ impl CircuitBreaker {
     pub async fn get_state(&self) -> CircuitBreakerInfo {
         let state = self.state.lock().await;
         CircuitBreakerInfo {
-            name: self.config.name.clone(),
             state: state.state.clone(),
             failure_count: state.failure_count,
             success_count: state.success_count,
@@ -160,7 +159,6 @@ impl CircuitBreaker {
             } else {
                 0.0
             },
-            last_failure_time: state.last_failure_time,
         }
     }
 
@@ -204,15 +202,18 @@ impl CircuitBreaker {
 
 #[derive(Debug, Clone)]
 pub struct CircuitBreakerInfo {
-    pub name: String,
     pub state: CircuitState,
+    #[allow(dead_code)]
     pub failure_count: u32,
+    #[allow(dead_code)]
     pub success_count: u32,
+    #[allow(dead_code)]
     pub total_requests: u64,
+    #[allow(dead_code)]
     pub total_failures: u64,
+    #[allow(dead_code)]
     pub total_successes: u64,
     pub failure_rate: f64,
-    pub last_failure_time: Option<Instant>,
 }
 
 impl CircuitBreakerInfo {
@@ -220,6 +221,7 @@ impl CircuitBreakerInfo {
         matches!(self.state, CircuitState::Closed) && self.failure_rate < 0.5
     }
 
+    #[allow(dead_code)]
     pub fn status_string(&self) -> String {
         match &self.state {
             CircuitState::Closed => {

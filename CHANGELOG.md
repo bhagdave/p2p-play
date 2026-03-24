@@ -2,10 +2,13 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [Unrealesed]
+
+## [0.11.1]
 
 ### Fixed
 - **Windows Release**: Fixed test that was failing on the windows release
+- **Code Warnings**: Fixed various code warnings across the codebase for cleaner builds
 
 ## [0.11.0] - 2026-03-21
 
