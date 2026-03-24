@@ -52,13 +52,20 @@ pub enum StorageError {
     #[error("SQLite error: {0}")]
     SQLite(#[from] rusqlite::Error),
 
-    #[allow(dead_code)]
+    #[error("Story not found: {id}")]
+    StoryNotFound { id: usize },
+
+    #[error("Channel not found: {name}")]
+    ChannelNotFound { name: String },
+
     #[error("Invalid story data: {reason}")]
     InvalidStoryData { reason: String },
 
-    #[allow(dead_code)]
     #[error("Database connection failed: {reason}")]
     DatabaseConnection { reason: String },
+
+    #[error("Migration failed: {reason}")]
+    Migration { reason: String },
 
     #[error("Batch operation failed: {successful} succeeded, {failed} failed")]
     BatchOperationFailed {
@@ -71,11 +78,35 @@ pub enum StorageError {
 /// Network-related errors for libp2p and P2P operations
 #[derive(Error, Debug)]
 pub enum NetworkError {
+    #[error("Swarm creation failed: {reason}")]
+    SwarmCreation { reason: String },
+
+    #[error("Listen failed on address: {address}")]
+    ListenFailed { address: String },
+
+    #[error("Peer connection failed: {peer_id}")]
+    PeerConnectionFailed { peer_id: String },
+
+    #[error("Message broadcast failed: {reason}")]
+    BroadcastFailed { reason: String },
+
+    #[error("DHT operation failed: {reason}")]
+    DHTFailed { reason: String },
+
+    #[error("Direct message failed: {reason}")]
+    DirectMessageFailed { reason: String },
+
+    #[error("Bootstrap failed: {reason}")]
+    BootstrapFailed { reason: String },
+
     #[error("Protocol error: {protocol} - {reason}")]
     ProtocolError { protocol: String, reason: String },
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
+
+    #[error("Transport error: {reason}")]
+    Transport { reason: String },
 }
 
 /// UI-related errors for terminal interface operations
@@ -90,20 +121,33 @@ pub enum UIError {
     #[error("Input handling failed: {reason}")]
     InputHandling { reason: String },
 
-    #[allow(dead_code)]
+    #[error("State transition failed: from {from} to {to}")]
+    StateTransition { from: String, to: String },
+
     #[error("Widget error: {widget} - {reason}")]
     Widget { widget: String, reason: String },
+
+    #[error("Layout error: {reason}")]
+    Layout { reason: String },
 }
 
 /// Configuration-related errors
 #[derive(Error, Debug)]
 pub enum ConfigError {
+    #[error("Config file not found: {path}")]
+    FileNotFound { path: String },
+
     #[error("Invalid config format: {reason}")]
     InvalidFormat { reason: String },
 
-    #[allow(dead_code)]
     #[error("Config validation failed: {reason}")]
     Validation { reason: String },
+
+    #[error("Missing required field: {field}")]
+    MissingField { field: String },
+
+    #[error("Invalid value for field {field}: {value}")]
+    InvalidValue { field: String, value: String },
 
     #[error("Config serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
@@ -115,12 +159,9 @@ pub enum ConfigError {
 #[derive(Debug)]
 pub enum FetchError {
     Http(reqwest::Error),
-    #[allow(dead_code)]
     InvalidCid(String),
     NotFound(String),
-    #[allow(dead_code)]
     Timeout,
-    #[allow(dead_code)]
     InvalidWasm,
 }
 
@@ -262,8 +303,12 @@ impl From<&str> for ConfigError {
 }
 
 impl StorageError {
+    /// Create a StorageError from any error type with context
+    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
+        StorageError::Database(format!("{context}: {error}"))
+    }
+
     /// Create a database connection error with context
-    #[allow(dead_code)]
     pub fn connection_error(reason: impl Into<String>) -> Self {
         StorageError::DatabaseConnection {
             reason: reason.into(),
@@ -271,7 +316,6 @@ impl StorageError {
     }
 
     /// Create an invalid data error with context
-    #[allow(dead_code)]
     pub fn invalid_data(reason: impl Into<String>) -> Self {
         StorageError::InvalidStoryData {
             reason: reason.into(),
@@ -289,8 +333,17 @@ impl StorageError {
 }
 
 impl NetworkError {
+    /// Create a NetworkError from any error type with context
+    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
+        let error_msg = format!("{context}: {error}");
+        let protocol = detect_protocol_from_error(&error_msg);
+        NetworkError::ProtocolError {
+            protocol,
+            reason: error_msg,
+        }
+    }
+
     /// Create a protocol error with context
-    #[allow(dead_code)]
     pub fn protocol_error(protocol: impl Into<String>, reason: impl Into<String>) -> Self {
         NetworkError::ProtocolError {
             protocol: protocol.into(),
@@ -300,8 +353,14 @@ impl NetworkError {
 }
 
 impl UIError {
+    /// Create a UIError from any error type with context
+    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
+        UIError::Rendering {
+            reason: format!("{context}: {error}"),
+        }
+    }
+
     /// Create a widget error with context
-    #[allow(dead_code)]
     pub fn widget_error(widget: impl Into<String>, reason: impl Into<String>) -> Self {
         UIError::Widget {
             widget: widget.into(),
@@ -331,8 +390,14 @@ impl From<reqwest::Error> for FetchError {
 }
 
 impl ConfigError {
+    /// Create a ConfigError from any error type with context
+    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
+        ConfigError::InvalidFormat {
+            reason: format!("{context}: {error}"),
+        }
+    }
+
     /// Create a validation error with context
-    #[allow(dead_code)]
     pub fn validation_error(reason: impl Into<String>) -> Self {
         ConfigError::Validation {
             reason: reason.into(),
