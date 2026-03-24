@@ -127,6 +127,7 @@ pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
     Ok(conn_arc)
 }
 
+#[allow(dead_code)]
 pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
     let mut state = DB_POOL_STATE.write().await;
     *state = None;
@@ -135,6 +136,7 @@ pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
     let state = DB_POOL_STATE.read().await;
     if let Some((pool, _)) = state.as_ref() {
@@ -145,6 +147,7 @@ pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
     }
 }
 
+#[allow(dead_code)]
 pub async fn with_transaction<F, R>(f: F) -> StorageResult<R>
 where
     F: FnOnce(&Connection) -> StorageResult<R>,
@@ -166,6 +169,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub async fn with_read_transaction<F, R>(f: F) -> StorageResult<R>
 where
     F: FnOnce(&Connection) -> StorageResult<R>,
@@ -188,6 +192,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub async fn init_test_database() -> StorageResult<()> {
     reset_db_connection_for_testing().await?;
     ensure_stories_file_exists().await?;
@@ -274,6 +279,7 @@ pub async fn read_local_stories() -> StorageResult<Stories> {
     Ok(stories)
 }
 
+#[allow(dead_code)]
 pub async fn read_local_stories_from_path(path: &str) -> StorageResult<Stories> {
     // For test compatibility, if path points to a JSON file, read it as JSON
     if path.ends_with(".json") {
@@ -417,6 +423,7 @@ pub async fn process_discovered_channels(
     Ok(saved_count)
 }
 
+#[allow(dead_code)]
 pub async fn write_local_stories_to_path(stories: &Stories, path: &str) -> StorageResult<()> {
     if path.ends_with(".json") {
         let json = serde_json::to_string(&stories)?;
@@ -486,6 +493,7 @@ pub async fn create_new_story_with_channel(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn create_new_story_in_path(
     name: &str,
     header: &str,
@@ -564,6 +572,7 @@ pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
     }
 }
 
+#[allow(dead_code)]
 pub async fn publish_story_in_path(id: usize, path: &str) -> StorageResult<Option<Story>> {
     let mut local_stories = read_local_stories_from_path(path).await?;
     let mut published_story = None;
@@ -616,6 +625,7 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn save_received_story_to_path(mut story: Story, path: &str) -> StorageResult<usize> {
     let mut local_stories: Vec<Story> =
         read_local_stories_from_path(path).await.unwrap_or_default();
