@@ -1362,6 +1362,9 @@ pub async fn get_all_cached_wasm_offerings()
 
 
 #[cfg(any(test, feature = "test-utils"))]
+pub use test_utils::*;
+
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     use crate::errors::StorageResult;
     use crate::storage::mappers;
