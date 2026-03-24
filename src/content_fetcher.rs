@@ -6,6 +6,7 @@ pub trait ContentFetcher: Send + Sync {
         &self,
         cid: &str,
     ) -> impl std::future::Future<Output = Result<Vec<u8>, FetchError>> + Send;
+    #[allow(dead_code)]
     fn resolve_ipns(
         &self,
         name: &str,
