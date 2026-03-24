@@ -34,6 +34,10 @@ impl ContentFetcher for MockContentFetcher {
         }
         Ok(self.data.clone())
     }
+
+    async fn resolve_ipns(&self, _name: &str) -> Result<String, FetchError> {
+        Ok("QmTest123".to_string())
+    }
 }
 
 /// Create a minimal valid WASM module that does nothing
