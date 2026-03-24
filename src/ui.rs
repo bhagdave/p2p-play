@@ -159,7 +159,7 @@ use log::debug;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Position},
     style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{
@@ -1679,17 +1679,19 @@ impl App {
             match &self.input_mode {
                 InputMode::Editing => {
                     let prefix = "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): ";
-                    f.set_cursor(
+                    let pos = Position::new(
                         chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
+                    f.set_cursor_position(pos);
                 }
                 InputMode::QuickReply { target_peer } => {
                     let prefix = format!("{} Quick reply to {}: ", crate::types::Icons::envelope(), target_peer);
-                    f.set_cursor(
+                    let pos = Position::new(
                         chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
+                    f.set_cursor_position(pos);
                 }
                 InputMode::MessageComposition { target_peer, lines, .. } => {
                     let prefix = if lines.is_empty() {
@@ -1697,10 +1699,11 @@ impl App {
                     } else {
                         format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer, lines.len() + 1)
                     };
-                    f.set_cursor(
+                    let pos = Position::new(
                         chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
+                    f.set_cursor_position(pos);
                 }
                 InputMode::CreatingStory { step, .. } => {
                     let prefix = match step {
@@ -1709,10 +1712,11 @@ impl App {
                         StoryCreationStep::Body => format!("{} Story Body: ", crate::types::Icons::book()),
                         StoryCreationStep::Channel => format!("{} Channel (Enter for 'general'): ", crate::types::Icons::folder()),
                     };
-                    f.set_cursor(
+                    let pos = Position::new(
                         chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
                         chunks[2].y + 1,
                     );
+                    f.set_cursor_position(pos);
                 }
                 _ => {}
             }
