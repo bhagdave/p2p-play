@@ -14,7 +14,7 @@ fn test_handshake_request_serialization() {
     let serialized =
         serde_json::to_string(&request).expect("Failed to serialize handshake request");
     assert!(serialized.contains("p2p-play"));
-    assert!(serialized.contains("0.10.6"));
+    assert!(serialized.contains("0.11.1"));
     assert!(serialized.contains("test_peer_12345"));
 
     // Test deserialization
@@ -41,7 +41,7 @@ fn test_handshake_response_serialization() {
         serde_json::to_string(&response).expect("Failed to serialize handshake response");
     assert!(serialized.contains("true"));
     assert!(serialized.contains("p2p-play"));
-    assert!(serialized.contains("0.10.6"));
+    assert!(serialized.contains("0.11.1"));
 
     // Test deserialization
     let deserialized: HandshakeResponse =
@@ -76,7 +76,7 @@ fn test_handshake_response_rejection() {
 #[test]
 fn test_app_constants() {
     assert_eq!(APP_NAME, "p2p-play");
-    assert_eq!(APP_VERSION, "0.10.6");
+    assert_eq!(APP_VERSION, "0.11.1");
     assert!(!APP_NAME.is_empty());
     assert!(!APP_VERSION.is_empty());
 }
