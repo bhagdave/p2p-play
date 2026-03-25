@@ -4,6 +4,9 @@ All changes to this project will be documented in this file.
 
 ## [Unrealesed]
 
+### Added
+- **Direct message length validation**: Enforce `ContentLimits::DIRECT_MESSAGE_MAX` (1,000 characters) when sending direct messages. Messages exceeding the limit are rejected with a descriptive error. Incoming oversized messages are also rejected on the receiving side.
+
 ## [0.11.1]
 
 ### Fixed

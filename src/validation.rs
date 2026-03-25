@@ -6,7 +6,6 @@ impl ContentLimits {
     pub const STORY_BODY_MAX: usize = 10_000;
     pub const CHANNEL_NAME_MAX: usize = 50;
     pub const PEER_NAME_MAX: usize = 30;
-    #[allow(dead_code)]
     pub const DIRECT_MESSAGE_MAX: usize = 1_000;
     pub const NODE_DESCRIPTION_MAX: usize = 2_000;
 
@@ -307,6 +306,23 @@ impl ContentValidator {
         if sanitized.len() > ContentLimits::NODE_DESCRIPTION_MAX {
             return Err(ValidationError::TooLong {
                 max_length: ContentLimits::NODE_DESCRIPTION_MAX,
+                actual_length: sanitized.len(),
+            });
+        }
+
+        Ok(sanitized)
+    }
+
+    pub fn validate_direct_message(message: &str) -> ValidationResult<String> {
+        let sanitized = ContentSanitizer::sanitize_for_storage(message);
+
+        if sanitized.trim().is_empty() {
+            return Err(ValidationError::Empty);
+        }
+
+        if sanitized.len() > ContentLimits::DIRECT_MESSAGE_MAX {
+            return Err(ValidationError::TooLong {
+                max_length: ContentLimits::DIRECT_MESSAGE_MAX,
                 actual_length: sanitized.len(),
             });
         }

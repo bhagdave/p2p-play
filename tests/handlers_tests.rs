@@ -1596,3 +1596,98 @@ async fn test_establish_direct_connection_dial_error_shows_reachability_hint() {
         "Format hint should not appear in dial-error message: {combined}"
     );
 }
+
+// Tests for direct message length validation
+#[test]
+fn test_validate_direct_message_valid() {
+    use p2p_play::validation::ContentValidator;
+
+    let result = ContentValidator::validate_direct_message("Hello, world!");
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), "Hello, world!");
+}
+
+#[test]
+fn test_validate_direct_message_empty() {
+    use p2p_play::validation::ContentValidator;
+
+    let result = ContentValidator::validate_direct_message("");
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_validate_direct_message_too_long() {
+    use p2p_play::validation::ContentValidator;
+    use p2p_play::validation::ContentLimits;
+
+    let long_message = "a".repeat(ContentLimits::DIRECT_MESSAGE_MAX + 1);
+    let result = ContentValidator::validate_direct_message(&long_message);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_validate_direct_message_at_max_length() {
+    use p2p_play::validation::ContentValidator;
+    use p2p_play::validation::ContentLimits;
+
+    let max_message = "a".repeat(ContentLimits::DIRECT_MESSAGE_MAX);
+    let result = ContentValidator::validate_direct_message(&max_message);
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_handle_direct_message_too_long() {
+    use libp2p::identity::Keypair;
+    use p2p_play::crypto::CryptoService;
+    use p2p_play::relay::RelayService;
+    use p2p_play::types::RelayConfig;
+    use p2p_play::validation::ContentLimits;
+    use std::collections::HashMap;
+
+    let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
+    let ui_logger = UILogger::new(sender);
+
+    let ping_config = p2p_play::types::PingConfig::new();
+    let network_config = p2p_play::types::NetworkConfig::new();
+    let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create swarm");
+    let peer_names = HashMap::new();
+    let local_peer_name = Some("Bob".to_string());
+    let mut cache = SortedPeerNamesCache::new();
+    cache.update(&peer_names);
+
+    let dm_config = DirectMessageConfig::new();
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let relay_config = RelayConfig::new();
+    let keypair = Keypair::generate_ed25519();
+    let crypto_service = CryptoService::new(keypair);
+    let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
+
+    // Build a message that exceeds the limit
+    let long_message = "a".repeat(ContentLimits::DIRECT_MESSAGE_MAX + 1);
+    let cmd = format!("msg Alice {long_message}");
+
+    handle_direct_message_with_relay(
+        &cmd,
+        &mut swarm,
+        &peer_names,
+        &local_peer_name,
+        &cache,
+        &ui_logger,
+        &dm_config,
+        &mut relay_service,
+        &pending_messages,
+    )
+    .await;
+
+    let mut messages = Vec::new();
+    while let Ok(msg) = receiver.try_recv() {
+        messages.push(msg);
+    }
+
+    let combined = messages.join("\n");
+    assert!(
+        combined.contains("direct message"),
+        "Expected validation error mentioning 'direct message', got: {combined}"
+    );
+}

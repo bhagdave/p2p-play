@@ -789,6 +789,15 @@ pub async fn handle_direct_message_with_relay(
             None => return,
         };
 
+        let _validated_message = match validate_and_log(
+            ContentValidator::validate_direct_message(&message),
+            "direct message",
+            ui_logger,
+        ) {
+            Some(msg) => msg,
+            None => return,
+        };
+
         let target_peer_info = peer_names
             .iter()
             .find(|(_, name)| name == &&to_name)
