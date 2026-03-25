@@ -546,7 +546,11 @@ async fn test_compiled_wasm_multiple_additions() {
     }
 }
 
+// On Windows, wasmtime's async execution causes STATUS_STACK_BUFFER_OVERRUN (0xc0000409)
+//  on non zero calls to proc_exit
+// Tests that exercise WASM non-zero exit codes are skipped on Windows.
 #[tokio::test]
+#[cfg_attr(windows, ignore = "wasmtime async fiber + proc_exit(non-zero) aborts on Windows")]
 async fn test_compiled_wasm_missing_args() {
     let test_cases = vec![
         vec!["add".to_string()],                  // No args
@@ -585,6 +589,7 @@ async fn test_compiled_wasm_missing_args() {
 }
 
 #[tokio::test]
+#[cfg_attr(windows, ignore = "wasmtime async fiber + proc_exit(non-zero) aborts on Windows")]
 async fn test_compiled_wasm_invalid_args() {
     let test_cases = vec![
         vec!["add".to_string(), "foo".to_string(), "5".to_string()],
