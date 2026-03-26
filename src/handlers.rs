@@ -789,7 +789,7 @@ pub async fn handle_direct_message_with_relay(
             None => return,
         };
 
-        let _validated_message = match validate_and_log(
+        let message = match validate_and_log(
             ContentValidator::validate_direct_message(&message),
             "direct message",
             ui_logger,

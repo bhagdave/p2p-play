@@ -960,42 +960,45 @@ pub async fn handle_request_response_event(
                         false
                     };
 
-                    // Validate incoming message length
-                    if should_process
-                        && crate::validation::ContentValidator::validate_direct_message(
-                            &request.message,
-                        )
-                        .is_err()
-                    {
-                        crate::log_network_error!(
-                            error_logger,
-                            "direct_message",
-                            "Rejecting incoming direct message from {}: message exceeds maximum length",
-                            peer
-                        );
+                    // Validate incoming message content
+                    if should_process {
+                        let validation_result =
+                            crate::validation::ContentValidator::validate_direct_message(
+                                &request.message,
+                            );
 
-                        let response = DirectMessageResponse {
-                            received: false,
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
-                        };
-
-                        if let Err(e) = swarm
-                            .behaviour_mut()
-                            .request_response
-                            .send_response(channel, response)
-                        {
+                        if let Err(validation_error) = validation_result {
                             crate::log_network_error!(
                                 error_logger,
                                 "direct_message",
-                                "Failed to send rejection response to {}: {:?}",
+                                "Rejecting incoming direct message from {}: {}",
                                 peer,
-                                e
+                                validation_error
                             );
+
+                            let response = DirectMessageResponse {
+                                received: false,
+                                timestamp: std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_secs(),
+                            };
+
+                            if let Err(e) = swarm
+                                .behaviour_mut()
+                                .request_response
+                                .send_response(channel, response)
+                            {
+                                crate::log_network_error!(
+                                    error_logger,
+                                    "direct_message",
+                                    "Failed to send rejection response to {}: {:?}",
+                                    peer,
+                                    e
+                                );
+                            }
+                            return None;
                         }
-                        return None;
                     }
 
                     let direct_message = if should_process {
