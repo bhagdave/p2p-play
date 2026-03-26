@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "p2p-play"
-version = "0.10.6"
+version = "0.11.1"
 dependencies = [
  "anyhow",
  "async-trait",
