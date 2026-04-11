@@ -5,6 +5,7 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Peer alias persistence**: Peer information (peer_id, alias, multiaddr, last_seen, is_connected) is now stored in a new `peers` SQLite table. The table is updated when a connection is established (capturing peer_id and multiaddr), when an alias is received over the network (capturing the alias), and when a connection is closed (marking the peer as disconnected). An `upsert_peer` function and a `mark_peer_disconnected` helper are available in `src/storage/core.rs`.
 - **Direct message length validation**: Enforce `ContentLimits::DIRECT_MESSAGE_MAX` (1,000 characters) when sending direct messages. Messages exceeding the limit are rejected with a descriptive error. Incoming oversized messages are also rejected on the receiving side.
 
 ## [0.11.1]

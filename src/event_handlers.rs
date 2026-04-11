@@ -16,7 +16,7 @@ use crate::network::{
     TOPIC, WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest,
     WasmExecutionResponse,
 };
-use crate::storage::{load_node_description, save_received_story};
+use crate::storage::{load_node_description, save_received_story, upsert_peer};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
@@ -512,6 +512,18 @@ pub async fn handle_floodsub_event(
                     // Update the cache if peer names changed
                     if names_changed {
                         sorted_peer_names_cache.update(peer_names);
+
+                        // Persist the alias to the database
+                        if let Err(e) = upsert_peer(
+                            &peer_id.to_string(),
+                            Some(&peer_name.name),
+                            None,
+                            true,
+                        )
+                        .await
+                        {
+                            debug!("Failed to persist peer alias for {peer_id}: {e}");
+                        }
                     }
                 }
             } else if let Ok(published_channel) =

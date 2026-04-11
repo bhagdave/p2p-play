@@ -261,6 +261,38 @@ pub fn create_tables(conn: &Connection) -> StorageResult<()> {
         [],
     )?;
 
+    // Create peers table for persisting peer information including aliases
+    conn.execute(
+        r#"
+        CREATE TABLE IF NOT EXISTS peers (
+            peer_id TEXT PRIMARY KEY,
+            alias TEXT,
+            multiaddr TEXT,
+            last_seen INTEGER NOT NULL DEFAULT 0,
+            is_connected BOOLEAN NOT NULL DEFAULT 0
+        )
+        "#,
+        [],
+    )?;
+
+    // Index for querying connected peers
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_peers_is_connected
+        ON peers(is_connected)
+        "#,
+        [],
+    )?;
+
+    // Index for alias lookups
+    conn.execute(
+        r#"
+        CREATE INDEX IF NOT EXISTS idx_peers_alias
+        ON peers(alias)
+        "#,
+        [],
+    )?;
+
     Ok(())
 }
 
@@ -504,5 +536,42 @@ mod tests {
             columns.contains(&"created_at".to_string()),
             "Created_at column should exist"
         );
+    }
+
+    #[test]
+    fn test_peers_table_creation() {
+        let conn = Connection::open(":memory:").expect("Failed to create in-memory database");
+
+        create_tables(&conn).expect("Failed to create tables");
+
+        // Check that peers table exists
+        let mut stmt = conn
+            .prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND name='peers'")
+            .expect("Failed to prepare query");
+
+        let table_info: Vec<(String, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .expect("Failed to execute query")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Failed to collect results");
+
+        assert_eq!(table_info.len(), 1, "peers table should exist");
+        assert_eq!(table_info[0].0, "peers");
+
+        let sql = &table_info[0].1;
+        assert!(sql.contains("peer_id TEXT PRIMARY KEY"));
+        assert!(sql.contains("alias TEXT"));
+        assert!(sql.contains("multiaddr TEXT"));
+        assert!(sql.contains("last_seen INTEGER NOT NULL DEFAULT 0"));
+        assert!(sql.contains("is_connected BOOLEAN NOT NULL DEFAULT 0"));
+
+        // Verify indexes were created
+        let mut stmt = conn
+            .prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN ('idx_peers_is_connected', 'idx_peers_alias')")
+            .expect("Failed to prepare query");
+        let index_count: i64 = stmt
+            .query_row([], |row| row.get(0))
+            .expect("Failed to get index count");
+        assert_eq!(index_count, 2, "Both peers indexes should exist");
     }
 }
