@@ -385,14 +385,12 @@ pub enum EventType {
         >,
     ),
     HandshakeEvent(request_response::Event<HandshakeRequest, HandshakeResponse>),
-    #[allow(dead_code)]
     WasmCapabilitiesEvent(
         request_response::Event<
             crate::network::WasmCapabilitiesRequest,
             crate::network::WasmCapabilitiesResponse,
         >,
     ),
-    #[allow(dead_code)]
     WasmExecutionEvent(
         request_response::Event<
             crate::network::WasmExecutionRequest,
