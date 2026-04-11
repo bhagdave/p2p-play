@@ -450,6 +450,27 @@ impl EventProcessor {
             .send_request(&peer_id, handshake_request);
 
         track_successful_connection(peer_id);
+
+        // Persist peer connection to database
+        let multiaddr = match endpoint {
+            libp2p::core::ConnectedPoint::Dialer { address, .. } => {
+                Some(address.to_string())
+            }
+            libp2p::core::ConnectedPoint::Listener { send_back_addr, .. } => {
+                Some(send_back_addr.to_string())
+            }
+        };
+        if let Err(e) = storage::upsert_peer(
+            &peer_id.to_string(),
+            None,
+            multiaddr.as_deref(),
+            true,
+        )
+        .await
+        {
+            self.error_logger
+                .log_error(&format!("Failed to persist peer connection {peer_id}: {e}"));
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -486,6 +507,12 @@ impl EventProcessor {
         }
 
         trigger_immediate_connection_maintenance(swarm, &self.error_logger).await;
+
+        // Mark peer as disconnected in database
+        if let Err(e) = storage::mark_peer_disconnected(&peer_id.to_string()).await {
+            self.error_logger
+                .log_error(&format!("Failed to mark peer {peer_id} as disconnected: {e}"));
+        }
     }
 
     /// Returns `true` when `name` is a user-set alias rather than the auto-generated

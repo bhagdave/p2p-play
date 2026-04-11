@@ -430,6 +430,76 @@ pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
     }
 }
 
+/// Upsert a peer record. Updates `alias`, `multiaddr`, `last_seen`, and `is_connected`
+/// when the `peer_id` already exists, or inserts a new row otherwise.
+/// Pass `None` for `alias` or `multiaddr` to leave existing values unchanged on conflict.
+pub async fn upsert_peer(
+    peer_id: &str,
+    alias: Option<&str>,
+    multiaddr: Option<&str>,
+    is_connected: bool,
+) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let last_seen = utils::get_current_timestamp() as i64;
+    let is_connected_db = if is_connected { 1i64 } else { 0i64 };
+
+    conn.execute(
+        r#"
+        INSERT INTO peers (peer_id, alias, multiaddr, last_seen, is_connected)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        ON CONFLICT(peer_id) DO UPDATE SET
+            alias = COALESCE(?2, alias),
+            multiaddr = COALESCE(?3, multiaddr),
+            last_seen = ?4,
+            is_connected = ?5
+        "#,
+        rusqlite::params![peer_id, alias, multiaddr, last_seen, is_connected_db],
+    )?;
+
+    Ok(())
+}
+
+/// Update the alias for a known peer without changing the `is_connected` state.
+/// If the peer does not yet exist in the database, a row is inserted with
+/// `is_connected = false` as a conservative default so that the alias is not
+/// lost even if the connection event was never persisted.
+pub async fn upsert_peer_alias(peer_id: &str, alias: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let last_seen = utils::get_current_timestamp() as i64;
+
+    conn.execute(
+        r#"
+        INSERT INTO peers (peer_id, alias, multiaddr, last_seen, is_connected)
+        VALUES (?1, ?2, NULL, ?3, 0)
+        ON CONFLICT(peer_id) DO UPDATE SET
+            alias = ?2,
+            last_seen = ?3
+        "#,
+        rusqlite::params![peer_id, alias, last_seen],
+    )?;
+
+    Ok(())
+}
+
+/// Mark a peer as disconnected in the database.
+pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let last_seen = utils::get_current_timestamp() as i64;
+
+    conn.execute(
+        "UPDATE peers SET is_connected = 0, last_seen = ?1 WHERE peer_id = ?2",
+        rusqlite::params![last_seen, peer_id],
+    )?;
+
+    Ok(())
+}
+
 pub async fn create_channel(name: &str, description: &str, created_by: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1665,7 +1735,8 @@ pub mod test_utils {
         conn.execute("DELETE FROM channel_subscriptions", [])?; // Clear fourth - has FK to channels
         conn.execute("DELETE FROM stories", [])?; // Clear fifth - referenced by story_read_status
         conn.execute("DELETE FROM channels", [])?; // Clear sixth - referenced by subscriptions and read_status
-        conn.execute("DELETE FROM peer_name", [])?; // Clear last - no FKs
+        conn.execute("DELETE FROM peer_name", [])?; // Clear seventh - no FKs
+        conn.execute("DELETE FROM peers", [])?; // Clear eighth - no FKs
 
         conn.execute(
             r#"
@@ -1785,5 +1856,262 @@ mod read_status_tests {
         assert!(is_read);
 
         println!("✅ Read status functionality test passed!");
+    }
+}
+
+#[cfg(test)]
+mod peers_tests {
+    use super::*;
+    use super::test_utils::*;
+    use std::env;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_upsert_peer_insert() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_peers_insert.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        let peer_id = "12D3KooWTestPeer1";
+        let multiaddr = "/ip4/127.0.0.1/tcp/4001";
+
+        upsert_peer(peer_id, None, Some(multiaddr), true)
+            .await
+            .expect("upsert_peer should succeed");
+
+        let conn_arc = get_db_connection().await.expect("Failed to get connection");
+        let conn = conn_arc.lock().await;
+
+        let (alias, stored_multiaddr, is_connected): (Option<String>, Option<String>, i64) = conn
+            .query_row(
+                "SELECT alias, multiaddr, is_connected FROM peers WHERE peer_id = ?",
+                [peer_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("Peer row should exist");
+
+        assert!(alias.is_none());
+        assert_eq!(stored_multiaddr.as_deref(), Some(multiaddr));
+        assert_eq!(is_connected, 1);
+    }
+
+    #[tokio::test]
+    async fn test_upsert_peer_updates_alias() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_peers_alias.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        let peer_id = "12D3KooWTestPeer2";
+        let multiaddr = "/ip4/127.0.0.1/tcp/4002";
+        let alias = "alice";
+
+        // Insert without alias
+        upsert_peer(peer_id, None, Some(multiaddr), true)
+            .await
+            .expect("Initial upsert should succeed");
+
+        // Update with alias
+        upsert_peer(peer_id, Some(alias), None, true)
+            .await
+            .expect("Alias update should succeed");
+
+        let conn_arc = get_db_connection().await.expect("Failed to get connection");
+        let conn = conn_arc.lock().await;
+
+        let (stored_alias, stored_multiaddr): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT alias, multiaddr FROM peers WHERE peer_id = ?",
+                [peer_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Peer row should exist");
+
+        // Alias should be set, multiaddr should be preserved from previous upsert
+        assert_eq!(stored_alias.as_deref(), Some(alias));
+        assert_eq!(stored_multiaddr.as_deref(), Some(multiaddr));
+    }
+
+    #[tokio::test]
+    async fn test_mark_peer_disconnected() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_peers_disconnect.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        let peer_id = "12D3KooWTestPeer3";
+
+        // Insert as connected
+        upsert_peer(peer_id, Some("bob"), Some("/ip4/127.0.0.1/tcp/4003"), true)
+            .await
+            .expect("upsert_peer should succeed");
+
+        // Mark as disconnected
+        mark_peer_disconnected(peer_id)
+            .await
+            .expect("mark_peer_disconnected should succeed");
+
+        let conn_arc = get_db_connection().await.expect("Failed to get connection");
+        let conn = conn_arc.lock().await;
+
+        let is_connected: i64 = conn
+            .query_row(
+                "SELECT is_connected FROM peers WHERE peer_id = ?",
+                [peer_id],
+                |row| row.get(0),
+            )
+            .expect("Peer row should exist");
+
+        assert_eq!(is_connected, 0);
+    }
+
+    #[tokio::test]
+    async fn test_upsert_peer_preserves_existing_alias_when_none() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_peers_preserve.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        let peer_id = "12D3KooWTestPeer4";
+
+        // Insert with alias
+        upsert_peer(peer_id, Some("charlie"), Some("/ip4/127.0.0.1/tcp/4004"), true)
+            .await
+            .expect("upsert_peer should succeed");
+
+        // Update with None alias - existing alias should be preserved
+        upsert_peer(peer_id, None, Some("/ip4/192.168.1.1/tcp/4004"), true)
+            .await
+            .expect("upsert_peer update should succeed");
+
+        let conn_arc = get_db_connection().await.expect("Failed to get connection");
+        let conn = conn_arc.lock().await;
+
+        let (stored_alias, stored_multiaddr): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT alias, multiaddr FROM peers WHERE peer_id = ?",
+                [peer_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Peer row should exist");
+
+        // Alias should be preserved from the first upsert
+        assert_eq!(stored_alias.as_deref(), Some("charlie"));
+        // Multiaddr should be updated to the new value
+        assert_eq!(stored_multiaddr.as_deref(), Some("/ip4/192.168.1.1/tcp/4004"));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_peer_alias_does_not_change_is_connected() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_peers_alias_only.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        let peer_id = "12D3KooWTestPeer5";
+
+        // First establish the peer as connected with upsert_peer
+        upsert_peer(peer_id, None, Some("/ip4/127.0.0.1/tcp/4005"), true)
+            .await
+            .expect("upsert_peer should succeed");
+
+        // Update alias only - is_connected should remain true
+        upsert_peer_alias(peer_id, "dave")
+            .await
+            .expect("upsert_peer_alias should succeed");
+
+        let conn_arc = get_db_connection().await.expect("Failed to get connection");
+        let conn = conn_arc.lock().await;
+
+        let (stored_alias, is_connected): (Option<String>, i64) = conn
+            .query_row(
+                "SELECT alias, is_connected FROM peers WHERE peer_id = ?",
+                [peer_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Peer row should exist");
+
+        assert_eq!(stored_alias.as_deref(), Some("dave"));
+        // is_connected should be unchanged (still true from upsert_peer)
+        assert_eq!(is_connected, 1);
+    }
+
+    #[tokio::test]
+    async fn test_upsert_peer_alias_creates_row_if_not_exists() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_peers_alias_new.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        let peer_id = "12D3KooWTestPeer6";
+
+        // Insert alias for a peer that doesn't have a row yet
+        upsert_peer_alias(peer_id, "eve")
+            .await
+            .expect("upsert_peer_alias should succeed");
+
+        let conn_arc = get_db_connection().await.expect("Failed to get connection");
+        let conn = conn_arc.lock().await;
+
+        let (stored_alias, is_connected): (Option<String>, i64) = conn
+            .query_row(
+                "SELECT alias, is_connected FROM peers WHERE peer_id = ?",
+                [peer_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("Peer row should exist after upsert_peer_alias");
+
+        assert_eq!(stored_alias.as_deref(), Some("eve"));
+        // New row inserted with is_connected = false (conservative default)
+        assert_eq!(is_connected, 0);
     }
 }

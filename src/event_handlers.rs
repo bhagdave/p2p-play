@@ -16,7 +16,7 @@ use crate::network::{
     TOPIC, WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest,
     WasmExecutionResponse,
 };
-use crate::storage::{load_node_description, save_received_story};
+use crate::storage::{load_node_description, save_received_story, upsert_peer_alias};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
@@ -512,6 +512,32 @@ pub async fn handle_floodsub_event(
                     // Update the cache if peer names changed
                     if names_changed {
                         sorted_peer_names_cache.update(peer_names);
+
+                        // Validate the alias length before persisting to prevent unbounded
+                        // data being written to disk from untrusted network input.
+                        let alias_to_persist = if peer_name.name.len()
+                            <= crate::validation::ContentLimits::PEER_NAME_MAX
+                        {
+                            Some(peer_name.name.as_str())
+                        } else {
+                            debug!(
+                                "Peer {} alias exceeds PEER_NAME_MAX ({}), skipping persistence",
+                                peer_id,
+                                crate::validation::ContentLimits::PEER_NAME_MAX
+                            );
+                            None
+                        };
+
+                        // Persist the alias to the database without altering is_connected
+                        // state, since a broadcast message may arrive via relay rather
+                        // than directly from the peer.
+                        if let Some(alias) = alias_to_persist {
+                            if let Err(e) = upsert_peer_alias(&peer_id.to_string(), alias).await {
+                                error_logger.log_error(&format!(
+                                    "Failed to persist peer alias for {peer_id}: {e}"
+                                ));
+                            }
+                        }
                     }
                 }
             } else if let Ok(published_channel) =
