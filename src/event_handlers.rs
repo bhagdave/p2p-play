@@ -16,7 +16,7 @@ use crate::network::{
     TOPIC, WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest,
     WasmExecutionResponse,
 };
-use crate::storage::{load_node_description, save_received_story, upsert_peer};
+use crate::storage::{load_node_description, save_received_story, upsert_peer_alias};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
@@ -513,14 +513,11 @@ pub async fn handle_floodsub_event(
                     if names_changed {
                         sorted_peer_names_cache.update(peer_names);
 
-                        // Persist the alias to the database
-                        if let Err(e) = upsert_peer(
-                            &peer_id.to_string(),
-                            Some(&peer_name.name),
-                            None,
-                            true,
-                        )
-                        .await
+                        // Persist the alias to the database without altering is_connected
+                        // state, since a broadcast message may arrive via relay rather
+                        // than directly from the peer.
+                        if let Err(e) =
+                            upsert_peer_alias(&peer_id.to_string(), &peer_name.name).await
                         {
                             debug!("Failed to persist peer alias for {peer_id}: {e}");
                         }
