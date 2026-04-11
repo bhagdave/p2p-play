@@ -351,6 +351,12 @@ impl EventProcessor {
                 update_bootstrap_status(&event, auto_bootstrap, swarm);
                 Some(EventType::KadEvent(event))
             }
+            SwarmEvent::Behaviour(StoryBehaviourEvent::WasmCapabilities(event)) => {
+                Some(EventType::WasmCapabilitiesEvent(event))
+            }
+            SwarmEvent::Behaviour(StoryBehaviourEvent::WasmExecution(event)) => {
+                Some(EventType::WasmExecutionEvent(event))
+            }
             SwarmEvent::NewListenAddr { address, .. } => {
                 app.add_to_log(format!("Local node is listening on {address}"));
                 None
