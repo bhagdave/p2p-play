@@ -513,13 +513,30 @@ pub async fn handle_floodsub_event(
                     if names_changed {
                         sorted_peer_names_cache.update(peer_names);
 
+                        // Validate the alias length before persisting to prevent unbounded
+                        // data being written to disk from untrusted network input.
+                        let alias_to_persist = if peer_name.name.len()
+                            <= crate::validation::ContentLimits::PEER_NAME_MAX
+                        {
+                            Some(peer_name.name.as_str())
+                        } else {
+                            debug!(
+                                "Peer {} alias exceeds PEER_NAME_MAX ({}), skipping persistence",
+                                peer_id,
+                                crate::validation::ContentLimits::PEER_NAME_MAX
+                            );
+                            None
+                        };
+
                         // Persist the alias to the database without altering is_connected
                         // state, since a broadcast message may arrive via relay rather
                         // than directly from the peer.
-                        if let Err(e) =
-                            upsert_peer_alias(&peer_id.to_string(), &peer_name.name).await
-                        {
-                            debug!("Failed to persist peer alias for {peer_id}: {e}");
+                        if let Some(alias) = alias_to_persist {
+                            if let Err(e) = upsert_peer_alias(&peer_id.to_string(), alias).await {
+                                error_logger.log_error(&format!(
+                                    "Failed to persist peer alias for {peer_id}: {e}"
+                                ));
+                            }
                         }
                     }
                 }
