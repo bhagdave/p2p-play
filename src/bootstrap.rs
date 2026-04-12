@@ -260,7 +260,7 @@ impl AutoBootstrap {
     }
 
     /// Returns a short, stable label for display in the TUI status bar.
-    pub fn get_bootstrap_short_status(&self) -> &'static str {
+    pub fn get_bootstrap_short_status(&self) -> String {
         let state = self.state.lock().unwrap();
         match &state.status {
             BootstrapStatus::NotStarted => "--",
@@ -268,6 +268,7 @@ impl AutoBootstrap {
             BootstrapStatus::Connected { .. } => "OK",
             BootstrapStatus::Failed { .. } => "Failed",
         }
+        .to_string()
     }
 
     #[allow(dead_code)]

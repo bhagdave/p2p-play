@@ -217,7 +217,7 @@ pub struct App {
     pub scroll_offset: usize,
     pub auto_scroll: bool,
     pub network_health: Option<crate::network_circuit_breakers::NetworkHealthSummary>,
-    pub bootstrap_status_display: &'static str,
+    pub bootstrap_status_display: String,
     pub mdns_active: bool,
     pub conversations: Vec<crate::types::Conversation>,
     pub unread_message_count: usize,
@@ -320,7 +320,7 @@ impl App {
             scroll_offset: 0,
             auto_scroll: true, // Start with auto-scroll enabled
             network_health: None,
-            bootstrap_status_display: "--",
+            bootstrap_status_display: "--".to_string(),
             mdns_active: false,
             conversations: Vec::new(),
             unread_message_count: 0,
@@ -892,7 +892,7 @@ impl App {
         self.network_health = Some(network_health);
     }
 
-    pub fn update_bootstrap_status_display(&mut self, status: &'static str) {
+    pub fn update_bootstrap_status_display(&mut self, status: String) {
         self.bootstrap_status_display = status;
     }
 
