@@ -1617,8 +1617,8 @@ fn test_validate_direct_message_empty() {
 
 #[test]
 fn test_validate_direct_message_too_long() {
-    use p2p_play::validation::ContentValidator;
     use p2p_play::validation::ContentLimits;
+    use p2p_play::validation::ContentValidator;
 
     let long_message = "a".repeat(ContentLimits::DIRECT_MESSAGE_MAX + 1);
     let result = ContentValidator::validate_direct_message(&long_message);
@@ -1627,8 +1627,8 @@ fn test_validate_direct_message_too_long() {
 
 #[test]
 fn test_validate_direct_message_at_max_length() {
-    use p2p_play::validation::ContentValidator;
     use p2p_play::validation::ContentLimits;
+    use p2p_play::validation::ContentValidator;
 
     let max_message = "a".repeat(ContentLimits::DIRECT_MESSAGE_MAX);
     let result = ContentValidator::validate_direct_message(&max_message);

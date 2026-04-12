@@ -1,7 +1,7 @@
 mod bootstrap;
 mod bootstrap_logger;
-mod constants;
 mod circuit_breaker;
+mod constants;
 mod content_fetcher;
 mod crypto;
 mod data_dir;
@@ -262,6 +262,33 @@ async fn run_app() -> AppResult<()> {
         listen_addr.parse().expect("can get a local socket"),
     )
     .expect("swarm can be started");
+
+    // Reconnect to peers that were previously dialled (outbound connections stored in DB).
+    // We silently skip peers whose multiaddr cannot be parsed or dialled — failures here
+    // are non-fatal and will be retried naturally via mDNS/Kademlia discovery.
+    match storage::get_outbound_peers(10).await {
+        Ok(addrs) => {
+            for addr_str in addrs {
+                match addr_str.parse::<libp2p::Multiaddr>() {
+                    Ok(addr) => {
+                        if let Err(e) = swarm.dial(addr.clone()) {
+                            app.add_to_log(format!("Startup reconnect failed for {addr}: {e}"));
+                        } else {
+                            app.add_to_log(format!("Reconnecting to known peer at {addr}"));
+                        }
+                    }
+                    Err(e) => {
+                        error!("Invalid multiaddr in peer database '{addr_str}': {e}");
+                        app.add_to_log(format!("Skipping invalid peer address '{addr_str}': {e}"));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to load outbound peers for startup reconnect: {e}");
+            app.add_to_log(format!("Failed to load stored peers for reconnect: {e}"));
+        }
+    }
 
     let crypto_service = CryptoService::new(KEYS.clone());
 

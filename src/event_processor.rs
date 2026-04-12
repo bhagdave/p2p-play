@@ -457,22 +457,16 @@ impl EventProcessor {
 
         track_successful_connection(peer_id);
 
-        // Persist peer connection to database
+        // Persist peer connection to database.
+        // Only store the multiaddr for outbound (Dialer) connections so that
+        // on the next startup we only attempt to reconnect to peers we
+        // explicitly dialled, not to arbitrary inbound connections.
         let multiaddr = match endpoint {
-            libp2p::core::ConnectedPoint::Dialer { address, .. } => {
-                Some(address.to_string())
-            }
-            libp2p::core::ConnectedPoint::Listener { send_back_addr, .. } => {
-                Some(send_back_addr.to_string())
-            }
+            libp2p::core::ConnectedPoint::Dialer { address, .. } => Some(address.to_string()),
+            libp2p::core::ConnectedPoint::Listener { .. } => None,
         };
-        if let Err(e) = storage::upsert_peer(
-            &peer_id.to_string(),
-            None,
-            multiaddr.as_deref(),
-            true,
-        )
-        .await
+        if let Err(e) =
+            storage::upsert_peer(&peer_id.to_string(), None, multiaddr.as_deref(), true).await
         {
             self.error_logger
                 .log_error(&format!("Failed to persist peer connection {peer_id}: {e}"));
@@ -516,8 +510,9 @@ impl EventProcessor {
 
         // Mark peer as disconnected in database
         if let Err(e) = storage::mark_peer_disconnected(&peer_id.to_string()).await {
-            self.error_logger
-                .log_error(&format!("Failed to mark peer {peer_id} as disconnected: {e}"));
+            self.error_logger.log_error(&format!(
+                "Failed to mark peer {peer_id} as disconnected: {e}"
+            ));
         }
     }
 
@@ -557,10 +552,11 @@ impl EventProcessor {
         let mut names_updated = false;
         for (peer_id, name) in peer_names.iter_mut() {
             if let Some(known_name) = self.known_peer_names.get(peer_id)
-                && name != known_name {
-                    *name = known_name.clone();
-                    names_updated = true;
-                }
+                && name != known_name
+            {
+                *name = known_name.clone();
+                names_updated = true;
+            }
         }
 
         if names_updated {
