@@ -7,6 +7,16 @@ All changes to this project will be documented in this file.
 ### Fixed
 - **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
 
+### Changed
+- **`main.rs` refactoring for maintainability**: Extracted several inline blocks from `run_app` into named functions to improve readability and testability.
+  - `initialise_ui` — UI initialisation now propagates errors via `AppResult<App>` rather than calling `process::exit` internally.
+  - `initialise_database` — database path resolution and first-run logging extracted from `run_app`.
+  - `reconnect_stored_peers` — startup outbound peer reconnection logic extracted into its own async function.
+  - `ensure_general_channel_subscription` — moved from `main.rs` into `storage/core.rs` as a public function accepting a `peer_id` parameter, removing the implicit dependency on the global `PEER_ID` static and making it independently testable.
+  - `print_error_chain` — error chain formatting moved from `main` into `errors.rs` as a reusable public utility.
+  - `PeerState` struct — the three peer-tracking variables (`peer_names`, `local_peer_name`, `sorted_peer_names_cache`) previously threaded individually through `EventProcessor::run` are now grouped into a single `PeerState` struct defined in `handlers.rs`, reducing the `run` call-site from six arguments to four.
+- **Tests added** for the new public items: three integration tests for `ensure_general_channel_subscription` (subscribe when absent, idempotent when already subscribed, does not disturb other subscriptions); three unit tests for `PeerState::new`; two unit tests for `print_error_chain`.
+
 ### Added
 - **Startup peer reconnect**: On startup the application now reads up to 10 outbound peer connections (those with a stored multiaddr) from the database and attempts to re-dial them immediately after the swarm starts listening. Inbound-only peers (no multiaddr) are skipped. The peer multiaddr is now only stored for outbound (`Dialer`) connections so that the reconnect list stays accurate across restarts. A new `get_outbound_peers(limit)` storage helper queries the peers table for rows with a non-NULL multiaddr, ordered by `last_seen` descending.
 - **Peer alias persistence**: Peer information (peer_id, alias, multiaddr, last_seen, is_connected) is now stored in a new `peers` SQLite table. The table is updated when a connection is established (capturing peer_id and multiaddr), when an alias is received over the network (capturing the alias), and when a connection is closed (marking the peer as disconnected). An `upsert_peer` function and a `mark_peer_disconnected` helper are available in `src/storage/core.rs`.
