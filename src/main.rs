@@ -131,17 +131,7 @@ async fn run_app() -> AppResult<()> {
     let mut app = initialise_ui()?;
     app.refresh_conversations().await;
 
-    let db_path = std::env::var("TEST_DATABASE_PATH")
-        .or_else(|_| std::env::var("DATABASE_PATH"))
-        .unwrap_or_else(|_| get_data_path("stories.db"));
-    let db_is_new = !std::path::Path::new(&db_path).exists();
-    if let Err(e) = ensure_stories_file_exists().await {
-        error!("Failed to initialise stories file: {e}");
-        let _ = app.cleanup();
-        process::exit(1);
-    } else if db_is_new {
-        app.add_to_log(format!("Created database: {}", db_path));
-    }
+    initialise_database(&mut app).await?;
 
     // Load saved peer name if it exists
     let mut local_peer_name: Option<String> = match load_local_peer_name().await {
@@ -370,6 +360,21 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
     };
 
     (channels, loggers)
+}
+
+async fn initialise_database(app: &mut App) -> AppResult<()> {
+    let db_path = std::env::var("TEST_DATABASE_PATH")
+        .or_else(|_| std::env::var("DATABASE_PATH"))
+        .unwrap_or_else(|_| get_data_path("stories.db"));
+    let db_is_new = !std::path::Path::new(&db_path).exists();
+    if let Err(e) = ensure_stories_file_exists().await {
+        error!("Failed to initialise stories file: {e}");
+        let _ = app.cleanup();
+        process::exit(1);
+    } else if db_is_new {
+        app.add_to_log(format!("Created database: {}", db_path));
+    }
+    Ok(())
 }
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {
