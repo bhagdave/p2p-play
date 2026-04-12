@@ -2979,4 +2979,3 @@ mod tests {
         assert_eq!(state.local_peer_name, Some("alice".to_string()));
     }
 }
-

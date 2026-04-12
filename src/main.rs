@@ -109,11 +109,14 @@ fn main() {
     });
 }
 
-fn initialise_ui() -> AppResult<App> {                                                                                                                                                    
-  let mut app = App::new().map_err(|e| { error!("Failed to initialise UI: {e}"); e })?;
-  app.update_local_peer_id(PEER_ID.to_string());
-  Ok(app)
-}             
+fn initialise_ui() -> AppResult<App> {
+    let mut app = App::new().map_err(|e| {
+        error!("Failed to initialise UI: {e}");
+        e
+    })?;
+    app.update_local_peer_id(PEER_ID.to_string());
+    Ok(app)
+}
 
 async fn run_app() -> AppResult<()> {
     initialise_logging();
@@ -305,8 +308,10 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
     (channels, loggers)
 }
 
-
-async fn reconnect_stored_peers(swarm: &mut Swarm<impl libp2p::swarm::NetworkBehaviour>, app: &mut App) {
+async fn reconnect_stored_peers(
+    swarm: &mut Swarm<impl libp2p::swarm::NetworkBehaviour>,
+    app: &mut App,
+) {
     // Reconnect to peers that were previously dialled (outbound connections stored in DB).
     // We silently skip peers whose multiaddr cannot be parsed or dialled — failures here
     // are non-fatal and will be retried naturally via mDNS/Kademlia discovery.

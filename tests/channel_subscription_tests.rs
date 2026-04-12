@@ -65,11 +65,11 @@ async fn test_ensure_general_is_idempotent() {
     let subscriptions = read_subscribed_channels(peer_id)
         .await
         .expect("Failed to read subscriptions");
-    let general_count = subscriptions
-        .iter()
-        .filter(|s| *s == "general")
-        .count();
-    assert_eq!(general_count, 1, "Should only have one general subscription");
+    let general_count = subscriptions.iter().filter(|s| *s == "general").count();
+    assert_eq!(
+        general_count, 1,
+        "Should only have one general subscription"
+    );
 }
 
 #[tokio::test]
@@ -94,6 +94,12 @@ async fn test_ensure_general_does_not_affect_other_subscriptions() {
         .await
         .expect("Failed to read subscriptions");
 
-    assert!(subscriptions.contains(&"general".to_string()), "general should be present");
-    assert!(subscriptions.contains(&"rust".to_string()), "rust should still be present");
+    assert!(
+        subscriptions.contains(&"general".to_string()),
+        "general should be present"
+    );
+    assert!(
+        subscriptions.contains(&"rust".to_string()),
+        "rust should still be present"
+    );
 }

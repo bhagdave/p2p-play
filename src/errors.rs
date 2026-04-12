@@ -196,16 +196,15 @@ pub type UIResult<T> = Result<T, UIError>;
 pub type ConfigResult<T> = Result<T, ConfigError>;
 
 pub fn print_error_chain(e: &dyn std::error::Error) {
-      eprintln!("Application error: {e}");                                                                                                                                                    
-      let mut source = e.source();
-      let mut indent = 1;                                                                                                                                                                     
-      while let Some(err) = source {
-          eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
-          source = err.source();
-          indent += 1;
-      }
-  }            
-
+    eprintln!("Application error: {e}");
+    let mut source = e.source();
+    let mut indent = 1;
+    while let Some(err) = source {
+        eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
+        source = err.source();
+        indent += 1;
+    }
+}
 
 /// Detects the network protocol from an error message
 ///
@@ -473,15 +472,24 @@ mod tests {
 
     #[test]
     fn test_print_error_chain_does_not_panic_for_root_error() {
-        let err = ChainedError { msg: "root error", source: None };
+        let err = ChainedError {
+            msg: "root error",
+            source: None,
+        };
         // Should complete without panicking regardless of stderr output
         print_error_chain(&err);
     }
 
     #[test]
     fn test_print_error_chain_does_not_panic_for_chained_errors() {
-        let inner = ChainedError { msg: "inner cause", source: None };
-        let outer = ChainedError { msg: "outer error", source: Some(Box::new(inner)) };
+        let inner = ChainedError {
+            msg: "inner cause",
+            source: None,
+        };
+        let outer = ChainedError {
+            msg: "outer error",
+            source: Some(Box::new(inner)),
+        };
         print_error_chain(&outer);
     }
 
