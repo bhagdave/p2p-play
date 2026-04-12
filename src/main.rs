@@ -120,7 +120,7 @@ fn main() {
 }
 
 fn initialise_ui() -> AppResult<App> {                                                                                                                                                    
-  let mut app = App::new().map_err(|e| { error!(...); e })?;
+  let mut app = App::new().map_err(|e| { error!("Failed to initialise UI: {e}"); e })?;
   app.update_local_peer_id(PEER_ID.to_string());
   Ok(app)
 }             
