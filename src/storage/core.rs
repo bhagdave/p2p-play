@@ -575,6 +575,17 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageR
     Ok(())
 }
 
+/// Ensures the peer is subscribed to the "general" channel.
+/// If the current subscriptions cannot be read, subscription is attempted anyway.
+/// Safe to call multiple times — subscribing when already subscribed is a no-op.
+pub async fn ensure_general_channel_subscription(peer_id: &str) -> StorageResult<()> {
+    let subscriptions = read_subscribed_channels(peer_id).await.unwrap_or_default();
+    if !subscriptions.contains(&"general".to_string()) {
+        subscribe_to_channel(peer_id, "general").await?;
+    }
+    Ok(())
+}
+
 pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;

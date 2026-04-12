@@ -32,8 +32,8 @@ use network::{KEYS, PEER_ID, create_swarm};
 use network_circuit_breakers::NetworkCircuitBreakers;
 use relay::RelayService;
 use storage::{
-    ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
-    load_unified_network_config,
+    ensure_general_channel_subscription, ensure_stories_file_exists,
+    ensure_unified_network_config_exists, load_local_peer_name, load_unified_network_config,
 };
 use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::App;
@@ -181,7 +181,9 @@ async fn run_app() -> AppResult<()> {
         )
         .await;
 
-    ensure_general_channel_subscription().await;
+    if let Err(e) = ensure_general_channel_subscription(&PEER_ID.to_string()).await {
+        error!("Failed to ensure general channel subscription: {e}");
+    }
 
     match storage::read_local_stories().await {
         Ok(stories) => {
@@ -303,23 +305,6 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
     (channels, loggers)
 }
 
-async fn ensure_general_channel_subscription() {
-    match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
-        Ok(subscriptions) => {
-            if !subscriptions.contains(&"general".to_string())
-                && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
-            {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
-        }
-        Err(e) => {
-            error!("Failed to check subscriptions: {e}");
-            if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
-        }
-    }
-}
 
 async fn reconnect_stored_peers(swarm: &mut Swarm<impl libp2p::swarm::NetworkBehaviour>, app: &mut App) {
     // Reconnect to peers that were previously dialled (outbound connections stored in DB).

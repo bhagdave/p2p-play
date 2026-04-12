@@ -453,6 +453,38 @@ impl ConfigError {
 mod tests {
     use super::*;
 
+    use std::fmt;
+
+    #[derive(Debug)]
+    struct ChainedError {
+        msg: &'static str,
+        source: Option<Box<dyn std::error::Error>>,
+    }
+    impl fmt::Display for ChainedError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.msg)
+        }
+    }
+    impl std::error::Error for ChainedError {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            self.source.as_deref()
+        }
+    }
+
+    #[test]
+    fn test_print_error_chain_does_not_panic_for_root_error() {
+        let err = ChainedError { msg: "root error", source: None };
+        // Should complete without panicking regardless of stderr output
+        print_error_chain(&err);
+    }
+
+    #[test]
+    fn test_print_error_chain_does_not_panic_for_chained_errors() {
+        let inner = ChainedError { msg: "inner cause", source: None };
+        let outer = ChainedError { msg: "outer error", source: Some(Box::new(inner)) };
+        print_error_chain(&outer);
+    }
+
     #[test]
     fn test_error_chain_conversion() {
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
