@@ -25,7 +25,7 @@ use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
 use crypto::CryptoService;
 use error_logger::ErrorLogger;
-use errors::{AppError, AppResult};
+use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
 use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
 use network::{KEYS, PEER_ID, create_swarm};
@@ -43,7 +43,6 @@ use data_dir::get_data_path;
 use libp2p::{PeerId, Swarm};
 use log::error;
 use std::collections::HashMap;
-use std::error::Error;
 use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -105,15 +104,7 @@ fn main() {
 
     rt.block_on(async {
         if let Err(e) = run_app().await {
-            eprintln!("Application error: {e}");
-            // Log the error chain for debugging
-            let mut source = e.source();
-            let mut indent = 1;
-            while let Some(err) = source {
-                eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
-                source = err.source();
-                indent += 1;
-            }
+            print_error_chain(&e);
             std::process::exit(1);
         }
     });

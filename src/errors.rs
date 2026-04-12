@@ -195,6 +195,18 @@ pub type NetworkResult<T> = Result<T, NetworkError>;
 pub type UIResult<T> = Result<T, UIError>;
 pub type ConfigResult<T> = Result<T, ConfigError>;
 
+pub fn print_error_chain(e: &dyn std::error::Error) {
+      eprintln!("Application error: {e}");                                                                                                                                                    
+      let mut source = e.source();
+      let mut indent = 1;                                                                                                                                                                     
+      while let Some(err) = source {
+          eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
+          source = err.source();
+          indent += 1;
+      }
+  }            
+
+
 /// Detects the network protocol from an error message
 ///
 /// Analyzes error text to identify which libp2p protocol is likely involved
