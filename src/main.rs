@@ -194,21 +194,7 @@ async fn run_app() -> AppResult<()> {
         )
         .await;
 
-    match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
-        Ok(subscriptions) => {
-            if !subscriptions.contains(&"general".to_string())
-                && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
-            {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
-        }
-        Err(e) => {
-            error!("Failed to check subscriptions: {e}");
-            if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
-        }
-    }
+    ensure_general_channel_subscription().await;
 
     match storage::read_local_stories().await {
         Ok(stories) => {
@@ -335,6 +321,24 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
     };
 
     (channels, loggers)
+}
+
+async fn ensure_general_channel_subscription() {
+    match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
+        Ok(subscriptions) => {
+            if !subscriptions.contains(&"general".to_string())
+                && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
+            {
+                error!("Failed to auto-subscribe to general channel: {e}");
+            }
+        }
+        Err(e) => {
+            error!("Failed to check subscriptions: {e}");
+            if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await {
+                error!("Failed to auto-subscribe to general channel: {e}");
+            }
+        }
+    }
 }
 
 async fn reconnect_stored_peers(swarm: &mut Swarm<impl libp2p::swarm::NetworkBehaviour>, app: &mut App) {
