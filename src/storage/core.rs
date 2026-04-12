@@ -505,6 +505,10 @@ pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
 /// recently seen peers first.  These are the peers we should attempt to
 /// reconnect to on startup.
 pub async fn get_outbound_peers(limit: usize) -> StorageResult<Vec<String>> {
+    let limit = i64::try_from(limit).map_err(|_| {
+        rusqlite::Error::InvalidParameterName("limit exceeds i64 range".to_string())
+    })?;
+
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
@@ -512,11 +516,8 @@ pub async fn get_outbound_peers(limit: usize) -> StorageResult<Vec<String>> {
         "SELECT multiaddr FROM peers WHERE multiaddr IS NOT NULL ORDER BY last_seen DESC LIMIT ?1",
     )?;
     let addrs = stmt
-        .query_map(rusqlite::params![limit as i64], |row| {
-            row.get::<_, String>(0)
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        .query_map(rusqlite::params![limit], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(addrs)
 }
@@ -2239,5 +2240,81 @@ mod peers_tests {
 
         let addrs = get_outbound_peers(10).await.expect("get_outbound_peers");
         assert!(addrs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_outbound_peers_orders_by_last_seen_desc() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_get_outbound_peers_ordering.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        upsert_peer(
+            "12D3KooWOrder1",
+            None,
+            Some("/ip4/127.0.0.1/tcp/5101"),
+            true,
+        )
+        .await
+        .expect("upsert outbound peer 1");
+
+        upsert_peer(
+            "12D3KooWOrder2",
+            None,
+            Some("/ip4/127.0.0.1/tcp/5102"),
+            true,
+        )
+        .await
+        .expect("upsert outbound peer 2");
+
+        upsert_peer(
+            "12D3KooWOrder3",
+            None,
+            Some("/ip4/127.0.0.1/tcp/5103"),
+            true,
+        )
+        .await
+        .expect("upsert outbound peer 3");
+
+        // Directly update last_seen with deterministic integer timestamps so the
+        // ordering assertion is stable regardless of wall-clock resolution.
+        {
+            let conn_arc = get_db_connection().await.expect("get connection");
+            let conn = conn_arc.lock().await;
+            conn.execute(
+                "UPDATE peers SET last_seen = 100 WHERE peer_id = ?1",
+                ["12D3KooWOrder1"],
+            )
+            .expect("set last_seen for peer 1");
+            conn.execute(
+                "UPDATE peers SET last_seen = 300 WHERE peer_id = ?1",
+                ["12D3KooWOrder2"],
+            )
+            .expect("set last_seen for peer 2");
+            conn.execute(
+                "UPDATE peers SET last_seen = 200 WHERE peer_id = ?1",
+                ["12D3KooWOrder3"],
+            )
+            .expect("set last_seen for peer 3");
+        }
+
+        let addrs = get_outbound_peers(10).await.expect("get_outbound_peers");
+
+        assert_eq!(
+            addrs,
+            vec![
+                "/ip4/127.0.0.1/tcp/5102".to_string(), // last_seen 300 — most recent
+                "/ip4/127.0.0.1/tcp/5103".to_string(), // last_seen 200
+                "/ip4/127.0.0.1/tcp/5101".to_string(), // last_seen 100 — oldest
+            ]
+        );
     }
 }

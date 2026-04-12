@@ -279,12 +279,14 @@ async fn run_app() -> AppResult<()> {
                     }
                     Err(e) => {
                         error!("Invalid multiaddr in peer database '{addr_str}': {e}");
+                        app.add_to_log(format!("Skipping invalid peer address '{addr_str}': {e}"));
                     }
                 }
             }
         }
         Err(e) => {
             error!("Failed to load outbound peers for startup reconnect: {e}");
+            app.add_to_log(format!("Failed to load stored peers for reconnect: {e}"));
         }
     }
 
