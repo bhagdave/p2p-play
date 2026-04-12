@@ -2154,7 +2154,7 @@ mod peers_tests {
             .await
             .expect("Failed to initialize storage");
 
-        // Insert two peers with multiadds (outbound) and one without (inbound).
+        // Insert two peers with multiaddrs (outbound) and one without (inbound).
         upsert_peer(
             "12D3KooWOutbound1",
             None,
@@ -2200,7 +2200,7 @@ mod peers_tests {
             .await
             .expect("Failed to initialize storage");
 
-        // Insert 5 peers with multiadds.
+        // Insert 5 peers with multiaddrs.
         for i in 0..5u16 {
             upsert_peer(
                 &format!("12D3KooWLimitPeer{i}"),
