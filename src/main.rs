@@ -119,19 +119,11 @@ fn main() {
     });
 }
 
-fn initialise_ui() -> AppResult<App> {
-    let app = match App::new() {
-        Ok(mut app) => {
-            app.update_local_peer_id(PEER_ID.to_string());
-            app
-        }
-        Err(e) => {
-            error!("Failed to initialise UI: {e}");
-            process::exit(1);
-        }
-    };
-    Ok(app)
-}
+fn initialise_ui() -> AppResult<App> {                                                                                                                                                    
+  let mut app = App::new().map_err(|e| { error!(...); e })?;
+  app.update_local_peer_id(PEER_ID.to_string());
+  Ok(app)
+}             
 
 async fn run_app() -> AppResult<()> {
     initialise_logging();
