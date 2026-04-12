@@ -341,6 +341,65 @@ mod tests {
     }
 
     #[test]
+    fn test_is_in_progress() {
+        let bootstrap = AutoBootstrap::new();
+
+        assert!(!bootstrap.is_in_progress());
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::InProgress {
+            attempts: 1,
+            last_attempt: Instant::now(),
+        };
+        assert!(bootstrap.is_in_progress());
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Connected {
+            peer_count: 3,
+            connected_at: Instant::now(),
+        };
+        assert!(!bootstrap.is_in_progress());
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 1,
+            last_error: "err".to_string(),
+        };
+        assert!(!bootstrap.is_in_progress());
+    }
+
+    #[test]
+    fn test_try_has_started() {
+        let bootstrap = AutoBootstrap::new();
+
+        // NotStarted → Some(false)
+        assert_eq!(bootstrap.try_has_started(), Some(false));
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::InProgress {
+            attempts: 1,
+            last_attempt: Instant::now(),
+        };
+        assert_eq!(bootstrap.try_has_started(), Some(true));
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Connected {
+            peer_count: 2,
+            connected_at: Instant::now(),
+        };
+        assert_eq!(bootstrap.try_has_started(), Some(true));
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 1,
+            last_error: "err".to_string(),
+        };
+        assert_eq!(bootstrap.try_has_started(), Some(true));
+    }
+
+    #[test]
+    fn test_try_has_started_returns_none_when_lock_held() {
+        let bootstrap = AutoBootstrap::new();
+        // Hold the lock so try_lock fails → None
+        let _guard = bootstrap.state.lock().unwrap();
+        assert_eq!(bootstrap.try_has_started(), None);
+    }
+
+    #[test]
     fn test_auto_bootstrap_new() {
         let bootstrap = AutoBootstrap::new();
         let state = bootstrap.state.lock().unwrap();
