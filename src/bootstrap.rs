@@ -81,7 +81,7 @@ impl AutoBootstrap {
             .map(|s| !matches!(s.status, BootstrapStatus::NotStarted))
     }
 
-    pub async fn initialise(
+    pub  fn initialise(
         &mut self,
         bootstrap_config: &BootstrapConfig,
         bootstrap_logger: &BootstrapLogger,
@@ -518,7 +518,6 @@ mod tests {
         let test_config = BootstrapConfig::new();
 
         bootstrap
-            .initialise(&test_config, &bootstrap_logger, &error_logger)
-            .await;
+            .initialise(&test_config, &bootstrap_logger, &error_logger);
     }
 }
