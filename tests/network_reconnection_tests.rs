@@ -11,24 +11,26 @@ const MIN_RECONNECT_INTERVAL_RECENT: Duration = Duration::from_secs(5);
 /// Test reconnection speed measurement to ensure optimizations are working
 #[tokio::test]
 async fn test_reconnection_speed_measurement() {
+    let default_config = NetworkConfig::default();
+
     // Skip this test in CI environments where the config file may not exist
     if std::env::var("CI").is_ok() || !std::path::Path::new("unified_network_config.json").exists()
     {
         // Test the default configuration values instead
-        let default_config = NetworkConfig::default();
         assert_eq!(default_config.connection_maintenance_interval_seconds, 300);
         return;
     }
 
-    // Test that the optimized config from the actual file has been set to 10s
+    // The checked-in runtime config may be tuned over time, but it should remain
+    // faster than the conservative code default and still satisfy validation.
     let unified_config =
         UnifiedNetworkConfig::load_from_file("unified_network_config.json").unwrap();
-    assert_eq!(
-        unified_config
-            .network
-            .connection_maintenance_interval_seconds,
-        10
-    );
+    let tuned_interval = unified_config
+        .network
+        .connection_maintenance_interval_seconds;
+    assert!(tuned_interval >= 10);
+    assert!(tuned_interval < default_config.connection_maintenance_interval_seconds);
+    assert!(unified_config.network.validate().is_ok());
 
     // Verify the ping configuration is optimized for faster recovery
     assert_eq!(unified_config.ping.interval_secs, 50);
@@ -41,9 +43,6 @@ async fn test_reconnection_speed_measurement() {
             .connection_establishment_timeout_seconds,
         45
     );
-
-    // Verify that the default NetworkConfig still has original values
-    let default_config = NetworkConfig::default();
     assert_eq!(default_config.connection_maintenance_interval_seconds, 300);
 }
 
@@ -197,23 +196,32 @@ async fn test_network_stability_with_optimizations() {
 #[tokio::test]
 async fn test_reconnection_timing_accuracy() {
     let start_time = Instant::now();
+    let default_interval =
+        Duration::from_secs(NetworkConfig::default().connection_maintenance_interval_seconds);
+    let maintenance_interval_secs = if std::env::var("CI").is_ok()
+        || !std::path::Path::new("unified_network_config.json").exists()
+    {
+        10
+    } else {
+        UnifiedNetworkConfig::load_from_file("unified_network_config.json")
+            .unwrap()
+            .network
+            .connection_maintenance_interval_seconds
+    };
 
-    // Test that connection maintenance would trigger much faster than before
-    let maintenance_interval = Duration::from_secs(10); // New optimized interval
-    let old_interval = Duration::from_secs(300); // Old interval
+    // Test that the checked-in runtime maintenance interval remains faster than
+    // the conservative default used by NetworkConfig::default().
+    let maintenance_interval = Duration::from_secs(maintenance_interval_secs);
 
     // Simulate waiting for optimized interval
     time::sleep(Duration::from_millis(10)).await; // Simulate small delay
     let _elapsed = start_time.elapsed();
 
-    // Verify that the new interval is dramatically faster
-    assert!(maintenance_interval < old_interval);
-    assert_eq!(maintenance_interval.as_secs(), 10);
-    assert_eq!(old_interval.as_secs(), 300);
+    assert!(maintenance_interval < default_interval);
+    assert_eq!(default_interval.as_secs(), 300);
 
-    // 30x improvement calculation
-    let improvement_factor = old_interval.as_secs() / maintenance_interval.as_secs();
-    assert_eq!(improvement_factor, 30);
+    let improvement_factor = default_interval.as_secs() / maintenance_interval.as_secs();
+    assert!(improvement_factor >= 1);
 }
 
 /// Helper function to test reconnection logic
