@@ -14,16 +14,9 @@ async fn setup_test_db() -> TempDir {
     unsafe {
         env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
     }
-    p2p_play::storage::init_test_database()
+    p2p_play::storage::clear_database_for_testing()
         .await
-        .expect("Failed to initialize test database");
-
-    // init_test_database wipes all rows including channels; re-create "general"
-    // so the foreign key constraint on channel_subscriptions is satisfied.
-    create_channel("general", "General discussion", "system")
-        .await
-        .expect("Failed to create general channel");
-
+        .expect("Failed to reset test database");
     temp_dir
 }
 
