@@ -42,7 +42,6 @@ use clap::Parser;
 use data_dir::get_data_path;
 use libp2p::Swarm;
 use log::error;
-use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -348,7 +347,7 @@ async fn initialise_database(app: &mut App) -> AppResult<()> {
     if let Err(e) = ensure_stories_file_exists().await {
         error!("Failed to initialise stories file: {e}");
         let _ = app.cleanup();
-        process::exit(1);
+        return Err(e.into());
     } else if db_is_new {
         app.add_to_log(format!("Created database: {}", db_path));
     }
