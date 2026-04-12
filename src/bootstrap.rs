@@ -94,6 +94,31 @@ impl AutoBootstrap {
         ));
     }
 
+    /// Parses each address in `peer_addrs`, extracts the peer ID, and registers
+    /// the (peer_id, addr) pair with Kademlia. Returns the number of peers added.
+    fn load_peers_into_kademlia(
+        peer_addrs: &[String],
+        swarm: &mut Swarm<StoryBehaviour>,
+    ) -> usize {
+        let mut peers_added = 0;
+        for peer_addr in peer_addrs {
+            match peer_addr.parse::<libp2p::Multiaddr>() {
+                Ok(addr) => {
+                    if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
+                        swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                        peers_added += 1;
+                    } else {
+                        warn!("Failed to extract peer ID from: {peer_addr}");
+                    }
+                }
+                Err(e) => {
+                    warn!("Invalid multiaddr in config '{peer_addr}': {e}");
+                }
+            }
+        }
+        peers_added
+    }
+
     pub async fn attempt_bootstrap(
         &mut self,
         swarm: &mut Swarm<StoryBehaviour>,
@@ -129,25 +154,7 @@ impl AutoBootstrap {
             current_retry_count, config.max_retry_attempts
         ));
 
-        let mut peers_added = 0;
-        for peer_addr in &config.bootstrap_peers {
-            match peer_addr.parse::<libp2p::Multiaddr>() {
-                Ok(addr) => {
-                    if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
-                        swarm
-                            .behaviour_mut()
-                            .kad
-                            .add_address(&peer_id, addr.clone());
-                        peers_added += 1;
-                    } else {
-                        warn!("Failed to extract peer ID from: {peer_addr}");
-                    }
-                }
-                Err(e) => {
-                    warn!("Invalid multiaddr in config '{peer_addr}': {e}");
-                }
-            }
-        }
+        let peers_added = Self::load_peers_into_kademlia(&config.bootstrap_peers, swarm);
 
         if peers_added > 0 {
             match swarm.behaviour_mut().kad.bootstrap() {
