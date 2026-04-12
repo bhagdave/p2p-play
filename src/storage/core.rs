@@ -579,9 +579,20 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageR
 /// If the current subscriptions cannot be read, subscription is attempted anyway.
 /// Safe to call multiple times — subscribing when already subscribed is a no-op.
 pub async fn ensure_general_channel_subscription(peer_id: &str) -> StorageResult<()> {
-    let subscriptions = read_subscribed_channels(peer_id).await.unwrap_or_default();
-    if !subscriptions.contains(&"general".to_string()) {
-        subscribe_to_channel(peer_id, "general").await?;
+    match read_subscribed_channels(peer_id).await {
+        Ok(subscriptions) => {
+            if !subscriptions.iter().any(|s| s == "general") {
+                subscribe_to_channel(peer_id, "general").await?;
+            }
+        }
+        Err(err) => {
+            log::warn!(
+                "Failed to read subscribed channels for peer '{}'; attempting to subscribe to 'general' anyway: {}",
+                peer_id,
+                err
+            );
+            subscribe_to_channel(peer_id, "general").await?;
+        }
     }
     Ok(())
 }
