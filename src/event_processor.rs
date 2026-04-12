@@ -272,13 +272,11 @@ impl EventProcessor {
                 None
             },
             _ = self.bootstrap_status_log_interval.tick() => {
-                // Periodically log bootstrap status - use try_lock to avoid blocking
-                if let Ok(status) = auto_bootstrap.status.try_lock()
-                    && !matches!(*status, crate::bootstrap::BootstrapStatus::NotStarted) {
-                        drop(status); // Release lock before expensive operation
-                        let status_msg = auto_bootstrap.get_status_string();
-                        self.bootstrap_logger.log_status(&status_msg);
-                    }
+                // Periodically log bootstrap status - use try_has_started to avoid blocking
+                if auto_bootstrap.try_has_started().unwrap_or(false) {
+                    let status_msg = auto_bootstrap.get_status_string();
+                    self.bootstrap_logger.log_status(&status_msg);
+                }
                 None
             },
             _ = self.dm_retry_interval.tick() => {
@@ -793,14 +791,7 @@ fn update_bootstrap_status(
         libp2p::kad::Event::RoutingUpdated {
             is_new_peer: true, ..
         } => {
-            let status = auto_bootstrap.status.lock().unwrap();
-            let is_in_progress = matches!(
-                *status,
-                crate::bootstrap::BootstrapStatus::InProgress { .. }
-            );
-            drop(status); // Release lock before calling mark_connected
-
-            if is_in_progress {
+            if auto_bootstrap.is_in_progress() {
                 let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
                 auto_bootstrap.mark_connected(peer_count);
             }
