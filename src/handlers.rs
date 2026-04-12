@@ -148,6 +148,24 @@ impl SortedPeerNamesCache {
     }
 }
 
+/// Groups the three peer-tracking variables that are mutated together throughout
+/// the event loop, reducing the number of parameters threaded through `run`.
+pub struct PeerState {
+    pub peer_names: HashMap<PeerId, String>,
+    pub local_peer_name: Option<String>,
+    pub sorted_peer_names_cache: SortedPeerNamesCache,
+}
+
+impl PeerState {
+    pub fn new(local_peer_name: Option<String>) -> Self {
+        Self {
+            peer_names: HashMap::new(),
+            local_peer_name,
+            sorted_peer_names_cache: SortedPeerNamesCache::new(),
+        }
+    }
+}
+
 pub async fn handle_list_stories(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,

@@ -27,7 +27,7 @@ use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
-use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
+use handlers::{PeerState, refresh_unread_counts_for_ui};
 use network::{KEYS, PEER_ID, create_swarm};
 use network_circuit_breakers::NetworkCircuitBreakers;
 use relay::RelayService;
@@ -40,9 +40,8 @@ use ui::App;
 
 use clap::Parser;
 use data_dir::get_data_path;
-use libp2p::{PeerId, Swarm};
+use libp2p::Swarm;
 use log::error;
-use std::collections::HashMap;
 use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -125,7 +124,7 @@ async fn run_app() -> AppResult<()> {
     initialise_database(&mut app).await?;
 
     // Load saved peer name if it exists
-    let mut local_peer_name: Option<String> = match load_local_peer_name().await {
+    let local_peer_name: Option<String> = match load_local_peer_name().await {
         Ok(None) => {
             app.add_to_log(
                 "No saved peer name found. Type 'name <alias>' to set a human-readable name."
@@ -144,6 +143,7 @@ async fn run_app() -> AppResult<()> {
             None
         }
     };
+    let mut peer_state = PeerState::new(local_peer_name);
 
     let errors_log_is_new = !std::path::Path::new(&get_data_path("errors.log")).exists();
     let bootstrap_log_is_new = !std::path::Path::new(&get_data_path(BOOTSTRAP_LOG_FILE)).exists();
@@ -168,10 +168,6 @@ async fn run_app() -> AppResult<()> {
 
     let mut swarm = create_swarm(&unified_config.ping, &unified_config.network)
         .expect("Failed to create swarm");
-
-    let mut peer_names: HashMap<PeerId, String> = HashMap::new();
-
-    let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
 
     // Initialise direct message retry queue using config from unified_config
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
@@ -258,14 +254,7 @@ async fn run_app() -> AppResult<()> {
 
     // Run the main event loop
     event_processor
-        .run(
-            &mut app,
-            &mut swarm,
-            &mut peer_names,
-            &mut local_peer_name,
-            &mut sorted_peer_names_cache,
-            &mut auto_bootstrap,
-        )
+        .run(&mut app, &mut swarm, &mut peer_state, &mut auto_bootstrap)
         .await;
 
     app.cleanup().map_err(AppError::from).map_err(|e| {
