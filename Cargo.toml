@@ -47,3 +47,8 @@ wat = "1.0"
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin)'] }
 
+[workspace]
+members = ["."]
+exclude = ["test-wasm-add"]
+resolver = "3"
+
