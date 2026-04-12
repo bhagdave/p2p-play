@@ -500,6 +500,27 @@ pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
     Ok(())
 }
 
+/// Return the multiaddrs of up to `limit` outbound peers (those that have a
+/// non-NULL `multiaddr`), ordered by `last_seen` descending so we try the most
+/// recently seen peers first.  These are the peers we should attempt to
+/// reconnect to on startup.
+pub async fn get_outbound_peers(limit: usize) -> StorageResult<Vec<String>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT multiaddr FROM peers WHERE multiaddr IS NOT NULL ORDER BY last_seen DESC LIMIT ?1",
+    )?;
+    let addrs = stmt
+        .query_map(rusqlite::params![limit as i64], |row| {
+            row.get::<_, String>(0)
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(addrs)
+}
+
 pub async fn create_channel(name: &str, description: &str, created_by: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1430,7 +1451,6 @@ pub async fn get_all_cached_wasm_offerings()
     Ok(offerings)
 }
 
-
 #[cfg(any(test, feature = "test-utils"))]
 pub use test_utils::*;
 
@@ -1651,10 +1671,7 @@ pub mod test_utils {
         Ok(published_story)
     }
 
-    pub async fn save_received_story_to_path(
-        mut story: Story,
-        path: &str,
-    ) -> StorageResult<usize> {
+    pub async fn save_received_story_to_path(mut story: Story, path: &str) -> StorageResult<usize> {
         let mut local_stories: Vec<Story> =
             read_local_stories_from_path(path).await.unwrap_or_default();
 
@@ -1753,9 +1770,8 @@ pub mod test_utils {
         let conn_arc = super::get_db_connection().await?;
         let conn = conn_arc.lock().await;
 
-        let mut stmt = conn.prepare(
-            "SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?",
-        )?;
+        let mut stmt = conn
+            .prepare("SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?")?;
 
         let count: i64 =
             stmt.query_row([&story_id.to_string(), peer_id], mappers::map_row_to_i64)?;
@@ -1785,8 +1801,8 @@ pub mod test_utils {
 
 #[cfg(test)]
 mod read_status_tests {
-    use super::*;
     use super::test_utils::*;
+    use super::*;
     use std::env;
     use tempfile::TempDir;
 
@@ -1861,8 +1877,8 @@ mod read_status_tests {
 
 #[cfg(test)]
 mod peers_tests {
-    use super::*;
     use super::test_utils::*;
+    use super::*;
     use std::env;
     use tempfile::TempDir;
 
@@ -2008,9 +2024,14 @@ mod peers_tests {
         let peer_id = "12D3KooWTestPeer4";
 
         // Insert with alias
-        upsert_peer(peer_id, Some("charlie"), Some("/ip4/127.0.0.1/tcp/4004"), true)
-            .await
-            .expect("upsert_peer should succeed");
+        upsert_peer(
+            peer_id,
+            Some("charlie"),
+            Some("/ip4/127.0.0.1/tcp/4004"),
+            true,
+        )
+        .await
+        .expect("upsert_peer should succeed");
 
         // Update with None alias - existing alias should be preserved
         upsert_peer(peer_id, None, Some("/ip4/192.168.1.1/tcp/4004"), true)
@@ -2031,7 +2052,10 @@ mod peers_tests {
         // Alias should be preserved from the first upsert
         assert_eq!(stored_alias.as_deref(), Some("charlie"));
         // Multiaddr should be updated to the new value
-        assert_eq!(stored_multiaddr.as_deref(), Some("/ip4/192.168.1.1/tcp/4004"));
+        assert_eq!(
+            stored_multiaddr.as_deref(),
+            Some("/ip4/192.168.1.1/tcp/4004")
+        );
     }
 
     #[tokio::test]
@@ -2113,5 +2137,107 @@ mod peers_tests {
         assert_eq!(stored_alias.as_deref(), Some("eve"));
         // New row inserted with is_connected = false (conservative default)
         assert_eq!(is_connected, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_outbound_peers_returns_addrs() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_get_outbound_peers.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        // Insert two peers with multiadds (outbound) and one without (inbound).
+        upsert_peer(
+            "12D3KooWOutbound1",
+            None,
+            Some("/ip4/127.0.0.1/tcp/5001"),
+            true,
+        )
+        .await
+        .expect("upsert outbound peer 1");
+
+        upsert_peer(
+            "12D3KooWOutbound2",
+            None,
+            Some("/ip4/127.0.0.1/tcp/5002"),
+            true,
+        )
+        .await
+        .expect("upsert outbound peer 2");
+
+        // Inbound peer has no multiaddr.
+        upsert_peer("12D3KooWInbound1", None, None, true)
+            .await
+            .expect("upsert inbound peer");
+
+        let addrs = get_outbound_peers(10).await.expect("get_outbound_peers");
+
+        assert_eq!(addrs.len(), 2);
+        assert!(addrs.contains(&"/ip4/127.0.0.1/tcp/5001".to_string()));
+        assert!(addrs.contains(&"/ip4/127.0.0.1/tcp/5002".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_get_outbound_peers_respects_limit() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_get_outbound_peers_limit.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        // Insert 5 peers with multiadds.
+        for i in 0..5u16 {
+            upsert_peer(
+                &format!("12D3KooWLimitPeer{i}"),
+                None,
+                Some(&format!("/ip4/127.0.0.1/tcp/{}", 6000 + i)),
+                true,
+            )
+            .await
+            .expect("upsert peer for limit test");
+        }
+
+        // Request only 3.
+        let addrs = get_outbound_peers(3).await.expect("get_outbound_peers");
+        assert_eq!(addrs.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_get_outbound_peers_empty_when_no_multiaddr() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_get_outbound_peers_empty.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        // Insert peers without multiaddrs.
+        upsert_peer("12D3KooWNoAddr1", Some("frank"), None, false)
+            .await
+            .expect("upsert peer without multiaddr");
+
+        let addrs = get_outbound_peers(10).await.expect("get_outbound_peers");
+        assert!(addrs.is_empty());
     }
 }
