@@ -25,26 +25,23 @@ use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
 use crypto::CryptoService;
 use error_logger::ErrorLogger;
-use errors::{AppError, AppResult};
+use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
-use handlers::{SortedPeerNamesCache, refresh_unread_counts_for_ui};
+use handlers::{PeerState, refresh_unread_counts_for_ui};
 use network::{KEYS, PEER_ID, create_swarm};
 use network_circuit_breakers::NetworkCircuitBreakers;
 use relay::RelayService;
 use storage::{
-    ensure_stories_file_exists, ensure_unified_network_config_exists, load_local_peer_name,
-    load_unified_network_config,
+    ensure_general_channel_subscription, ensure_stories_file_exists,
+    ensure_unified_network_config_exists, load_local_peer_name, load_unified_network_config,
 };
 use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::App;
 
 use clap::Parser;
 use data_dir::get_data_path;
-use libp2p::{PeerId, Swarm};
+use libp2p::Swarm;
 use log::error;
-use std::collections::HashMap;
-use std::error::Error;
-use std::process;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
@@ -105,31 +102,18 @@ fn main() {
 
     rt.block_on(async {
         if let Err(e) = run_app().await {
-            eprintln!("Application error: {e}");
-            // Log the error chain for debugging
-            let mut source = e.source();
-            let mut indent = 1;
-            while let Some(err) = source {
-                eprintln!("{:indent$}Caused by: {err}", "", indent = indent * 2);
-                source = err.source();
-                indent += 1;
-            }
+            print_error_chain(&e);
             std::process::exit(1);
         }
     });
 }
 
 fn initialise_ui() -> AppResult<App> {
-    let app = match App::new() {
-        Ok(mut app) => {
-            app.update_local_peer_id(PEER_ID.to_string());
-            app
-        }
-        Err(e) => {
-            error!("Failed to initialise UI: {e}");
-            process::exit(1);
-        }
-    };
+    let mut app = App::new().map_err(|e| {
+        error!("Failed to initialise UI: {e}");
+        e
+    })?;
+    app.update_local_peer_id(PEER_ID.to_string());
     Ok(app)
 }
 
@@ -139,20 +123,10 @@ async fn run_app() -> AppResult<()> {
     let mut app = initialise_ui()?;
     app.refresh_conversations().await;
 
-    let db_path = std::env::var("TEST_DATABASE_PATH")
-        .or_else(|_| std::env::var("DATABASE_PATH"))
-        .unwrap_or_else(|_| get_data_path("stories.db"));
-    let db_is_new = !std::path::Path::new(&db_path).exists();
-    if let Err(e) = ensure_stories_file_exists().await {
-        error!("Failed to initialise stories file: {e}");
-        let _ = app.cleanup();
-        process::exit(1);
-    } else if db_is_new {
-        app.add_to_log(format!("Created database: {}", db_path));
-    }
+    initialise_database(&mut app).await?;
 
     // Load saved peer name if it exists
-    let mut local_peer_name: Option<String> = match load_local_peer_name().await {
+    let local_peer_name: Option<String> = match load_local_peer_name().await {
         Ok(None) => {
             app.add_to_log(
                 "No saved peer name found. Type 'name <alias>' to set a human-readable name."
@@ -171,6 +145,7 @@ async fn run_app() -> AppResult<()> {
             None
         }
     };
+    let mut peer_state = PeerState::new(local_peer_name);
 
     let errors_log_is_new = !std::path::Path::new(&get_data_path("errors.log")).exists();
     let bootstrap_log_is_new = !std::path::Path::new(&get_data_path(BOOTSTRAP_LOG_FILE)).exists();
@@ -196,10 +171,6 @@ async fn run_app() -> AppResult<()> {
     let mut swarm = create_swarm(&unified_config.ping, &unified_config.network)
         .expect("Failed to create swarm");
 
-    let mut peer_names: HashMap<PeerId, String> = HashMap::new();
-
-    let mut sorted_peer_names_cache = SortedPeerNamesCache::new();
-
     // Initialise direct message retry queue using config from unified_config
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
@@ -212,20 +183,8 @@ async fn run_app() -> AppResult<()> {
         )
         .await;
 
-    match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
-        Ok(subscriptions) => {
-            if !subscriptions.contains(&"general".to_string())
-                && let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await
-            {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
-        }
-        Err(e) => {
-            error!("Failed to check subscriptions: {e}");
-            if let Err(e) = storage::subscribe_to_channel(&PEER_ID.to_string(), "general").await {
-                error!("Failed to auto-subscribe to general channel: {e}");
-            }
-        }
+    if let Err(e) = ensure_general_channel_subscription(&PEER_ID.to_string()).await {
+        error!("Failed to ensure general channel subscription: {e}");
     }
 
     match storage::read_local_stories().await {
@@ -263,32 +222,7 @@ async fn run_app() -> AppResult<()> {
     )
     .expect("swarm can be started");
 
-    // Reconnect to peers that were previously dialled (outbound connections stored in DB).
-    // We silently skip peers whose multiaddr cannot be parsed or dialled — failures here
-    // are non-fatal and will be retried naturally via mDNS/Kademlia discovery.
-    match storage::get_outbound_peers(10).await {
-        Ok(addrs) => {
-            for addr_str in addrs {
-                match addr_str.parse::<libp2p::Multiaddr>() {
-                    Ok(addr) => {
-                        if let Err(e) = swarm.dial(addr.clone()) {
-                            app.add_to_log(format!("Startup reconnect failed for {addr}: {e}"));
-                        } else {
-                            app.add_to_log(format!("Reconnecting to known peer at {addr}"));
-                        }
-                    }
-                    Err(e) => {
-                        error!("Invalid multiaddr in peer database '{addr_str}': {e}");
-                        app.add_to_log(format!("Skipping invalid peer address '{addr_str}': {e}"));
-                    }
-                }
-            }
-        }
-        Err(e) => {
-            error!("Failed to load outbound peers for startup reconnect: {e}");
-            app.add_to_log(format!("Failed to load stored peers for reconnect: {e}"));
-        }
-    }
+    reconnect_stored_peers(&mut swarm, &mut app).await;
 
     let crypto_service = CryptoService::new(KEYS.clone());
 
@@ -324,14 +258,7 @@ async fn run_app() -> AppResult<()> {
 
     // Run the main event loop
     event_processor
-        .run(
-            &mut app,
-            &mut swarm,
-            &mut peer_names,
-            &mut local_peer_name,
-            &mut sorted_peer_names_cache,
-            &mut auto_bootstrap,
-        )
+        .run(&mut app, &mut swarm, &mut peer_state, &mut auto_bootstrap)
         .await;
 
     app.cleanup().map_err(AppError::from).map_err(|e| {
@@ -378,6 +305,53 @@ fn setup_communication_channels() -> (CommunicationChannels, Loggers) {
     };
 
     (channels, loggers)
+}
+
+async fn reconnect_stored_peers(
+    swarm: &mut Swarm<impl libp2p::swarm::NetworkBehaviour>,
+    app: &mut App,
+) {
+    // Reconnect to peers that were previously dialled (outbound connections stored in DB).
+    // We silently skip peers whose multiaddr cannot be parsed or dialled — failures here
+    // are non-fatal and will be retried naturally via mDNS/Kademlia discovery.
+    match storage::get_outbound_peers(10).await {
+        Ok(addrs) => {
+            for addr_str in addrs {
+                match addr_str.parse::<libp2p::Multiaddr>() {
+                    Ok(addr) => {
+                        if let Err(e) = swarm.dial(addr.clone()) {
+                            app.add_to_log(format!("Startup reconnect failed for {addr}: {e}"));
+                        } else {
+                            app.add_to_log(format!("Reconnecting to known peer at {addr}"));
+                        }
+                    }
+                    Err(e) => {
+                        error!("Invalid multiaddr in peer database '{addr_str}': {e}");
+                        app.add_to_log(format!("Skipping invalid peer address '{addr_str}': {e}"));
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to load outbound peers for startup reconnect: {e}");
+            app.add_to_log(format!("Failed to load stored peers for reconnect: {e}"));
+        }
+    }
+}
+
+async fn initialise_database(app: &mut App) -> AppResult<()> {
+    let db_path = std::env::var("TEST_DATABASE_PATH")
+        .or_else(|_| std::env::var("DATABASE_PATH"))
+        .unwrap_or_else(|_| get_data_path("stories.db"));
+    let db_is_new = !std::path::Path::new(&db_path).exists();
+    if let Err(e) = ensure_stories_file_exists().await {
+        error!("Failed to initialise stories file: {e}");
+        let _ = app.cleanup();
+        return Err(e.into());
+    } else if db_is_new {
+        app.add_to_log(format!("Created database: {}", db_path));
+    }
+    Ok(())
 }
 
 async fn load_configuration(app: &mut App) -> UnifiedNetworkConfig {

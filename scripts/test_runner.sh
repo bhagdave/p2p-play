@@ -51,6 +51,7 @@ run_test_suite "Running Network Failure Recovery Tests..." "cargo test --test ne
 run_test_suite "Running Performance and Load Tests..." "cargo test --test performance_load_tests --features test-utils" "2"
 run_test_suite "Running Network Reconnection Tests..." "cargo test --test network_reconnection_tests --features test-utils" "1"
 run_test_suite "Running Auto-Subscription Tests..." "cargo test --test auto_subscription_tests --features test-utils" "1"
+run_test_suite "Running Channel Subscription Tests..." "cargo test --test channel_subscription_tests --features test-utils" "1"
 run_test_suite "Running Conversation Tests..." "cargo test --test conversation_tests --features test-utils" "1"
 run_test_suite "Running Message Notification Tests..." "cargo test --test message_notification_tests --features test-utils" "1"
 run_test_suite "Running Conversation Integration Tests..." "cargo test --test conversation_integration_tests --features test-utils" "1"

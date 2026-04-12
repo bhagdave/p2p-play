@@ -4,7 +4,7 @@ use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
-use crate::handlers::{SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
+use crate::handlers::{PeerState, SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
 use crate::network::{
     APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
 };
@@ -124,14 +124,11 @@ impl EventProcessor {
     }
 
     /// Main event loop
-    #[allow(clippy::too_many_arguments)]
     pub async fn run(
         &mut self,
         app: &mut App,
         swarm: &mut Swarm<StoryBehaviour>,
-        peer_names: &mut HashMap<PeerId, String>,
-        local_peer_name: &mut Option<String>,
-        sorted_peer_names_cache: &mut SortedPeerNamesCache,
+        peer_state: &mut PeerState,
         auto_bootstrap: &mut AutoBootstrap,
     ) {
         loop {
@@ -163,9 +160,9 @@ impl EventProcessor {
                     main_loop_timeout,
                     app,
                     swarm,
-                    peer_names,
-                    sorted_peer_names_cache,
-                    local_peer_name,
+                    &mut peer_state.peer_names,
+                    &mut peer_state.sorted_peer_names_cache,
+                    &peer_state.local_peer_name,
                     auto_bootstrap,
                 )
                 .await;
@@ -175,18 +172,21 @@ impl EventProcessor {
                     event,
                     app,
                     swarm,
-                    peer_names,
-                    local_peer_name,
-                    sorted_peer_names_cache,
+                    &mut peer_state.peer_names,
+                    &mut peer_state.local_peer_name,
+                    &mut peer_state.sorted_peer_names_cache,
                 )
                 .await;
 
                 // Restore any previously learned aliases for reconnecting peers and
                 // learn new aliases from peers that just broadcast their name.
-                self.sync_known_peer_names(peer_names, sorted_peer_names_cache);
+                self.sync_known_peer_names(
+                    &mut peer_state.peer_names,
+                    &mut peer_state.sorted_peer_names_cache,
+                );
 
-                app.update_peers(peer_names.clone());
-                app.update_local_peer_name(local_peer_name.clone());
+                app.update_peers(peer_state.peer_names.clone());
+                app.update_local_peer_name(peer_state.local_peer_name.clone());
             }
 
             // Keep bootstrap status display up-to-date every loop iteration

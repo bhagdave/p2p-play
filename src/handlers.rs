@@ -148,6 +148,24 @@ impl SortedPeerNamesCache {
     }
 }
 
+/// Groups the three peer-tracking variables that are mutated together throughout
+/// the event loop, reducing the number of parameters threaded through `run`.
+pub struct PeerState {
+    pub peer_names: HashMap<PeerId, String>,
+    pub local_peer_name: Option<String>,
+    pub sorted_peer_names_cache: SortedPeerNamesCache,
+}
+
+impl PeerState {
+    pub fn new(local_peer_name: Option<String>) -> Self {
+        Self {
+            peer_names: HashMap::new(),
+            local_peer_name,
+            sorted_peer_names_cache: SortedPeerNamesCache::new(),
+        }
+    }
+}
+
 pub async fn handle_list_stories(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -2929,5 +2947,35 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
         _ => {
             ui_logger.log("Usage: wasm config [advertise|execute] [on|off|status]".to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_peer_state_new_with_no_name() {
+        let state = PeerState::new(None);
+        assert!(state.local_peer_name.is_none());
+        assert!(state.peer_names.is_empty());
+    }
+
+    #[test]
+    fn test_peer_state_new_with_name() {
+        let state = PeerState::new(Some("alice".to_string()));
+        assert_eq!(state.local_peer_name, Some("alice".to_string()));
+        assert!(state.peer_names.is_empty());
+    }
+
+    #[test]
+    fn test_peer_state_fields_are_mutable() {
+        let mut state = PeerState::new(None);
+        let peer_id = PeerId::random();
+        state.peer_names.insert(peer_id, "bob".to_string());
+        state.local_peer_name = Some("alice".to_string());
+
+        assert_eq!(state.peer_names.get(&peer_id), Some(&"bob".to_string()));
+        assert_eq!(state.local_peer_name, Some("alice".to_string()));
     }
 }
