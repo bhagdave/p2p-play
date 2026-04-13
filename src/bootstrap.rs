@@ -28,24 +28,60 @@ pub enum BootstrapStatus {
     },
 }
 
+struct BootstrapState {
+    status: BootstrapStatus,
+    retry_count: u32,
+    next_retry_time: Option<Instant>,
+}
+
+impl BootstrapState {
+    fn new() -> Self {
+        Self {
+            status: BootstrapStatus::NotStarted,
+            retry_count: 0,
+            next_retry_time: None,
+        }
+    }
+
+    fn set_failed(&mut self, error: String) {
+        self.status = BootstrapStatus::Failed {
+            attempts: self.retry_count,
+            last_error: error,
+        };
+    }
+}
+
 pub struct AutoBootstrap {
-    pub status: Arc<Mutex<BootstrapStatus>>,
+    state: Arc<Mutex<BootstrapState>>,
     config: Option<BootstrapConfig>,
-    retry_count: Arc<Mutex<u32>>,
-    next_retry_time: Arc<Mutex<Option<Instant>>>,
 }
 
 impl AutoBootstrap {
     pub fn new() -> Self {
         Self {
-            status: Arc::new(Mutex::new(BootstrapStatus::NotStarted)),
+            state: Arc::new(Mutex::new(BootstrapState::new())),
             config: None,
-            retry_count: Arc::new(Mutex::new(0)),
-            next_retry_time: Arc::new(Mutex::new(None)),
         }
     }
 
-    pub async fn initialise(
+    /// Returns `true` if the bootstrap is currently in the `InProgress` state.
+    pub fn is_in_progress(&self) -> bool {
+        matches!(
+            self.state.lock().unwrap().status,
+            BootstrapStatus::InProgress { .. }
+        )
+    }
+
+    /// Non-blocking check: returns `Some(true)` if bootstrap has started (i.e. not
+    /// `NotStarted`), `Some(false)` if it hasn't, or `None` if the lock is contended.
+    pub fn try_has_started(&self) -> Option<bool> {
+        self.state
+            .try_lock()
+            .ok()
+            .map(|s| !matches!(s.status, BootstrapStatus::NotStarted))
+    }
+
+    pub  fn initialise(
         &mut self,
         bootstrap_config: &BootstrapConfig,
         bootstrap_logger: &BootstrapLogger,
@@ -56,6 +92,31 @@ impl AutoBootstrap {
             "Bootstrap initialised with {} configured peers",
             bootstrap_config.bootstrap_peers.len()
         ));
+    }
+
+    /// Parses each address in `peer_addrs`, extracts the peer ID, and registers
+    /// the (peer_id, addr) pair with Kademlia. Returns the number of peers added.
+    fn load_peers_into_kademlia(
+        peer_addrs: &[String],
+        swarm: &mut Swarm<StoryBehaviour>,
+    ) -> usize {
+        let mut peers_added = 0;
+        for peer_addr in peer_addrs {
+            match peer_addr.parse::<libp2p::Multiaddr>() {
+                Ok(addr) => {
+                    if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
+                        swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                        peers_added += 1;
+                    } else {
+                        warn!("Failed to extract peer ID from: {peer_addr}");
+                    }
+                }
+                Err(e) => {
+                    warn!("Invalid multiaddr in config '{peer_addr}': {e}");
+                }
+            }
+        }
+        peers_added
     }
 
     pub async fn attempt_bootstrap(
@@ -74,54 +135,28 @@ impl AutoBootstrap {
 
         if config.bootstrap_peers.is_empty() {
             warn!("No bootstrap peers configured");
-            {
-                let mut status = self.status.lock().unwrap();
-                *status = BootstrapStatus::Failed {
-                    attempts: 0,
-                    last_error: "No bootstrap peers configured".to_string(),
-                };
-            }
+            self.state.lock().unwrap().set_failed("No bootstrap peers configured".to_string());
             return false;
         }
 
         {
-            let mut retry_count = self.retry_count.lock().unwrap();
-            *retry_count += 1;
-            let mut status = self.status.lock().unwrap();
-            *status = BootstrapStatus::InProgress {
-                attempts: *retry_count,
+            let mut state = self.state.lock().unwrap();
+            state.retry_count += 1;
+            state.status = BootstrapStatus::InProgress {
+                attempts: state.retry_count,
                 last_attempt: Instant::now(),
             };
         }
 
-        let current_retry_count = *self.retry_count.lock().unwrap();
+        let current_retry_count = self.state.lock().unwrap().retry_count;
         bootstrap_logger.log_attempt(&format!(
             "Attempting automatic DHT bootstrap (attempt {}/{})",
             current_retry_count, config.max_retry_attempts
         ));
 
-        let mut peers_added = 0;
-        for peer_addr in &config.bootstrap_peers {
-            match peer_addr.parse::<libp2p::Multiaddr>() {
-                Ok(addr) => {
-                    if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
-                        swarm
-                            .behaviour_mut()
-                            .kad
-                            .add_address(&peer_id, addr.clone());
-                        peers_added += 1;
-                    } else {
-                        warn!("Failed to extract peer ID from: {peer_addr}");
-                    }
-                }
-                Err(e) => {
-                    warn!("Invalid multiaddr in config '{peer_addr}': {e}");
-                }
-            }
-        }
+        let peers_added = Self::load_peers_into_kademlia(&config.bootstrap_peers, swarm);
 
         if peers_added > 0 {
-            // Start bootstrap process
             match swarm.behaviour_mut().kad.bootstrap() {
                 Ok(_) => {
                     bootstrap_logger
@@ -132,28 +167,14 @@ impl AutoBootstrap {
                     let error_msg = format!("Failed to start DHT bootstrap: {e:?}");
                     error_logger.log_error(&error_msg);
                     bootstrap_logger.log_error(&error_msg);
-                    {
-                        let retry_count = *self.retry_count.lock().unwrap();
-                        let mut status = self.status.lock().unwrap();
-                        *status = BootstrapStatus::Failed {
-                            attempts: retry_count,
-                            last_error: error_msg,
-                        };
-                    }
+                    self.state.lock().unwrap().set_failed(error_msg);
                     false
                 }
             }
         } else {
             let error_msg = "No valid bootstrap peers could be added".to_string();
             warn!("{error_msg}");
-            {
-                let retry_count = *self.retry_count.lock().unwrap();
-                let mut status = self.status.lock().unwrap();
-                *status = BootstrapStatus::Failed {
-                    attempts: retry_count,
-                    last_error: error_msg.clone(),
-                };
-            }
+            self.state.lock().unwrap().set_failed(error_msg.clone());
             bootstrap_logger.log_error(&error_msg);
             false
         }
@@ -165,12 +186,11 @@ impl AutoBootstrap {
             None => return false,
         };
 
-        let status = self.status.lock().unwrap();
-        match &*status {
+        let state = self.state.lock().unwrap();
+        match &state.status {
             BootstrapStatus::Failed { attempts, .. } => *attempts < config.max_retry_attempts,
             BootstrapStatus::NotStarted => true,
-            BootstrapStatus::InProgress { .. } => false,
-            BootstrapStatus::Connected { .. } => false,
+            BootstrapStatus::InProgress { .. } | BootstrapStatus::Connected { .. } => false,
         }
     }
 
@@ -182,8 +202,7 @@ impl AutoBootstrap {
     }
 
     pub fn is_retry_time(&self) -> bool {
-        let next_retry_time = self.next_retry_time.lock().unwrap();
-        match *next_retry_time {
+        match self.state.lock().unwrap().next_retry_time {
             Some(retry_time) => Instant::now() >= retry_time,
             None => true, // First attempt
         }
@@ -195,55 +214,34 @@ impl AutoBootstrap {
             None => return,
         };
 
-        // Exponential backoff: retry_interval * 2^(attempts-1)
+        // Exponential backoff: retry_interval * 2^(attempts-1), capped at 2^5 = 32x
         let base_interval_ms = config.retry_interval_ms;
-        let retry_count = *self.retry_count.lock().unwrap();
-        let backoff_power = (retry_count.saturating_sub(1)).min(5); // Cap at 2^5 = 32x
+        let retry_count = self.state.lock().unwrap().retry_count;
+        let backoff_power = (retry_count.saturating_sub(1)).min(5);
         let backoff_multiplier = 2_u64.pow(backoff_power);
+        let retry_delay = Duration::from_millis(base_interval_ms.saturating_mul(backoff_multiplier));
 
-        // Use saturating_mul to prevent overflow, then convert to Duration safely
-        let retry_delay_ms = base_interval_ms.saturating_mul(backoff_multiplier);
-        let retry_delay = Duration::from_millis(retry_delay_ms);
-
-        {
-            let mut next_retry_time = self.next_retry_time.lock().unwrap();
-            *next_retry_time = Some(Instant::now() + retry_delay);
-        }
+        self.state.lock().unwrap().next_retry_time = Some(Instant::now() + retry_delay);
     }
 
     pub fn mark_connected(&mut self, peer_count: usize) {
-        {
-            let mut status = self.status.lock().unwrap();
-            *status = BootstrapStatus::Connected {
-                peer_count,
-                connected_at: Instant::now(),
-            };
-        }
-        {
-            let mut retry_count = self.retry_count.lock().unwrap();
-            *retry_count = 0;
-        }
-        {
-            let mut next_retry_time = self.next_retry_time.lock().unwrap();
-            *next_retry_time = None;
-        }
+        let mut state = self.state.lock().unwrap();
+        state.status = BootstrapStatus::Connected {
+            peer_count,
+            connected_at: Instant::now(),
+        };
+        state.retry_count = 0;
+        state.next_retry_time = None;
     }
 
     pub fn mark_failed(&mut self, error: String) {
-        {
-            let retry_count = *self.retry_count.lock().unwrap();
-            let mut status = self.status.lock().unwrap();
-            *status = BootstrapStatus::Failed {
-                attempts: retry_count,
-                last_error: error,
-            };
-        }
+        self.state.lock().unwrap().set_failed(error);
         self.schedule_next_retry();
     }
 
     pub fn get_status_string(&self) -> String {
-        let status = self.status.lock().unwrap();
-        match &*status {
+        let state = self.state.lock().unwrap();
+        match &state.status {
             BootstrapStatus::NotStarted => "DHT: Not started".to_string(),
             BootstrapStatus::InProgress { attempts, .. } => {
                 format!("DHT: Bootstrapping (attempt {attempts})")
@@ -269,30 +267,23 @@ impl AutoBootstrap {
     }
 
     /// Returns a short, stable label for display in the TUI status bar.
-    pub fn get_bootstrap_short_status(&self) -> &'static str {
-        let status = self.status.lock().unwrap();
-        match &*status {
+    pub fn get_bootstrap_short_status(&self) -> String {
+        let state = self.state.lock().unwrap();
+        match &state.status {
             BootstrapStatus::NotStarted => "--",
             BootstrapStatus::InProgress { .. } => "Connecting",
             BootstrapStatus::Connected { .. } => "OK",
             BootstrapStatus::Failed { .. } => "Failed",
         }
+        .to_string()
     }
 
     #[allow(dead_code)]
     pub fn reset(&mut self) {
-        {
-            let mut status = self.status.lock().unwrap();
-            *status = BootstrapStatus::NotStarted;
-        }
-        {
-            let mut retry_count = self.retry_count.lock().unwrap();
-            *retry_count = 0;
-        }
-        {
-            let mut next_retry_time = self.next_retry_time.lock().unwrap();
-            *next_retry_time = None;
-        }
+        let mut state = self.state.lock().unwrap();
+        state.status = BootstrapStatus::NotStarted;
+        state.retry_count = 0;
+        state.next_retry_time = None;
     }
 }
 
@@ -321,19 +312,16 @@ pub async fn run_auto_bootstrap_with_retry(
         .attempt_bootstrap(swarm, bootstrap_logger, error_logger)
         .await
     {
-        // Bootstrap started successfully, but we need to wait for results
-        // The actual success/failure will be handled by DHT events
+        // Bootstrap started successfully; actual success/failure arrives via DHT events
     } else {
-        // Bootstrap failed immediately, schedule retry
         auto_bootstrap.schedule_next_retry();
 
+        let max_retries = auto_bootstrap.max_retry_attempts();
         if auto_bootstrap.should_retry() {
-            let max_retries = auto_bootstrap.max_retry_attempts();
             ui_logger.log(format!(
                 "Bootstrap attempt failed — will retry (up to {max_retries} attempts). Check {BOOTSTRAP_LOG_FILE} for details."
             ));
         } else {
-            let max_retries = auto_bootstrap.max_retry_attempts();
             ui_logger.log(format!(
                 "Bootstrap failed after reaching the maximum of {max_retries} attempts — check {BOOTSTRAP_LOG_FILE} or add peers to {UNIFIED_CONFIG_FILE}"
             ));
@@ -353,14 +341,71 @@ mod tests {
     }
 
     #[test]
+    fn test_is_in_progress() {
+        let bootstrap = AutoBootstrap::new();
+
+        assert!(!bootstrap.is_in_progress());
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::InProgress {
+            attempts: 1,
+            last_attempt: Instant::now(),
+        };
+        assert!(bootstrap.is_in_progress());
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Connected {
+            peer_count: 3,
+            connected_at: Instant::now(),
+        };
+        assert!(!bootstrap.is_in_progress());
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 1,
+            last_error: "err".to_string(),
+        };
+        assert!(!bootstrap.is_in_progress());
+    }
+
+    #[test]
+    fn test_try_has_started() {
+        let bootstrap = AutoBootstrap::new();
+
+        // NotStarted → Some(false)
+        assert_eq!(bootstrap.try_has_started(), Some(false));
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::InProgress {
+            attempts: 1,
+            last_attempt: Instant::now(),
+        };
+        assert_eq!(bootstrap.try_has_started(), Some(true));
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Connected {
+            peer_count: 2,
+            connected_at: Instant::now(),
+        };
+        assert_eq!(bootstrap.try_has_started(), Some(true));
+
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 1,
+            last_error: "err".to_string(),
+        };
+        assert_eq!(bootstrap.try_has_started(), Some(true));
+    }
+
+    #[test]
+    fn test_try_has_started_returns_none_when_lock_held() {
+        let bootstrap = AutoBootstrap::new();
+        // Hold the lock so try_lock fails → None
+        let _guard = bootstrap.state.lock().unwrap();
+        assert_eq!(bootstrap.try_has_started(), None);
+    }
+
+    #[test]
     fn test_auto_bootstrap_new() {
         let bootstrap = AutoBootstrap::new();
-        let status = bootstrap.status.lock().unwrap();
-        assert!(matches!(*status, BootstrapStatus::NotStarted));
-        let retry_count = bootstrap.retry_count.lock().unwrap();
-        assert_eq!(*retry_count, 0);
-        let next_retry_time = bootstrap.next_retry_time.lock().unwrap();
-        assert!(next_retry_time.is_none());
+        let state = bootstrap.state.lock().unwrap();
+        assert!(matches!(state.status, BootstrapStatus::NotStarted));
+        assert_eq!(state.retry_count, 0);
+        assert!(state.next_retry_time.is_none());
     }
 
     #[test]
@@ -373,50 +418,37 @@ mod tests {
     fn test_should_retry_logic() {
         let mut bootstrap = AutoBootstrap::new();
 
-        // Add a test config
         bootstrap.config = Some(BootstrapConfig::new());
 
         // Should retry when not started
         assert!(bootstrap.should_retry());
 
         // Should not retry when in progress
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::InProgress {
-                attempts: 1,
-                last_attempt: Instant::now(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::InProgress {
+            attempts: 1,
+            last_attempt: Instant::now(),
+        };
         assert!(!bootstrap.should_retry());
 
         // Should not retry when connected
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Connected {
-                peer_count: 5,
-                connected_at: Instant::now(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Connected {
+            peer_count: 5,
+            connected_at: Instant::now(),
+        };
         assert!(!bootstrap.should_retry());
 
         // Should retry when failed but under max attempts
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Failed {
-                attempts: 2,
-                last_error: "error".to_string(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 2,
+            last_error: "error".to_string(),
+        };
         assert!(bootstrap.should_retry());
 
         // Should not retry when failed and at max attempts
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Failed {
-                attempts: 10,
-                last_error: "error".to_string(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 10,
+            last_error: "error".to_string(),
+        };
         assert!(!bootstrap.should_retry());
     }
 
@@ -424,45 +456,34 @@ mod tests {
     fn test_mark_connected() {
         let mut bootstrap = AutoBootstrap::new();
         {
-            let mut retry_count = bootstrap.retry_count.lock().unwrap();
-            *retry_count = 3;
-        }
-        {
-            let mut next_retry_time = bootstrap.next_retry_time.lock().unwrap();
-            *next_retry_time = Some(Instant::now());
+            let mut state = bootstrap.state.lock().unwrap();
+            state.retry_count = 3;
+            state.next_retry_time = Some(Instant::now());
         }
 
         bootstrap.mark_connected(10);
 
-        let status = bootstrap.status.lock().unwrap();
-        match &*status {
+        let state = bootstrap.state.lock().unwrap();
+        match &state.status {
             BootstrapStatus::Connected { peer_count, .. } => {
                 assert_eq!(*peer_count, 10);
             }
             _ => panic!("Expected Connected status"),
         }
-
-        let retry_count = bootstrap.retry_count.lock().unwrap();
-        assert_eq!(*retry_count, 0);
-        let next_retry_time = bootstrap.next_retry_time.lock().unwrap();
-        assert!(next_retry_time.is_none());
+        assert_eq!(state.retry_count, 0);
+        assert!(state.next_retry_time.is_none());
     }
 
     #[test]
     fn test_mark_failed() {
         let mut bootstrap = AutoBootstrap::new();
-        {
-            let mut retry_count = bootstrap.retry_count.lock().unwrap();
-            *retry_count = 2;
-        }
-
-        // Add a test config
+        bootstrap.state.lock().unwrap().retry_count = 2;
         bootstrap.config = Some(BootstrapConfig::new());
 
         bootstrap.mark_failed("Test error".to_string());
 
-        let status = bootstrap.status.lock().unwrap();
-        match &*status {
+        let state = bootstrap.state.lock().unwrap();
+        match &state.status {
             BootstrapStatus::Failed {
                 attempts,
                 last_error,
@@ -472,8 +493,9 @@ mod tests {
             }
             _ => panic!("Expected Failed status"),
         }
+        drop(state);
 
-        let next_retry_time = bootstrap.next_retry_time.lock().unwrap();
+        let next_retry_time = bootstrap.state.lock().unwrap().next_retry_time;
         assert!(next_retry_time.is_some());
     }
 
@@ -481,16 +503,10 @@ mod tests {
     fn test_reset() {
         let mut bootstrap = AutoBootstrap::new();
         {
-            let mut retry_count = bootstrap.retry_count.lock().unwrap();
-            *retry_count = 5;
-        }
-        {
-            let mut next_retry_time = bootstrap.next_retry_time.lock().unwrap();
-            *next_retry_time = Some(Instant::now());
-        }
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Failed {
+            let mut state = bootstrap.state.lock().unwrap();
+            state.retry_count = 5;
+            state.next_retry_time = Some(Instant::now());
+            state.status = BootstrapStatus::Failed {
                 attempts: 5,
                 last_error: "error".to_string(),
             };
@@ -498,12 +514,10 @@ mod tests {
 
         bootstrap.reset();
 
-        let status = bootstrap.status.lock().unwrap();
-        assert!(matches!(*status, BootstrapStatus::NotStarted));
-        let retry_count = bootstrap.retry_count.lock().unwrap();
-        assert_eq!(*retry_count, 0);
-        let next_retry_time = bootstrap.next_retry_time.lock().unwrap();
-        assert!(next_retry_time.is_none());
+        let state = bootstrap.state.lock().unwrap();
+        assert!(matches!(state.status, BootstrapStatus::NotStarted));
+        assert_eq!(state.retry_count, 0);
+        assert!(state.next_retry_time.is_none());
     }
 
     #[test]
@@ -512,35 +526,26 @@ mod tests {
 
         assert_eq!(bootstrap.get_status_string(), "DHT: Not started");
 
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::InProgress {
-                attempts: 2,
-                last_attempt: Instant::now(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::InProgress {
+            attempts: 2,
+            last_attempt: Instant::now(),
+        };
         assert_eq!(
             bootstrap.get_status_string(),
             "DHT: Bootstrapping (attempt 2)"
         );
 
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Connected {
-                peer_count: 5,
-                connected_at: Instant::now(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Connected {
+            peer_count: 5,
+            connected_at: Instant::now(),
+        };
         let status_str = bootstrap.get_status_string();
         assert!(status_str.starts_with("DHT: Connected (5 peers"));
 
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Failed {
-                attempts: 3,
-                last_error: "timeout".to_string(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 3,
+            last_error: "timeout".to_string(),
+        };
         assert_eq!(
             bootstrap.get_status_string(),
             "DHT: Failed after 3 attempts (timeout)"
@@ -553,31 +558,22 @@ mod tests {
 
         assert_eq!(bootstrap.get_bootstrap_short_status(), "--");
 
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::InProgress {
-                attempts: 1,
-                last_attempt: Instant::now(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::InProgress {
+            attempts: 1,
+            last_attempt: Instant::now(),
+        };
         assert_eq!(bootstrap.get_bootstrap_short_status(), "Connecting");
 
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Connected {
-                peer_count: 3,
-                connected_at: Instant::now(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Connected {
+            peer_count: 3,
+            connected_at: Instant::now(),
+        };
         assert_eq!(bootstrap.get_bootstrap_short_status(), "OK");
 
-        {
-            let mut status = bootstrap.status.lock().unwrap();
-            *status = BootstrapStatus::Failed {
-                attempts: 2,
-                last_error: "timeout".to_string(),
-            };
-        }
+        bootstrap.state.lock().unwrap().status = BootstrapStatus::Failed {
+            attempts: 2,
+            last_error: "timeout".to_string(),
+        };
         assert_eq!(bootstrap.get_bootstrap_short_status(), "Failed");
     }
 
@@ -589,7 +585,6 @@ mod tests {
         let test_config = BootstrapConfig::new();
 
         bootstrap
-            .initialise(&test_config, &bootstrap_logger, &error_logger)
-            .await;
+            .initialise(&test_config, &bootstrap_logger, &error_logger);
     }
 }

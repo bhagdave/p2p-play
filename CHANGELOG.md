@@ -8,6 +8,13 @@ All changes to this project will be documented in this file.
 - **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
 
 ### Changed
+- **`bootstrap.rs` refactoring for maintainability**: Consolidated internal state in `AutoBootstrap` and improved separation of concerns.
+  - `BootstrapState` struct — the three independently-locked fields (`status`, `retry_count`, `next_retry_time`) are now grouped into a single `Arc<Mutex<BootstrapState>>`, eliminating multi-lock sequences and ensuring state transitions are atomic.
+  - `BootstrapState::set_failed` — extracted repeated "read retry_count, write Failed status" pattern (previously duplicated three times) into a single method.
+  - `load_peers_into_kademlia` — peer address parsing and Kademlia registration extracted from `attempt_bootstrap` into its own method, making each step independently readable.
+  - `is_in_progress` / `try_has_started` — two new public query methods replace direct field access from `event_processor.rs`, removing the `pub status` field and encapsulating state behind the struct boundary. `try_has_started` uses `try_lock` to preserve the non-blocking contract required by the async event loop.
+  - `get_bootstrap_short_status` now returns `String` (was `&'static str`), consistent with `get_status_string` and the `App::bootstrap_status_display` field which has also been updated to `String`.
+  - Tests added for `is_in_progress`, `try_has_started` (including the contended-lock `None` case).
 - **`main.rs` refactoring for maintainability**: Extracted several inline blocks from `run_app` into named functions to improve readability and testability.
   - `initialise_ui` — UI initialisation now propagates errors via `AppResult<App>` rather than calling `process::exit` internally.
   - `initialise_database` — database path resolution and first-run logging extracted from `run_app`.

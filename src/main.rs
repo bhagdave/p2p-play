@@ -180,8 +180,7 @@ async fn run_app() -> AppResult<()> {
             &unified_config.bootstrap,
             &loggers.bootstrap_logger,
             &loggers.error_logger,
-        )
-        .await;
+        );
 
     if let Err(e) = ensure_general_channel_subscription(&PEER_ID.to_string()).await {
         error!("Failed to ensure general channel subscription: {e}");
