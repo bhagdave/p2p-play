@@ -1341,9 +1341,15 @@ impl App {
                 String::new()
             };
 
+            let health_text = if let Some(ref health) = self.network_health {
+                format!(" | {}", health.status_string())
+            } else {
+                String::new()
+            };
+
             let status_text = if let Some(ref name) = self.local_peer_name {
                 format!(
-                    "P2P-Play v{} | Peer: {} ({}) | {} | Mode: {} | AUTO: {}{}",
+                    "P2P-Play v{} | Peer: {} ({}) | {} | Mode: {} | AUTO: {}{}{}",
                     version,
                     name,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
@@ -1356,11 +1362,12 @@ impl App {
                         InputMode::MessageComposition { .. } => "Message Composition",
                     },
                     if self.auto_scroll { "ON" } else { "OFF" },
-                    message_indicator
+                    message_indicator,
+                    health_text
                 )
             } else {
                 format!(
-                    "P2P-Play v{} | Peer ID: {} | {} | Mode: {} | AUTO: {}{}",
+                    "P2P-Play v{} | Peer ID: {} | {} | Mode: {} | AUTO: {}{}{}",
                     version,
                     self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
                     network_status_text,
@@ -1372,7 +1379,8 @@ impl App {
                         InputMode::MessageComposition { .. } => "Message Composition",
                     },
                     if self.auto_scroll { "ON" } else { "OFF" },
-                    message_indicator
+                    message_indicator,
+                    health_text
                 )
             };
 
