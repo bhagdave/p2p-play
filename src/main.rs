@@ -175,12 +175,11 @@ async fn run_app() -> AppResult<()> {
     let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
 
     let mut auto_bootstrap = AutoBootstrap::new();
-    auto_bootstrap
-        .initialise(
-            &unified_config.bootstrap,
-            &loggers.bootstrap_logger,
-            &loggers.error_logger,
-        );
+    auto_bootstrap.initialise(
+        &unified_config.bootstrap,
+        &loggers.bootstrap_logger,
+        &loggers.error_logger,
+    );
 
     if let Err(e) = ensure_general_channel_subscription(&PEER_ID.to_string()).await {
         error!("Failed to ensure general channel subscription: {e}");

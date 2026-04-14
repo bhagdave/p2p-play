@@ -1,6 +1,6 @@
 use p2p_play::circuit_breaker::*;
-use tokio::time::{Duration, sleep};
 use std::time::Instant;
+use tokio::time::{Duration, sleep};
 
 #[tokio::test]
 async fn test_circuit_breaker_closed_state() {
@@ -149,12 +149,18 @@ async fn test_can_execute_counts_total_requests_in_half_open() {
     assert!(cb.can_execute().await);
     let info = cb.get_state().await;
     assert_eq!(info.state, CircuitState::HalfOpen);
-    assert_eq!(info.total_requests, 1, "Open to HalfOpen transition must count as a request");
+    assert_eq!(
+        info.total_requests, 1,
+        "Open to HalfOpen transition must count as a request"
+    );
 
     // Subsequent HalfOpen calls must also increment total_requests
     assert!(cb.can_execute().await);
     let info = cb.get_state().await;
-    assert_eq!(info.total_requests, 2, "HalfOpen call must count as a request");
+    assert_eq!(
+        info.total_requests, 2,
+        "HalfOpen call must count as a request"
+    );
 }
 
 #[tokio::test]
@@ -206,5 +212,8 @@ async fn test_can_execute_closed_counts_total_requests() {
     assert!(cb.can_execute().await);
 
     let info = cb.get_state().await;
-    assert_eq!(info.total_requests, 3, "Closed state calls must all count as requests");
+    assert_eq!(
+        info.total_requests, 3,
+        "Closed state calls must all count as requests"
+    );
 }

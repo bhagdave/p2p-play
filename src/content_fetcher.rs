@@ -33,12 +33,18 @@ fn build_client(timeout_secs: u64) -> reqwest::Client {
 
 impl GatewayFetcher {
     pub fn new() -> Self {
-        Self { gateway_url: "https://dweb.link".to_string(), client: build_client(30)}
+        Self {
+            gateway_url: "https://dweb.link".to_string(),
+            client: build_client(30),
+        }
     }
 
     #[allow(dead_code)]
     pub fn with_gateway(gateway_url: &str) -> Self {
-        Self { gateway_url: gateway_url.to_string(), client: build_client(30)}
+        Self {
+            gateway_url: gateway_url.to_string(),
+            client: build_client(30),
+        }
     }
 }
 
@@ -50,7 +56,9 @@ impl ContentFetcher for GatewayFetcher {
         if !response.status().is_success() {
             match response.status().as_u16() {
                 404 => return Err(FetchError::NotFound(cid.to_string())),
-                400..=599 => return Err(FetchError::Http(response.error_for_status().unwrap_err())),
+                400..=599 => {
+                    return Err(FetchError::Http(response.error_for_status().unwrap_err()));
+                }
                 _ => return Err(FetchError::Http(response.error_for_status().unwrap_err())),
             }
         }
@@ -78,6 +86,8 @@ impl ContentFetcher for GatewayFetcher {
 mod tests {
     use super::*;
     use crate::wasm_executor::validate_wasm;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
 
     /// Create a minimal valid WASM module for testing
     fn create_minimal_wasm() -> Vec<u8> {
@@ -116,5 +126,41 @@ mod tests {
         validate_wasm(&bytes).unwrap();
 
         println!("Fetched {} bytes", bytes.len());
+    }
+
+    async fn serve_status(status_line: &'static str) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((mut socket, _)) = listener.accept().await {
+                let response = format!(
+                    "HTTP/1.1 {status_line}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn test_fetch_returns_not_found_on_404() {
+        let gateway = serve_status("404 Not Found").await;
+        let fetcher = GatewayFetcher::with_gateway(&gateway);
+        let result = fetcher.fetch("test-cid").await;
+        assert!(
+            matches!(result, Err(FetchError::NotFound(ref cid)) if cid == "test-cid"),
+            "expected NotFound(\"test-cid\"), got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_fetch_returns_http_error_on_500() {
+        let gateway = serve_status("500 Internal Server Error").await;
+        let fetcher = GatewayFetcher::with_gateway(&gateway);
+        let result = fetcher.fetch("test-cid").await;
+        assert!(
+            matches!(result, Err(FetchError::Http(_))),
+            "expected Http error, got {result:?}"
+        );
     }
 }
