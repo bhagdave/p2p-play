@@ -135,7 +135,7 @@ impl CircuitBreaker {
                 state.state = CircuitState::Open {
                     opened_at: Instant::now(),
                 };
-                state.failure_count += 1;
+                state.failure_count = 1;
                 state.success_count = 0;
             }
             CircuitState::Open { .. } => {
