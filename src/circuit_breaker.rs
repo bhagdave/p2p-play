@@ -66,20 +66,26 @@ impl CircuitBreaker {
 
     pub async fn can_execute(&self) -> bool {
         let mut state = self.state.lock().await;
-        state.total_requests += 1;
 
         match &state.state {
-            CircuitState::Closed => true,
+            CircuitState::Closed => {
+                state.total_requests += 1;
+                true
+            }
             CircuitState::Open { opened_at } => {
                 if opened_at.elapsed() >= self.config.timeout {
                     state.state = CircuitState::HalfOpen;
+                state.total_requests += 1;
                     state.success_count = 0;
                     true
                 } else {
                     false
                 }
             }
-            CircuitState::HalfOpen => true,
+            CircuitState::HalfOpen => {
+                state.total_requests += 1;
+                true
+            }
         }
     }
 
@@ -90,11 +96,13 @@ impl CircuitBreaker {
         match state.state {
             CircuitState::Closed => {
                 state.failure_count = 0;
+                state.last_failure_time = None;
             }
             CircuitState::HalfOpen => {
                 state.success_count += 1;
                 if state.success_count >= self.config.success_threshold {
                     state.state = CircuitState::Closed;
+                    state.last_failure_time = None;
                     state.failure_count = 0;
                     state.success_count = 0;
                 }
@@ -135,7 +143,7 @@ impl CircuitBreaker {
                 state.state = CircuitState::Open {
                     opened_at: Instant::now(),
                 };
-                state.failure_count += 1;
+                state.failure_count = 1;
                 state.success_count = 0;
             }
             CircuitState::Open { .. } => {
@@ -159,6 +167,8 @@ impl CircuitBreaker {
             } else {
                 0.0
             },
+            success_threshold: self.config.success_threshold,
+            last_failure_time: state.last_failure_time,
         }
     }
 
@@ -214,6 +224,9 @@ pub struct CircuitBreakerInfo {
     #[allow(dead_code)]
     pub total_successes: u64,
     pub failure_rate: f64,
+    pub success_threshold: u32,
+    #[allow(dead_code)]
+    pub last_failure_time: Option<Instant>,
 }
 
 impl CircuitBreakerInfo {
@@ -244,7 +257,7 @@ impl CircuitBreakerInfo {
             CircuitState::HalfOpen => {
                 format!(
                     "Testing recovery ({} successes needed)",
-                    3_u32.saturating_sub(self.success_count)
+                    self.success_threshold.saturating_sub(self.success_count)
                 )
             }
         }

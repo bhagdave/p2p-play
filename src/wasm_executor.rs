@@ -387,6 +387,19 @@ pub fn validate_wasm(bytes: &[u8]) -> WasmResult<()> {
 mod tests {
     use super::*;
 
+    /// Create a minimal valid WASM module for testing
+    fn create_minimal_wasm() -> Vec<u8> {
+        wat::parse_str(
+            r#"
+            (module
+                (func $main)
+                (export "_start" (func $main))
+            )
+            "#,
+        )
+        .expect("Failed to parse WAT")
+    }
+
     #[test]
     fn test_validate_wasm_valid() {
         // Valid WASM header: magic + version 1

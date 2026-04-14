@@ -163,7 +163,6 @@ pub struct NetworkHealthSummary {
 
 impl NetworkHealthSummary {
     /// Get a human-readable health status
-    #[allow(dead_code)]
     pub fn status_string(&self) -> String {
         if self.overall_healthy {
             format!(
