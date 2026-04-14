@@ -75,13 +75,17 @@ impl CircuitBreaker {
             CircuitState::Open { opened_at } => {
                 if opened_at.elapsed() >= self.config.timeout {
                     state.state = CircuitState::HalfOpen;
+                state.total_requests += 1;
                     state.success_count = 0;
                     true
                 } else {
                     false
                 }
             }
-            CircuitState::HalfOpen => true,
+            CircuitState::HalfOpen => {
+                state.total_requests += 1;
+                true
+            }
         }
     }
 
