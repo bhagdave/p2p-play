@@ -48,7 +48,11 @@ impl ContentFetcher for GatewayFetcher {
         let response = self.client.get(&url).send().await?;
 
         if !response.status().is_success() {
-            return Err(FetchError::NotFound(cid.to_string()));
+            match response.status().as_u16() {
+                404 => return Err(FetchError::NotFound(cid.to_string())),
+                400..=599 => return Err(FetchError::Http(response.error_for_status().unwrap_err())),
+                _ => return Err(FetchError::Http(response.error_for_status().unwrap_err())),
+            }
         }
 
         let bytes = response.bytes().await?.to_vec();
