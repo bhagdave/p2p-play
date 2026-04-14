@@ -81,7 +81,7 @@ impl AutoBootstrap {
             .map(|s| !matches!(s.status, BootstrapStatus::NotStarted))
     }
 
-    pub  fn initialise(
+    pub fn initialise(
         &mut self,
         bootstrap_config: &BootstrapConfig,
         bootstrap_logger: &BootstrapLogger,
@@ -96,16 +96,16 @@ impl AutoBootstrap {
 
     /// Parses each address in `peer_addrs`, extracts the peer ID, and registers
     /// the (peer_id, addr) pair with Kademlia. Returns the number of peers added.
-    fn load_peers_into_kademlia(
-        peer_addrs: &[String],
-        swarm: &mut Swarm<StoryBehaviour>,
-    ) -> usize {
+    fn load_peers_into_kademlia(peer_addrs: &[String], swarm: &mut Swarm<StoryBehaviour>) -> usize {
         let mut peers_added = 0;
         for peer_addr in peer_addrs {
             match peer_addr.parse::<libp2p::Multiaddr>() {
                 Ok(addr) => {
                     if let Some(peer_id) = extract_peer_id_from_multiaddr(&addr) {
-                        swarm.behaviour_mut().kad.add_address(&peer_id, addr.clone());
+                        swarm
+                            .behaviour_mut()
+                            .kad
+                            .add_address(&peer_id, addr.clone());
                         peers_added += 1;
                     } else {
                         warn!("Failed to extract peer ID from: {peer_addr}");
@@ -135,7 +135,10 @@ impl AutoBootstrap {
 
         if config.bootstrap_peers.is_empty() {
             warn!("No bootstrap peers configured");
-            self.state.lock().unwrap().set_failed("No bootstrap peers configured".to_string());
+            self.state
+                .lock()
+                .unwrap()
+                .set_failed("No bootstrap peers configured".to_string());
             return false;
         }
 
@@ -219,7 +222,8 @@ impl AutoBootstrap {
         let retry_count = self.state.lock().unwrap().retry_count;
         let backoff_power = (retry_count.saturating_sub(1)).min(5);
         let backoff_multiplier = 2_u64.pow(backoff_power);
-        let retry_delay = Duration::from_millis(base_interval_ms.saturating_mul(backoff_multiplier));
+        let retry_delay =
+            Duration::from_millis(base_interval_ms.saturating_mul(backoff_multiplier));
 
         self.state.lock().unwrap().next_retry_time = Some(Instant::now() + retry_delay);
     }
@@ -584,7 +588,6 @@ mod tests {
         let error_logger = crate::error_logger::ErrorLogger::new("test_errors.log");
         let test_config = BootstrapConfig::new();
 
-        bootstrap
-            .initialise(&test_config, &bootstrap_logger, &error_logger);
+        bootstrap.initialise(&test_config, &bootstrap_logger, &error_logger);
     }
 }
