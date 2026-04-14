@@ -5,6 +5,15 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- **Circuit breaker `status_string` magic number**: `CircuitBreakerInfo::status_string` hardcoded `3` as the success threshold in the `HalfOpen` recovery message. The value is now read from `success_threshold`, a new field on `CircuitBreakerInfo` populated from `CircuitBreakerConfig` in `get_state`. The displayed count now reflects actual config rather than a stale constant.
+- **Circuit breaker `HalfOpen` reopen failure count**: When a failure in `HalfOpen` state reopened the circuit, `failure_count` accumulated from the prior `Closed`-state run. Count is now reset to `1` on reopen so it reflects failures since the most recent open.
+- **Circuit breaker stale `last_failure_time` after recovery**: `last_failure_time` was never cleared when the circuit recovered. It is now set to `None` in `on_success` when in `Closed` state.
+- **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
+
+### Added
+- **Network health in TUI status bar**: The status bar now appends the `NetworkHealthSummary` text alongside existing status fields — e.g. `Network Healthy (6/6 operations)` or `Network Issues (2/6 operations failing)`. The existing green/red/yellow colour coding is preserved; this adds human-readable detail to complement it.
+
+### Fixed
 - **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
 
 ### Changed
