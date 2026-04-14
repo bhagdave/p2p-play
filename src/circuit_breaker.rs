@@ -90,6 +90,7 @@ impl CircuitBreaker {
         match state.state {
             CircuitState::Closed => {
                 state.failure_count = 0;
+                state.last_failure_time = None;
             }
             CircuitState::HalfOpen => {
                 state.success_count += 1;
