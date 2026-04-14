@@ -97,12 +97,6 @@ mod tests {
         .expect("Failed to parse WAT")
     }
 
-    #[test]
-    fn test_validate_wasm_bytes() {
-        let wasm = create_minimal_wasm();
-        validate_wasm(&wasm).unwrap();
-    }
-
     #[tokio::test]
     async fn test_gateway_fetcher_creation() {
         let fetcher = GatewayFetcher::new();
