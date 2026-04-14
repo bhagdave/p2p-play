@@ -421,6 +421,12 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_wasm_bytes() {
+        let wasm = create_minimal_wasm();
+        validate_wasm(&wasm).unwrap();
+    }
+
+    #[test]
     fn test_validate_wasm_bad_version() {
         // Valid magic but wrong version
         let bad_version = [0x00, 0x61, 0x73, 0x6D, 0x02, 0x00, 0x00, 0x00];
