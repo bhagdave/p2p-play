@@ -4,17 +4,18 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Network health in TUI status bar**: The status bar now appends the `NetworkHealthSummary` text alongside existing status fields — e.g. `Network Healthy (6/6 operations)` or `Network Issues (2/6 operations failing)`. The existing green/red/yellow colour coding is preserved; this adds human-readable detail to complement it.
+- **Startup peer reconnect**: On startup the application now reads up to 10 outbound peer connections (those with a stored multiaddr) from the database and attempts to re-dial them immediately after the swarm starts listening. Inbound-only peers (no multiaddr) are skipped. The peer multiaddr is now only stored for outbound (`Dialer`) connections so that the reconnect list stays accurate across restarts. A new `get_outbound_peers(limit)` storage helper queries the peers table for rows with a non-NULL multiaddr, ordered by `last_seen` descending.
+- **Peer alias persistence**: Peer information (peer_id, alias, multiaddr, last_seen, is_connected) is now stored in a new `peers` SQLite table. The table is updated when a connection is established (capturing peer_id and multiaddr), when an alias is received over the network (capturing the alias), and when a connection is closed (marking the peer as disconnected). An `upsert_peer` function and a `mark_peer_disconnected` helper are available in `src/storage/core.rs`.
+- **Direct message length validation**: Enforce `ContentLimits::DIRECT_MESSAGE_MAX` (1,000 characters) when sending direct messages. Messages exceeding the limit are rejected with a descriptive error. Incoming oversized messages are also rejected on the receiving side.
+
 ### Fixed
+- **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
 - **Circuit breaker `status_string` magic number**: `CircuitBreakerInfo::status_string` hardcoded `3` as the success threshold in the `HalfOpen` recovery message. The value is now read from `success_threshold`, a new field on `CircuitBreakerInfo` populated from `CircuitBreakerConfig` in `get_state`. The displayed count now reflects actual config rather than a stale constant.
 - **Circuit breaker `HalfOpen` reopen failure count**: When a failure in `HalfOpen` state reopened the circuit, `failure_count` accumulated from the prior `Closed`-state run. Count is now reset to `1` on reopen so it reflects failures since the most recent open.
 - **Circuit breaker stale `last_failure_time` after recovery**: `last_failure_time` was never cleared when the circuit recovered. It is now set to `None` in `on_success` when in `Closed` state.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
-
-### Added
-- **Network health in TUI status bar**: The status bar now appends the `NetworkHealthSummary` text alongside existing status fields — e.g. `Network Healthy (6/6 operations)` or `Network Issues (2/6 operations failing)`. The existing green/red/yellow colour coding is preserved; this adds human-readable detail to complement it.
-
-### Fixed
-- **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
 
 ### Changed
 - **`bootstrap.rs` refactoring for maintainability**: Consolidated internal state in `AutoBootstrap` and improved separation of concerns.
@@ -32,11 +33,6 @@ All changes to this project will be documented in this file.
   - `print_error_chain` — error chain formatting moved from `main` into `errors.rs` as a reusable public utility.
   - `PeerState` struct — the three peer-tracking variables (`peer_names`, `local_peer_name`, `sorted_peer_names_cache`) previously threaded individually through `EventProcessor::run` are now grouped into a single `PeerState` struct defined in `handlers.rs`, reducing the `run` call-site from six arguments to four.
 - **Tests added** for the new public items: three integration tests for `ensure_general_channel_subscription` (subscribe when absent, idempotent when already subscribed, does not disturb other subscriptions); three unit tests for `PeerState::new`; two unit tests for `print_error_chain`.
-
-### Added
-- **Startup peer reconnect**: On startup the application now reads up to 10 outbound peer connections (those with a stored multiaddr) from the database and attempts to re-dial them immediately after the swarm starts listening. Inbound-only peers (no multiaddr) are skipped. The peer multiaddr is now only stored for outbound (`Dialer`) connections so that the reconnect list stays accurate across restarts. A new `get_outbound_peers(limit)` storage helper queries the peers table for rows with a non-NULL multiaddr, ordered by `last_seen` descending.
-- **Peer alias persistence**: Peer information (peer_id, alias, multiaddr, last_seen, is_connected) is now stored in a new `peers` SQLite table. The table is updated when a connection is established (capturing peer_id and multiaddr), when an alias is received over the network (capturing the alias), and when a connection is closed (marking the peer as disconnected). An `upsert_peer` function and a `mark_peer_disconnected` helper are available in `src/storage/core.rs`.
-- **Direct message length validation**: Enforce `ContentLimits::DIRECT_MESSAGE_MAX` (1,000 characters) when sending direct messages. Messages exceeding the limit are rejected with a descriptive error. Incoming oversized messages are also rejected on the receiving side.
 
 ## [0.11.1]
 
