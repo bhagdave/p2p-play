@@ -159,6 +159,7 @@ impl CircuitBreaker {
             } else {
                 0.0
             },
+            success_threshold: self.config.success_threshold,
         }
     }
 
@@ -214,6 +215,7 @@ pub struct CircuitBreakerInfo {
     #[allow(dead_code)]
     pub total_successes: u64,
     pub failure_rate: f64,
+    pub success_threshold: u32,
 }
 
 impl CircuitBreakerInfo {
@@ -244,7 +246,7 @@ impl CircuitBreakerInfo {
             CircuitState::HalfOpen => {
                 format!(
                     "Testing recovery ({} successes needed)",
-                    3_u32.saturating_sub(self.success_count)
+                    self.success_threshold.saturating_sub(self.success_count)
                 )
             }
         }
