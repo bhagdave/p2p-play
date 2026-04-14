@@ -2,15 +2,16 @@ use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng},
 };
+use curve25519_dalek::edwards::CompressedEdwardsY;
 use hkdf::Hkdf;
 use libp2p::{PeerId, identity::Keypair};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256, Sha512};
+use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519Secret};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // Security constants
 const ENCRYPTION_CONTEXT: &[u8] = b"p2p-play-encryption";
-const SHARED_SECRET_CONTEXT: &[u8] = b"p2p-play-shared-secret";
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB limit
 const REPLAY_PROTECTION_WINDOW_SECS: u64 = 300; // 5 minutes
 const MIN_PUBLIC_KEY_SIZE: usize = 32; // Minimum expected public key size
@@ -144,7 +145,7 @@ impl CryptoService {
 
         let our_public_key = self.get_our_public_key()?;
 
-        let shared_secret = self.derive_shared_secret(&our_public_key, recipient_public_key)?;
+        let shared_secret = self.derive_shared_secret(recipient_public_key)?;
 
         let secure_key = self.derive_encryption_key(&shared_secret)?;
 
@@ -184,10 +185,7 @@ impl CryptoService {
             )));
         }
 
-        let our_public_key = self.get_our_public_key()?;
-
-        let shared_secret =
-            self.derive_shared_secret(&encrypted.sender_public_key, &our_public_key)?;
+        let shared_secret = self.derive_shared_secret(&encrypted.sender_public_key)?;
 
         let secure_key = self.derive_decryption_key(&shared_secret)?;
 
@@ -322,28 +320,55 @@ impl CryptoService {
         Ok(self.local_keypair.public().encode_protobuf())
     }
 
-    fn derive_shared_secret(
-        &self,
-        pub_key1: &[u8],
-        pub_key2: &[u8],
-    ) -> Result<Vec<u8>, CryptoError> {
-        use sha2::{Digest, Sha256};
+    /// Perform X25519 ECDH using our Ed25519 keypair and a peer's protobuf-encoded Ed25519 public key.
+    /// Both sides independently derive the same shared secret (DH commutativity).
+    fn derive_shared_secret(&self, their_pubkey_bytes: &[u8]) -> Result<Vec<u8>, CryptoError> {
+        let our_secret = self.ed25519_to_x25519_secret()?;
+        let their_pubkey = Self::ed25519_pubkey_to_x25519(their_pubkey_bytes)?;
+        let shared = our_secret.diffie_hellman(&their_pubkey);
+        Ok(shared.as_bytes().to_vec())
+    }
 
-        // Create a deterministic shared secret by hashing the concatenated public keys
-        // Sort the keys to ensure the same secret regardless of order
-        let mut hasher = Sha256::new();
+    /// Convert our Ed25519 signing key to an X25519 static secret via RFC 8037:
+    /// SHA-512 the 32-byte seed, take the first 32 bytes, apply Curve25519 clamping.
+    fn ed25519_to_x25519_secret(&self) -> Result<X25519Secret, CryptoError> {
+        let ed25519_kp = self
+            .local_keypair
+            .clone()
+            .try_into_ed25519()
+            .map_err(|_| CryptoError::InvalidInput("Keypair must be Ed25519".into()))?;
 
-        if pub_key1 < pub_key2 {
-            hasher.update(pub_key1);
-            hasher.update(pub_key2);
-        } else {
-            hasher.update(pub_key2);
-            hasher.update(pub_key1);
-        }
+        let seed_ref = ed25519_kp.secret().as_ref().to_vec();
+        let hash = Sha512::digest(&seed_ref);
 
-        hasher.update(SHARED_SECRET_CONTEXT);
-        let result = hasher.finalize();
-        Ok(result.to_vec())
+        let mut x25519_bytes = [0u8; 32];
+        x25519_bytes.copy_from_slice(&hash[..32]);
+        // Curve25519 clamping (RFC 7748 §5)
+        x25519_bytes[0] &= 248;
+        x25519_bytes[31] &= 127;
+        x25519_bytes[31] |= 64;
+
+        let secret = X25519Secret::from(x25519_bytes);
+        x25519_bytes.zeroize();
+        Ok(secret)
+    }
+
+    /// Convert a protobuf-encoded Ed25519 public key to an X25519 public key via the
+    /// birational map from twisted Edwards to Montgomery form.
+    fn ed25519_pubkey_to_x25519(pubkey_bytes: &[u8]) -> Result<X25519PublicKey, CryptoError> {
+        let libp2p_pk = libp2p::identity::PublicKey::try_decode_protobuf(pubkey_bytes)
+            .map_err(|e| CryptoError::InvalidInput(format!("Invalid public key: {e}")))?;
+
+        let ed25519_pk = libp2p_pk
+            .try_into_ed25519()
+            .map_err(|_| CryptoError::InvalidInput("Public key must be Ed25519".into()))?;
+
+        let compressed = CompressedEdwardsY(ed25519_pk.to_bytes());
+        let edwards_point = compressed
+            .decompress()
+            .ok_or_else(|| CryptoError::InvalidInput("Invalid Ed25519 public key point".into()))?;
+
+        Ok(X25519PublicKey::from(edwards_point.to_montgomery().to_bytes()))
     }
 
     fn derive_encryption_key(&self, shared_secret: &[u8]) -> Result<SecureKey, CryptoError> {

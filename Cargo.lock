@@ -3311,6 +3311,7 @@ dependencies = [
  "chrono",
  "clap",
  "crossterm 0.27.0",
+ "curve25519-dalek",
  "env_logger",
  "futures",
  "hkdf",
@@ -3333,6 +3334,7 @@ dependencies = [
  "wasmtime",
  "wasmtime-wasi",
  "wat",
+ "x25519-dalek",
  "zeroize",
 ]
 
