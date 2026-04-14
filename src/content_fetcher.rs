@@ -38,7 +38,7 @@ impl GatewayFetcher {
 
     #[allow(dead_code)]
     pub fn with_gateway(gateway_url: &str) -> Self {
-        Self { gateway_url: gateway_url.to_string(), client: build_client(30)
+        Self { gateway_url: gateway_url.to_string(), client: build_client(30)}
     }
 }
 
