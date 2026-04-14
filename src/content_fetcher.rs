@@ -56,7 +56,7 @@ impl ContentFetcher for GatewayFetcher {
         let url = format!("{}/ipfs/{}", self.gateway_url, cid);
         let response = self.client.get(&url).send().await?;
 
-        if response.status() == reqwest::StatusCode::NOT_FOUND {
+        if !response.status().is_success() {
             return Err(FetchError::NotFound(cid.to_string()));
         }
 
