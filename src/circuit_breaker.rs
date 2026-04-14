@@ -102,6 +102,7 @@ impl CircuitBreaker {
                 state.success_count += 1;
                 if state.success_count >= self.config.success_threshold {
                     state.state = CircuitState::Closed;
+                    state.last_failure_time = None;
                     state.failure_count = 0;
                     state.success_count = 0;
                 }
