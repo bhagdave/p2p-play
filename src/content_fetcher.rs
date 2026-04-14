@@ -24,30 +24,21 @@ impl Default for GatewayFetcher {
     }
 }
 
+fn build_client(timeout_secs: u64) -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(timeout_secs))
+        .build()
+        .expect("Failed to build reqwest client")
+}
+
 impl GatewayFetcher {
     pub fn new() -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("Failed to build reqwest client");
-
-        Self {
-            gateway_url: "https://dweb.link".to_string(),
-            client,
-        }
+        Self { gateway_url: "https://dweb.link".to_string(), client: build_client(30)}
     }
 
     #[allow(dead_code)]
     pub fn with_gateway(gateway_url: &str) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .expect("Failed to build reqwest client");
-
-        Self {
-            gateway_url: gateway_url.to_string(),
-            client,
-        }
+        Self { gateway_url: gateway_url.to_string(), client: build_client(30)
     }
 }
 
