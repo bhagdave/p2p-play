@@ -168,6 +168,7 @@ impl CircuitBreaker {
                 0.0
             },
             success_threshold: self.config.success_threshold,
+            last_failure_time: state.last_failure_time,
         }
     }
 
@@ -224,6 +225,8 @@ pub struct CircuitBreakerInfo {
     pub total_successes: u64,
     pub failure_rate: f64,
     pub success_threshold: u32,
+    #[allow(dead_code)]
+    pub last_failure_time: Option<Instant>,
 }
 
 impl CircuitBreakerInfo {
