@@ -66,10 +66,12 @@ impl CircuitBreaker {
 
     pub async fn can_execute(&self) -> bool {
         let mut state = self.state.lock().await;
-        state.total_requests += 1;
 
         match &state.state {
-            CircuitState::Closed => true,
+            CircuitState::Closed => {
+                state.total_requests += 1;
+                true
+            }
             CircuitState::Open { opened_at } => {
                 if opened_at.elapsed() >= self.config.timeout {
                     state.state = CircuitState::HalfOpen;
