@@ -147,7 +147,7 @@ impl CryptoService {
 
         let shared_secret = self.derive_shared_secret(recipient_public_key)?;
 
-        let secure_key = self.derive_encryption_key(&shared_secret)?;
+        let secure_key = self.derive_key(&shared_secret, CryptoError::EncryptionFailed)?;
 
         let cipher = self.create_cipher(&secure_key);
 
@@ -187,7 +187,7 @@ impl CryptoService {
 
         let shared_secret = self.derive_shared_secret(&encrypted.sender_public_key)?;
 
-        let secure_key = self.derive_decryption_key(&shared_secret)?;
+        let secure_key = self.derive_key(&shared_secret, CryptoError::DecryptionFailed)?;
 
         let cipher = self.create_cipher(&secure_key);
 
@@ -371,31 +371,17 @@ impl CryptoService {
         Ok(X25519PublicKey::from(edwards_point.to_montgomery().to_bytes()))
     }
 
-    fn derive_encryption_key(&self, shared_secret: &[u8]) -> Result<SecureKey, CryptoError> {
+    fn derive_key(&self, shared_secret: &[u8], err_variant: fn(String) -> CryptoError) -> Result<SecureKey, CryptoError> {
         let hk = Hkdf::<Sha256>::new(None, shared_secret);
         let mut key_data = [0u8; 32];
         hk.expand(ENCRYPTION_CONTEXT, &mut key_data)
-            .map_err(|e| CryptoError::EncryptionFailed(format!("Key derivation failed: {e}")))?;
-
+            .map_err(|e| err_variant(format!("Key derivation failed: {e}")))?;
         let secure_key = SecureKey::new(key_data);
-        // Zero the temporary array
         key_data.zeroize();
-
         Ok(secure_key)
-    }
+  }
 
-    fn derive_decryption_key(&self, shared_secret: &[u8]) -> Result<SecureKey, CryptoError> {
-        let hk = Hkdf::<Sha256>::new(None, shared_secret);
-        let mut key_data = [0u8; 32];
-        hk.expand(ENCRYPTION_CONTEXT, &mut key_data)
-            .map_err(|e| CryptoError::DecryptionFailed(format!("Key derivation failed: {e}")))?;
 
-        let secure_key = SecureKey::new(key_data);
-        // Zero the temporary array
-        key_data.zeroize();
-
-        Ok(secure_key)
-    }
 
     fn create_cipher(&self, key: &SecureKey) -> ChaCha20Poly1305 {
         ChaCha20Poly1305::new(Key::from_slice(key.as_slice()))
