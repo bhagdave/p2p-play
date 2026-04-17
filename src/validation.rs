@@ -1,5 +1,7 @@
-/// Valid types for WASM parameters.  Stored here so the list is easy to
-/// extend and is not reconstructed on every call to `validate_wasm_param_type`.
+/// Valid types for WASM parameters.  These are the accepted types for
+/// capability-exchange parameter declarations.  Stored as a module-level
+/// constant so the list is easy to extend and is not rebuilt on every call
+/// to [`ContentValidator::validate_wasm_param_type`].
 const WASM_PARAM_TYPES: &[&str] = &["string", "bytes", "json", "int", "float", "bool", "file"];
 
 pub struct ContentLimits;
@@ -134,28 +136,35 @@ impl ContentSanitizer {
         result
     }
 
+    /// Returns `true` for whitespace characters that are allowed to pass
+    /// through both the sanitizer and the strict checker: space, tab,
+    /// newline, and carriage return.
+    #[inline]
+    fn is_allowed_whitespace(ch: char) -> bool {
+        matches!(ch, ' ' | '\t' | '\n' | '\r')
+    }
+
     pub fn strip_control_characters(text: &str) -> String {
         text.chars()
-            .filter(|&ch| !ch.is_control() || matches!(ch, ' ' | '\t' | '\n' | '\r'))
+            .filter(|&ch| !ch.is_control() || Self::is_allowed_whitespace(ch))
             .collect()
     }
 
     pub fn strip_binary_data(text: &str) -> String {
         text.chars()
-            .filter(|&ch| {
-                ch != '\0' && (!ch.is_control() || matches!(ch, ' ' | '\t' | '\n' | '\r'))
-            })
+            .filter(|&ch| ch != '\0' && (!ch.is_control() || Self::is_allowed_whitespace(ch)))
             .collect()
     }
 
-    /// Strip ANSI escapes and all non-whitespace control characters in a
-    /// single pass.  Avoids the extra allocation that the old two-step
-    /// (`strip_control_characters` then `strip_binary_data`) produced.
+    /// Strip ANSI escapes and all non-whitespace control characters.
+    /// The ANSI state machine requires its own pass, so this method performs
+    /// two allocations: one for ANSI removal and one for the control-char
+    /// filter.
     pub fn sanitize_for_display(text: &str) -> String {
         let no_ansi = Self::strip_ansi_escapes(text);
         no_ansi
             .chars()
-            .filter(|&ch| !ch.is_control() || matches!(ch, ' ' | '\t' | '\n' | '\r'))
+            .filter(|&ch| !ch.is_control() || Self::is_allowed_whitespace(ch))
             .collect()
     }
 
@@ -184,12 +193,12 @@ impl ContentSanitizer {
     }
 
     /// Returns [`ValidationError::ContainsControlCharacters`] if the text
-    /// contains any control character other than space, tab, newline, or
-    /// carriage return.
+    /// contains any control character other than those allowed by
+    /// [`Self::is_allowed_whitespace`].
     pub fn check_for_control_characters(text: &str) -> ValidationResult<()> {
         if text
             .chars()
-            .any(|c| c.is_control() && !matches!(c, ' ' | '\t' | '\n' | '\r'))
+            .any(|c| c.is_control() && !Self::is_allowed_whitespace(c))
         {
             Err(ValidationError::ContainsControlCharacters)
         } else {
@@ -941,10 +950,18 @@ mod tests {
 
         #[test]
         fn test_validate_received_content_rejects_binary_data() {
+            // \x00 is a control character, so check_for_control_characters catches
+            // it before check_for_binary_data is reached.
             let result = ContentValidator::validate_received_content("text\x00with\x00nulls");
-            // check_for_ansi_escapes passes first, then check_for_control_characters
-            // catches \x00 (it is a control char), so we get ContainsControlCharacters.
-            assert!(result.is_err());
+            assert_eq!(result, Err(ValidationError::ContainsControlCharacters));
+        }
+
+        #[test]
+        fn test_check_for_binary_data_alone_rejects_null() {
+            // Directly test check_for_binary_data to confirm it returns
+            // ContainsBinaryData (bypassing the control-char check).
+            let result = ContentSanitizer::check_for_binary_data("text\x00nulls");
+            assert_eq!(result, Err(ValidationError::ContainsBinaryData));
         }
 
         #[test]
