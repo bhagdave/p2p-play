@@ -2,6 +2,7 @@ use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng},
 };
+use crate::errors::CryptoError;
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use hkdf::Hkdf;
 use libp2p::{PeerId, identity::Keypair};
@@ -50,28 +51,6 @@ pub struct CryptoService {
     peer_public_keys: std::collections::HashMap<PeerId, Vec<u8>>,
 }
 
-#[derive(Debug, Clone)]
-pub enum CryptoError {
-    EncryptionFailed(String),
-    DecryptionFailed(String),
-    SignatureFailed(String),
-    VerificationFailed(String),
-    InvalidInput(String),
-}
-
-impl std::fmt::Display for CryptoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CryptoError::EncryptionFailed(msg) => write!(f, "Encryption failed: {msg}"),
-            CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {msg}"),
-            CryptoError::SignatureFailed(msg) => write!(f, "Signature failed: {msg}"),
-            CryptoError::VerificationFailed(msg) => write!(f, "Verification failed: {msg}"),
-            CryptoError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for CryptoError {}
 
 impl CryptoService {
     pub fn new(keypair: Keypair) -> Self {
