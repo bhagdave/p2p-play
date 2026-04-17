@@ -30,6 +30,13 @@ impl SecureKey {
     }
 }
 
+fn get_current_timestamp() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+} 
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct EncryptedPayload {
     pub encrypted_data: Vec<u8>,
@@ -200,11 +207,7 @@ impl CryptoService {
             )));
         }
 
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| CryptoError::SignatureFailed(format!("Timestamp generation failed: {e}")))?
-            .as_secs();
-
+        let timestamp = get_current_timestamp();
         let mut message_to_sign = message.to_vec();
         message_to_sign.extend_from_slice(&timestamp.to_be_bytes());
 
@@ -249,11 +252,7 @@ impl CryptoService {
         }
 
         // Check for replay attacks - reject messages older than the time window
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| CryptoError::VerificationFailed(format!("Current time error: {e}")))?
-            .as_secs();
-
+        let current_time = get_current_timestamp();
         if current_time.saturating_sub(signature.timestamp) > REPLAY_PROTECTION_WINDOW_SECS {
             return Err(CryptoError::VerificationFailed(format!(
                 "Message too old (timestamp: {}, current: {}, max age: {}s)",
