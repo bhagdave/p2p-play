@@ -30,11 +30,11 @@ impl SecureKey {
     }
 }
 
-fn get_current_timestamp() -> u64 {
+fn get_current_timestamp() -> Result<u64, CryptoError> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+        .map(|duration| duration.as_secs())
+        .map_err(|_| CryptoError::VerificationFailed("System time is before UNIX epoch".to_string()))
 } 
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -207,7 +207,7 @@ impl CryptoService {
             )));
         }
 
-        let timestamp = get_current_timestamp();
+        let timestamp = get_current_timestamp()?;
         let mut message_to_sign = message.to_vec();
         message_to_sign.extend_from_slice(&timestamp.to_be_bytes());
 
@@ -252,7 +252,7 @@ impl CryptoService {
         }
 
         // Check for replay attacks - reject messages older than the time window
-        let current_time = get_current_timestamp();
+        let current_time = get_current_timestamp()?;
         if current_time.saturating_sub(signature.timestamp) > REPLAY_PROTECTION_WINDOW_SECS {
             return Err(CryptoError::VerificationFailed(format!(
                 "Message too old (timestamp: {}, current: {}, max age: {}s)",
