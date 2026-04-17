@@ -1,11 +1,11 @@
 use crate::errors::CryptoError;
 use chacha20poly1305::{
-    ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng},
+    ChaCha20Poly1305, Key, Nonce,
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use hkdf::Hkdf;
-use libp2p::{PeerId, identity::Keypair};
+use libp2p::{identity::Keypair, PeerId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519Secret};
@@ -31,6 +31,7 @@ impl SecureKey {
 }
 
 #[derive(ZeroizeOnDrop)]
+/// Zeroizing wrapper for X25519 shared secrets to avoid heap allocation of key material.
 struct SharedSecret([u8; 32]);
 
 impl SharedSecret {
@@ -316,15 +317,17 @@ impl CryptoService {
         let our_secret = self.ed25519_to_x25519_secret()?;
         let their_pubkey = Self::ed25519_pubkey_to_x25519(their_pubkey_bytes)?;
         let shared = our_secret.diffie_hellman(&their_pubkey);
-        let shared_bytes = shared.to_bytes();
+        Self::validate_shared_secret(shared.to_bytes())
+    }
 
+    fn validate_shared_secret(shared_bytes: [u8; 32]) -> Result<SharedSecret, CryptoError> {
         if shared_bytes.iter().all(|&byte| byte == 0) {
-            return Err(CryptoError::InvalidInput(
+            Err(CryptoError::InvalidInput(
                 "Rejected low-order peer public key".to_string(),
-            ));
+            ))
+        } else {
+            Ok(SharedSecret(shared_bytes))
         }
-
-        Ok(SharedSecret(shared_bytes))
     }
 
     /// Convert our Ed25519 signing key to an X25519 static secret via RFC 8037:
@@ -620,5 +623,11 @@ mod tests {
             result.unwrap_err(),
             CryptoError::VerificationFailed(_)
         ));
+    }
+
+    #[test]
+    fn test_validate_shared_secret_rejects_all_zero_secret() {
+        let result = CryptoService::validate_shared_secret([0u8; 32]);
+        assert!(matches!(result, Err(CryptoError::InvalidInput(_))));
     }
 }
