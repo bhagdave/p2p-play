@@ -35,8 +35,8 @@ pub enum WasmExecutionError {
     #[error("Memory limit too large: {0} MB (maximum {1} MB)")]
     MemoryLimitTooLarge(u32, u32),
 
-    #[error("Execution timeout after 30 seconds")]
-    ExecutionTimeout,
+    #[error("Execution timeout after {0} seconds")]
+    ExecutionTimeout(u64),
 
     #[error("Entry point '_start' not found")]
     EntryPointNotFound,

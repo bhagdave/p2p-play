@@ -1,8 +1,8 @@
 mod common;
 
 use common::wasm_fixtures::{
-    MockContentFetcher, create_fuel_heavy_wasm, create_long_running_wasm, create_minimal_wasm,
-    create_stdin_echo_wasm, create_stdout_wasm,
+    CountingMockContentFetcher, MockContentFetcher, create_fuel_heavy_wasm,
+    create_long_running_wasm, create_minimal_wasm, create_stdin_echo_wasm, create_stdout_wasm,
 };
 use p2p_play::wasm_executor::{
     ExecutionRequest, WasmExecutionError, WasmExecutor, WasmExecutorConfig, validate_wasm,
@@ -264,7 +264,7 @@ async fn test_execute_timeout() {
 
     assert!(result.is_err());
     match result.unwrap_err() {
-        WasmExecutionError::ExecutionTimeout => {}
+        WasmExecutionError::ExecutionTimeout(_) => {}
         // Fuel may be exhausted before the timeout fires depending on execution speed
         WasmExecutionError::FuelExhausted { .. } => {}
         WasmExecutionError::ExecutionFailed(msg) => {
@@ -333,10 +333,10 @@ async fn test_execute_rejects_zero_timeout() {
 
 #[tokio::test]
 async fn test_cache_serves_repeated_executions() {
-    // The default executor has caching enabled; executing the same CID multiple
-    // times should succeed on every call (cache hit from the 2nd call onwards).
-    let fetcher = Arc::new(MockContentFetcher::new(create_minimal_wasm()));
-    let executor = WasmExecutor::new(fetcher).unwrap();
+    // With caching enabled the fetcher should be called exactly once for the
+    // same CID, no matter how many times execute() is called afterwards.
+    let fetcher = Arc::new(CountingMockContentFetcher::new(create_minimal_wasm()));
+    let executor = WasmExecutor::new(Arc::clone(&fetcher)).unwrap();
 
     for i in 0..5 {
         let result = executor
@@ -344,6 +344,12 @@ async fn test_cache_serves_repeated_executions() {
             .await;
         assert!(result.is_ok(), "Execution {} failed", i);
     }
+
+    assert_eq!(
+        fetcher.fetch_count("cached-cid"),
+        1,
+        "fetcher should be called once; subsequent executions must be cache hits"
+    );
 }
 
 #[tokio::test]
@@ -365,21 +371,32 @@ async fn test_cache_disabled_still_works() {
 
 #[tokio::test]
 async fn test_cache_respects_capacity() {
-    // Fill a cache of size 2 with three distinct CIDs; all should execute
-    // successfully regardless of eviction order.
-    let fetcher = Arc::new(MockContentFetcher::new(create_minimal_wasm()));
+    // Cache size = 2.  Insertion order: cid-1, cid-2, cid-3.
+    // After cid-3 is inserted, the LRU entry (cid-1) is evicted.
+    // Executing cid-1 a second time must trigger a fresh fetch.
+    let fetcher = Arc::new(CountingMockContentFetcher::new(create_minimal_wasm()));
     let config = WasmExecutorConfig {
         enable_cache: true,
         max_cached_modules: 2,
     };
-    let executor = WasmExecutor::with_config(fetcher, config).unwrap();
+    let executor = WasmExecutor::with_config(Arc::clone(&fetcher), config).unwrap();
 
-    for cid in &["cid-1", "cid-2", "cid-3", "cid-1"] {
+    for cid in &["cid-1", "cid-2", "cid-3"] {
         let result = executor
             .execute(ExecutionRequest::new(cid.to_string()))
             .await;
         assert!(result.is_ok(), "Execution for {} failed", cid);
     }
+
+    // cid-1 was evicted when cid-3 was inserted; re-executing it must fetch again.
+    let result = executor
+        .execute(ExecutionRequest::new("cid-1".to_string()))
+        .await;
+    assert!(result.is_ok(), "Re-execution of evicted cid-1 failed");
+
+    assert_eq!(fetcher.fetch_count("cid-1"), 2, "cid-1 should be fetched twice (initial + after eviction)");
+    assert_eq!(fetcher.fetch_count("cid-2"), 1, "cid-2 should be fetched once");
+    assert_eq!(fetcher.fetch_count("cid-3"), 1, "cid-3 should be fetched once");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

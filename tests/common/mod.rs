@@ -187,6 +187,60 @@ pub mod wasm_fixtures {
     }
 
     // -----------------------------------------------------------------------
+    // Counting fetcher (tracks fetch calls per CID to verify cache behaviour)
+    // -----------------------------------------------------------------------
+
+    /// A [`ContentFetcher`] that records how many times each CID has been
+    /// fetched.  Use [`fetch_count`] / [`total_fetches`] in tests to assert
+    /// that cache hits do not trigger additional network calls.
+    pub struct CountingMockContentFetcher {
+        data: Vec<u8>,
+        fetch_counts: std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, usize>>>,
+    }
+
+    impl CountingMockContentFetcher {
+        pub fn new(data: Vec<u8>) -> Self {
+            Self {
+                data,
+                fetch_counts: std::sync::Arc::new(std::sync::Mutex::new(
+                    std::collections::HashMap::new(),
+                )),
+            }
+        }
+
+        /// Number of times `fetch` was called for the given CID.
+        pub fn fetch_count(&self, cid: &str) -> usize {
+            self.fetch_counts
+                .lock()
+                .unwrap()
+                .get(cid)
+                .copied()
+                .unwrap_or(0)
+        }
+
+        /// Total number of `fetch` calls across all CIDs.
+        pub fn total_fetches(&self) -> usize {
+            self.fetch_counts.lock().unwrap().values().sum()
+        }
+    }
+
+    impl ContentFetcher for CountingMockContentFetcher {
+        async fn fetch(&self, cid: &str) -> Result<Vec<u8>, FetchError> {
+            *self
+                .fetch_counts
+                .lock()
+                .unwrap()
+                .entry(cid.to_string())
+                .or_insert(0) += 1;
+            Ok(self.data.clone())
+        }
+
+        async fn resolve_ipns(&self, _name: &str) -> Result<String, FetchError> {
+            Ok("QmTest123".to_string())
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // WAT-based WASM builders
     // -----------------------------------------------------------------------
 
