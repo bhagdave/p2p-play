@@ -1173,6 +1173,20 @@ pub async fn handle_channel_subscription_event(subscription: crate::types::Chann
     );
 }
 
+fn remove_pending_handshake_peer(
+    pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
+    peer: &PeerId,
+    context: &str,
+) {
+    let mut pending_peers = pending_handshake_peers.lock().unwrap();
+    if pending_peers.remove(peer).is_some() {
+        debug!(
+            "Removed peer {} from pending handshake list ({})",
+            peer, context
+        );
+    }
+}
+
 pub async fn handle_node_description_event(
     event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1903,16 +1917,11 @@ pub async fn handle_handshake_event(
                         )
                         .await;
 
-                        // Remove peer from pending handshake list
-                        {
-                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                            if pending_peers.remove(&peer).is_some() {
-                                debug!(
-                                    "Removed peer {} from pending handshake list after successful handshake",
-                                    peer
-                                );
-                            }
-                        }
+                        remove_pending_handshake_peer(
+                            pending_handshake_peers,
+                            &peer,
+                            "after successful handshake",
+                        );
 
                         // Log successful P2P-Play peer verification to UI
                         ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
@@ -1926,16 +1935,11 @@ pub async fn handle_handshake_event(
                         debug!("Disconnecting from incompatible peer: {}", peer);
                         let _ = swarm.disconnect_peer_id(peer);
 
-                        // Remove peer from pending handshake list
-                        {
-                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                            if pending_peers.remove(&peer).is_some() {
-                                debug!(
-                                    "Removed incompatible peer {} from pending handshake list",
-                                    peer
-                                );
-                            }
-                        }
+                        remove_pending_handshake_peer(
+                            pending_handshake_peers,
+                            &peer,
+                            "after incompatible handshake response",
+                        );
                     }
                 }
             }
@@ -1946,27 +1950,20 @@ pub async fn handle_handshake_event(
             debug!("Disconnecting from unresponsive peer: {}", peer);
             let _ = swarm.disconnect_peer_id(peer);
 
-            // Remove peer from pending handshake list
-            {
-                let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                if pending_peers.remove(&peer).is_some() {
-                    debug!(
-                        "Removed unresponsive peer {} from pending handshake list",
-                        peer
-                    );
-                }
-            }
+            remove_pending_handshake_peer(
+                pending_handshake_peers,
+                &peer,
+                "after outbound handshake failure",
+            );
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
             debug!("Handshake inbound failure with peer {}: {:?}", peer, error);
 
-            // Remove peer from pending handshake list
-            {
-                let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                if pending_peers.remove(&peer).is_some() {
-                    debug!("Removed failed peer {} from pending handshake list", peer);
-                }
-            }
+            remove_pending_handshake_peer(
+                pending_handshake_peers,
+                &peer,
+                "after inbound handshake failure",
+            );
         }
         _ => {}
     }
@@ -3254,6 +3251,41 @@ mod tests {
         // Test that elapsed time calculation works
         assert!(one_minute_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
         assert!(thirty_seconds_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
+    }
+
+    #[test]
+    fn test_remove_pending_handshake_peer_removes_entry() {
+        use libp2p::core::ConnectedPoint;
+        use std::time::Instant;
+
+        let peer_id = PeerId::random();
+        let pending_peer = PendingHandshakePeer {
+            peer_id,
+            connection_time: Instant::now(),
+            endpoint: ConnectedPoint::Listener {
+                local_addr: "/ip4/127.0.0.1/tcp/9001".parse().unwrap(),
+                send_back_addr: "/ip4/127.0.0.1/tcp/9002".parse().unwrap(),
+            },
+        };
+
+        let pending_handshake_peers = Arc::new(Mutex::new(HashMap::new()));
+        pending_handshake_peers
+            .lock()
+            .unwrap()
+            .insert(peer_id, pending_peer);
+
+        remove_pending_handshake_peer(
+            &pending_handshake_peers,
+            &peer_id,
+            "for unit test verification",
+        );
+
+        assert!(
+            !pending_handshake_peers
+                .lock()
+                .unwrap()
+                .contains_key(&peer_id)
+        );
     }
 
     #[tokio::test]
