@@ -176,15 +176,24 @@ pub enum ConfigError {
     IO(#[from] std::io::Error),
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum FetchError {
+    #[error("HTTP request failed: {0}")]
     Http(reqwest::Error),
+
     #[allow(dead_code)]
+    #[error("Invalid CID: {0}")]
     InvalidCid(String),
+
+    #[error("Content not found: {0}")]
     NotFound(String),
+
     #[allow(dead_code)]
+    #[error("Gateway timeout")]
     Timeout,
+
     #[allow(dead_code)]
+    #[error("Invalid WASM: magic bytes mismatch")]
     InvalidWasm,
 }
 
@@ -409,20 +418,6 @@ impl UIError {
         }
     }
 }
-
-impl std::fmt::Display for FetchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Http(e) => write!(f, "HTTP request failed: {}", e),
-            Self::InvalidCid(cid) => write!(f, "Invalid CID: {}", cid),
-            Self::NotFound(cid) => write!(f, "Content not found: {}", cid),
-            Self::Timeout => write!(f, "Gateway timeout"),
-            Self::InvalidWasm => write!(f, "Invalid WASM: magic bytes mismatch"),
-        }
-    }
-}
-
-impl std::error::Error for FetchError {}
 
 impl From<reqwest::Error> for FetchError {
     fn from(e: reqwest::Error) -> Self {
