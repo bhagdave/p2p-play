@@ -1,7 +1,8 @@
 // Test to reproduce and validate the crypto error user experience improvement
 use libp2p::PeerId;
 use libp2p::identity::Keypair;
-use p2p_play::crypto::{CryptoError, CryptoService};
+use p2p_play::crypto::CryptoService;
+use p2p_play::errors::CryptoError;
 use p2p_play::handlers::UILogger;
 use p2p_play::relay::{RelayError, RelayService};
 use p2p_play::types::{DirectMessage, RelayConfig};

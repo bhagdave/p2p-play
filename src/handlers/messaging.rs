@@ -1,6 +1,6 @@
 //! Direct messaging handlers: `msg`, `compose`, peer name, relay delivery, retry queue.
 
-use crate::crypto::CryptoError;
+use crate::errors::CryptoError;
 use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour};
 use crate::relay::{RelayError, RelayService};
 use crate::storage::save_local_peer_name;
