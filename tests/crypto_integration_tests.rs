@@ -1,5 +1,6 @@
 use libp2p::identity;
-use p2p_play::crypto::{CryptoError, CryptoService};
+use p2p_play::crypto::CryptoService;
+use p2p_play::errors::CryptoError;
 
 #[tokio::test]
 async fn test_crypto_integration_with_libp2p_keys() {

@@ -1,4 +1,4 @@
-use crate::crypto::CryptoError;
+use crate::errors::CryptoError;
 use crate::error_logger::ErrorLogger;
 use crate::network::{
     DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC,

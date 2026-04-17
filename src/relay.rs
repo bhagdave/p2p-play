@@ -1,4 +1,5 @@
-use crate::crypto::{CryptoError, CryptoService};
+use crate::crypto::CryptoService;
+use crate::errors::CryptoError;
 use crate::types::{DirectMessage, RelayConfig, RelayMessage};
 use libp2p::PeerId;
 use log::warn;

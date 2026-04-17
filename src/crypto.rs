@@ -1,16 +1,18 @@
+use crate::errors::CryptoError;
 use chacha20poly1305::{
-    ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng},
+    ChaCha20Poly1305, Key, Nonce,
 };
+use curve25519_dalek::edwards::CompressedEdwardsY;
 use hkdf::Hkdf;
-use libp2p::{PeerId, identity::Keypair};
+use libp2p::{identity::Keypair, PeerId};
 use serde::{Deserialize, Serialize};
-use sha2::Sha256;
+use sha2::{Digest, Sha256, Sha512};
+use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519Secret};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // Security constants
 const ENCRYPTION_CONTEXT: &[u8] = b"p2p-play-encryption";
-const SHARED_SECRET_CONTEXT: &[u8] = b"p2p-play-shared-secret";
 const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB limit
 const REPLAY_PROTECTION_WINDOW_SECS: u64 = 300; // 5 minutes
 const MIN_PUBLIC_KEY_SIZE: usize = 32; // Minimum expected public key size
@@ -26,6 +28,25 @@ impl SecureKey {
     fn as_slice(&self) -> &[u8] {
         &self.0
     }
+}
+
+#[derive(ZeroizeOnDrop)]
+/// Zeroizing wrapper for X25519 shared secrets to avoid heap allocation of key material.
+struct SharedSecret([u8; 32]);
+
+impl SharedSecret {
+    fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+fn get_current_timestamp() -> Result<u64, CryptoError> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .map_err(|_| {
+            CryptoError::VerificationFailed("System time is before UNIX epoch".to_string())
+        })
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -48,29 +69,6 @@ pub struct CryptoService {
     // Peer public key cache for encryption
     peer_public_keys: std::collections::HashMap<PeerId, Vec<u8>>,
 }
-
-#[derive(Debug, Clone)]
-pub enum CryptoError {
-    EncryptionFailed(String),
-    DecryptionFailed(String),
-    SignatureFailed(String),
-    VerificationFailed(String),
-    InvalidInput(String),
-}
-
-impl std::fmt::Display for CryptoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CryptoError::EncryptionFailed(msg) => write!(f, "Encryption failed: {msg}"),
-            CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {msg}"),
-            CryptoError::SignatureFailed(msg) => write!(f, "Signature failed: {msg}"),
-            CryptoError::VerificationFailed(msg) => write!(f, "Verification failed: {msg}"),
-            CryptoError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for CryptoError {}
 
 impl CryptoService {
     pub fn new(keypair: Keypair) -> Self {
@@ -144,9 +142,10 @@ impl CryptoService {
 
         let our_public_key = self.get_our_public_key()?;
 
-        let shared_secret = self.derive_shared_secret(&our_public_key, recipient_public_key)?;
+        let shared_secret = self.derive_shared_secret(recipient_public_key)?;
 
-        let secure_key = self.derive_encryption_key(&shared_secret)?;
+        let secure_key =
+            self.derive_key(shared_secret.as_slice(), CryptoError::EncryptionFailed)?;
 
         let cipher = self.create_cipher(&secure_key);
 
@@ -184,12 +183,10 @@ impl CryptoService {
             )));
         }
 
-        let our_public_key = self.get_our_public_key()?;
+        let shared_secret = self.derive_shared_secret(&encrypted.sender_public_key)?;
 
-        let shared_secret =
-            self.derive_shared_secret(&encrypted.sender_public_key, &our_public_key)?;
-
-        let secure_key = self.derive_decryption_key(&shared_secret)?;
+        let secure_key =
+            self.derive_key(shared_secret.as_slice(), CryptoError::DecryptionFailed)?;
 
         let cipher = self.create_cipher(&secure_key);
 
@@ -223,11 +220,7 @@ impl CryptoService {
             )));
         }
 
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| CryptoError::SignatureFailed(format!("Timestamp generation failed: {e}")))?
-            .as_secs();
-
+        let timestamp = get_current_timestamp()?;
         let mut message_to_sign = message.to_vec();
         message_to_sign.extend_from_slice(&timestamp.to_be_bytes());
 
@@ -272,11 +265,7 @@ impl CryptoService {
         }
 
         // Check for replay attacks - reject messages older than the time window
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| CryptoError::VerificationFailed(format!("Current time error: {e}")))?
-            .as_secs();
-
+        let current_time = get_current_timestamp()?;
         if current_time.saturating_sub(signature.timestamp) > REPLAY_PROTECTION_WINDOW_SECS {
             return Err(CryptoError::VerificationFailed(format!(
                 "Message too old (timestamp: {}, current: {}, max age: {}s)",
@@ -322,53 +311,80 @@ impl CryptoService {
         Ok(self.local_keypair.public().encode_protobuf())
     }
 
-    fn derive_shared_secret(
-        &self,
-        pub_key1: &[u8],
-        pub_key2: &[u8],
-    ) -> Result<Vec<u8>, CryptoError> {
-        use sha2::{Digest, Sha256};
+    /// Perform X25519 ECDH using our Ed25519 keypair and a peer's protobuf-encoded Ed25519 public key.
+    /// Both sides independently derive the same shared secret (DH commutativity).
+    fn derive_shared_secret(&self, their_pubkey_bytes: &[u8]) -> Result<SharedSecret, CryptoError> {
+        let our_secret = self.ed25519_to_x25519_secret()?;
+        let their_pubkey = Self::ed25519_pubkey_to_x25519(their_pubkey_bytes)?;
+        let shared = our_secret.diffie_hellman(&their_pubkey);
+        Self::validate_shared_secret(shared.to_bytes())
+    }
 
-        // Create a deterministic shared secret by hashing the concatenated public keys
-        // Sort the keys to ensure the same secret regardless of order
-        let mut hasher = Sha256::new();
-
-        if pub_key1 < pub_key2 {
-            hasher.update(pub_key1);
-            hasher.update(pub_key2);
+    fn validate_shared_secret(shared_bytes: [u8; 32]) -> Result<SharedSecret, CryptoError> {
+        if shared_bytes.iter().all(|&byte| byte == 0) {
+            Err(CryptoError::InvalidInput(
+                "Rejected low-order peer public key".to_string(),
+            ))
         } else {
-            hasher.update(pub_key2);
-            hasher.update(pub_key1);
+            Ok(SharedSecret(shared_bytes))
         }
-
-        hasher.update(SHARED_SECRET_CONTEXT);
-        let result = hasher.finalize();
-        Ok(result.to_vec())
     }
 
-    fn derive_encryption_key(&self, shared_secret: &[u8]) -> Result<SecureKey, CryptoError> {
+    /// Convert our Ed25519 signing key to an X25519 static secret via RFC 8037:
+    /// SHA-512 the 32-byte seed, take the first 32 bytes, apply Curve25519 clamping.
+    fn ed25519_to_x25519_secret(&self) -> Result<X25519Secret, CryptoError> {
+        let ed25519_kp = self
+            .local_keypair
+            .clone()
+            .try_into_ed25519()
+            .map_err(|_| CryptoError::InvalidInput("Keypair must be Ed25519".into()))?;
+
+        let mut hash: [u8; 64] = Sha512::digest(ed25519_kp.secret().as_ref()).into();
+
+        let mut x25519_bytes = [0u8; 32];
+        x25519_bytes.copy_from_slice(&hash[..32]);
+        // Curve25519 clamping (RFC 7748 §5)
+        x25519_bytes[0] &= 248;
+        x25519_bytes[31] &= 127;
+        x25519_bytes[31] |= 64;
+
+        let secret = X25519Secret::from(x25519_bytes);
+        x25519_bytes.zeroize();
+        hash.zeroize();
+        Ok(secret)
+    }
+
+    /// Convert a protobuf-encoded Ed25519 public key to an X25519 public key via the
+    /// birational map from twisted Edwards to Montgomery form.
+    fn ed25519_pubkey_to_x25519(pubkey_bytes: &[u8]) -> Result<X25519PublicKey, CryptoError> {
+        let libp2p_pk = libp2p::identity::PublicKey::try_decode_protobuf(pubkey_bytes)
+            .map_err(|e| CryptoError::InvalidInput(format!("Invalid public key: {e}")))?;
+
+        let ed25519_pk = libp2p_pk
+            .try_into_ed25519()
+            .map_err(|_| CryptoError::InvalidInput("Public key must be Ed25519".into()))?;
+
+        let compressed = CompressedEdwardsY(ed25519_pk.to_bytes());
+        let edwards_point = compressed
+            .decompress()
+            .ok_or_else(|| CryptoError::InvalidInput("Invalid Ed25519 public key point".into()))?;
+
+        Ok(X25519PublicKey::from(
+            edwards_point.to_montgomery().to_bytes(),
+        ))
+    }
+
+    fn derive_key(
+        &self,
+        shared_secret: &[u8],
+        err_variant: fn(String) -> CryptoError,
+    ) -> Result<SecureKey, CryptoError> {
         let hk = Hkdf::<Sha256>::new(None, shared_secret);
         let mut key_data = [0u8; 32];
         hk.expand(ENCRYPTION_CONTEXT, &mut key_data)
-            .map_err(|e| CryptoError::EncryptionFailed(format!("Key derivation failed: {e}")))?;
-
+            .map_err(|e| err_variant(format!("Key derivation failed: {e}")))?;
         let secure_key = SecureKey::new(key_data);
-        // Zero the temporary array
         key_data.zeroize();
-
-        Ok(secure_key)
-    }
-
-    fn derive_decryption_key(&self, shared_secret: &[u8]) -> Result<SecureKey, CryptoError> {
-        let hk = Hkdf::<Sha256>::new(None, shared_secret);
-        let mut key_data = [0u8; 32];
-        hk.expand(ENCRYPTION_CONTEXT, &mut key_data)
-            .map_err(|e| CryptoError::DecryptionFailed(format!("Key derivation failed: {e}")))?;
-
-        let secure_key = SecureKey::new(key_data);
-        // Zero the temporary array
-        key_data.zeroize();
-
         Ok(secure_key)
     }
 
@@ -607,5 +623,11 @@ mod tests {
             result.unwrap_err(),
             CryptoError::VerificationFailed(_)
         ));
+    }
+
+    #[test]
+    fn test_validate_shared_secret_rejects_all_zero_secret() {
+        let result = CryptoService::validate_shared_secret([0u8; 32]);
+        assert!(matches!(result, Err(CryptoError::InvalidInput(_))));
     }
 }
