@@ -156,27 +156,11 @@ impl EventProcessor {
             let main_loop_timeout = std::time::Duration::from_millis(50);
 
             let evt = self
-                .select_next_event(
-                    main_loop_timeout,
-                    app,
-                    swarm,
-                    &mut peer_state.peer_names,
-                    &mut peer_state.sorted_peer_names_cache,
-                    &peer_state.local_peer_name,
-                    auto_bootstrap,
-                )
+                .select_next_event(main_loop_timeout, app, swarm, peer_state, auto_bootstrap)
                 .await;
 
             if let Some(event) = evt {
-                self.process_event(
-                    event,
-                    app,
-                    swarm,
-                    &mut peer_state.peer_names,
-                    &mut peer_state.local_peer_name,
-                    &mut peer_state.sorted_peer_names_cache,
-                )
-                .await;
+                self.process_event(event, app, swarm, peer_state).await;
 
                 // Restore any previously learned aliases for reconnecting peers and
                 // learn new aliases from peers that just broadcast their name.
@@ -194,15 +178,12 @@ impl EventProcessor {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn select_next_event(
         &mut self,
         timeout: Duration,
         app: &mut App,
         swarm: &mut Swarm<StoryBehaviour>,
-        peer_names: &mut HashMap<PeerId, String>,
-        sorted_peer_names_cache: &mut SortedPeerNamesCache,
-        local_peer_name: &Option<String>,
+        peer_state: &mut PeerState,
         auto_bootstrap: &mut AutoBootstrap,
     ) -> Option<EventType> {
         tokio::select! {
@@ -257,41 +238,26 @@ impl EventProcessor {
                     None
                 }
             }
-            response = self.response_rcv.recv() => Some(EventType::Response(response.expect("response exists"))),
-            story = self.story_rcv.recv() => Some(EventType::PublishStory(story.expect("story exists"))),
+            response = self.response_rcv.recv() => response.map(EventType::Response),
+            story = self.story_rcv.recv() => story.map(EventType::PublishStory),
             _ = self.connection_maintenance_interval.tick() => {
-                // Periodic connection maintenance - spawn to background to avoid blocking
-                event_handlers::maintain_connections(swarm, &self.error_logger).await;
+                self.on_connection_maintenance_tick(swarm).await;
                 None
             },
             _ = self.bootstrap_retry_interval.tick() => {
-                // Automatic bootstrap retry - only if should retry and time is right
-                if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
-                    run_auto_bootstrap_with_retry(auto_bootstrap, swarm, &self.bootstrap_logger, &self.error_logger, &self.ui_logger).await;
-                }
+                self.on_bootstrap_retry_tick(swarm, auto_bootstrap).await;
                 None
             },
             _ = self.bootstrap_status_log_interval.tick() => {
-                // Periodically log bootstrap status - use try_has_started to avoid blocking
-                if auto_bootstrap.try_has_started().unwrap_or(false) {
-                    let status_msg = auto_bootstrap.get_status_string();
-                    self.bootstrap_logger.log_status(&status_msg);
-                }
+                self.on_bootstrap_status_tick(auto_bootstrap);
                 None
             },
             _ = self.dm_retry_interval.tick() => {
-                event_handlers::process_pending_messages(
-                    swarm,
-                    &self.dm_config,
-                    &self.pending_messages,
-                    peer_names,
-                    &self.ui_logger,
-                ).await;
+                self.on_dm_retry_tick(swarm, &peer_state.peer_names).await;
                 None
             },
             _ = self.network_health_update_interval.tick() => {
-                let health_summary = self.network_circuit_breakers.health_summary().await;
-                app.update_network_health(health_summary);
+                self.on_network_health_tick(app).await;
                 None
             },
             _ = self.handshake_timeout_interval.tick() => {
@@ -299,61 +265,89 @@ impl EventProcessor {
                 None
             },
             event = swarm.select_next_some() => {
-                self.handle_swarm_event(event, swarm, peer_names, sorted_peer_names_cache, local_peer_name, app, auto_bootstrap).await
+                self.handle_swarm_event(event, swarm, peer_state, app, auto_bootstrap).await
             },
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    // -------------------------------------------------------------------------
+    // Timer-tick handlers (extracted from select_next_event for clarity)
+    // -------------------------------------------------------------------------
+
+    async fn on_connection_maintenance_tick(&self, swarm: &mut Swarm<StoryBehaviour>) {
+        event_handlers::maintain_connections(swarm, &self.error_logger).await;
+    }
+
+    async fn on_bootstrap_retry_tick(
+        &self,
+        swarm: &mut Swarm<StoryBehaviour>,
+        auto_bootstrap: &mut AutoBootstrap,
+    ) {
+        if auto_bootstrap.should_retry() && auto_bootstrap.is_retry_time() {
+            run_auto_bootstrap_with_retry(
+                auto_bootstrap,
+                swarm,
+                &self.bootstrap_logger,
+                &self.error_logger,
+                &self.ui_logger,
+            )
+            .await;
+        }
+    }
+
+    fn on_bootstrap_status_tick(&self, auto_bootstrap: &AutoBootstrap) {
+        if auto_bootstrap.try_has_started().unwrap_or(false) {
+            let status_msg = auto_bootstrap.get_status_string();
+            self.bootstrap_logger.log_status(&status_msg);
+        }
+    }
+
+    async fn on_dm_retry_tick(
+        &self,
+        swarm: &mut Swarm<StoryBehaviour>,
+        peer_names: &HashMap<PeerId, String>,
+    ) {
+        event_handlers::process_pending_messages(
+            swarm,
+            &self.dm_config,
+            &self.pending_messages,
+            peer_names,
+            &self.ui_logger,
+        )
+        .await;
+    }
+
+    async fn on_network_health_tick(&self, app: &mut App) {
+        let health_summary = self.network_circuit_breakers.health_summary().await;
+        app.update_network_health(health_summary);
+    }
+
+    // -------------------------------------------------------------------------
+
     async fn handle_swarm_event(
         &mut self,
         event: SwarmEvent<StoryBehaviourEvent>,
         swarm: &mut Swarm<StoryBehaviour>,
-        peer_names: &mut HashMap<PeerId, String>,
-        sorted_peer_names_cache: &mut SortedPeerNamesCache,
-        local_peer_name: &Option<String>,
+        peer_state: &mut PeerState,
         app: &mut App,
         auto_bootstrap: &mut AutoBootstrap,
     ) -> Option<EventType> {
         match event {
-            SwarmEvent::Behaviour(StoryBehaviourEvent::Floodsub(event)) => {
-                Some(EventType::FloodsubEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::Mdns(event)) => {
-                // Track mDNS discovery status for the TUI status bar
-                match &event {
-                    libp2p::mdns::Event::Discovered(_) | libp2p::mdns::Event::Expired(_) => {
+            SwarmEvent::Behaviour(behaviour_event) => {
+                // Handle special side-effects before mapping to EventType.
+                match &behaviour_event {
+                    StoryBehaviourEvent::Mdns(_) => {
+                        // Track mDNS discovery status for the TUI status bar
                         app.mdns_active =
                             swarm.behaviour().mdns.discovered_nodes().next().is_some();
                     }
+                    StoryBehaviourEvent::Kad(kad_event) => {
+                        // Update bootstrap status based on DHT events
+                        update_bootstrap_status(kad_event, auto_bootstrap, swarm);
+                    }
+                    _ => {}
                 }
-                Some(EventType::MdnsEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::Ping(event)) => {
-                Some(EventType::PingEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(event)) => {
-                Some(EventType::RequestResponseEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::NodeDescription(event)) => {
-                Some(EventType::NodeDescriptionEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::StorySync(event)) => {
-                Some(EventType::StorySyncEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::Handshake(event)) => {
-                Some(EventType::HandshakeEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::Kad(event)) => {
-                // Update bootstrap status based on DHT events
-                update_bootstrap_status(&event, auto_bootstrap, swarm);
-                Some(EventType::KadEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::WasmCapabilities(event)) => {
-                Some(EventType::WasmCapabilitiesEvent(event))
-            }
-            SwarmEvent::Behaviour(StoryBehaviourEvent::WasmExecution(event)) => {
-                Some(EventType::WasmExecutionEvent(event))
+                Some(map_behaviour_to_event(behaviour_event))
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 app.add_to_log(format!("Local node is listening on {address}"));
@@ -362,27 +356,13 @@ impl EventProcessor {
             SwarmEvent::ConnectionEstablished {
                 peer_id, endpoint, ..
             } => {
-                self.handle_connection_established(
-                    peer_id,
-                    &endpoint,
-                    swarm,
-                    peer_names,
-                    sorted_peer_names_cache,
-                    local_peer_name,
-                )
-                .await;
+                self.handle_connection_established(peer_id, &endpoint, swarm)
+                    .await;
                 None
             }
             SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                self.handle_connection_closed(
-                    peer_id,
-                    cause.as_ref(),
-                    swarm,
-                    peer_names,
-                    sorted_peer_names_cache,
-                    app,
-                )
-                .await;
+                self.handle_connection_closed(peer_id, cause.as_ref(), swarm, peer_state, app)
+                    .await;
                 None
             }
             SwarmEvent::OutgoingConnectionError {
@@ -391,8 +371,7 @@ impl EventProcessor {
                 connection_id,
                 ..
             } => {
-                self.handle_outgoing_connection_error(peer_id, &error, &connection_id)
-                    .await;
+                self.handle_outgoing_connection_error(peer_id, &error, &connection_id);
                 None
             }
             SwarmEvent::IncomingConnectionError {
@@ -407,28 +386,19 @@ impl EventProcessor {
                     &send_back_addr,
                     &error,
                     &connection_id,
-                )
-                .await;
+                );
                 None
             }
-            SwarmEvent::Dialing {
-                peer_id: _,
-                connection_id: _,
-                ..
-            } => None,
+            SwarmEvent::Dialing { .. } => None,
             _ => None,
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn handle_connection_established(
         &mut self,
         peer_id: PeerId,
         endpoint: &libp2p::core::ConnectedPoint,
         swarm: &mut Swarm<StoryBehaviour>,
-        _peer_names: &mut HashMap<PeerId, String>,
-        _sorted_peer_names_cache: &mut SortedPeerNamesCache,
-        _local_peer_name: &Option<String>,
     ) {
         let pending_peer = PendingHandshakePeer {
             peer_id,
@@ -471,14 +441,12 @@ impl EventProcessor {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn handle_connection_closed(
         &mut self,
         peer_id: PeerId,
         _cause: Option<&libp2p::swarm::ConnectionError>,
         swarm: &mut Swarm<StoryBehaviour>,
-        peer_names: &mut HashMap<PeerId, String>,
-        sorted_peer_names_cache: &mut SortedPeerNamesCache,
+        peer_state: &mut PeerState,
         app: &mut App,
     ) {
         swarm
@@ -491,17 +459,19 @@ impl EventProcessor {
             pending_peers.remove(&peer_id);
         }
 
-        let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
-        verified_peers.remove(&peer_id);
+        {
+            let mut verified_peers = self.verified_p2p_play_peers.lock().unwrap();
+            verified_peers.remove(&peer_id);
+        }
 
-        if let Some(name) = peer_names.remove(&peer_id) {
+        if let Some(name) = peer_state.peer_names.remove(&peer_id) {
             // Persist user-set aliases so they are restored on the next connection
             // without waiting for the peer to re-broadcast its name.
-            if Self::is_user_set_peer_name(&name) {
-                self.known_peer_names.insert(peer_id, name);
-            }
-            sorted_peer_names_cache.update(peer_names);
-            app.update_peers(peer_names.clone());
+            self.remember_alias_on_disconnect(peer_id, name);
+            peer_state
+                .sorted_peer_names_cache
+                .update(&peer_state.peer_names);
+            app.update_peers(peer_state.peer_names.clone());
         }
 
         trigger_immediate_connection_maintenance(swarm, &self.error_logger).await;
@@ -522,6 +492,33 @@ impl EventProcessor {
         name.len() <= crate::validation::ContentLimits::PEER_NAME_MAX
     }
 
+    /// Saves the peer's alias into `known_peer_names` when the alias is a user-set
+    /// value (not a placeholder).  Called on disconnection so the alias survives
+    /// across reconnections within the same session.
+    fn remember_alias_on_disconnect(&mut self, peer_id: PeerId, name: String) {
+        if Self::is_user_set_peer_name(&name) {
+            self.known_peer_names.insert(peer_id, name);
+        }
+    }
+
+    /// Overwrites placeholder names in `peer_names` with the previously cached alias
+    /// for each peer.  Returns `true` if at least one entry was updated.
+    fn restore_aliases_for_connected_peers(
+        &self,
+        peer_names: &mut HashMap<PeerId, String>,
+    ) -> bool {
+        let mut names_updated = false;
+        for (peer_id, name) in peer_names.iter_mut() {
+            if let Some(known_name) = self.known_peer_names.get(peer_id)
+                && name != known_name
+            {
+                *name = known_name.clone();
+                names_updated = true;
+            }
+        }
+        names_updated
+    }
+
     /// Keeps `known_peer_names` and `peer_names` in sync so that user-set aliases
     /// survive peer disconnections within a session.
     ///
@@ -535,7 +532,7 @@ impl EventProcessor {
         peer_names: &mut HashMap<PeerId, String>,
         sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ) {
-        // Pass 1 – learn new / updated real aliases from the active peer map.
+        // Learn new / updated real aliases from the active peer map.
         for (peer_id, name) in peer_names.iter() {
             if Self::is_user_set_peer_name(name) {
                 let known = self.known_peer_names.get(peer_id);
@@ -546,53 +543,18 @@ impl EventProcessor {
             }
         }
 
-        // Pass 2 – restore known aliases for peers that joined with a placeholder.
-        let mut names_updated = false;
-        for (peer_id, name) in peer_names.iter_mut() {
-            if let Some(known_name) = self.known_peer_names.get(peer_id)
-                && name != known_name
-            {
-                *name = known_name.clone();
-                names_updated = true;
-            }
-        }
-
-        if names_updated {
+        // Restore known aliases for peers that joined with a placeholder.
+        if self.restore_aliases_for_connected_peers(peer_names) {
             sorted_peer_names_cache.update(peer_names);
         }
     }
 
-    async fn handle_outgoing_connection_error(
+    fn handle_outgoing_connection_error(
         &self,
         peer_id: Option<PeerId>,
         error: &libp2p::swarm::DialError,
         connection_id: &libp2p::swarm::ConnectionId,
     ) {
-        let _should_log_to_ui = match error {
-            libp2p::swarm::DialError::Transport(transport_errors) => {
-                !transport_errors.iter().any(|(_, e)| {
-                    let error_str = e.to_string();
-                    error_str.contains("Connection refused")
-                        || error_str.contains("timed out")
-                        || error_str.contains("No route to host")
-                        || error_str.contains("os error 111")
-                        || error_str.contains("Network is unreachable")
-                        || error_str.contains("Connection reset")
-                })
-            }
-            libp2p::swarm::DialError::NoAddresses => false,
-            libp2p::swarm::DialError::LocalPeerId { address: _ } => false,
-            libp2p::swarm::DialError::WrongPeerId { .. } => false,
-            libp2p::swarm::DialError::Aborted => false,
-            libp2p::swarm::DialError::Denied { .. } => false,
-            _ => {
-                let error_str = error.to_string();
-                !(error_str.contains("Multiple dial errors occurred")
-                    || error_str.contains("Failed to negotiate transport protocol")
-                    || error_str.contains("Unsupported resolved address"))
-            }
-        };
-
         crate::log_network_error!(
             self.error_logger,
             "outgoing_connection",
@@ -603,26 +565,13 @@ impl EventProcessor {
         );
     }
 
-    async fn handle_incoming_connection_error(
+    fn handle_incoming_connection_error(
         &self,
         local_addr: &libp2p::multiaddr::Multiaddr,
         send_back_addr: &libp2p::multiaddr::Multiaddr,
         error: &libp2p::swarm::ListenError,
         connection_id: &libp2p::swarm::ConnectionId,
     ) {
-        let _should_log_to_ui = {
-            let error_str = error.to_string();
-            !(error_str.contains("Connection reset")
-                || error_str.contains("Broken pipe")
-                || error_str.contains("timed out")
-                || error_str.contains("Connection refused")
-                || error_str.contains("os error 111")
-                || error_str.contains("Network is unreachable")
-                || error_str.contains("Connection aborted")
-                || error_str.contains("Multiple dial errors occurred")
-                || error_str.contains("Failed to negotiate transport protocol"))
-        };
-
         crate::log_network_error!(
             self.error_logger,
             "incoming_connection",
@@ -639,18 +588,16 @@ impl EventProcessor {
         event: EventType,
         app: &mut App,
         swarm: &mut Swarm<StoryBehaviour>,
-        peer_names: &mut HashMap<PeerId, String>,
-        local_peer_name: &mut Option<String>,
-        sorted_peer_names_cache: &mut SortedPeerNamesCache,
+        peer_state: &mut PeerState,
     ) {
         let action_result = handle_event(
             event,
             swarm,
-            peer_names,
+            &mut peer_state.peer_names,
             self.response_sender.clone(),
             self.story_sender.clone(),
-            local_peer_name,
-            sorted_peer_names_cache,
+            &mut peer_state.local_peer_name,
+            &mut peer_state.sorted_peer_names_cache,
             &self.ui_logger,
             &self.error_logger,
             &self.bootstrap_logger,
@@ -664,37 +611,29 @@ impl EventProcessor {
         .await;
 
         if let Some(action_result) = action_result {
-            self.handle_action_result(action_result, app, peer_names)
+            self.handle_action_result(action_result, app, &peer_state.peer_names)
                 .await;
         }
     }
 
     async fn cleanup_timed_out_handshakes(&self, swarm: &mut Swarm<StoryBehaviour>) {
         let timeout_duration = Duration::from_secs(HANDSHAKE_TIMEOUT_SECS);
-        let mut timed_out_peers = Vec::new();
 
-        {
+        // Collect all timed-out peers and their metadata in a single lock pass.
+        let timed_out: Vec<(PeerId, bool)> = {
             let pending_peers = self.pending_handshake_peers.lock().unwrap();
-            for (peer_id, pending_peer) in pending_peers.iter() {
-                if pending_peer.connection_time.elapsed() > timeout_duration {
-                    timed_out_peers.push(*peer_id);
-                }
-            }
-        }
+            pending_peers
+                .iter()
+                .filter(|(_, p)| p.connection_time.elapsed() > timeout_duration)
+                .map(|(id, p)| {
+                    let is_bootstrap_peer =
+                        matches!(p.endpoint, libp2p::core::ConnectedPoint::Dialer { .. });
+                    (*id, is_bootstrap_peer)
+                })
+                .collect()
+        };
 
-        for peer_id in &timed_out_peers {
-            let is_bootstrap_peer = {
-                let pending_peers = self.pending_handshake_peers.lock().unwrap();
-                if let Some(pending_peer) = pending_peers.get(peer_id) {
-                    matches!(
-                        pending_peer.endpoint,
-                        libp2p::core::ConnectedPoint::Dialer { .. }
-                    )
-                } else {
-                    false
-                }
-            };
-
+        for (peer_id, is_bootstrap_peer) in timed_out {
             if is_bootstrap_peer {
                 self.error_logger.log_error(&format!(
                     "Bootstrap handshake slow with peer {}: {}s elapsed, monitoring...",
@@ -703,12 +642,11 @@ impl EventProcessor {
                 continue; // Don't disconnect bootstrap peers on first timeout
             }
 
-            let _ = swarm.disconnect_peer_id(*peer_id);
-
-            {
-                let mut pending_peers = self.pending_handshake_peers.lock().unwrap();
-                pending_peers.remove(peer_id);
-            }
+            let _ = swarm.disconnect_peer_id(peer_id);
+            self.pending_handshake_peers
+                .lock()
+                .unwrap()
+                .remove(&peer_id);
 
             self.error_logger.log_error(&format!(
                 "Handshake timeout with peer {}: no response received within {}s",
@@ -775,6 +713,24 @@ impl EventProcessor {
     }
 }
 
+/// Maps a `StoryBehaviourEvent` to its corresponding `EventType`.
+/// Special-case side effects (mDNS active tracking, Kademlia bootstrap status) are
+/// handled by the caller before invoking this function.
+fn map_behaviour_to_event(event: StoryBehaviourEvent) -> EventType {
+    match event {
+        StoryBehaviourEvent::Floodsub(e) => EventType::FloodsubEvent(e),
+        StoryBehaviourEvent::Mdns(e) => EventType::MdnsEvent(e),
+        StoryBehaviourEvent::Ping(e) => EventType::PingEvent(e),
+        StoryBehaviourEvent::RequestResponse(e) => EventType::RequestResponseEvent(e),
+        StoryBehaviourEvent::NodeDescription(e) => EventType::NodeDescriptionEvent(e),
+        StoryBehaviourEvent::StorySync(e) => EventType::StorySyncEvent(e),
+        StoryBehaviourEvent::Handshake(e) => EventType::HandshakeEvent(e),
+        StoryBehaviourEvent::Kad(e) => EventType::KadEvent(e),
+        StoryBehaviourEvent::WasmCapabilities(e) => EventType::WasmCapabilitiesEvent(e),
+        StoryBehaviourEvent::WasmExecution(e) => EventType::WasmExecutionEvent(e),
+    }
+}
+
 fn update_bootstrap_status(
     kad_event: &libp2p::kad::Event,
     auto_bootstrap: &mut AutoBootstrap,
@@ -804,57 +760,84 @@ fn update_bootstrap_status(
 mod tests {
     use super::*;
 
-    fn create_test_event_processor() -> EventProcessor {
-        let (_, ui_rcv) = mpsc::unbounded_channel();
-        let (_, ui_log_rcv) = mpsc::unbounded_channel();
-        let (_, response_rcv) = mpsc::unbounded_channel();
-        let (_, story_rcv) = mpsc::unbounded_channel();
-        let (response_sender, _) = mpsc::unbounded_channel();
-        let (story_sender, _) = mpsc::unbounded_channel();
-        let (ui_sender, _) = mpsc::unbounded_channel();
-        let (ui_log_sender, _) = mpsc::unbounded_channel();
+    // -----------------------------------------------------------------------
+    // Shared test fixture
+    // -----------------------------------------------------------------------
 
-        let dm_config = DirectMessageConfig {
-            max_retry_attempts: 3,
-            retry_interval_seconds: 10,
-            enable_connection_retries: true,
-            enable_timed_retries: true,
-        };
-
-        let pending_messages = Arc::new(Mutex::new(Vec::new()));
-        let ui_logger = UILogger::new(ui_log_sender);
-        let error_logger = ErrorLogger::new("test_errors.log");
-        let bootstrap_logger = BootstrapLogger::new("test_bootstrap.log");
-
-        // Create disabled circuit breakers for testing
-        let cb_config = crate::types::NetworkCircuitBreakerConfig {
-            enabled: false,
-            ..Default::default()
-        };
-        let network_circuit_breakers =
-            crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
-
-        // Create default network config for testing
-        let network_config = crate::types::NetworkConfig::default();
-
-        EventProcessor::new(
-            ui_rcv,
-            ui_log_rcv,
-            response_rcv,
-            story_rcv,
-            response_sender,
-            story_sender,
-            ui_sender,
-            &network_config,
-            dm_config,
-            pending_messages,
-            ui_logger,
-            error_logger,
-            bootstrap_logger,
-            None, // No relay service in tests
-            network_circuit_breakers,
-        )
+    struct TestEventProcessorBuilder {
+        network_config: crate::types::NetworkConfig,
+        dm_config: DirectMessageConfig,
     }
+
+    impl Default for TestEventProcessorBuilder {
+        fn default() -> Self {
+            Self {
+                network_config: crate::types::NetworkConfig::default(),
+                dm_config: DirectMessageConfig {
+                    max_retry_attempts: 3,
+                    retry_interval_seconds: 10,
+                    enable_connection_retries: true,
+                    enable_timed_retries: true,
+                },
+            }
+        }
+    }
+
+    impl TestEventProcessorBuilder {
+        fn with_network_config(mut self, config: crate::types::NetworkConfig) -> Self {
+            self.network_config = config;
+            self
+        }
+
+        fn build(self) -> EventProcessor {
+            let (_, ui_rcv) = mpsc::unbounded_channel();
+            let (_, ui_log_rcv) = mpsc::unbounded_channel();
+            let (_, response_rcv) = mpsc::unbounded_channel();
+            let (_, story_rcv) = mpsc::unbounded_channel();
+            let (response_sender, _) = mpsc::unbounded_channel();
+            let (story_sender, _) = mpsc::unbounded_channel();
+            let (ui_sender, _) = mpsc::unbounded_channel();
+            let (ui_log_sender, _) = mpsc::unbounded_channel();
+
+            let pending_messages = Arc::new(Mutex::new(Vec::new()));
+            let ui_logger = UILogger::new(ui_log_sender);
+            let error_logger = ErrorLogger::new("test_errors.log");
+            let bootstrap_logger = BootstrapLogger::new("test_bootstrap.log");
+
+            let cb_config = crate::types::NetworkCircuitBreakerConfig {
+                enabled: false,
+                ..Default::default()
+            };
+            let network_circuit_breakers =
+                crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+
+            EventProcessor::new(
+                ui_rcv,
+                ui_log_rcv,
+                response_rcv,
+                story_rcv,
+                response_sender,
+                story_sender,
+                ui_sender,
+                &self.network_config,
+                self.dm_config,
+                pending_messages,
+                ui_logger,
+                error_logger,
+                bootstrap_logger,
+                None, // No relay service in tests
+                network_circuit_breakers,
+            )
+        }
+    }
+
+    fn create_test_event_processor() -> EventProcessor {
+        TestEventProcessorBuilder::default().build()
+    }
+
+    // -----------------------------------------------------------------------
+    // Basic creation
+    // -----------------------------------------------------------------------
 
     #[tokio::test]
     async fn test_event_processor_creation() {
@@ -906,11 +889,9 @@ mod tests {
             Some(&"Alice".to_string())
         );
 
-        // Disconnection: save alias (mirrors handle_connection_closed logic) and remove peer.
+        // Disconnection: save alias via the helper and remove peer.
         if let Some(name) = peer_names.remove(&peer_id) {
-            if EventProcessor::is_user_set_peer_name(&name) {
-                ep.known_peer_names.insert(peer_id, name);
-            }
+            ep.remember_alias_on_disconnect(peer_id, name);
         }
         assert!(peer_names.is_empty(), "peer should be gone from active map");
         assert_eq!(
@@ -987,9 +968,7 @@ mod tests {
 
         // Only peer_a disconnects.
         if let Some(name) = peer_names.remove(&peer_a) {
-            if EventProcessor::is_user_set_peer_name(&name) {
-                ep.known_peer_names.insert(peer_a, name);
-            }
+            ep.remember_alias_on_disconnect(peer_a, name);
         }
 
         // peer_b is still active; peer_a's alias is in the cache.
@@ -1007,50 +986,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_connection_maintenance_interval_uses_config() {
-        let (_, ui_rcv) = mpsc::unbounded_channel();
-        let (_, ui_log_rcv) = mpsc::unbounded_channel();
-        let (_, response_rcv) = mpsc::unbounded_channel();
-        let (_, story_rcv) = mpsc::unbounded_channel();
-        let (response_sender, _) = mpsc::unbounded_channel();
-        let (story_sender, _) = mpsc::unbounded_channel();
-        let (ui_sender, _) = mpsc::unbounded_channel();
-        let (ui_log_sender, _) = mpsc::unbounded_channel();
-
-        let dm_config = DirectMessageConfig::default();
-        let pending_messages = Arc::new(Mutex::new(Vec::new()));
-        let ui_logger = UILogger::new(ui_log_sender);
-        let error_logger = ErrorLogger::new("test_errors.log");
-        let bootstrap_logger = BootstrapLogger::new("test_bootstrap.log");
-        let cb_config = crate::types::NetworkCircuitBreakerConfig {
-            enabled: false,
-            ..Default::default()
-        };
-        let network_circuit_breakers =
-            crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
-
-        // Use a distinctive non-default value to prove the config is wired, not hardcoded
+        // Use a distinctive non-default value to prove the config is wired, not hardcoded.
         let network_config = crate::types::NetworkConfig {
             connection_maintenance_interval_seconds: 120,
             ..Default::default()
         };
-
-        let ep = EventProcessor::new(
-            ui_rcv,
-            ui_log_rcv,
-            response_rcv,
-            story_rcv,
-            response_sender,
-            story_sender,
-            ui_sender,
-            &network_config,
-            dm_config,
-            pending_messages,
-            ui_logger,
-            error_logger,
-            bootstrap_logger,
-            None,
-            network_circuit_breakers,
-        );
+        let ep = TestEventProcessorBuilder::default()
+            .with_network_config(network_config)
+            .build();
 
         assert_eq!(
             ep.connection_maintenance_interval.period(),
