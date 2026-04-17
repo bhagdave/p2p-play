@@ -91,16 +91,8 @@ pub enum UIError {
     InputHandling { reason: String },
 
     #[allow(dead_code)]
-    #[error("State transition failed: from {from} to {to}")]
-    StateTransition { from: String, to: String },
-
-    #[allow(dead_code)]
     #[error("Widget error: {widget} - {reason}")]
     Widget { widget: String, reason: String },
-
-    #[allow(dead_code)]
-    #[error("Layout error: {reason}")]
-    Layout { reason: String },
 }
 
 /// Configuration-related errors
