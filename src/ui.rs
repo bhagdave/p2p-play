@@ -1818,6 +1818,11 @@ fn normal_mode_hint(view_mode: &ViewMode) -> &'static str {
     }
 }
 
+/// Find the longest common prefix shared by all `strings`, using a
+/// case-insensitive comparison while preserving the original casing from
+/// `strings[0]` in the returned value.
+///
+/// Returns `None` when the strings share no common leading characters.
 fn find_common_prefix(strings: &[String]) -> Option<String> {
     if strings.is_empty() {
         return None;
@@ -1826,18 +1831,16 @@ fn find_common_prefix(strings: &[String]) -> Option<String> {
         return Some(strings[0].clone());
     }
 
-    // Collect char sequences once (lowercase for comparison, original for output).
-    let first_chars: Vec<char> = strings[0].to_lowercase().chars().collect();
-    let rest_chars: Vec<Vec<char>> = strings[1..]
-        .iter()
-        .map(|s| s.to_lowercase().chars().collect())
-        .collect();
+    let mut prefix_len = 0usize; // measured in Unicode scalar values (chars)
 
-    let mut prefix_len = 0usize; // measured in chars
-
-    'outer: for (i, &ch) in first_chars.iter().enumerate() {
-        for other in &rest_chars {
-            if other.get(i) != Some(&ch) {
+    // Iterate lazily over the first string's characters.  For each position
+    // we fetch the corresponding character from every other string via `nth(i)`
+    // rather than materialising full char vectors upfront.
+    'outer: for (i, orig_ch) in strings[0].chars().enumerate() {
+        let lower_ch = orig_ch.to_lowercase().next().unwrap_or(orig_ch);
+        for other in &strings[1..] {
+            let other_lower = other.chars().nth(i).and_then(|c| c.to_lowercase().next());
+            if other_lower != Some(lower_ch) {
                 break 'outer;
             }
         }
@@ -1847,6 +1850,7 @@ fn find_common_prefix(strings: &[String]) -> Option<String> {
     if prefix_len == 0 {
         None
     } else {
+        // Return original casing from the first string.
         Some(strings[0].chars().take(prefix_len).collect())
     }
 }
