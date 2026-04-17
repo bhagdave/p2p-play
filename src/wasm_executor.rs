@@ -7,7 +7,8 @@ use crate::content_fetcher::ContentFetcher;
 use crate::errors::FetchError;
 use crate::types::WasmConfig;
 use bytes::Bytes;
-use std::sync::Arc;
+use lru::LruCache;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use thiserror::Error;
 use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
@@ -19,6 +20,15 @@ const WASM_MAGIC: &[u8] = b"\0asm";
 
 /// Expected WASM version bytes (version 1)
 const WASM_VERSION: &[u8] = &[0x01, 0x00, 0x00, 0x00];
+
+/// Length of a valid WASM binary header in bytes (4-byte magic + 4-byte version)
+const WASM_HEADER_LEN: usize = 8;
+
+/// Size of each I/O pipe buffer in bytes (64 KiB)
+const PIPE_BUFFER_SIZE: usize = 64 * 1024;
+
+/// Number of bytes in one megabyte
+const BYTES_PER_MB: usize = 1024 * 1024;
 
 /// Errors that can occur during WASM execution
 #[derive(Debug, Error)]
@@ -55,6 +65,9 @@ pub enum WasmExecutionError {
 
     #[error("WASI setup failed: {0}")]
     WasiSetupFailed(String),
+
+    #[error("Invalid execution request: {0}")]
+    InvalidRequest(String),
 }
 
 /// Result type for WASM execution operations
@@ -124,6 +137,35 @@ impl ExecutionRequest {
         self.args = args;
         self
     }
+
+    /// Validate that the request parameters are within acceptable bounds.
+    ///
+    /// Returns `Err` for zero fuel/memory, a zero timeout, or a memory limit that
+    /// exceeds the executor's configured maximum.
+    pub fn validate(&self, config: &WasmConfig) -> WasmResult<()> {
+        if self.fuel_limit == 0 {
+            return Err(WasmExecutionError::InvalidRequest(
+                "fuel_limit must be greater than 0".to_string(),
+            ));
+        }
+        if self.memory_limit_mb == 0 {
+            return Err(WasmExecutionError::InvalidRequest(
+                "memory_limit_mb must be greater than 0".to_string(),
+            ));
+        }
+        if let Some(0) = self.timeout_secs {
+            return Err(WasmExecutionError::InvalidRequest(
+                "timeout_secs must be greater than 0 when specified".to_string(),
+            ));
+        }
+        if self.memory_limit_mb > config.max_memory_limit_mb {
+            return Err(WasmExecutionError::MemoryLimitTooLarge(
+                self.memory_limit_mb,
+                config.max_memory_limit_mb,
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Result of WASM module execution
@@ -142,11 +184,9 @@ pub struct ExecutionResult {
 /// Configuration for the WASM executor
 #[derive(Debug, Clone)]
 pub struct WasmExecutorConfig {
-    /// Enable module caching
-    #[allow(dead_code)]
+    /// Enable compiled module caching keyed by CID
     pub enable_cache: bool,
-    /// Maximum number of cached modules
-    #[allow(dead_code)]
+    /// Maximum number of compiled modules to keep in the LRU cache
     pub max_cached_modules: usize,
 }
 
@@ -169,9 +209,9 @@ struct StoreData {
 pub struct WasmExecutor<F: ContentFetcher> {
     engine: Engine,
     fetcher: Arc<F>,
-    #[allow(dead_code)]
-    executor_config: WasmExecutorConfig,
     resource_config: WasmConfig,
+    /// LRU cache of compiled modules keyed by CID; `None` when caching is disabled
+    module_cache: Option<Mutex<LruCache<String, Module>>>,
 }
 
 impl<F: ContentFetcher> WasmExecutor<F> {
@@ -180,8 +220,7 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         Self::with_configs(fetcher, WasmExecutorConfig::default(), WasmConfig::new())
     }
 
-    /// Create a new WASM executor with custom configuration
-    #[allow(dead_code)]
+    /// Create a new WASM executor with a custom executor configuration
     pub fn with_config(fetcher: Arc<F>, config: WasmExecutorConfig) -> WasmResult<Self> {
         Self::with_configs(fetcher, config, WasmConfig::new())
     }
@@ -198,164 +237,261 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         let engine = Engine::new(&engine_config)
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
 
+        // Only create the cache when caching is enabled and the capacity is non-zero.
+        // LruCache::new panics on a zero capacity.
+        let module_cache = if executor_config.enable_cache && executor_config.max_cached_modules > 0
+        {
+            Some(Mutex::new(LruCache::new(
+                executor_config.max_cached_modules,
+            )))
+        } else {
+            None
+        };
+
         Ok(Self {
             engine,
             fetcher,
-            executor_config,
             resource_config,
+            module_cache,
         })
     }
 
     /// Execute a WASM module based on the execution request
     pub async fn execute(&self, request: ExecutionRequest) -> WasmResult<ExecutionResult> {
-        // Fetch WASM binary from IPFS
-        let wasm_bytes = self
-            .fetcher
-            .fetch(&request.wasm_cid)
-            .await
-            .map_err(WasmExecutionError::FetchFailed)?;
+        request.validate(&self.resource_config)?;
 
-        // Validate the WASM binary
-        validate_wasm(&wasm_bytes)?;
+        let module = self.fetch_and_compile(&request.wasm_cid).await?;
 
-        // Compile the module
-        let module = Module::new(&self.engine, &wasm_bytes)
-            .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
+        let (wasi_ctx, stdout_reader, stderr_reader) =
+            build_wasi_context(request.input, &request.args);
 
-        // Create WASI context with captured stdout/stderr
-        let stdin_pipe = wasmtime_wasi::pipe::MemoryInputPipe::new(Bytes::from(request.input));
-        let stdout_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(64 * 1024);
-        let stderr_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(64 * 1024);
+        let mut store = self.build_store(wasi_ctx, request.fuel_limit, request.memory_limit_mb)?;
 
-        let stdout_pipe_clone = stdout_pipe.clone();
-        let stderr_pipe_clone = stderr_pipe.clone();
+        let start_func = Self::instantiate_start(&self.engine, &module, &mut store).await?;
 
-        let mut wasi_builder = WasiCtxBuilder::new();
-        wasi_builder
-            .stdin(stdin_pipe)
-            .stdout(stdout_pipe)
-            .stderr(stderr_pipe);
-
-        // Add arguments if provided
-        if !request.args.is_empty() {
-            wasi_builder.args(&request.args);
-        }
-
-        // Build WASIp1 context
-        let wasi_ctx = wasi_builder.build_p1();
-
-        // Validate memory limit to prevent overflow
-        if request.memory_limit_mb > self.resource_config.max_memory_limit_mb {
-            return Err(WasmExecutionError::MemoryLimitTooLarge(
-                request.memory_limit_mb,
-                self.resource_config.max_memory_limit_mb,
-            ));
-        }
-
-        // Create store limits based on the request
-        let memory_limit_bytes = (request.memory_limit_mb as usize) * 1024 * 1024;
-        let limits = StoreLimitsBuilder::new()
-            .memory_size(memory_limit_bytes)
-            .build();
-
-        // Create store data with WASI context and limits
-        let store_data = StoreData {
-            wasi: wasi_ctx,
-            limits,
-        };
-
-        // Create store with fuel limit and memory limits
-        let mut store = Store::new(&self.engine, store_data);
-        store.limiter(|data| &mut data.limits as &mut dyn wasmtime::ResourceLimiter);
-        store.set_fuel(request.fuel_limit).map_err(|e| {
-            WasmExecutionError::ExecutionFailed(format!("Failed to set fuel: {}", e))
-        })?;
-
-        // Create linker and add WASI preview1
-        let mut linker = Linker::new(&self.engine);
-        preview1::add_to_linker_async(&mut linker, |s: &mut StoreData| &mut s.wasi)
-            .map_err(|e| WasmExecutionError::WasiSetupFailed(e.to_string()))?;
-
-        // Instantiate the module
-        let instance = linker
-            .instantiate_async(&mut store, &module)
-            .await
-            .map_err(|e| WasmExecutionError::InstantiationFailed(e.to_string()))?;
-
-        // Get the _start function
-        let start_func = instance
-            .get_typed_func::<(), ()>(&mut store, "_start")
-            .map_err(|_| WasmExecutionError::EntryPointNotFound)?;
-
-        // Execute with optional timeout
-        let execution_result = if let Some(timeout_secs) = request.timeout_secs {
-            tokio::time::timeout(
-                Duration::from_secs(timeout_secs),
-                start_func.call_async(&mut store, ()),
-            )
-            .await
-        } else {
-            Ok(start_func.call_async(&mut store, ()).await)
-        };
-
-        // Get remaining fuel to calculate consumption
-        let remaining_fuel = store.get_fuel().unwrap_or(0);
-        let fuel_consumed = request.fuel_limit.saturating_sub(remaining_fuel);
-
-        // Handle execution result
-        let exit_code = match execution_result {
-            Ok(Ok(())) => 0,
-            Ok(Err(e)) => {
-                // Check if it's a fuel exhaustion error
-                let error_str = e.to_string();
-                if error_str.contains("fuel") || error_str.contains("out of fuel") {
-                    return Err(WasmExecutionError::FuelExhausted {
-                        consumed: fuel_consumed,
-                    });
-                }
-                // Check if it's a memory limit error
-                // Wasmtime's ResourceLimiter errors typically contain "resource limit exceeded"
-                if error_str.contains("resource limit exceeded")
-                    || (error_str.contains("memory") && error_str.contains("limit exceeded"))
-                {
-                    return Err(WasmExecutionError::MemoryLimitExceeded);
-                }
-                // Check for WASI exit code
-                if let Some(exit_error) = e.downcast_ref::<wasmtime_wasi::I32Exit>() {
-                    exit_error.0
-                } else {
-                    return Err(WasmExecutionError::ExecutionFailed(error_str));
-                }
-            }
-            Err(_timeout) => {
-                return Err(WasmExecutionError::ExecutionTimeout);
-            }
-        };
-
-        // Collect output from pipes
-        let stdout = stdout_pipe_clone.contents().to_vec();
-        let stderr = stderr_pipe_clone.contents().to_vec();
+        let (exit_code, fuel_consumed) = run_start_func(
+            start_func,
+            &mut store,
+            request.fuel_limit,
+            request.timeout_secs,
+        )
+        .await?;
 
         Ok(ExecutionResult {
-            stdout,
-            stderr,
+            stdout: stdout_reader.contents().to_vec(),
+            stderr: stderr_reader.contents().to_vec(),
             fuel_consumed,
             exit_code,
         })
     }
+
+    /// Fetch the WASM binary for `cid`, validate its header, and compile it.
+    ///
+    /// When caching is enabled the compiled [`Module`] is stored in an LRU cache
+    /// so that repeated calls for the same CID skip both the network fetch and
+    /// the compilation step.
+    async fn fetch_and_compile(&self, cid: &str) -> WasmResult<Module> {
+        // Return a clone of the cached module if one exists
+        if let Some(cache) = &self.module_cache {
+            if let Ok(mut guard) = cache.lock() {
+                if let Some(module) = guard.get(cid) {
+                    return Ok(module.clone());
+                }
+            }
+        }
+
+        let wasm_bytes = self
+            .fetcher
+            .fetch(cid)
+            .await
+            .map_err(WasmExecutionError::FetchFailed)?;
+
+        validate_wasm(&wasm_bytes)?;
+
+        let module = Module::new(&self.engine, &wasm_bytes)
+            .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
+
+        // Store the freshly compiled module in the cache
+        if let Some(cache) = &self.module_cache {
+            if let Ok(mut guard) = cache.lock() {
+                guard.put(cid.to_string(), module.clone());
+            }
+        }
+
+        Ok(module)
+    }
+
+    /// Create a wasmtime [`Store`] with the WASI context, fuel limit, and memory limits
+    /// derived from the execution request.
+    fn build_store(
+        &self,
+        wasi_ctx: wasmtime_wasi::preview1::WasiP1Ctx,
+        fuel_limit: u64,
+        memory_limit_mb: u32,
+    ) -> WasmResult<Store<StoreData>> {
+        let limits = StoreLimitsBuilder::new()
+            .memory_size(mb_to_bytes(memory_limit_mb))
+            .build();
+
+        let mut store = Store::new(
+            &self.engine,
+            StoreData {
+                wasi: wasi_ctx,
+                limits,
+            },
+        );
+        store.limiter(|data| &mut data.limits as &mut dyn wasmtime::ResourceLimiter);
+        store
+            .set_fuel(fuel_limit)
+            .map_err(|e| WasmExecutionError::ExecutionFailed(format!("Failed to set fuel: {e}")))?;
+
+        Ok(store)
+    }
+
+    /// Instantiate `module` inside `store` and return a handle to its `_start` export.
+    async fn instantiate_start(
+        engine: &Engine,
+        module: &Module,
+        store: &mut Store<StoreData>,
+    ) -> WasmResult<wasmtime::TypedFunc<(), ()>> {
+        let mut linker = Linker::new(engine);
+        preview1::add_to_linker_async(&mut linker, |s: &mut StoreData| &mut s.wasi)
+            .map_err(|e| WasmExecutionError::WasiSetupFailed(e.to_string()))?;
+
+        let instance = linker
+            .instantiate_async(&mut *store, module)
+            .await
+            .map_err(|e| WasmExecutionError::InstantiationFailed(e.to_string()))?;
+
+        instance
+            .get_typed_func::<(), ()>(&mut *store, "_start")
+            .map_err(|_| WasmExecutionError::EntryPointNotFound)
+    }
 }
 
-/// Validate that bytes represent a valid WASM binary
+/// Build a WASI context with in-memory pipes for stdin/stdout/stderr.
+///
+/// Returns the context together with reader handles for stdout and stderr that
+/// share the same underlying buffers (via `MemoryOutputPipe::clone`).
+fn build_wasi_context(
+    input: Vec<u8>,
+    args: &[String],
+) -> (
+    wasmtime_wasi::preview1::WasiP1Ctx,
+    wasmtime_wasi::pipe::MemoryOutputPipe,
+    wasmtime_wasi::pipe::MemoryOutputPipe,
+) {
+    let stdin_pipe = wasmtime_wasi::pipe::MemoryInputPipe::new(Bytes::from(input));
+    let stdout_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(PIPE_BUFFER_SIZE);
+    let stderr_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(PIPE_BUFFER_SIZE);
+
+    // Clone before passing into the builder; both handles share the same buffer
+    let stdout_reader = stdout_pipe.clone();
+    let stderr_reader = stderr_pipe.clone();
+
+    let mut wasi_builder = WasiCtxBuilder::new();
+    wasi_builder
+        .stdin(stdin_pipe)
+        .stdout(stdout_pipe)
+        .stderr(stderr_pipe);
+
+    if !args.is_empty() {
+        wasi_builder.args(args);
+    }
+
+    (wasi_builder.build_p1(), stdout_reader, stderr_reader)
+}
+
+/// Execute `start_func` inside `store`, honouring an optional timeout.
+///
+/// Returns `(exit_code, fuel_consumed)` on success or a typed
+/// [`WasmExecutionError`] on failure.
+async fn run_start_func(
+    start_func: wasmtime::TypedFunc<(), ()>,
+    store: &mut Store<StoreData>,
+    fuel_limit: u64,
+    timeout_secs: Option<u64>,
+) -> WasmResult<(i32, u64)> {
+    let raw_result = if let Some(secs) = timeout_secs {
+        tokio::time::timeout(
+            Duration::from_secs(secs),
+            start_func.call_async(&mut *store, ()),
+        )
+        .await
+    } else {
+        Ok(start_func.call_async(&mut *store, ()).await)
+    };
+
+    let fuel_consumed = fuel_limit.saturating_sub(store.get_fuel().unwrap_or(0));
+
+    let exit_code = match raw_result {
+        Ok(Ok(())) => 0,
+        Ok(Err(e)) => classify_trap_error(e, fuel_consumed)?,
+        Err(_timeout) => return Err(WasmExecutionError::ExecutionTimeout),
+    };
+
+    Ok((exit_code, fuel_consumed))
+}
+
+/// Classify a wasmtime runtime error into a typed [`WasmExecutionError`].
+///
+/// The classifier tries typed downcasts first (WASI exit codes, trap codes) and
+/// falls back to string matching only for resource-limit errors that wasmtime
+/// does not yet expose through a stable typed API.
+fn classify_trap_error(e: anyhow::Error, fuel_consumed: u64) -> WasmResult<i32> {
+    // WASI process exit – not an error, just a non-zero exit code
+    if let Some(exit_error) = e.downcast_ref::<wasmtime_wasi::I32Exit>() {
+        return Ok(exit_error.0);
+    }
+
+    // Typed trap: fuel exhaustion
+    if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
+        match trap {
+            wasmtime::Trap::OutOfFuel => {
+                return Err(WasmExecutionError::FuelExhausted {
+                    consumed: fuel_consumed,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    // String-based fallback for cases not covered by typed downcasts
+    let error_str = e.to_string();
+    if error_str.contains("fuel") || error_str.contains("out of fuel") {
+        return Err(WasmExecutionError::FuelExhausted {
+            consumed: fuel_consumed,
+        });
+    }
+    if error_str.contains("resource limit exceeded")
+        || (error_str.contains("memory") && error_str.contains("limit exceeded"))
+    {
+        return Err(WasmExecutionError::MemoryLimitExceeded);
+    }
+
+    Err(WasmExecutionError::ExecutionFailed(error_str))
+}
+
+/// Convert a memory limit in megabytes to the equivalent number of bytes.
+fn mb_to_bytes(mb: u32) -> usize {
+    (mb as usize) * BYTES_PER_MB
+}
+
+/// Validate that `bytes` represent a valid WASM binary.
 ///
 /// Checks for:
-/// - WASM magic bytes ("\0asm")
-/// - WASM version (1.0)
+/// - the WASM magic bytes (`"\0asm"`)
+/// - WASM version 1
+///
+/// This is a lightweight header-only check; full structural validation is
+/// performed by wasmtime during compilation.
 pub fn validate_wasm(bytes: &[u8]) -> WasmResult<()> {
-    if bytes.len() < 8 {
+    if bytes.len() < WASM_HEADER_LEN {
         return Err(WasmExecutionError::InvalidWasm {
             reason: format!(
-                "WASM binary too small: {} bytes (minimum 8 required)",
-                bytes.len()
+                "WASM binary too small: {} bytes (minimum {} required)",
+                bytes.len(),
+                WASM_HEADER_LEN
             ),
         });
     }
@@ -400,9 +536,10 @@ mod tests {
         .expect("Failed to parse WAT")
     }
 
+    // --- validate_wasm ---
+
     #[test]
     fn test_validate_wasm_valid() {
-        // Valid WASM header: magic + version 1
         let valid_wasm = [0x00, 0x61, 0x73, 0x6D, 0x01, 0x00, 0x00, 0x00];
         assert!(validate_wasm(&valid_wasm).is_ok());
     }
@@ -411,7 +548,6 @@ mod tests {
     fn test_validate_wasm_too_small() {
         let too_small = [0x00, 0x61, 0x73, 0x6D];
         let result = validate_wasm(&too_small);
-        assert!(result.is_err());
         match result {
             Err(WasmExecutionError::InvalidWasm { reason }) => {
                 assert!(reason.contains("too small"));
@@ -424,7 +560,6 @@ mod tests {
     fn test_validate_wasm_bad_magic() {
         let bad_magic = [0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
         let result = validate_wasm(&bad_magic);
-        assert!(result.is_err());
         match result {
             Err(WasmExecutionError::InvalidWasm { reason }) => {
                 assert!(reason.contains("magic bytes"));
@@ -434,17 +569,9 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_wasm_bytes() {
-        let wasm = create_minimal_wasm();
-        validate_wasm(&wasm).unwrap();
-    }
-
-    #[test]
     fn test_validate_wasm_bad_version() {
-        // Valid magic but wrong version
         let bad_version = [0x00, 0x61, 0x73, 0x6D, 0x02, 0x00, 0x00, 0x00];
         let result = validate_wasm(&bad_version);
-        assert!(result.is_err());
         match result {
             Err(WasmExecutionError::InvalidWasm { reason }) => {
                 assert!(reason.contains("version"));
@@ -452,6 +579,23 @@ mod tests {
             _ => panic!("Expected InvalidWasm error"),
         }
     }
+
+    #[test]
+    fn test_validate_wasm_real_bytes() {
+        let wasm = create_minimal_wasm();
+        validate_wasm(&wasm).unwrap();
+    }
+
+    // --- mb_to_bytes / BYTES_PER_MB ---
+
+    #[test]
+    fn test_mb_to_bytes() {
+        assert_eq!(mb_to_bytes(1), BYTES_PER_MB);
+        assert_eq!(mb_to_bytes(64), 64 * BYTES_PER_MB);
+        assert_eq!(mb_to_bytes(0), 0);
+    }
+
+    // --- ExecutionRequest builder ---
 
     #[test]
     fn test_execution_request_builder() {
@@ -481,6 +625,65 @@ mod tests {
         assert!(request.args.is_empty());
     }
 
+    // --- ExecutionRequest::validate ---
+
+    #[test]
+    fn test_validate_request_ok() {
+        let config = WasmConfig::new();
+        let request = ExecutionRequest::new("QmTest".to_string());
+        assert!(request.validate(&config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_request_zero_fuel() {
+        let config = WasmConfig::new();
+        let request = ExecutionRequest::new("QmTest".to_string()).with_fuel_limit(0);
+        assert!(matches!(
+            request.validate(&config),
+            Err(WasmExecutionError::InvalidRequest(_))
+        ));
+    }
+
+    #[test]
+    fn test_validate_request_zero_memory() {
+        let config = WasmConfig::new();
+        let request = ExecutionRequest::new("QmTest".to_string()).with_memory_limit_mb(0);
+        assert!(matches!(
+            request.validate(&config),
+            Err(WasmExecutionError::InvalidRequest(_))
+        ));
+    }
+
+    #[test]
+    fn test_validate_request_zero_timeout() {
+        let config = WasmConfig::new();
+        let request = ExecutionRequest::new("QmTest".to_string()).with_timeout_secs(Some(0));
+        assert!(matches!(
+            request.validate(&config),
+            Err(WasmExecutionError::InvalidRequest(_))
+        ));
+    }
+
+    #[test]
+    fn test_validate_request_no_timeout_ok() {
+        let config = WasmConfig::new();
+        let request = ExecutionRequest::new("QmTest".to_string()).with_timeout_secs(None);
+        assert!(request.validate(&config).is_ok());
+    }
+
+    #[test]
+    fn test_validate_request_memory_exceeds_max() {
+        let config = WasmConfig::new();
+        let request = ExecutionRequest::new("QmTest".to_string())
+            .with_memory_limit_mb(WasmConfig::MAX_MEMORY_LIMIT_MB + 1);
+        assert!(matches!(
+            request.validate(&config),
+            Err(WasmExecutionError::MemoryLimitTooLarge(_, _))
+        ));
+    }
+
+    // --- WasmExecutorConfig ---
+
     #[test]
     fn test_wasm_executor_config_default() {
         let config = WasmExecutorConfig::default();
@@ -488,38 +691,13 @@ mod tests {
         assert_eq!(config.max_cached_modules, 10);
     }
 
-    #[test]
-    fn test_memory_limit_configuration() {
-        // Test that memory limits are properly converted to bytes
-        let request = ExecutionRequest::new("QmTest".to_string()).with_memory_limit_mb(64);
-
-        // 64 MB should convert to 64 * 1024 * 1024 bytes = 67108864 bytes
-        let expected_bytes = 64 * 1024 * 1024;
-        let actual_bytes = (request.memory_limit_mb as usize) * 1024 * 1024;
-        assert_eq!(actual_bytes, expected_bytes);
-    }
+    // --- StoreLimitsBuilder (sanity check) ---
 
     #[test]
     fn test_store_limits_builder() {
-        // Verify that StoreLimitsBuilder can be used to create memory limits
-        let memory_limit_mb = 32;
-        let memory_limit_bytes = (memory_limit_mb as usize) * 1024 * 1024;
         let limits = StoreLimitsBuilder::new()
-            .memory_size(memory_limit_bytes)
+            .memory_size(mb_to_bytes(32))
             .build();
-
-        // If we can build the limits without error, the configuration is valid
         assert!(std::mem::size_of_val(&limits) > 0);
-    }
-
-    #[test]
-    fn test_memory_limit_validation() {
-        // Test that exceeding max memory limit is detected
-        let request = ExecutionRequest::new("QmTest".to_string())
-            .with_memory_limit_mb(WasmConfig::MAX_MEMORY_LIMIT_MB + 1);
-
-        // The executor should validate and reject excessive memory limits
-        assert_eq!(request.memory_limit_mb, WasmConfig::MAX_MEMORY_LIMIT_MB + 1);
-        assert!(request.memory_limit_mb > WasmConfig::MAX_MEMORY_LIMIT_MB);
     }
 }

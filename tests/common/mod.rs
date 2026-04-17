@@ -140,3 +140,183 @@ pub fn create_test_swarm_with_ping_config()
     create_swarm(&ping_config, &network_config)
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
 }
+
+/// WASM test fixtures: mock fetcher and WAT-based WASM builders.
+pub mod wasm_fixtures {
+    use p2p_play::content_fetcher::ContentFetcher;
+    use p2p_play::errors::FetchError;
+
+    // -----------------------------------------------------------------------
+    // Mock fetcher
+    // -----------------------------------------------------------------------
+
+    /// A minimal [`ContentFetcher`] that serves a fixed byte payload or
+    /// simulates a fetch failure, suitable for unit and integration tests.
+    pub struct MockContentFetcher {
+        data: Vec<u8>,
+        should_fail: bool,
+    }
+
+    impl MockContentFetcher {
+        pub fn new(data: Vec<u8>) -> Self {
+            Self {
+                data,
+                should_fail: false,
+            }
+        }
+
+        pub fn with_error() -> Self {
+            Self {
+                data: Vec::new(),
+                should_fail: true,
+            }
+        }
+    }
+
+    impl ContentFetcher for MockContentFetcher {
+        async fn fetch(&self, _cid: &str) -> Result<Vec<u8>, FetchError> {
+            if self.should_fail {
+                return Err(FetchError::NotFound("test-cid".to_string()));
+            }
+            Ok(self.data.clone())
+        }
+
+        async fn resolve_ipns(&self, _name: &str) -> Result<String, FetchError> {
+            Ok("QmTest123".to_string())
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // WAT-based WASM builders
+    // -----------------------------------------------------------------------
+
+    /// Minimal valid WASM module with a no-op `_start` export.
+    pub fn create_minimal_wasm() -> Vec<u8> {
+        wat::parse_str(
+            r#"
+            (module
+                (func $main)
+                (export "_start" (func $main))
+            )
+            "#,
+        )
+        .expect("Failed to parse WAT")
+    }
+
+    /// WASM module that writes `"Hello\n"` to stdout via WASI.
+    pub fn create_stdout_wasm() -> Vec<u8> {
+        wat::parse_str(
+            r#"
+            (module
+                (import "wasi_snapshot_preview1" "fd_write"
+                    (func $fd_write (param i32 i32 i32 i32) (result i32)))
+
+                (memory 1)
+                (export "memory" (memory 0))
+
+                ;; Store "Hello\n" at offset 0
+                (data (i32.const 0) "Hello\n")
+
+                (func $main
+                    ;; Create iovec at offset 8
+                    (i32.store (i32.const 8) (i32.const 0))  ;; iov.buf = 0
+                    (i32.store (i32.const 12) (i32.const 6)) ;; iov.len = 6
+
+                    ;; Call fd_write(1, 8, 1, 16)
+                    (call $fd_write
+                        (i32.const 1)
+                        (i32.const 8)
+                        (i32.const 1)
+                        (i32.const 16))
+                    drop
+                )
+
+                (export "_start" (func $main))
+            )
+            "#,
+        )
+        .expect("Failed to parse WAT")
+    }
+
+    /// WASM module with a large finite loop – useful for fuel-exhaustion tests.
+    pub fn create_fuel_heavy_wasm() -> Vec<u8> {
+        wat::parse_str(
+            r#"
+            (module
+                (func $main
+                    (local $i i32)
+                    (local.set $i (i32.const 0))
+                    (loop $continue
+                        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+                        (br_if $continue (i32.lt_u (local.get $i) (i32.const 1000000)))
+                    )
+                )
+                (export "_start" (func $main))
+            )
+            "#,
+        )
+        .expect("Failed to parse WAT")
+    }
+
+    /// WASM module with a very long-running loop – useful for timeout tests.
+    pub fn create_long_running_wasm() -> Vec<u8> {
+        wat::parse_str(
+            r#"
+            (module
+                (func $main
+                    (local $i i64)
+                    (local.set $i (i64.const 0))
+                    (loop $continue
+                        (local.set $i (i64.add (local.get $i) (i64.const 1)))
+                        (br_if $continue (i64.lt_u (local.get $i) (i64.const 100000000000)))
+                    )
+                )
+                (export "_start" (func $main))
+            )
+            "#,
+        )
+        .expect("Failed to parse WAT")
+    }
+
+    /// WASM module that reads up to 64 bytes from stdin and echoes them to stdout.
+    pub fn create_stdin_echo_wasm() -> Vec<u8> {
+        wat::parse_str(
+            r#"
+            (module
+                (import "wasi_snapshot_preview1" "fd_read"
+                    (func $fd_read (param i32 i32 i32 i32) (result i32)))
+                (import "wasi_snapshot_preview1" "fd_write"
+                    (func $fd_write (param i32 i32 i32 i32) (result i32)))
+
+                (memory 1)
+                (export "memory" (memory 0))
+
+                (func $main
+                    ;; Read from stdin (fd=0) into buffer at offset 0
+                    (i32.store (i32.const 100) (i32.const 0))
+                    (i32.store (i32.const 104) (i32.const 64))
+                    (call $fd_read
+                        (i32.const 0)
+                        (i32.const 100)
+                        (i32.const 1)
+                        (i32.const 108))
+                    drop
+
+                    ;; Write buffer to stdout (fd=1)
+                    (i32.store (i32.const 112) (i32.const 0))
+                    (i32.store (i32.const 116) (i32.const 64))
+                    (call $fd_write
+                        (i32.const 1)
+                        (i32.const 112)
+                        (i32.const 1)
+                        (i32.const 120))
+                    drop
+                )
+
+                (export "_start" (func $main))
+            )
+            "#,
+        )
+        .expect("Failed to parse WAT")
+    }
+}
