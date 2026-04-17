@@ -24,7 +24,8 @@ pub async fn handle_dht_bootstrap(
         "list" => handle_bootstrap_list(ui_logger).await,
         "clear" => handle_bootstrap_clear(ui_logger).await,
         "retry" => handle_bootstrap_retry(swarm, ui_logger).await,
-        // Legacy support: multiaddr passed directly
+        // Legacy support: if the third part looks like a multiaddr, treat it as a
+        // direct bootstrap address (backward compatibility with old command syntax).
         addr if addr.starts_with('/') => {
             let addr_str = parts[2..].join(" ");
             handle_direct_bootstrap(&addr_str, swarm, ui_logger).await;

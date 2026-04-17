@@ -198,7 +198,8 @@ async fn handle_wasm_list(args: &[&str], ui_logger: &UILogger, error_logger: &Er
     match filter {
         "local" => print_local_offerings(ui_logger, error_logger).await,
         "remote" => print_remote_offerings(ui_logger, error_logger).await,
-        _ => {
+        // "all" or any unrecognised value shows both sections
+        "all" | _ => {
             ui_logger.log("=== Local Offerings ===".to_string());
             print_local_offerings(ui_logger, error_logger).await;
             ui_logger.log("".to_string());
