@@ -1,15 +1,14 @@
+use crate::errors::CryptoError;
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng},
 };
-use crate::errors::CryptoError;
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use hkdf::Hkdf;
 use libp2p::{PeerId, identity::Keypair};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519Secret};
-use thiserror::Error;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // Security constants
@@ -31,12 +30,23 @@ impl SecureKey {
     }
 }
 
+#[derive(ZeroizeOnDrop)]
+struct SharedSecret([u8; 32]);
+
+impl SharedSecret {
+    fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+}
+
 fn get_current_timestamp() -> Result<u64, CryptoError> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
-        .map_err(|_| CryptoError::VerificationFailed("System time is before UNIX epoch".to_string()))
-} 
+        .map_err(|_| {
+            CryptoError::VerificationFailed("System time is before UNIX epoch".to_string())
+        })
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct EncryptedPayload {
@@ -58,7 +68,6 @@ pub struct CryptoService {
     // Peer public key cache for encryption
     peer_public_keys: std::collections::HashMap<PeerId, Vec<u8>>,
 }
-
 
 impl CryptoService {
     pub fn new(keypair: Keypair) -> Self {
@@ -134,7 +143,8 @@ impl CryptoService {
 
         let shared_secret = self.derive_shared_secret(recipient_public_key)?;
 
-        let secure_key = self.derive_key(&shared_secret, CryptoError::EncryptionFailed)?;
+        let secure_key =
+            self.derive_key(shared_secret.as_slice(), CryptoError::EncryptionFailed)?;
 
         let cipher = self.create_cipher(&secure_key);
 
@@ -174,7 +184,8 @@ impl CryptoService {
 
         let shared_secret = self.derive_shared_secret(&encrypted.sender_public_key)?;
 
-        let secure_key = self.derive_key(&shared_secret, CryptoError::DecryptionFailed)?;
+        let secure_key =
+            self.derive_key(shared_secret.as_slice(), CryptoError::DecryptionFailed)?;
 
         let cipher = self.create_cipher(&secure_key);
 
@@ -301,11 +312,19 @@ impl CryptoService {
 
     /// Perform X25519 ECDH using our Ed25519 keypair and a peer's protobuf-encoded Ed25519 public key.
     /// Both sides independently derive the same shared secret (DH commutativity).
-    fn derive_shared_secret(&self, their_pubkey_bytes: &[u8]) -> Result<Vec<u8>, CryptoError> {
+    fn derive_shared_secret(&self, their_pubkey_bytes: &[u8]) -> Result<SharedSecret, CryptoError> {
         let our_secret = self.ed25519_to_x25519_secret()?;
         let their_pubkey = Self::ed25519_pubkey_to_x25519(their_pubkey_bytes)?;
         let shared = our_secret.diffie_hellman(&their_pubkey);
-        Ok(shared.as_bytes().to_vec())
+        let shared_bytes = shared.to_bytes();
+
+        if shared_bytes.iter().all(|&byte| byte == 0) {
+            return Err(CryptoError::InvalidInput(
+                "Rejected low-order peer public key".to_string(),
+            ));
+        }
+
+        Ok(SharedSecret(shared_bytes))
     }
 
     /// Convert our Ed25519 signing key to an X25519 static secret via RFC 8037:
@@ -317,8 +336,7 @@ impl CryptoService {
             .try_into_ed25519()
             .map_err(|_| CryptoError::InvalidInput("Keypair must be Ed25519".into()))?;
 
-        let seed_ref = ed25519_kp.secret().as_ref().to_vec();
-        let hash = Sha512::digest(&seed_ref);
+        let mut hash: [u8; 64] = Sha512::digest(ed25519_kp.secret().as_ref()).into();
 
         let mut x25519_bytes = [0u8; 32];
         x25519_bytes.copy_from_slice(&hash[..32]);
@@ -329,6 +347,7 @@ impl CryptoService {
 
         let secret = X25519Secret::from(x25519_bytes);
         x25519_bytes.zeroize();
+        hash.zeroize();
         Ok(secret)
     }
 
@@ -347,10 +366,16 @@ impl CryptoService {
             .decompress()
             .ok_or_else(|| CryptoError::InvalidInput("Invalid Ed25519 public key point".into()))?;
 
-        Ok(X25519PublicKey::from(edwards_point.to_montgomery().to_bytes()))
+        Ok(X25519PublicKey::from(
+            edwards_point.to_montgomery().to_bytes(),
+        ))
     }
 
-    fn derive_key(&self, shared_secret: &[u8], err_variant: fn(String) -> CryptoError) -> Result<SecureKey, CryptoError> {
+    fn derive_key(
+        &self,
+        shared_secret: &[u8],
+        err_variant: fn(String) -> CryptoError,
+    ) -> Result<SecureKey, CryptoError> {
         let hk = Hkdf::<Sha256>::new(None, shared_secret);
         let mut key_data = [0u8; 32];
         hk.expand(ENCRYPTION_CONTEXT, &mut key_data)
@@ -358,9 +383,7 @@ impl CryptoService {
         let secure_key = SecureKey::new(key_data);
         key_data.zeroize();
         Ok(secure_key)
-  }
-
-
+    }
 
     fn create_cipher(&self, key: &SecureKey) -> ChaCha20Poly1305 {
         ChaCha20Poly1305::new(Key::from_slice(key.as_slice()))
