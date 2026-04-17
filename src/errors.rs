@@ -98,24 +98,12 @@ pub enum UIError {
 /// Configuration-related errors
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[allow(dead_code)]
-    #[error("Config file not found: {path}")]
-    FileNotFound { path: String },
-
     #[error("Invalid config format: {reason}")]
     InvalidFormat { reason: String },
 
     #[allow(dead_code)]
     #[error("Config validation failed: {reason}")]
     Validation { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Missing required field: {field}")]
-    MissingField { field: String },
-
-    #[allow(dead_code)]
-    #[error("Invalid value for field {field}: {value}")]
-    InvalidValue { field: String, value: String },
 
     #[error("Config serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
