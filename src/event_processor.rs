@@ -287,6 +287,9 @@ impl EventProcessor {
                     peer_names,
                     &self.ui_logger,
                 ).await;
+                if let Some(relay_svc) = &mut self.relay_service {
+                    relay_svc.cleanup_pending_confirmations();
+                }
                 None
             },
             _ = self.network_health_update_interval.tick() => {
@@ -749,6 +752,7 @@ impl EventProcessor {
                 }
             }
             ActionResult::RebroadcastRelayMessage(_) => {}
+            ActionResult::BroadcastRelayConfirmation(_) => {}
             ActionResult::DirectMessageReceived(direct_message) => {
                 if let Err(e) =
                     crate::storage::save_direct_message(&direct_message, Some(peer_names)).await

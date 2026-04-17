@@ -729,6 +729,19 @@ pub async fn handle_floodsub_event(
                                 "Relay message decrypted and delivered locally: {}",
                                 relay_msg.message_id
                             );
+                            let delivery_timestamp = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            let confirmation = crate::types::RelayConfirmation {
+                                message_id: relay_msg.message_id.clone(),
+                                delivered_to: relay_msg.target_peer_id.clone(),
+                                relay_path_length: relay_msg.hop_count,
+                                delivery_timestamp,
+                            };
+                            return Some(crate::types::ActionResult::BroadcastRelayConfirmation(
+                                Box::new(confirmation),
+                            ));
                         }
                         Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
                             // Return action to re-broadcast the forwarded message via floodsub
@@ -777,6 +790,9 @@ pub async fn handle_floodsub_event(
                     &relay_confirmation.message_id[..8],
                     relay_confirmation.relay_path_length
                 ));
+                if let Some(relay_svc) = relay_service {
+                    relay_svc.mark_confirmation_received(&relay_confirmation.message_id);
+                }
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                 match req.mode {
                     ListMode::ALL => {
@@ -2043,6 +2059,13 @@ pub async fn handle_event(
                                 .log_error(&format!("Failed to rebroadcast relay message: {e}"));
                         }
                     }
+                    crate::types::ActionResult::BroadcastRelayConfirmation(confirmation) => {
+                        // Broadcast delivery confirmation via floodsub
+                        if let Err(e) = broadcast_relay_confirmation(swarm, &confirmation).await {
+                            error_logger
+                                .log_error(&format!("Failed to broadcast relay confirmation: {e}"));
+                        }
+                    }
                     _ => {} // Other action results are not expected from floodsub events
                 }
             }
@@ -2956,6 +2979,26 @@ pub async fn broadcast_relay_message(
     debug!(
         "Broadcasted relay message with ID: {}",
         relay_msg.message_id
+    );
+    Ok(())
+}
+
+pub async fn broadcast_relay_confirmation(
+    swarm: &mut Swarm<StoryBehaviour>,
+    confirmation: &crate::types::RelayConfirmation,
+) -> Result<(), String> {
+    let json = serde_json::to_string(confirmation)
+        .map_err(|e| format!("Failed to serialize relay confirmation: {e}"))?;
+
+    let json_bytes = Bytes::from(json.into_bytes());
+    swarm
+        .behaviour_mut()
+        .floodsub
+        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
+
+    debug!(
+        "Broadcasted relay confirmation for message ID: {}",
+        confirmation.message_id
     );
     Ok(())
 }

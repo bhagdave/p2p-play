@@ -1,4 +1,5 @@
-use crate::crypto::{CryptoError, CryptoService};
+use crate::crypto::CryptoService;
+use crate::errors::RelayError;
 use crate::types::{DirectMessage, RelayConfig, RelayMessage};
 use libp2p::PeerId;
 use log::warn;
@@ -18,31 +19,6 @@ pub enum RelayAction {
     DeliverLocally(DirectMessage),
     ForwardMessage(RelayMessage),
     DropMessage(String),
-}
-
-#[derive(Debug)]
-pub enum RelayError {
-    RateLimitExceeded,
-    InvalidMessage(String),
-    CryptoError(CryptoError),
-}
-
-impl std::fmt::Display for RelayError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RelayError::RateLimitExceeded => write!(f, "Rate limit exceeded for relay"),
-            RelayError::InvalidMessage(msg) => write!(f, "Invalid relay message: {msg}"),
-            RelayError::CryptoError(err) => write!(f, "Crypto error in relay: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for RelayError {}
-
-impl From<CryptoError> for RelayError {
-    fn from(error: CryptoError) -> Self {
-        RelayError::CryptoError(error)
-    }
 }
 
 impl RelayService {
@@ -191,7 +167,6 @@ impl RelayService {
         });
     }
 
-    #[allow(dead_code)]
     pub fn cleanup_pending_confirmations(&mut self) {
         let timeout = Duration::from_millis(self.config.relay_timeout_ms);
         let now = Instant::now();
@@ -200,17 +175,17 @@ impl RelayService {
             .retain(|_, &mut timestamp| now.duration_since(timestamp) < timeout);
     }
 
+    /// Marks a relayed message as confirmed delivered and removes it from pending tracking.
+    pub fn mark_confirmation_received(&mut self, message_id: &str) {
+        self.pending_confirmations.remove(message_id);
+    }
+
     pub fn config(&self) -> &RelayConfig {
         &self.config
     }
 
-    #[allow(dead_code)]
-    pub fn crypto_service(&mut self) -> &mut CryptoService {
-        &mut self.crypto
-    }
-
     #[cfg(test)]
-    pub fn crypto_service_for_testing(&mut self) -> &mut CryptoService {
+    pub fn crypto_service(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }
 

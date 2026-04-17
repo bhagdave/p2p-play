@@ -1,9 +1,10 @@
 use crate::crypto::CryptoError;
 use crate::error_logger::ErrorLogger;
+use crate::errors::RelayError;
 use crate::network::{
     DirectMessageRequest, NodeDescriptionRequest, PEER_ID, StoryBehaviour, TOPIC,
 };
-use crate::relay::{RelayError, RelayService};
+use crate::relay::RelayService;
 use crate::storage::{
     create_channel, create_new_story_with_channel, delete_local_story, filter_stories_by_channel,
     filter_stories_by_recent_days, load_bootstrap_config, load_node_description,

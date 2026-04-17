@@ -5,7 +5,6 @@
 //! debugging and user experience.
 
 use crate::crypto::CryptoError;
-use crate::relay::RelayError;
 use crate::wasm_executor::WasmExecutionError;
 use thiserror::Error;
 
@@ -35,6 +34,19 @@ pub enum AppError {
 
     #[error("Application error: {0}")]
     Application(String),
+}
+
+/// Relay-related errors for message routing operations
+#[derive(Error, Debug)]
+pub enum RelayError {
+    #[error("Rate limit exceeded for relay")]
+    RateLimitExceeded,
+
+    #[error("Invalid relay message: {0}")]
+    InvalidMessage(String),
+
+    #[error("Crypto error in relay: {0}")]
+    CryptoError(#[from] CryptoError),
 }
 
 /// Storage-related errors for database and file operations
