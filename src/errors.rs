@@ -4,7 +4,6 @@
 //! `Box<dyn Error>` usage throughout the codebase, providing better error
 //! debugging and user experience.
 
-use crate::crypto::CryptoError;
 use crate::relay::RelayError;
 use crate::wasm_executor::WasmExecutionError;
 use thiserror::Error;
@@ -151,6 +150,28 @@ pub fn print_error_chain(e: &dyn std::error::Error) {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum CryptoError {
+    EncryptionFailed(String),
+    DecryptionFailed(String),
+    SignatureFailed(String),
+    VerificationFailed(String),
+    InvalidInput(String),
+}
+
+impl std::fmt::Display for CryptoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CryptoError::EncryptionFailed(msg) => write!(f, "Encryption failed: {msg}"),
+            CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {msg}"),
+            CryptoError::SignatureFailed(msg) => write!(f, "Signature failed: {msg}"),
+            CryptoError::VerificationFailed(msg) => write!(f, "Verification failed: {msg}"),
+            CryptoError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for CryptoError {}
 /// Detects the network protocol from an error message
 ///
 /// Analyzes error text to identify which libp2p protocol is likely involved
