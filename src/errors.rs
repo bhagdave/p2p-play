@@ -115,7 +115,7 @@ pub enum ConfigError {
 #[derive(Error, Debug)]
 pub enum FetchError {
     #[error("HTTP request failed: {0}")]
-    Http(reqwest::Error),
+    Http(#[from] reqwest::Error),
 
     #[allow(dead_code)]
     #[error("Invalid CID: {0}")]
@@ -327,12 +327,6 @@ impl UIError {
             widget: widget.into(),
             reason: reason.into(),
         }
-    }
-}
-
-impl From<reqwest::Error> for FetchError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Http(e)
     }
 }
 
