@@ -53,24 +53,12 @@ pub enum StorageError {
     SQLite(#[from] rusqlite::Error),
 
     #[allow(dead_code)]
-    #[error("Story not found: {id}")]
-    StoryNotFound { id: usize },
-
-    #[allow(dead_code)]
-    #[error("Channel not found: {name}")]
-    ChannelNotFound { name: String },
-
-    #[allow(dead_code)]
     #[error("Invalid story data: {reason}")]
     InvalidStoryData { reason: String },
 
     #[allow(dead_code)]
     #[error("Database connection failed: {reason}")]
     DatabaseConnection { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Migration failed: {reason}")]
-    Migration { reason: String },
 
     #[error("Batch operation failed: {successful} succeeded, {failed} failed")]
     BatchOperationFailed {
