@@ -6,8 +6,47 @@
 
 use crate::crypto::CryptoError;
 use crate::relay::RelayError;
-use crate::wasm_executor::WasmExecutionError;
 use thiserror::Error;
+
+/// Errors that can occur during WASM execution
+#[derive(Debug, Error)]
+pub enum WasmExecutionError {
+    #[error("Failed to fetch WASM: {0}")]
+    FetchFailed(#[from] FetchError),
+
+    #[error("Invalid WASM binary: {reason}")]
+    InvalidWasm { reason: String },
+
+    #[error("WASM compilation failed: {0}")]
+    CompilationFailed(String),
+
+    #[error("WASM instantiation failed: {0}")]
+    InstantiationFailed(String),
+
+    #[error("WASM execution failed: {0}")]
+    ExecutionFailed(String),
+
+    #[error("Fuel exhausted after {consumed} units")]
+    FuelExhausted { consumed: u64 },
+
+    #[error("Memory limit exceeded")]
+    MemoryLimitExceeded,
+
+    #[error("Memory limit too large: {0} MB (maximum {1} MB)")]
+    MemoryLimitTooLarge(u32, u32),
+
+    #[error("Execution timeout after 30 seconds")]
+    ExecutionTimeout,
+
+    #[error("Entry point '_start' not found")]
+    EntryPointNotFound,
+
+    #[error("WASI setup failed: {0}")]
+    WasiSetupFailed(String),
+
+    #[error("Invalid execution request: {0}")]
+    InvalidRequest(String),
+}
 
 /// Main application error type that chains all domain-specific errors
 #[derive(Error, Debug)]

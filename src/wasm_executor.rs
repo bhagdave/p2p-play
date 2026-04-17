@@ -4,16 +4,17 @@
 //! validate them, and execute them with resource limits (fuel/memory).
 
 use crate::content_fetcher::ContentFetcher;
-use crate::errors::FetchError;
 use crate::types::WasmConfig;
 use bytes::Bytes;
 use lru::LruCache;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use thiserror::Error;
 use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::WasiCtxBuilder;
 use wasmtime_wasi::preview1;
+
+// Re-export so callers can still import WasmExecutionError from this module.
+pub use crate::errors::WasmExecutionError;
 
 /// WASM magic bytes: "\0asm"
 const WASM_MAGIC: &[u8] = b"\0asm";
@@ -27,48 +28,7 @@ const WASM_HEADER_LEN: usize = 8;
 /// Size of each I/O pipe buffer in bytes (64 KiB)
 const PIPE_BUFFER_SIZE: usize = 64 * 1024;
 
-/// Number of bytes in one megabyte
 const BYTES_PER_MB: usize = 1024 * 1024;
-
-/// Errors that can occur during WASM execution
-#[derive(Debug, Error)]
-pub enum WasmExecutionError {
-    #[error("Failed to fetch WASM: {0}")]
-    FetchFailed(#[from] FetchError),
-
-    #[error("Invalid WASM binary: {reason}")]
-    InvalidWasm { reason: String },
-
-    #[error("WASM compilation failed: {0}")]
-    CompilationFailed(String),
-
-    #[error("WASM instantiation failed: {0}")]
-    InstantiationFailed(String),
-
-    #[error("WASM execution failed: {0}")]
-    ExecutionFailed(String),
-
-    #[error("Fuel exhausted after {consumed} units")]
-    FuelExhausted { consumed: u64 },
-
-    #[error("Memory limit exceeded")]
-    MemoryLimitExceeded,
-
-    #[error("Memory limit too large: {0} MB (maximum {1} MB)")]
-    MemoryLimitTooLarge(u32, u32),
-
-    #[error("Execution timeout after 30 seconds")]
-    ExecutionTimeout,
-
-    #[error("Entry point '_start' not found")]
-    EntryPointNotFound,
-
-    #[error("WASI setup failed: {0}")]
-    WasiSetupFailed(String),
-
-    #[error("Invalid execution request: {0}")]
-    InvalidRequest(String),
-}
 
 /// Result type for WASM execution operations
 pub type WasmResult<T> = Result<T, WasmExecutionError>;
@@ -237,8 +197,6 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         let engine = Engine::new(&engine_config)
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
 
-        // Only create the cache when caching is enabled and the capacity is non-zero.
-        // LruCache::new panics on a zero capacity.
         let module_cache = if executor_config.enable_cache && executor_config.max_cached_modules > 0
         {
             Some(Mutex::new(LruCache::new(
