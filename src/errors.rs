@@ -282,12 +282,6 @@ impl From<&str> for ConfigError {
 }
 
 impl StorageError {
-    /// Create a StorageError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        StorageError::Database(format!("{context}: {error}"))
-    }
-
     /// Create a database connection error with context
     #[allow(dead_code)]
     pub fn connection_error(reason: impl Into<String>) -> Self {
@@ -315,17 +309,6 @@ impl StorageError {
 }
 
 impl NetworkError {
-    /// Create a NetworkError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        let error_msg = format!("{context}: {error}");
-        let protocol = detect_protocol_from_error(&error_msg);
-        NetworkError::ProtocolError {
-            protocol,
-            reason: error_msg,
-        }
-    }
-
     /// Create a protocol error with context
     #[allow(dead_code)]
     pub fn protocol_error(protocol: impl Into<String>, reason: impl Into<String>) -> Self {
@@ -337,14 +320,6 @@ impl NetworkError {
 }
 
 impl UIError {
-    /// Create a UIError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        UIError::Rendering {
-            reason: format!("{context}: {error}"),
-        }
-    }
-
     /// Create a widget error with context
     #[allow(dead_code)]
     pub fn widget_error(widget: impl Into<String>, reason: impl Into<String>) -> Self {
@@ -362,14 +337,6 @@ impl From<reqwest::Error> for FetchError {
 }
 
 impl ConfigError {
-    /// Create a ConfigError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        ConfigError::InvalidFormat {
-            reason: format!("{context}: {error}"),
-        }
-    }
-
     /// Create a validation error with context
     #[allow(dead_code)]
     pub fn validation_error(reason: impl Into<String>) -> Self {
