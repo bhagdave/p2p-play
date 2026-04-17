@@ -6,6 +6,7 @@ use hkdf::Hkdf;
 use libp2p::{PeerId, identity::Keypair};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
+use thiserror::Error;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // Security constants
@@ -49,28 +50,19 @@ pub struct CryptoService {
     peer_public_keys: std::collections::HashMap<PeerId, Vec<u8>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 pub enum CryptoError {
+    #[error("Encryption failed: {0}")]
     EncryptionFailed(String),
+    #[error("Decryption failed: {0}")]
     DecryptionFailed(String),
+    #[error("Signature failed: {0}")]
     SignatureFailed(String),
+    #[error("Verification failed: {0}")]
     VerificationFailed(String),
+    #[error("Invalid input: {0}")]
     InvalidInput(String),
 }
-
-impl std::fmt::Display for CryptoError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CryptoError::EncryptionFailed(msg) => write!(f, "Encryption failed: {msg}"),
-            CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {msg}"),
-            CryptoError::SignatureFailed(msg) => write!(f, "Signature failed: {msg}"),
-            CryptoError::VerificationFailed(msg) => write!(f, "Verification failed: {msg}"),
-            CryptoError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for CryptoError {}
 
 impl CryptoService {
     pub fn new(keypair: Keypair) -> Self {
