@@ -957,10 +957,7 @@ pub async fn handle_request_response_event(
                         // Send response indicating rejection due to identity mismatch
                         let response = DirectMessageResponse {
                             received: false,
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
 
                         if let Err(e) = swarm
@@ -1004,10 +1001,7 @@ pub async fn handle_request_response_event(
 
                             let response = DirectMessageResponse {
                                 received: false,
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1044,10 +1038,7 @@ pub async fn handle_request_response_event(
                     // Send response acknowledging receipt
                     let response = DirectMessageResponse {
                         received: should_process,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
+                        timestamp: crate::current_unix_timestamp(),
                     };
 
                     // Send the response using the channel
@@ -1208,10 +1199,7 @@ pub async fn handle_node_description_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
 
                             // Send the response
@@ -1253,10 +1241,7 @@ pub async fn handle_node_description_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1378,10 +1363,7 @@ pub async fn handle_story_sync_event(
                         } else {
                             format!(
                                 "{} seconds ago",
-                                std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs()
+                                crate::current_unix_timestamp()
                                     .saturating_sub(request.last_sync_timestamp)
                             )
                         }
@@ -1448,10 +1430,7 @@ pub async fn handle_story_sync_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                sync_timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                sync_timestamp: crate::current_unix_timestamp(),
                             };
 
                             // Send the response
@@ -1500,10 +1479,7 @@ pub async fn handle_story_sync_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                sync_timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                sync_timestamp: crate::current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1705,10 +1681,7 @@ pub async fn initiate_story_sync_with_peer(
     };
 
     // Calculate last_sync_timestamp based on sync_days configuration
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = crate::current_unix_timestamp();
     let sync_timeframe_seconds = (sync_days as u64) * 24 * 60 * 60; // Convert days to seconds
     let last_sync_timestamp = now.saturating_sub(sync_timeframe_seconds);
 
@@ -2186,10 +2159,7 @@ pub async fn handle_wasm_capabilities_event(
                         peer_name: from_name,
                         wasm_enabled,
                         offerings,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
+                        timestamp: crate::current_unix_timestamp(),
                     };
 
                     if let Err(e) = swarm
@@ -2297,10 +2267,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: 0,
                                 exit_code: -1,
                                 error: Some("Internal configuration error".to_string()),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
                             let _ = swarm
                                 .behaviour_mut()
@@ -2325,10 +2292,7 @@ pub async fn handle_wasm_execution_event(
                             error: Some(
                                 "Remote WASM execution is disabled on this node".to_string(),
                             ),
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2357,10 +2321,7 @@ pub async fn handle_wasm_execution_event(
                                         "Offering '{}' not found",
                                         request.offering_id
                                     )),
-                                    timestamp: std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default()
-                                        .as_secs(),
+                                    timestamp: crate::current_unix_timestamp(),
                                 };
                                 let _ = swarm
                                     .behaviour_mut()
@@ -2378,10 +2339,7 @@ pub async fn handle_wasm_execution_event(
                                     fuel_consumed: 0,
                                     exit_code: -1,
                                     error: Some("Internal error looking up offering".to_string()),
-                                    timestamp: std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default()
-                                        .as_secs(),
+                                    timestamp: crate::current_unix_timestamp(),
                                 };
                                 let _ = swarm
                                     .behaviour_mut()
@@ -2407,10 +2365,7 @@ pub async fn handle_wasm_execution_event(
                             fuel_consumed: 0,
                             exit_code: -1,
                             error: Some("CID verification failed".to_string()),
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2428,10 +2383,7 @@ pub async fn handle_wasm_execution_event(
                             fuel_consumed: 0,
                             exit_code: -1,
                             error: Some("Offering is currently disabled".to_string()),
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2471,10 +2423,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: 0,
                                 exit_code: -1,
                                 error: Some(format!("Failed to initialize WASM executor: {e}")),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
                             let _ = swarm
                                 .behaviour_mut()
@@ -2514,10 +2463,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: result.fuel_consumed,
                                 exit_code: result.exit_code,
                                 error: None,
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             }
                         }
                         Err(e) => {
@@ -2539,10 +2485,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed,
                                 exit_code: -1,
                                 error: Some(error_msg),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             }
                         }
                     };
