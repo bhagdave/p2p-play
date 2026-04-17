@@ -71,43 +71,11 @@ pub enum StorageError {
 /// Network-related errors for libp2p and P2P operations
 #[derive(Error, Debug)]
 pub enum NetworkError {
-    #[allow(dead_code)]
-    #[error("Swarm creation failed: {reason}")]
-    SwarmCreation { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Listen failed on address: {address}")]
-    ListenFailed { address: String },
-
-    #[allow(dead_code)]
-    #[error("Peer connection failed: {peer_id}")]
-    PeerConnectionFailed { peer_id: String },
-
-    #[allow(dead_code)]
-    #[error("Message broadcast failed: {reason}")]
-    BroadcastFailed { reason: String },
-
-    #[allow(dead_code)]
-    #[error("DHT operation failed: {reason}")]
-    DHTFailed { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Direct message failed: {reason}")]
-    DirectMessageFailed { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Bootstrap failed: {reason}")]
-    BootstrapFailed { reason: String },
-
     #[error("Protocol error: {protocol} - {reason}")]
     ProtocolError { protocol: String, reason: String },
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
-
-    #[allow(dead_code)]
-    #[error("Transport error: {reason}")]
-    Transport { reason: String },
 }
 
 /// UI-related errors for terminal interface operations
