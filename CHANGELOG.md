@@ -18,6 +18,16 @@ All changes to this project will be documented in this file.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
 
 ### Changed
+- **`network.rs` — decomposed into `network/` submodule**:
+  - Wire-protocol DTOs (`DirectMessageRequest/Response`, `NodeDescriptionRequest/Response`, `StorySyncRequest/Response`, `HandshakeRequest/Response`, `WasmCapabilitiesRequest/Response`, `WasmExecutionRequest/Response`) and `APP_*` constants moved to `src/network/protocol.rs`; all are re-exported from `src/network/mod.rs` so existing `crate::network::*` import paths are unchanged.
+  - `create_swarm` decomposed into three focused helpers: `build_transport` (TCP/DNS/noise/yamux stack), `build_behaviour` (all sub-behaviours), and `build_swarm_config` (dial concurrency + idle timeout).
+  - `noise::Config::new` and `mdns::tokio::Behaviour::new` now propagate errors via `NetworkResult` instead of `unwrap`/`expect`.
+  - Generic `make_cbor_behaviour` builder replaces six near-identical `request_response::cbor::Behaviour::new(...)` blocks.
+  - `impl_story_event_from!` macro reduces ten identical `From` impls to ten one-liner invocations.
+  - Type aliases (`DirectMessageBehaviour`, `DirectMessageEvent`, etc.) make `StoryBehaviour` and `StoryBehaviourEvent` definitions scannable.
+  - Named constants (`TCP_LISTEN_BACKLOG`, `TCP_TTL`, `YAMUX_MAX_STREAMS`, `SWARM_IDLE_CONNECTION_TIMEOUT_SECS`, `SWARM_DIAL_CONCURRENCY_FALLBACK`) replace inline magic numbers.
+  - `log_keypair_error` helper consolidates duplicate `ErrorLogger` creation in `generate_and_save_keypair`.
+  - `max_pending_outgoing` is now clamped to `1..=255` before converting to `NonZeroU8` so values above 255 saturate to 255 rather than wrapping to 0 and silently using the fallback.
 - **`wasm_executor.rs` — refactored for maintainability and correctness**:
   - `execute()` decomposed into focused helpers: `fetch_and_compile`, `build_wasi_context`, `build_store`, `instantiate_start`, `run_start_func`, and `classify_trap_error`.
   - LRU compiled-module cache implemented (was dead code): modules are now cached by CID; subsequent calls for the same CID skip fetch + compile. Controlled by `WasmExecutorConfig` (`enable_cache`, `max_cached_modules`).

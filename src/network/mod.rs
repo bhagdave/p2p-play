@@ -263,8 +263,12 @@ fn build_swarm_config(max_pending_outgoing: u32) -> libp2p::swarm::Config {
     use std::num::NonZeroU8;
     use std::time::Duration;
 
-    let dial_concurrency = NonZeroU8::new(max_pending_outgoing as u8)
-        .unwrap_or(NonZeroU8::new(SWARM_DIAL_CONCURRENCY_FALLBACK).unwrap());
+    // Clamp to `u8` range before constructing `NonZeroU8`. Values above 255 are
+    // saturated to 255 (the maximum `NonZeroU8` accepts) rather than wrapping to 0
+    // and silently falling back to the default.
+    let clamped = max_pending_outgoing.min(u8::MAX as u32) as u8;
+    let dial_concurrency =
+        NonZeroU8::new(clamped).unwrap_or(NonZeroU8::new(SWARM_DIAL_CONCURRENCY_FALLBACK).unwrap());
 
     libp2p::swarm::Config::with_tokio_executor()
         .with_dial_concurrency_factor(dial_concurrency)

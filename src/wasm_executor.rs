@@ -385,7 +385,11 @@ async fn run_start_func(
     let exit_code = match raw_result {
         Ok(Ok(())) => 0,
         Ok(Err(e)) => classify_trap_error(e, fuel_consumed)?,
-        Err(_timeout) => return Err(WasmExecutionError::ExecutionTimeout(timeout_secs.unwrap_or(0))),
+        Err(_timeout) => {
+            return Err(WasmExecutionError::ExecutionTimeout(
+                timeout_secs.unwrap_or(0),
+            ));
+        }
     };
 
     Ok((exit_code, fuel_consumed))
