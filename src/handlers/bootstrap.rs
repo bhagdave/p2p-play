@@ -77,7 +77,7 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
         return;
     }
 
-    if modify_bootstrap_config(ui_logger, "bootstrap add", |config| {
+    let _ = modify_bootstrap_config(ui_logger, "bootstrap add", |config| {
         if config.add_peer(multiaddr.clone()) {
             ui_logger.log(format!("Added bootstrap peer: {multiaddr}"));
             ui_logger.log(format!(
@@ -90,8 +90,7 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
             false
         }
     })
-    .await
-    {}
+    .await;
 }
 
 async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
@@ -151,7 +150,7 @@ async fn handle_bootstrap_list(ui_logger: &UILogger) {
 }
 
 async fn handle_bootstrap_clear(ui_logger: &UILogger) {
-    if modify_bootstrap_config(ui_logger, "bootstrap clear", |config| {
+    let _ = modify_bootstrap_config(ui_logger, "bootstrap clear", |config| {
         let peer_count = config.bootstrap_peers.len();
         config.clear_peers();
         ui_logger.log(format!("Cleared {peer_count} bootstrap peers"));
@@ -161,8 +160,7 @@ async fn handle_bootstrap_clear(ui_logger: &UILogger) {
         );
         true
     })
-    .await
-    {}
+    .await;
 }
 
 async fn handle_bootstrap_retry(swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
