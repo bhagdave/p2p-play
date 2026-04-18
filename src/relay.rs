@@ -104,10 +104,7 @@ impl RelayService {
             )));
         }
 
-        let current_time = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let current_time = crate::current_unix_timestamp();
 
         if current_time.saturating_sub(relay_msg.timestamp) > 300 {
             return Ok(RelayAction::DropMessage("Message too old".to_string()));

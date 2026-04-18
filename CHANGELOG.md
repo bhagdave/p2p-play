@@ -29,6 +29,15 @@ All changes to this project will be documented in this file.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
 
 ### Changed
+- **`current_unix_timestamp()` shared helper**: The repeated 4-line `SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()` pattern (~50 occurrences) is now consolidated into a single `pub(crate) fn current_unix_timestamp() -> u64` defined in `src/time.rs` and re-exported at both crate roots (`lib.rs`, `main.rs`). Existing `storage::utils::get_current_timestamp()` delegates to it for backward compatibility.
+
+- **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
+- **Circuit breaker `status_string` magic number**: `CircuitBreakerInfo::status_string` hardcoded `3` as the success threshold in the `HalfOpen` recovery message. The value is now read from `success_threshold`, a new field on `CircuitBreakerInfo` populated from `CircuitBreakerConfig` in `get_state`. The displayed count now reflects actual config rather than a stale constant.
+- **Circuit breaker `HalfOpen` reopen failure count**: When a failure in `HalfOpen` state reopened the circuit, `failure_count` accumulated from the prior `Closed`-state run. Count is now reset to `1` on reopen so it reflects failures since the most recent open.
+- **Circuit breaker stale `last_failure_time` after recovery**: `last_failure_time` was never cleared when the circuit recovered. It is now set to `None` in `on_success` when in `Closed` state.
+- **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
+
+### Changed
 - **`network.rs` — decomposed into `network/` submodule**:
   - Wire-protocol DTOs (`DirectMessageRequest/Response`, `NodeDescriptionRequest/Response`, `StorySyncRequest/Response`, `HandshakeRequest/Response`, `WasmCapabilitiesRequest/Response`, `WasmExecutionRequest/Response`) and `APP_*` constants moved to `src/network/protocol.rs`; all are re-exported from `src/network/mod.rs` so existing `crate::network::*` import paths are unchanged.
   - `create_swarm` decomposed into three focused helpers: `build_transport` (TCP/DNS/noise/yamux stack), `build_behaviour` (all sub-behaviours), and `build_swarm_config` (dial concurrency + idle timeout).

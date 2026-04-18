@@ -1069,10 +1069,7 @@ pub async fn search_stories(
     }
 
     if let Some(days) = query.date_range_days {
-        let cutoff_timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
+        let cutoff_timestamp = crate::current_unix_timestamp()
             .saturating_sub((days as u64) * 24 * 60 * 60); // Subtract N days in seconds
 
         sql.push_str(" AND s.created_at >= ?");
@@ -1177,10 +1174,7 @@ pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::ty
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let cutoff_timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    let cutoff_timestamp = crate::current_unix_timestamp()
         .saturating_sub((days as u64) * 24 * 60 * 60);
 
     let mut stmt = conn.prepare(
@@ -1316,10 +1310,7 @@ pub async fn update_wasm_offering(offering: &crate::types::WasmOffering) -> Stor
 
     let parameters_json = serde_json::to_string(&offering.parameters)?;
     let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
-    let updated_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let updated_at = crate::current_unix_timestamp();
 
     let rows_affected = conn.execute(
         r#"
@@ -1349,10 +1340,7 @@ pub async fn toggle_wasm_offering(id: &str, enabled: bool) -> StorageResult<bool
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let updated_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let updated_at = crate::current_unix_timestamp();
 
     let rows_affected = conn.execute(
         "UPDATE wasm_offerings SET enabled = ?, updated_at = ? WHERE id = ?",
@@ -1386,10 +1374,7 @@ pub async fn cache_discovered_wasm_offering(
 
     let parameters_json = serde_json::to_string(&offering.parameters)?;
     let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = crate::current_unix_timestamp();
 
     conn.execute(
         r#"
@@ -1668,10 +1653,7 @@ pub mod test_utils {
             body: body.to_owned(),
             public: false,
             channel: "general".to_string(),
-            created_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
+            created_at: crate::current_unix_timestamp(),
             auto_share: None,
         });
         write_local_stories_to_path(&local_stories, path).await?;
@@ -1710,10 +1692,7 @@ pub mod test_utils {
             story.id = new_id;
             story.public = true;
             if story.created_at == 0 {
-                story.created_at = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs();
+                story.created_at = crate::current_unix_timestamp();
             }
 
             local_stories.push(story);
@@ -1807,10 +1786,7 @@ pub mod test_utils {
         let conn_arc = super::get_db_connection().await?;
         let conn = conn_arc.lock().await;
 
-        let cutoff = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
+        let cutoff = crate::current_unix_timestamp()
             .saturating_sub(max_age_secs);
 
         let rows_affected = conn.execute(

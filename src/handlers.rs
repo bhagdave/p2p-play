@@ -839,10 +839,7 @@ pub async fn handle_direct_message_with_relay(
                     from_name: from_name.clone(),
                     to_name: to_name.clone(),
                     message: message.clone(),
-                    timestamp: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
+                    timestamp: crate::current_unix_timestamp(),
                 };
 
                 // Attempt direct send
@@ -961,10 +958,7 @@ async fn try_relay_delivery(
         to_peer_id: target_peer_id.to_string(),
         to_name: to_name.to_string(),
         message: message.to_string(),
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        timestamp: crate::current_unix_timestamp(),
         is_outgoing: true,
     };
 
@@ -1039,10 +1033,7 @@ fn queue_message_for_retry(
         from_name: from_name.to_string(),
         to_name: to_name.to_string(),
         message: message.to_string(),
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        timestamp: crate::current_unix_timestamp(),
     };
 
     let pending_msg = PendingDirectMessage::new(
@@ -1486,10 +1477,7 @@ pub async fn handle_get_description(
     let description_request = NodeDescriptionRequest {
         from_peer_id: PEER_ID.to_string(),
         from_name: from_name.to_string(),
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        timestamp: crate::current_unix_timestamp(),
     };
 
     let _request_id = swarm
@@ -2694,10 +2682,7 @@ async fn handle_wasm_query(
     let request = crate::network::WasmCapabilitiesRequest {
         from_peer_id: PEER_ID.to_string(),
         from_name,
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        timestamp: crate::current_unix_timestamp(),
         include_parameters: true,
     };
 
@@ -2801,10 +2786,7 @@ async fn handle_wasm_run(
         fuel_limit: None,
         memory_limit_mb: None,
         timeout_secs: None,
-        timestamp: std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs(),
+        timestamp: crate::current_unix_timestamp(),
     };
 
     let _request_id = swarm
