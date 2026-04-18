@@ -39,6 +39,18 @@ All changes to this project will be documented in this file.
   - `print_error_chain` — error chain formatting moved from `main` into `errors.rs` as a reusable public utility.
   - `PeerState` struct — the three peer-tracking variables (`peer_names`, `local_peer_name`, `sorted_peer_names_cache`) previously threaded individually through `EventProcessor::run` are now grouped into a single `PeerState` struct defined in `handlers.rs`, reducing the `run` call-site from six arguments to four.
 - **Tests added** for the new public items: three integration tests for `ensure_general_channel_subscription` (subscribe when absent, idempotent when already subscribed, does not disturb other subscriptions); three unit tests for `PeerState::new`; two unit tests for `print_error_chain`.
+- **`handlers.rs` split into domain submodules**: The ~3k-line `src/handlers.rs` monolith has been split into seven focused submodules under `src/handlers/`. All existing public API is re-exported from `mod.rs` — no call-site changes required.
+  - `stories.rs` — story CRUD, search, filter, export
+  - `channels.rs` — channel CRUD, subscribe, auto-subscription
+  - `messaging.rs` — direct messages, peer naming, relay delivery, retry queue
+  - `bootstrap.rs` — DHT bootstrap and peer discovery
+  - `config.rs` — help text, config reload, auto-share, node descriptions
+  - `wasm.rs` — WASM capability advertisement and remote execution
+  - Shared helpers extracted: `resolve_peer_by_alias` (replaces copy-pasted alias→PeerId lookup in four functions), `current_unix_timestamp` (eliminates repeated `SystemTime::now()` boilerplate), `format_story_status`/`format_story_line` (shared story-row formatting).
+  - `handle_set_auto_subscription` now uses the existing `modify_config` helper instead of two duplicate load/modify/save blocks.
+  - `handle_help` iterates over a `HELP_ENTRIES` static table instead of ~90 individual `ui_logger.log()` calls.
+  - `handle_wasm_list` extracts `print_local_offerings`/`print_remote_offerings` helpers, eliminating a copy-pasted rendering block.
+  - 18 new unit tests covering `parse_direct_message_command` (8 cases), story formatting (4), `resolve_peer_by_alias` (2), `extract_peer_id_from_multiaddr` (2), `SortedPeerNamesCache` sort order, and `current_unix_timestamp`.
 
 ## [0.11.1]
 
