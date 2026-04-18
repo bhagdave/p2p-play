@@ -228,10 +228,7 @@ where
 
 /// Returns the current Unix timestamp in seconds.
 pub(super) fn current_unix_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    crate::current_unix_timestamp()
 }
 
 /// Looks up a connected peer by display alias.  Returns `None` when not found.

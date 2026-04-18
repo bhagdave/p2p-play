@@ -4,10 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub fn get_current_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
+    crate::current_unix_timestamp()
 }
 
 pub async fn get_next_id(conn: &Arc<Mutex<Connection>>, table: &str) -> StorageResult<i64> {
