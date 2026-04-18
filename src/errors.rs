@@ -4,9 +4,47 @@
 //! `Box<dyn Error>` usage throughout the codebase, providing better error
 //! debugging and user experience.
 
-use crate::crypto::CryptoError;
-use crate::wasm_executor::WasmExecutionError;
 use thiserror::Error;
+
+/// Errors that can occur during WASM execution
+#[derive(Debug, Error)]
+pub enum WasmExecutionError {
+    #[error("Failed to fetch WASM: {0}")]
+    FetchFailed(#[from] FetchError),
+
+    #[error("Invalid WASM binary: {reason}")]
+    InvalidWasm { reason: String },
+
+    #[error("WASM compilation failed: {0}")]
+    CompilationFailed(String),
+
+    #[error("WASM instantiation failed: {0}")]
+    InstantiationFailed(String),
+
+    #[error("WASM execution failed: {0}")]
+    ExecutionFailed(String),
+
+    #[error("Fuel exhausted after {consumed} units")]
+    FuelExhausted { consumed: u64 },
+
+    #[error("Memory limit exceeded")]
+    MemoryLimitExceeded,
+
+    #[error("Memory limit too large: {0} MB (maximum {1} MB)")]
+    MemoryLimitTooLarge(u32, u32),
+
+    #[error("Execution timeout after {0} seconds")]
+    ExecutionTimeout(u64),
+
+    #[error("Entry point '_start' not found")]
+    EntryPointNotFound,
+
+    #[error("WASI setup failed: {0}")]
+    WasiSetupFailed(String),
+
+    #[error("Invalid execution request: {0}")]
+    InvalidRequest(String),
+}
 
 /// Main application error type that chains all domain-specific errors
 #[derive(Error, Debug)]
@@ -65,24 +103,12 @@ pub enum StorageError {
     SQLite(#[from] rusqlite::Error),
 
     #[allow(dead_code)]
-    #[error("Story not found: {id}")]
-    StoryNotFound { id: usize },
-
-    #[allow(dead_code)]
-    #[error("Channel not found: {name}")]
-    ChannelNotFound { name: String },
-
-    #[allow(dead_code)]
     #[error("Invalid story data: {reason}")]
     InvalidStoryData { reason: String },
 
     #[allow(dead_code)]
     #[error("Database connection failed: {reason}")]
     DatabaseConnection { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Migration failed: {reason}")]
-    Migration { reason: String },
 
     #[error("Batch operation failed: {successful} succeeded, {failed} failed")]
     BatchOperationFailed {
@@ -95,43 +121,11 @@ pub enum StorageError {
 /// Network-related errors for libp2p and P2P operations
 #[derive(Error, Debug)]
 pub enum NetworkError {
-    #[allow(dead_code)]
-    #[error("Swarm creation failed: {reason}")]
-    SwarmCreation { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Listen failed on address: {address}")]
-    ListenFailed { address: String },
-
-    #[allow(dead_code)]
-    #[error("Peer connection failed: {peer_id}")]
-    PeerConnectionFailed { peer_id: String },
-
-    #[allow(dead_code)]
-    #[error("Message broadcast failed: {reason}")]
-    BroadcastFailed { reason: String },
-
-    #[allow(dead_code)]
-    #[error("DHT operation failed: {reason}")]
-    DHTFailed { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Direct message failed: {reason}")]
-    DirectMessageFailed { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Bootstrap failed: {reason}")]
-    BootstrapFailed { reason: String },
-
     #[error("Protocol error: {protocol} - {reason}")]
     ProtocolError { protocol: String, reason: String },
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
-
-    #[allow(dead_code)]
-    #[error("Transport error: {reason}")]
-    Transport { reason: String },
 }
 
 /// UI-related errors for terminal interface operations
@@ -147,39 +141,19 @@ pub enum UIError {
     InputHandling { reason: String },
 
     #[allow(dead_code)]
-    #[error("State transition failed: from {from} to {to}")]
-    StateTransition { from: String, to: String },
-
-    #[allow(dead_code)]
     #[error("Widget error: {widget} - {reason}")]
     Widget { widget: String, reason: String },
-
-    #[allow(dead_code)]
-    #[error("Layout error: {reason}")]
-    Layout { reason: String },
 }
 
 /// Configuration-related errors
 #[derive(Error, Debug)]
 pub enum ConfigError {
-    #[allow(dead_code)]
-    #[error("Config file not found: {path}")]
-    FileNotFound { path: String },
-
     #[error("Invalid config format: {reason}")]
     InvalidFormat { reason: String },
 
     #[allow(dead_code)]
     #[error("Config validation failed: {reason}")]
     Validation { reason: String },
-
-    #[allow(dead_code)]
-    #[error("Missing required field: {field}")]
-    MissingField { field: String },
-
-    #[allow(dead_code)]
-    #[error("Invalid value for field {field}: {value}")]
-    InvalidValue { field: String, value: String },
 
     #[error("Config serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
@@ -188,15 +162,24 @@ pub enum ConfigError {
     IO(#[from] std::io::Error),
 }
 
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum FetchError {
-    Http(reqwest::Error),
+    #[error("HTTP request failed: {0}")]
+    Http(#[from] reqwest::Error),
+
     #[allow(dead_code)]
+    #[error("Invalid CID: {0}")]
     InvalidCid(String),
+
+    #[error("Content not found: {0}")]
     NotFound(String),
+
     #[allow(dead_code)]
+    #[error("Gateway timeout")]
     Timeout,
+
     #[allow(dead_code)]
+    #[error("Invalid WASM: magic bytes mismatch")]
     InvalidWasm,
 }
 
@@ -218,6 +201,19 @@ pub fn print_error_chain(e: &dyn std::error::Error) {
     }
 }
 
+#[derive(Error, Debug, Clone)]
+pub enum CryptoError {
+    #[error("Encryption failed: {0}")]
+    EncryptionFailed(String),
+    #[error("Decryption failed: {0}")]
+    DecryptionFailed(String),
+    #[error("Signature failed: {0}")]
+    SignatureFailed(String),
+    #[error("Verification failed: {0}")]
+    VerificationFailed(String),
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+}
 /// Detects the network protocol from an error message
 ///
 /// Analyzes error text to identify which libp2p protocol is likely involved
@@ -349,12 +345,6 @@ impl From<&str> for ConfigError {
 }
 
 impl StorageError {
-    /// Create a StorageError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        StorageError::Database(format!("{context}: {error}"))
-    }
-
     /// Create a database connection error with context
     #[allow(dead_code)]
     pub fn connection_error(reason: impl Into<String>) -> Self {
@@ -382,17 +372,6 @@ impl StorageError {
 }
 
 impl NetworkError {
-    /// Create a NetworkError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        let error_msg = format!("{context}: {error}");
-        let protocol = detect_protocol_from_error(&error_msg);
-        NetworkError::ProtocolError {
-            protocol,
-            reason: error_msg,
-        }
-    }
-
     /// Create a protocol error with context
     #[allow(dead_code)]
     pub fn protocol_error(protocol: impl Into<String>, reason: impl Into<String>) -> Self {
@@ -404,14 +383,6 @@ impl NetworkError {
 }
 
 impl UIError {
-    /// Create a UIError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        UIError::Rendering {
-            reason: format!("{context}: {error}"),
-        }
-    }
-
     /// Create a widget error with context
     #[allow(dead_code)]
     pub fn widget_error(widget: impl Into<String>, reason: impl Into<String>) -> Self {
@@ -422,35 +393,7 @@ impl UIError {
     }
 }
 
-impl std::fmt::Display for FetchError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Http(e) => write!(f, "HTTP request failed: {}", e),
-            Self::InvalidCid(cid) => write!(f, "Invalid CID: {}", cid),
-            Self::NotFound(cid) => write!(f, "Content not found: {}", cid),
-            Self::Timeout => write!(f, "Gateway timeout"),
-            Self::InvalidWasm => write!(f, "Invalid WASM: magic bytes mismatch"),
-        }
-    }
-}
-
-impl std::error::Error for FetchError {}
-
-impl From<reqwest::Error> for FetchError {
-    fn from(e: reqwest::Error) -> Self {
-        Self::Http(e)
-    }
-}
-
 impl ConfigError {
-    /// Create a ConfigError from any error type with context
-    #[allow(dead_code)]
-    pub fn from_error<E: std::error::Error>(error: E, context: &str) -> Self {
-        ConfigError::InvalidFormat {
-            reason: format!("{context}: {error}"),
-        }
-    }
-
     /// Create a validation error with context
     #[allow(dead_code)]
     pub fn validation_error(reason: impl Into<String>) -> Self {

@@ -413,10 +413,7 @@ pub enum EventType {
 impl Story {
     #[allow(dead_code)]
     pub fn new(id: usize, name: String, header: String, body: String, public: bool) -> Self {
-        let created_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let created_at = crate::current_unix_timestamp();
 
         Self {
             id,
@@ -439,10 +436,7 @@ impl Story {
         public: bool,
         channel: String,
     ) -> Self {
-        let created_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let created_at = crate::current_unix_timestamp();
 
         Self {
             id,
@@ -570,10 +564,7 @@ impl DirectMessage {
         to_name: String,
         message: String,
     ) -> Self {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let timestamp = crate::current_unix_timestamp();
 
         Self {
             from_peer_id,
@@ -596,10 +587,7 @@ impl RelayMessage {
         sender_signature: MessageSignature,
         max_hops: u8,
     ) -> Self {
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let timestamp = crate::current_unix_timestamp();
 
         Self {
             message_id,
@@ -671,10 +659,7 @@ impl Default for RelayConfig {
 
 impl Channel {
     pub fn new(name: String, description: String, created_by: String) -> Self {
-        let created_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let created_at = crate::current_unix_timestamp();
 
         Self {
             name,
@@ -688,10 +673,7 @@ impl Channel {
 impl ChannelSubscription {
     #[allow(dead_code)]
     pub fn new(peer_id: String, channel_name: String) -> Self {
-        let subscribed_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let subscribed_at = crate::current_unix_timestamp();
 
         Self {
             peer_id,
@@ -1071,10 +1053,7 @@ impl WasmResourceRequirements {
 
 impl WasmOffering {
     pub fn new(name: String, description: String, ipfs_cid: String, version: String) -> Self {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
+        let now = crate::current_unix_timestamp();
 
         Self {
             id: uuid::Uuid::new_v4().to_string(),

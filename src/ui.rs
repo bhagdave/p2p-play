@@ -153,13 +153,68 @@ mod tests {
             "overflowing log should render scrollbar markers"
         );
     }
+
+    // ---------------------------------------------------------------------------
+    // find_common_prefix tests
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn test_find_common_prefix_empty() {
+        let result = find_common_prefix(&[]);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_find_common_prefix_single() {
+        let result = find_common_prefix(&["hello".to_string()]);
+        assert_eq!(result, Some("hello".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_exact_match() {
+        let strings = vec!["alice".to_string(), "alice2".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("alice".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_no_common() {
+        let strings = vec!["alice".to_string(), "bob".to_string()];
+        assert_eq!(find_common_prefix(&strings), None);
+    }
+
+    #[test]
+    fn test_find_common_prefix_partial() {
+        let strings = vec!["charlie".to_string(), "charles".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("charl".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_case_insensitive() {
+        // Comparison is case-insensitive; output uses original casing from first string.
+        let strings = vec!["Alice".to_string(), "alice2".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("Alice".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_differing_lengths() {
+        // Second string is a prefix of the first — common prefix is the shorter one.
+        let strings = vec!["foobar".to_string(), "foo".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("foo".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_non_ascii() {
+        // Non-ASCII characters should be handled correctly via char iteration.
+        let strings = vec!["café".to_string(), "caféteria".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("café".to_string()));
+    }
 }
 use libp2p::PeerId;
 use log::debug;
 use ratatui::{
-    Terminal,
+    Frame, Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Position},
+    layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Style},
     text::{Line, Span, Text},
     widgets::{
@@ -343,501 +398,442 @@ impl App {
         Ok(())
     }
 
+    /// Shared cancel for QuickReply and MessageComposition modes.
+    fn cancel_composition(&mut self, reason: &str) {
+        self.input_mode = InputMode::Normal;
+        self.input.clear();
+        self.add_to_log(format!("{} {}", Icons::cross(), reason));
+    }
+
+    /// Build a "msg <target> <message>" command, reset mode, and return the event.
+    fn send_message_event(&mut self, target_peer: &str, message: &str) -> AppEvent {
+        let cmd = format!("msg {} {}", target_peer, message);
+        self.input.clear();
+        self.input_mode = InputMode::Normal;
+        self.add_to_log(format!("> {}", cmd));
+        AppEvent::Input(cmd)
+    }
+
+    /// Toggle auto-scroll on/off, logging which key triggered it.
+    fn toggle_auto_scroll(&mut self, key_name: &str) {
+        self.auto_scroll = !self.auto_scroll;
+        if self.auto_scroll {
+            self.scroll_offset = 0;
+        }
+        self.add_to_log(format!(
+            "{} Auto-scroll {} ({})",
+            Icons::check(),
+            if self.auto_scroll {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            key_name,
+        ));
+    }
+
     pub fn handle_event(&mut self, event: Event) -> Option<AppEvent> {
-        if let Event::Key(key) = event {
-            #[cfg(windows)]
-            {
-                if !should_process_key_event(&key) {
-                    return None; // Skip duplicate event
+        let Event::Key(key) = event else {
+            return None;
+        };
+        #[cfg(windows)]
+        if !should_process_key_event(&key) {
+            return None;
+        }
+        match self.input_mode {
+            InputMode::Normal => self.handle_normal_mode_key(key),
+            InputMode::Editing => self.handle_editing_mode_key(key),
+            InputMode::CreatingStory { .. } => self.handle_story_creation_key(key),
+            InputMode::QuickReply { .. } => self.handle_quick_reply_key(key),
+            InputMode::MessageComposition { .. } => self.handle_message_composition_key(key),
+        }
+    }
+
+    fn handle_normal_mode_key(&mut self, key: crossterm::event::KeyEvent) -> Option<AppEvent> {
+        match key.code {
+            KeyCode::Char('q') => {
+                self.should_quit = true;
+                debug!("Quit command received, setting should_quit to true");
+                return Some(AppEvent::Quit);
+            }
+            KeyCode::Char('i') => {
+                self.input_mode = InputMode::Editing;
+            }
+            KeyCode::Char('c') => {
+                self.clear_output();
+            }
+            KeyCode::Up => self.scroll_up(),
+            KeyCode::Down => self.scroll_down(),
+            // navigate_list_up/down are no-ops when current_list_len() == 0
+            KeyCode::Left => self.navigate_list_up(),
+            KeyCode::Right => self.navigate_list_down(),
+            KeyCode::End => {
+                self.auto_scroll = true;
+                self.scroll_offset = 0;
+            }
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                self.toggle_auto_scroll("Ctrl+S");
+            }
+            KeyCode::ScrollLock | KeyCode::F(12) => {
+                let key_name = match key.code {
+                    KeyCode::ScrollLock => "ScrollLock",
+                    KeyCode::F(12) => "F12",
+                    _ => "key",
+                };
+                self.toggle_auto_scroll(key_name);
+            }
+            KeyCode::Enter => match &self.view_mode {
+                ViewMode::Channels => {
+                    if let Some(channel_name) = self.get_selected_channel().map(|s| s.to_string()) {
+                        self.enter_channel(channel_name);
+                    }
+                }
+                ViewMode::Stories(_) => {
+                    if let Some(story) = self.get_selected_story() {
+                        self.display_story_content(&story);
+                        return Some(AppEvent::StoryViewed {
+                            story_id: story.id,
+                            channel: story.channel.clone(),
+                        });
+                    }
+                }
+                ViewMode::Conversations => {
+                    if let Some(conversation) = self.get_selected_conversation() {
+                        return Some(AppEvent::ConversationViewed {
+                            peer_id: conversation.peer_id.clone(),
+                        });
+                    }
+                }
+                ViewMode::ConversationView(_) => {}
+            },
+            KeyCode::Esc => match &self.view_mode {
+                ViewMode::Stories(_) => self.return_to_channels(),
+                ViewMode::ConversationView(_) => {
+                    self.view_mode = ViewMode::Conversations;
+                    self.list_state.select(Some(0));
+                }
+                _ => {}
+            },
+            KeyCode::Char('r') => {
+                if let Some(last_sender) = self.last_message_sender.clone() {
+                    self.input_mode = InputMode::QuickReply {
+                        target_peer: last_sender.clone(),
+                    };
+                    self.add_to_log(format!(
+                        "{} Quick reply to {}",
+                        Icons::envelope(),
+                        last_sender
+                    ));
+                } else {
+                    self.add_to_log(format!("{} No recent messages to reply to", Icons::cross()));
                 }
             }
-            match &self.input_mode {
-                InputMode::Normal => match key.code {
-                    KeyCode::Char('q') => {
-                        self.should_quit = true;
-                        debug!("Quit command received, setting should_quit to true");
-                        return Some(AppEvent::Quit);
-                    }
-                    KeyCode::Char('i') => {
-                        self.input_mode = InputMode::Editing;
-                    }
-                    KeyCode::Char('c') => {
-                        self.clear_output();
-                    }
-                    KeyCode::Up => {
-                        // Only handle output scrolling with Up/Down keys
-                        self.scroll_up();
-                    }
-                    KeyCode::Down => {
-                        // Only handle output scrolling with Up/Down keys
-                        self.scroll_down();
-                    }
-                    KeyCode::Left => match self.view_mode {
-                        ViewMode::Channels => {
-                            self.navigate_list_up();
-                        }
-                        ViewMode::Stories(_) => {
-                            self.navigate_list_up();
-                        }
-                        ViewMode::Conversations => {
-                            self.navigate_list_up();
-                        }
-                        ViewMode::ConversationView(_) => {}
-                    },
-                    KeyCode::Right => match self.view_mode {
-                        ViewMode::Channels => {
-                            self.navigate_list_down();
-                        }
-                        ViewMode::Stories(_) => {
-                            self.navigate_list_down();
-                        }
-                        ViewMode::Conversations => {
-                            self.navigate_list_down();
-                        }
-                        ViewMode::ConversationView(_) => {}
-                    },
-                    KeyCode::End => {
-                        // Re-enable auto-scroll and go to bottom
-                        self.auto_scroll = true;
-                        // Reset scroll offset to ensure clean transition to auto-scroll
-                        self.scroll_offset = 0;
-                    }
-                    KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        // Toggle auto-scroll on/off
-                        self.auto_scroll = !self.auto_scroll;
-                        if self.auto_scroll {
-                            // Reset scroll offset when re-enabling auto-scroll to go to bottom
-                            self.scroll_offset = 0;
-                        }
+            KeyCode::Char('m') => {
+                self.input_mode = InputMode::Editing;
+                self.input = "compose ".to_string();
+            }
+            KeyCode::Char('M') => {
+                self.view_mode = ViewMode::Conversations;
+                self.list_state.select(Some(0));
+            }
+            KeyCode::Char('N') => {
+                self.view_mode = ViewMode::Channels;
+                self.list_state.select(Some(0));
+            }
+            _ => {}
+        }
+        None
+    }
 
-                        self.add_to_log(format!(
-                            "{} Auto-scroll {} (Ctrl+S)",
-                            Icons::check(),
-                            if self.auto_scroll {
-                                "enabled"
-                            } else {
-                                "disabled"
-                            }
-                        ));
+    fn handle_editing_mode_key(&mut self, key: crossterm::event::KeyEvent) -> Option<AppEvent> {
+        match key.code {
+            KeyCode::Enter => {
+                let input = self.input.clone();
+                self.input.clear();
+                self.input_mode = InputMode::Normal;
+                self.history_index = None;
+                if !input.is_empty() {
+                    if self.input_history.is_empty() || self.input_history.last() != Some(&input) {
+                        self.input_history.push(input.clone());
+                        if self.input_history.len() > 50 {
+                            self.input_history.remove(0);
+                        }
                     }
-                    KeyCode::ScrollLock | KeyCode::F(12) => {
-                        // Toggle auto-scroll on/off
-                        self.auto_scroll = !self.auto_scroll;
-                        if self.auto_scroll {
-                            self.scroll_offset = 0;
+                    self.add_to_log(format!("> {input}"));
+                    return Some(AppEvent::Input(input));
+                }
+            }
+            KeyCode::Up => {
+                if !self.input_history.is_empty() {
+                    match self.history_index {
+                        None => {
+                            self.history_index = Some(self.input_history.len() - 1);
+                            self.input = self.input_history[self.input_history.len() - 1].clone();
                         }
-
-                        self.add_to_log(format!(
-                            "{} Auto-scroll {} ({})",
-                            Icons::check(),
-                            if self.auto_scroll {
-                                "enabled"
-                            } else {
-                                "disabled"
-                            },
-                            match key.code {
-                                KeyCode::ScrollLock => "ScrollLock",
-                                KeyCode::F(12) => "F12",
-                                _ => "key",
-                            }
-                        ));
-                    }
-                    KeyCode::Enter => match &self.view_mode {
-                        ViewMode::Channels => {
-                            if let Some(channel_name) = self.get_selected_channel() {
-                                self.enter_channel(channel_name.to_string());
-                            }
-                        }
-                        ViewMode::Stories(_) => {
-                            if let Some(story) = self.get_selected_story() {
-                                self.display_story_content(&story);
-                                return Some(AppEvent::StoryViewed {
-                                    story_id: story.id,
-                                    channel: story.channel.clone(),
-                                });
-                            }
-                        }
-                        ViewMode::Conversations => {
-                            if let Some(conversation) = self.get_selected_conversation() {
-                                return Some(AppEvent::ConversationViewed {
-                                    peer_id: conversation.peer_id.clone(),
-                                });
-                            }
-                        }
-                        ViewMode::ConversationView(_) => {}
-                    },
-                    KeyCode::Esc => match &self.view_mode {
-                        ViewMode::Stories(_) => self.return_to_channels(),
-                        ViewMode::ConversationView(_) => {
-                            self.view_mode = ViewMode::Conversations;
-                            self.list_state.select(Some(0));
+                        Some(idx) if idx > 0 => {
+                            self.history_index = Some(idx - 1);
+                            self.input = self.input_history[idx - 1].clone();
                         }
                         _ => {}
-                    },
-                    KeyCode::Char('r') => {
-                        if let Some(ref last_sender) = self.last_message_sender.clone() {
-                            self.input_mode = InputMode::QuickReply {
-                                target_peer: last_sender.clone(),
-                            };
-                            self.add_to_log(format!(
-                                "{} Quick reply to {}",
-                                crate::types::Icons::envelope(),
-                                last_sender
-                            ));
-                        } else {
-                            self.add_to_log(format!(
-                                "{} No recent messages to reply to",
-                                crate::types::Icons::cross()
-                            ));
-                        }
                     }
-                    KeyCode::Char('m') => {
-                        self.input_mode = InputMode::Editing;
-                        self.input = "compose ".to_string();
-                    }
-                    KeyCode::Char('M') => {
-                        self.view_mode = ViewMode::Conversations;
-                        self.list_state.select(Some(0));
-                    }
-                    KeyCode::Char('N') => {
-                        self.view_mode = ViewMode::Channels;
-                        self.list_state.select(Some(0));
-                    }
-                    _ => {}
-                },
-                InputMode::Editing => match key.code {
-                    KeyCode::Enter => {
-                        let input = self.input.clone();
-                        self.input.clear();
-                        self.input_mode = InputMode::Normal;
+                }
+            }
+            KeyCode::Down => {
+                if let Some(idx) = self.history_index {
+                    if idx < self.input_history.len() - 1 {
+                        self.history_index = Some(idx + 1);
+                        self.input = self.input_history[idx + 1].clone();
+                    } else {
                         self.history_index = None;
-                        if !input.is_empty() {
-                            // Add to history (avoid duplicates)
-                            if self.input_history.is_empty()
-                                || self.input_history.last() != Some(&input)
-                            {
-                                self.input_history.push(input.clone());
-                                // Keep history size manageable
-                                if self.input_history.len() > 50 {
-                                    self.input_history.remove(0);
-                                }
-                            }
-                            self.add_to_log(format!("> {input}"));
-                            return Some(AppEvent::Input(input));
-                        }
+                        self.input.clear();
                     }
-                    KeyCode::Up => {
-                        if !self.input_history.is_empty() {
-                            match self.history_index {
-                                None => {
-                                    self.history_index = Some(self.input_history.len() - 1);
-                                    self.input =
-                                        self.input_history[self.input_history.len() - 1].clone();
-                                }
-                                Some(idx) if idx > 0 => {
-                                    self.history_index = Some(idx - 1);
-                                    self.input = self.input_history[idx - 1].clone();
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    KeyCode::Down => {
-                        if let Some(idx) = self.history_index {
-                            if idx < self.input_history.len() - 1 {
-                                self.history_index = Some(idx + 1);
-                                self.input = self.input_history[idx + 1].clone();
-                            } else {
-                                self.history_index = None;
-                                self.input.clear();
-                            }
-                        }
-                    }
-                    KeyCode::Tab => {
-                        if self.input.starts_with("msg ") {
-                            self.try_autocomplete_peer_name();
-                        } else {
-                            self.cycle_view_mode();
-                        }
-                    }
-                    KeyCode::Char(c) => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            match c {
-                                'c' => {
-                                    self.input_mode = InputMode::Normal;
-                                    self.input.clear();
-                                    self.history_index = None;
-                                }
-                                'l' => {
-                                    // Clear current input line
-                                    self.input.clear();
-                                    self.history_index = None;
-                                }
-                                _ => {}
-                            }
-                        } else {
-                            self.input.push(c);
+                }
+            }
+            KeyCode::Tab => {
+                if self.input.starts_with("msg ") {
+                    self.try_autocomplete_peer_name();
+                } else {
+                    self.cycle_view_mode();
+                }
+            }
+            KeyCode::Char(c) => {
+                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                    match c {
+                        'c' => {
+                            self.input_mode = InputMode::Normal;
+                            self.input.clear();
                             self.history_index = None;
                         }
-                    }
-                    KeyCode::Backspace => {
-                        self.input.pop();
-                        self.history_index = None;
-                    }
-                    KeyCode::Esc => {
-                        self.input_mode = InputMode::Normal;
-                        self.input.clear();
-                        self.history_index = None;
-                    }
-                    _ => {}
-                },
-                InputMode::CreatingStory {
-                    step,
-                    partial_story,
-                } => match key.code {
-                    KeyCode::Esc => {
-                        self.cancel_story_creation();
-                    }
-                    KeyCode::Enter => {
-                        let input = self.input.trim().to_string();
-                        self.input.clear();
-
-                        let mut new_partial = partial_story.clone();
-                        let mut next_step = None;
-
-                        match step {
-                            StoryCreationStep::Name => {
-                                if input.is_empty() {
-                                    self.add_to_log(format!(
-                                        "{} Story name cannot be empty. Please try again:",
-                                        Icons::cross()
-                                    ));
-                                    return None;
-                                }
-                                new_partial.name = Some(input);
-                                next_step = Some(StoryCreationStep::Header);
-                                self.add_to_log(format!("{} Story name saved", Icons::check()));
-                                self.add_to_log(format!(
-                                    "{} Enter story header:",
-                                    Icons::document()
-                                ));
-                            }
-                            StoryCreationStep::Header => {
-                                if input.is_empty() {
-                                    self.add_to_log(format!(
-                                        "{} Story header cannot be empty. Please try again:",
-                                        Icons::cross()
-                                    ));
-                                    return None;
-                                }
-                                new_partial.header = Some(input);
-                                next_step = Some(StoryCreationStep::Body);
-                                self.add_to_log(format!("{} Story header saved", Icons::check()));
-                                self.add_to_log(format!("{} Enter story body:", Icons::book()));
-                            }
-                            StoryCreationStep::Body => {
-                                if input.is_empty() {
-                                    self.add_to_log(format!(
-                                        "{} Story body cannot be empty. Please try again:",
-                                        Icons::cross()
-                                    ));
-                                    return None;
-                                }
-                                new_partial.body = Some(input);
-                                next_step = Some(StoryCreationStep::Channel);
-                                self.add_to_log(format!("{} Story body saved", Icons::check()));
-                                self.add_to_log(format!(
-                                    "{} Enter channel (or press Enter for 'general'):",
-                                    Icons::folder()
-                                ));
-                            }
-                            StoryCreationStep::Channel => {
-                                let channel = if input.is_empty() {
-                                    "general".to_string()
-                                } else {
-                                    input
-                                };
-                                new_partial.channel = Some(channel);
-
-                                if let (Some(name), Some(header), Some(body), Some(ch)) = (
-                                    &new_partial.name,
-                                    &new_partial.header,
-                                    &new_partial.body,
-                                    &new_partial.channel,
-                                ) {
-                                    let create_command =
-                                        format!("create s {name}|{header}|{body}|{ch}");
-                                    self.input_mode = InputMode::Normal;
-                                    self.add_to_log(format!(
-                                        "{} Story creation complete!",
-                                        Icons::check()
-                                    ));
-                                    return Some(AppEvent::Input(create_command));
-                                }
-                            }
-                        }
-
-                        if let Some(step) = next_step {
-                            self.input_mode = InputMode::CreatingStory {
-                                step,
-                                partial_story: new_partial,
-                            };
-                        }
-                    }
-                    KeyCode::Char(c) => {
-                        if key.modifiers.contains(KeyModifiers::CONTROL) {
-                            if c == 'c' {
-                                self.cancel_story_creation();
-                            }
-                        } else {
-                            self.input.push(c);
-                        }
-                    }
-                    KeyCode::Backspace => {
-                        self.input.pop();
-                    }
-                    _ => {}
-                },
-                InputMode::QuickReply { target_peer } => {
-                    let target_peer = target_peer.clone(); // Clone to avoid borrow checker issues
-                    match key.code {
-                        KeyCode::Enter => {
-                            let message = self.input.trim().to_string();
+                        'l' => {
                             self.input.clear();
-                            self.input_mode = InputMode::Normal;
-                            if !message.is_empty() {
-                                let cmd = format!("msg {} {}", target_peer, message);
-                                self.add_to_log(format!("> {}", cmd));
-                                return Some(AppEvent::Input(cmd));
-                            }
-                        }
-                        KeyCode::Esc => {
-                            self.input_mode = InputMode::Normal;
-                            self.input.clear();
-                            self.add_to_log(format!(
-                                "{} Quick reply cancelled",
-                                crate::types::Icons::cross()
-                            ));
-                        }
-                        KeyCode::Char(c) => {
-                            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                if c == 'c' {
-                                    self.input_mode = InputMode::Normal;
-                                    self.input.clear();
-                                    self.add_to_log(format!(
-                                        "{} Quick reply cancelled",
-                                        crate::types::Icons::cross()
-                                    ));
-                                }
-                            } else {
-                                self.input.push(c);
-                            }
-                        }
-                        KeyCode::Backspace => {
-                            self.input.pop();
+                            self.history_index = None;
                         }
                         _ => {}
                     }
-                }
-                InputMode::MessageComposition {
-                    target_peer,
-                    lines,
-                    current_line,
-                } => {
-                    let target_peer = target_peer.clone();
-                    let mut new_lines = lines.clone();
-                    let mut new_current = current_line.clone();
-
-                    match key.code {
-                        KeyCode::Enter => {
-                            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                if !new_current.trim().is_empty() {
-                                    new_lines.push(new_current.clone());
-                                }
-                                if !new_lines.is_empty() {
-                                    let full_message = new_lines.join(" ");
-                                    let cmd = format!("msg {} {}", target_peer, full_message);
-                                    self.input.clear();
-                                    self.input_mode = InputMode::Normal;
-                                    self.add_to_log(format!("> {}", cmd));
-                                    return Some(AppEvent::Input(cmd));
-                                }
-                            } else {
-                                // Regular Enter adds a new line
-                                new_lines.push(new_current.clone());
-                                new_current.clear();
-                                self.input.clear();
-                                self.input_mode = InputMode::MessageComposition {
-                                    target_peer: target_peer.clone(),
-                                    lines: new_lines,
-                                    current_line: new_current,
-                                };
-                            }
-                        }
-                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            if !new_current.trim().is_empty() {
-                                new_lines.push(new_current.clone());
-                            }
-                            if !new_lines.is_empty() {
-                                let full_message = new_lines.join(" ");
-                                let cmd = format!("msg {} {}", target_peer, full_message);
-                                self.input.clear();
-                                self.input_mode = InputMode::Normal;
-                                self.add_to_log(format!("> {}", cmd));
-                                return Some(AppEvent::Input(cmd));
-                            }
-                        }
-                        KeyCode::Esc => {
-                            self.input_mode = InputMode::Normal;
-                            self.input.clear();
-                            self.add_to_log(format!(
-                                "{} Message composition cancelled",
-                                crate::types::Icons::cross()
-                            ));
-                        }
-                        KeyCode::Char(c) => {
-                            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                if c == 'c' {
-                                    self.input_mode = InputMode::Normal;
-                                    self.input.clear();
-                                    self.add_to_log(format!(
-                                        "{} Message composition cancelled",
-                                        crate::types::Icons::cross()
-                                    ));
-                                }
-                            } else {
-                                new_current.push(c);
-                                self.input = new_current.clone();
-                                self.input_mode = InputMode::MessageComposition {
-                                    target_peer: target_peer.clone(),
-                                    lines: new_lines,
-                                    current_line: new_current,
-                                };
-                            }
-                        }
-                        KeyCode::Backspace => {
-                            if new_current.is_empty() && !new_lines.is_empty() {
-                                new_current = new_lines.pop().unwrap();
-                                self.input = new_current.clone();
-                                self.input_mode = InputMode::MessageComposition {
-                                    target_peer: target_peer.clone(),
-                                    lines: new_lines,
-                                    current_line: new_current,
-                                };
-                            } else {
-                                new_current.pop();
-                                self.input = new_current.clone();
-                                self.input_mode = InputMode::MessageComposition {
-                                    target_peer: target_peer.clone(),
-                                    lines: new_lines,
-                                    current_line: new_current,
-                                };
-                            }
-                        }
-                        _ => {}
-                    }
+                } else {
+                    self.input.push(c);
+                    self.history_index = None;
                 }
             }
+            KeyCode::Backspace => {
+                self.input.pop();
+                self.history_index = None;
+            }
+            KeyCode::Esc => {
+                self.input_mode = InputMode::Normal;
+                self.input.clear();
+                self.history_index = None;
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn handle_story_creation_key(&mut self, key: crossterm::event::KeyEvent) -> Option<AppEvent> {
+        match key.code {
+            KeyCode::Esc => {
+                self.cancel_story_creation();
+                return None;
+            }
+            KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' => {
+                self.cancel_story_creation();
+                return None;
+            }
+            KeyCode::Char(c) => {
+                self.input.push(c);
+                return None;
+            }
+            KeyCode::Backspace => {
+                self.input.pop();
+                return None;
+            }
+            KeyCode::Enter => {} // handled below
+            _ => return None,
+        }
+
+        // KeyCode::Enter path — only here do we need the step/partial_story values.
+        let (step, partial_story) = match self.input_mode.clone() {
+            InputMode::CreatingStory {
+                step,
+                partial_story,
+            } => (step, partial_story),
+            _ => return None,
+        };
+        let input = self.input.trim().to_string();
+        self.input.clear();
+        let mut new_partial = partial_story.clone();
+        let mut next_step = None;
+
+        match step {
+            StoryCreationStep::Name => {
+                if input.is_empty() {
+                    self.add_to_log(format!(
+                        "{} Story name cannot be empty. Please try again:",
+                        Icons::cross()
+                    ));
+                    return None;
+                }
+                new_partial.name = Some(input);
+                next_step = Some(StoryCreationStep::Header);
+                self.add_to_log(format!("{} Story name saved", Icons::check()));
+                self.add_to_log(format!("{} Enter story header:", Icons::document()));
+            }
+            StoryCreationStep::Header => {
+                if input.is_empty() {
+                    self.add_to_log(format!(
+                        "{} Story header cannot be empty. Please try again:",
+                        Icons::cross()
+                    ));
+                    return None;
+                }
+                new_partial.header = Some(input);
+                next_step = Some(StoryCreationStep::Body);
+                self.add_to_log(format!("{} Story header saved", Icons::check()));
+                self.add_to_log(format!("{} Enter story body:", Icons::book()));
+            }
+            StoryCreationStep::Body => {
+                if input.is_empty() {
+                    self.add_to_log(format!(
+                        "{} Story body cannot be empty. Please try again:",
+                        Icons::cross()
+                    ));
+                    return None;
+                }
+                new_partial.body = Some(input);
+                next_step = Some(StoryCreationStep::Channel);
+                self.add_to_log(format!("{} Story body saved", Icons::check()));
+                self.add_to_log(format!(
+                    "{} Enter channel (or press Enter for 'general'):",
+                    Icons::folder()
+                ));
+            }
+            StoryCreationStep::Channel => {
+                let channel = if input.is_empty() {
+                    "general".to_string()
+                } else {
+                    input
+                };
+                new_partial.channel = Some(channel);
+                if let (Some(name), Some(header), Some(body), Some(ch)) = (
+                    &new_partial.name,
+                    &new_partial.header,
+                    &new_partial.body,
+                    &new_partial.channel,
+                ) {
+                    let create_command = format!("create s {name}|{header}|{body}|{ch}");
+                    self.input_mode = InputMode::Normal;
+                    self.add_to_log(format!("{} Story creation complete!", Icons::check()));
+                    return Some(AppEvent::Input(create_command));
+                }
+            }
+        }
+        if let Some(step) = next_step {
+            self.input_mode = InputMode::CreatingStory {
+                step,
+                partial_story: new_partial,
+            };
+        }
+        None
+    }
+
+    fn handle_quick_reply_key(&mut self, key: crossterm::event::KeyEvent) -> Option<AppEvent> {
+        let target_peer = match self.input_mode.clone() {
+            InputMode::QuickReply { target_peer } => target_peer,
+            _ => return None,
+        };
+        match key.code {
+            KeyCode::Enter => {
+                let message = self.input.trim().to_string();
+                if !message.is_empty() {
+                    return Some(self.send_message_event(&target_peer, &message));
+                } else {
+                    self.input.clear();
+                    self.input_mode = InputMode::Normal;
+                }
+            }
+            KeyCode::Esc => self.cancel_composition("Quick reply cancelled"),
+            KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' => {
+                self.cancel_composition("Quick reply cancelled");
+            }
+            KeyCode::Char(c) => {
+                self.input.push(c);
+            }
+            KeyCode::Backspace => {
+                self.input.pop();
+            }
+            _ => {}
+        }
+        None
+    }
+
+    fn handle_message_composition_key(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+    ) -> Option<AppEvent> {
+        let (target_peer, mut new_lines, mut new_current) = match self.input_mode.clone() {
+            InputMode::MessageComposition {
+                target_peer,
+                lines,
+                current_line,
+            } => (target_peer, lines, current_line),
+            _ => return None,
+        };
+        match key.code {
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if !new_current.trim().is_empty() {
+                    new_lines.push(new_current.clone());
+                }
+                if !new_lines.is_empty() {
+                    let full_message = new_lines.join(" ");
+                    return Some(self.send_message_event(&target_peer, &full_message));
+                }
+            }
+            KeyCode::Enter => {
+                new_lines.push(new_current.clone());
+                new_current.clear();
+                self.input.clear();
+                self.input_mode = InputMode::MessageComposition {
+                    target_peer,
+                    lines: new_lines,
+                    current_line: new_current,
+                };
+            }
+            KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                if !new_current.trim().is_empty() {
+                    new_lines.push(new_current.clone());
+                }
+                if !new_lines.is_empty() {
+                    let full_message = new_lines.join(" ");
+                    return Some(self.send_message_event(&target_peer, &full_message));
+                }
+            }
+            KeyCode::Esc => self.cancel_composition("Message composition cancelled"),
+            KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' => {
+                self.cancel_composition("Message composition cancelled");
+            }
+            KeyCode::Char(c) => {
+                new_current.push(c);
+                self.input = new_current.clone();
+                self.input_mode = InputMode::MessageComposition {
+                    target_peer,
+                    lines: new_lines,
+                    current_line: new_current,
+                };
+            }
+            KeyCode::Backspace => {
+                if new_current.is_empty() && !new_lines.is_empty() {
+                    new_current = new_lines.pop().unwrap();
+                } else {
+                    new_current.pop();
+                }
+                self.input = new_current.clone();
+                self.input_mode = InputMode::MessageComposition {
+                    target_peer,
+                    lines: new_lines,
+                    current_line: new_current,
+                };
+            }
+            _ => {}
         }
         None
     }
@@ -919,17 +915,7 @@ impl App {
     }
 
     pub fn navigate_list_up(&mut self) {
-        let list_len = match self.view_mode {
-            ViewMode::Channels => self.channels.len(),
-            ViewMode::Stories(ref channel_name) => self
-                .stories
-                .iter()
-                .filter(|story| story.channel == *channel_name)
-                .count(),
-            ViewMode::Conversations => self.conversations.len(),
-            ViewMode::ConversationView(_) => 0,
-        };
-
+        let list_len = self.current_list_len();
         if list_len > 0 {
             let current = self.list_state.selected().unwrap_or(0);
             let new_index = if current == 0 {
@@ -942,17 +928,7 @@ impl App {
     }
 
     pub fn navigate_list_down(&mut self) {
-        let list_len = match self.view_mode {
-            ViewMode::Channels => self.channels.len(),
-            ViewMode::Stories(ref channel_name) => self
-                .stories
-                .iter()
-                .filter(|story| story.channel == *channel_name)
-                .count(),
-            ViewMode::Conversations => self.conversations.len(),
-            ViewMode::ConversationView(_) => 0,
-        };
-
+        let list_len = self.current_list_len();
         if list_len > 0 {
             let current = self.list_state.selected().unwrap_or(0);
             let new_index = if current >= list_len - 1 {
@@ -964,17 +940,34 @@ impl App {
         }
     }
 
+    /// Number of items in the currently active list panel.
+    fn current_list_len(&self) -> usize {
+        match &self.view_mode {
+            ViewMode::Channels => self.channels.len(),
+            ViewMode::Stories(channel_name) => self
+                .stories
+                .iter()
+                .filter(|story| story.channel == *channel_name)
+                .count(),
+            ViewMode::Conversations => self.conversations.len(),
+            ViewMode::ConversationView(_) => 0,
+        }
+    }
+
+    /// Returns the safe selected index for a list of `len` items,
+    /// falling back to 0 when nothing is selected or the index is out of range.
+    fn selected_index_for(&self, len: usize) -> Option<usize> {
+        if len == 0 {
+            None
+        } else {
+            Some(self.list_state.selected().filter(|&i| i < len).unwrap_or(0))
+        }
+    }
+
     pub fn get_selected_channel(&self) -> Option<&str> {
-        if matches!(self.view_mode, ViewMode::Channels) && !self.channels.is_empty() {
-            if let Some(selected_index) = self.list_state.selected() {
-                if selected_index < self.channels.len() {
-                    Some(&self.channels[selected_index].name)
-                } else {
-                    Some(&self.channels[0].name)
-                }
-            } else {
-                Some(&self.channels[0].name)
-            }
+        if matches!(self.view_mode, ViewMode::Channels) {
+            self.selected_index_for(self.channels.len())
+                .map(|i| self.channels[i].name.as_str())
         } else {
             None
         }
@@ -987,20 +980,8 @@ impl App {
                 .iter()
                 .filter(|story| story.channel == *channel_name)
                 .collect();
-
-            if !channel_stories.is_empty() {
-                if let Some(selected_index) = self.list_state.selected() {
-                    if selected_index < channel_stories.len() {
-                        Some(channel_stories[selected_index].clone())
-                    } else {
-                        Some(channel_stories[0].clone())
-                    }
-                } else {
-                    Some(channel_stories[0].clone())
-                }
-            } else {
-                None
-            }
+            self.selected_index_for(channel_stories.len())
+                .map(|i| channel_stories[i].clone())
         } else {
             None
         }
@@ -1270,20 +1251,12 @@ impl App {
     }
 
     fn calculate_current_scroll_position(&self, available_height: usize) -> usize {
-        let total_lines = self.output_log.len();
-
-        if self.auto_scroll {
-            if total_lines <= available_height {
-                0
-            } else {
-                total_lines.saturating_sub(available_height)
-            }
-        } else if total_lines <= available_height {
-            0
-        } else {
-            let max_scroll = total_lines.saturating_sub(available_height);
-            self.scroll_offset.min(max_scroll)
-        }
+        compute_scroll_offset(
+            self.auto_scroll,
+            self.output_log.len(),
+            available_height,
+            self.scroll_offset,
+        )
     }
 
     fn scroll_up(&mut self) {
@@ -1310,8 +1283,89 @@ impl App {
         self.scroll_offset += 1;
     }
 
+    /// Compose the status-bar text line.
+    fn build_status_text(&self) -> String {
+        let version = env!("CARGO_PKG_VERSION");
+        let peer_id_short = self
+            .local_peer_id
+            .as_ref()
+            .map(|id| id.get(..12).unwrap_or(id.as_str()))
+            .unwrap_or("unknown");
+        let network_status_text = format!(
+            "Network: {} peers | Bootstrap: {} | mDNS: {}",
+            self.peers.len(),
+            self.bootstrap_status_display,
+            if self.mdns_active {
+                "active"
+            } else {
+                "searching"
+            }
+        );
+        let peer_display = if let Some(ref name) = self.local_peer_name {
+            format!("Peer: {} ({})", name, peer_id_short)
+        } else {
+            format!("Peer ID: {}", peer_id_short)
+        };
+        let mode_text = match self.input_mode {
+            InputMode::Normal => "Normal",
+            InputMode::Editing => "Editing",
+            InputMode::CreatingStory { .. } => "Creating Story",
+            InputMode::QuickReply { .. } => "Quick Reply",
+            InputMode::MessageComposition { .. } => "Message Composition",
+        };
+        let message_indicator = if self.unread_message_count > 0 {
+            if self.flash_active {
+                format!(
+                    " | {} MSGS: {} 📳",
+                    Icons::envelope(),
+                    self.unread_message_count
+                )
+            } else {
+                format!(
+                    " | {} MSGS: {}",
+                    Icons::envelope(),
+                    self.unread_message_count
+                )
+            }
+        } else {
+            String::new()
+        };
+        let health_text = if let Some(ref health) = self.network_health {
+            format!(" | {}", health.status_string())
+        } else {
+            String::new()
+        };
+        format!(
+            "P2P-Play v{} | {} | {} | Mode: {} | AUTO: {}{}{}",
+            version,
+            peer_display,
+            network_status_text,
+            mode_text,
+            if self.auto_scroll { "ON" } else { "OFF" },
+            message_indicator,
+            health_text,
+        )
+    }
+
+    /// Determine the status bar foreground colour based on current state.
+    fn status_bar_color(&self) -> Color {
+        if self.flash_active && self.notification_config.enable_flash_indicators {
+            Color::LightYellow
+        } else if let Some(ref health) = self.network_health {
+            if health.overall_healthy {
+                Color::Green
+            } else {
+                Color::Red
+            }
+        } else {
+            Color::Yellow
+        }
+    }
+
     pub fn draw(&mut self) -> UIResult<()> {
         self.update_flash_indicator();
+        let status_text = self.build_status_text();
+        let bar_color = self.status_bar_color();
 
         self.terminal.draw(|f| {
             let chunks = Layout::default()
@@ -1323,83 +1377,7 @@ impl App {
                 ])
                 .split(f.area());
 
-            let version = env!("CARGO_PKG_VERSION");
-            let network_status_text = format!(
-                "Network: {} peers | Bootstrap: {} | mDNS: {}",
-                self.peers.len(),
-                self.bootstrap_status_display,
-                if self.mdns_active { "active" } else { "searching" }
-            );
-
-            let message_indicator = if self.unread_message_count > 0 {
-                if self.flash_active {
-                    format!(" | {} MSGS: {} 📳", Icons::envelope(), self.unread_message_count)
-                } else {
-                    format!(" | {} MSGS: {}", Icons::envelope(), self.unread_message_count)
-                }
-            } else {
-                String::new()
-            };
-
-            let health_text = if let Some(ref health) = self.network_health {
-                format!(" | {}", health.status_string())
-            } else {
-                String::new()
-            };
-
-            let status_text = if let Some(ref name) = self.local_peer_name {
-                format!(
-                    "P2P-Play v{} | Peer: {} ({}) | {} | Mode: {} | AUTO: {}{}{}",
-                    version,
-                    name,
-                    self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
-                    network_status_text,
-                    match self.input_mode {
-                        InputMode::Normal => "Normal",
-                        InputMode::Editing => "Editing",
-                        InputMode::CreatingStory { .. } => "Creating Story",
-                        InputMode::QuickReply { .. } => "Quick Reply",
-                        InputMode::MessageComposition { .. } => "Message Composition",
-                    },
-                    if self.auto_scroll { "ON" } else { "OFF" },
-                    message_indicator,
-                    health_text
-                )
-            } else {
-                format!(
-                    "P2P-Play v{} | Peer ID: {} | {} | Mode: {} | AUTO: {}{}{}",
-                    version,
-                    self.local_peer_id.as_ref().map(|id| &id[..12]).unwrap_or("unknown"),
-                    network_status_text,
-                    match self.input_mode {
-                        InputMode::Normal => "Normal",
-                        InputMode::Editing => "Editing",
-                        InputMode::CreatingStory { .. } => "Creating Story",
-                        InputMode::QuickReply { .. } => "Quick Reply",
-                        InputMode::MessageComposition { .. } => "Message Composition",
-                    },
-                    if self.auto_scroll { "ON" } else { "OFF" },
-                    message_indicator,
-                    health_text
-                )
-            };
-
-            let status_bar_color = if self.flash_active && self.notification_config.enable_flash_indicators {
-                Color::LightYellow
-            } else if let Some(ref health) = self.network_health {
-                if health.overall_healthy {
-                    Color::Green
-                } else {
-                    Color::Red
-                }
-            } else {
-                Color::Yellow
-            };
-
-            let status_bar = Paragraph::new(status_text)
-                .style(Style::default().fg(status_bar_color))
-                .block(Block::default().borders(Borders::ALL).title("Status"));
-            f.render_widget(status_bar, chunks[0]);
+            render_status_bar(f, chunks[0], &status_text, bar_color);
 
             let main_chunks = Layout::default()
                 .direction(Direction::Horizontal)
@@ -1411,50 +1389,20 @@ impl App {
 
             let actual_log_height = (main_chunks[0].height as usize).saturating_sub(2);
             let total_lines = self.output_log.len();
-
-            let scroll_offset = if self.auto_scroll {
-                if total_lines <= actual_log_height {
-                    0
-                } else {
-                    total_lines.saturating_sub(actual_log_height)
-                }
-            } else if total_lines <= actual_log_height {
-                0
-            } else {
-                let max_scroll = total_lines.saturating_sub(actual_log_height);
-                self.scroll_offset.min(max_scroll)
-            };
-
-            let visible_start = scroll_offset;
-            let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
-
-            let lines: Vec<Line> = self.output_log[visible_start..visible_end]
-                .iter()
-                .map(|msg| Line::from(Span::raw(msg.clone())))
-                .collect();
-
-            let text = Text::from(lines);
-
-            let title = if total_lines > actual_log_height {
-                format!("Output [{}/{}]", visible_start + 1, total_lines)
-            } else {
-                "Output".to_string()
-            };
-
-            let output = Paragraph::new(text)
-                .block(Block::default().borders(Borders::ALL).title(title))
-                .wrap(ratatui::widgets::Wrap { trim: false })
-                .alignment(ratatui::layout::Alignment::Left);
-            f.render_widget(output, main_chunks[0]);
-
-            if total_lines > actual_log_height {
-                let mut scrollbar_state = ScrollbarState::new(total_lines.saturating_sub(actual_log_height))
-                    .position(scroll_offset);
-                let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
-                    .begin_symbol(Some("↑"))
-                    .end_symbol(Some("↓"));
-                f.render_stateful_widget(scrollbar, main_chunks[0], &mut scrollbar_state);
-            }
+            let scroll_offset = compute_scroll_offset(
+                self.auto_scroll,
+                total_lines,
+                actual_log_height,
+                self.scroll_offset,
+            );
+            render_output_panel(
+                f,
+                main_chunks[0],
+                &self.output_log,
+                scroll_offset,
+                total_lines,
+                actual_log_height,
+            );
 
             let side_chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -1465,269 +1413,27 @@ impl App {
                 ])
                 .split(main_chunks[1]);
 
-            let peer_items: Vec<ListItem> = self
-                .peers
-                .iter()
-                .map(|(peer_id, name)| {
-                    let peer_id_str = peer_id.to_string();
-                    let peer_id_display = if peer_id_str.len() >= 20 { &peer_id_str[..20] } else { &peer_id_str };
-
-                    let content = if name.is_empty() {
-                        format!("{peer_id}")
-                    } else if name.starts_with("Peer_") && name.contains(&peer_id.to_string()) {
-                        format!("Peer_{peer_id_display} [{peer_id_display}]")
-                    } else {
-                        format!("{name} ({peer_id_display})")
-                    };
-                    ListItem::new(content)
-                })
-                .collect();
-
-            let peers_list = List::new(peer_items)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Connected Peers"),
-                )
-                .highlight_style(Style::default().fg(Color::Yellow));
-            f.render_widget(peers_list, side_chunks[0]);
-
-            let conversation_items: Vec<ListItem> = self
-                .conversations
-                .iter()
-                .map(|conv| {
-                    let sanitized_peer_name = ContentSanitizer::sanitize_for_display(&conv.peer_name);
-
-                    let time_str = if conv.last_activity > 0 {
-                        let datetime = UNIX_EPOCH + Duration::from_secs(conv.last_activity);
-                        let local_datetime = DateTime::<Local>::from(datetime);
-                        if self.notification_config.enhanced_timestamps {
-                            let now = std::time::SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs();
-                            let age_secs = now.saturating_sub(conv.last_activity);
-
-                            if age_secs < 60 {
-                                "now".to_string()
-                            } else if age_secs < 3600 {
-                                format!("{}m", age_secs / 60)
-                            } else if age_secs < 86400 {
-                                local_datetime.format("%H:%M").to_string()
-                            } else if age_secs < 604800 {
-                                local_datetime.format("%a %H:%M").to_string()
-                            } else {
-                                local_datetime.format("%m/%d").to_string()
-                            }
-                        } else {
-                            local_datetime.format("%H:%M").to_string()
-                        }
-                    } else {
-                        "--:--".to_string()
-                    };
-
-                    let unread_indicator = if conv.unread_count > 0 {
-                        format!(" ({})", conv.unread_count)
-                    } else {
-                        String::new()
-                    };
-
-                    let item_text = format!(
-                        "{} {} [{}]{}",
-                        Icons::speech(),
-                        sanitized_peer_name,
-                        time_str,
-                        unread_indicator
-                    );
-
-                    if self.notification_config.enable_color_coding && conv.unread_count > 0 {
-                        ListItem::new(item_text).style(Style::default().fg(Color::Magenta))
-                    } else {
-                        ListItem::new(item_text)
-                    }
-                })
-                .collect();
-
-            let message_title = if self.unread_message_count > 0 {
-                format!("Conversations [{}]", self.unread_message_count)
-            } else {
-                "Conversations".to_string()
-            };
-
-            let conversations_list = List::new(conversation_items)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(message_title)
-                        .border_style(if matches!(self.view_mode, ViewMode::Conversations) {
-                            Style::default().fg(Color::Yellow)
-                        } else {
-                            Style::default()
-                        }),
-                )
-                .highlight_style(Style::default().fg(Color::Yellow));
-            if matches!(self.view_mode, ViewMode::Conversations) {
-                f.render_stateful_widget(conversations_list, side_chunks[1], &mut self.list_state);
-            } else {
-                f.render_widget(conversations_list, side_chunks[1]);
-            }
-
-            let (list_items, list_title) = match &self.view_mode {
-                ViewMode::Channels => {
-                    let channel_items: Vec<ListItem> = self
-                        .channels
-                        .iter()
-                        .map(|channel| {
-                            let story_count = self.stories.iter()
-                                .filter(|story| story.channel == channel.name)
-                                .count();
-
-                            let unread_count = self.unread_counts.get(&channel.name).unwrap_or(&0);
-
-                            let display_text = if *unread_count > 0 {
-                                format!("{} {} [{}] ({} stories) - {}",
-                                    Icons::folder(), channel.name, unread_count, story_count, channel.description)
-                            } else {
-                                format!("{} {} ({} stories) - {}",
-                                    Icons::folder(), channel.name, story_count, channel.description)
-                            };
-
-                            let item = ListItem::new(display_text);
-                            if *unread_count > 0 {
-                                // Highlight channels with unread stories in cyan to distinguish from selected items (yellow)
-                                item.style(Style::default().fg(Color::Cyan))
-                            } else {
-                                item
-                            }
-                        })
-                        .collect();
-                    (channel_items, "Channels (Press Enter to view stories)".to_string())
-                }
-                ViewMode::Stories(selected_channel) => {
-                    let story_items: Vec<ListItem> = self
-                        .stories
-                        .iter()
-                        .filter(|story| story.channel == *selected_channel)
-                        .map(|story| {
-                            let status = if story.public { Icons::book() } else { Icons::closed_book() };
-                            ListItem::new(format!("{} {}: {}", status, story.id, story.name))
-                        })
-                        .collect();
-                    (story_items, format!("Stories in '{selected_channel}' (Press Esc to return to channels)"))
-                }
-                ViewMode::Conversations => {
-                    (Vec::new(), "Use Tab to focus on Conversations panel".to_string())
-                }
-                ViewMode::ConversationView(_) => {
-                    (Vec::new(), "Viewing conversation (Press Esc to return)".to_string())
-                }
-            };
-
-            let list = List::new(list_items)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(list_title)
-                        .border_style(if matches!(self.view_mode, ViewMode::Channels | ViewMode::Stories(_)) {
-                            Style::default().fg(Color::Yellow)
-                        } else {
-                            Style::default()
-                        })
-                )
-                .highlight_style(Style::default().fg(Color::Yellow));
-
-            if matches!(self.view_mode, ViewMode::Channels | ViewMode::Stories(_)) {
-                f.render_stateful_widget(list, side_chunks[2], &mut self.list_state);
-            } else {
-                f.render_widget(list, side_chunks[2]);
-            }
-
-            let input_style = match self.input_mode {
-                InputMode::Normal => Style::default(),
-                InputMode::Editing => Style::default().fg(Color::Yellow),
-                InputMode::CreatingStory { .. } => Style::default().fg(Color::Green),
-                InputMode::QuickReply { .. } => Style::default().fg(Color::Cyan),
-                InputMode::MessageComposition { .. } => Style::default().fg(Color::Magenta),
-            };
-
-            let input_text = match &self.input_mode {
-                InputMode::Normal => {
-                    match &self.view_mode {
-                        ViewMode::Channels => "Press 'i' for input, 'r' reply, 'm' compose, 'M' messages, Enter view, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
-                        ViewMode::Stories(_) => "Press 'i' for input, 'r' reply, 'm' compose, 'M' messages, Enter view, Esc back, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
-                        ViewMode::Conversations => "Press 'i' for input, 'r' reply, 'm' compose, 'N' channels, Enter view, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit".to_string(),
-                        ViewMode::ConversationView(_) => "Press 'i' for input, 'r' reply, 'm' compose, Esc back, 'c' clear, 'q' quit".to_string(),
-                    }
-                }
-                InputMode::Editing => format!("Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): {}", self.input),
-                InputMode::QuickReply { target_peer } => format!("{} Quick reply to {}: {}", crate::types::Icons::envelope(), target_peer, self.input),
-                InputMode::MessageComposition { target_peer, lines, current_line: _ } => {
-                    if lines.is_empty() {
-                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): {}", crate::types::Icons::memo(), target_peer, self.input)
-                    } else {
-                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): {}", crate::types::Icons::memo(), target_peer, lines.len() + 1, self.input)
-                    }
-                }
-                InputMode::CreatingStory { step, .. } => {
-                    let prompt = match step {
-                        StoryCreationStep::Name => format!("{} Story Name", Icons::memo()),
-                        StoryCreationStep::Header => format!("{} Story Header", Icons::document()),
-                        StoryCreationStep::Body => format!("{} Story Body", Icons::book()),
-                        StoryCreationStep::Channel => format!("{} Channel (Enter for 'general')", Icons::folder()),
-                    };
-                    format!("{}: {}", prompt, self.input)
-                }
-            };
-
-            let input = Paragraph::new(input_text)
-                .style(input_style)
-                .block(Block::default().borders(Borders::ALL).title("Input"));
-            f.render_widget(input, chunks[2]);
-
-            match &self.input_mode {
-                InputMode::Editing => {
-                    let prefix = "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): ";
-                    let pos = Position::new(
-                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
-                        chunks[2].y + 1,
-                    );
-                    f.set_cursor_position(pos);
-                }
-                InputMode::QuickReply { target_peer } => {
-                    let prefix = format!("{} Quick reply to {}: ", crate::types::Icons::envelope(), target_peer);
-                    let pos = Position::new(
-                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
-                        chunks[2].y + 1,
-                    );
-                    f.set_cursor_position(pos);
-                }
-                InputMode::MessageComposition { target_peer, lines, .. } => {
-                    let prefix = if lines.is_empty() {
-                        format!("{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer)
-                    } else {
-                        format!("{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ", crate::types::Icons::memo(), target_peer, lines.len() + 1)
-                    };
-                    let pos = Position::new(
-                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
-                        chunks[2].y + 1,
-                    );
-                    f.set_cursor_position(pos);
-                }
-                InputMode::CreatingStory { step, .. } => {
-                    let prefix = match step {
-                        StoryCreationStep::Name => format!("{} Story Name: ", crate::types::Icons::memo()),
-                        StoryCreationStep::Header => format!("{} Story Header: ", crate::types::Icons::document()),
-                        StoryCreationStep::Body => format!("{} Story Body: ", crate::types::Icons::book()),
-                        StoryCreationStep::Channel => format!("{} Channel (Enter for 'general'): ", crate::types::Icons::folder()),
-                    };
-                    let pos = Position::new(
-                        chunks[2].x + 1 + prefix.chars().count() as u16 + self.input.chars().count() as u16,
-                        chunks[2].y + 1,
-                    );
-                    f.set_cursor_position(pos);
-                }
-                _ => {}
-            }
+            render_peers_panel(f, side_chunks[0], &self.peers);
+            render_conversations_panel(
+                f,
+                side_chunks[1],
+                &self.conversations,
+                self.unread_message_count,
+                &self.view_mode,
+                &self.notification_config,
+                &mut self.list_state,
+            );
+            render_channel_story_panel(
+                f,
+                side_chunks[2],
+                &self.view_mode,
+                &self.channels,
+                &self.stories,
+                &self.unread_counts,
+                &mut self.list_state,
+            );
+            render_input_widget(f, chunks[2], &self.input_mode, &self.view_mode, &self.input);
+            set_input_cursor(f, chunks[2], &self.input_mode, &self.input);
         })?;
 
         Ok(())
@@ -1752,35 +1458,477 @@ pub async fn handle_ui_events(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Module-level render helpers
+// These are free functions so they can be called from inside `terminal.draw()`
+// without re-borrowing `App` as a whole (which would conflict with the mutable
+// borrow of `self.terminal`).
+// ---------------------------------------------------------------------------
+
+fn render_status_bar(f: &mut Frame, area: Rect, status_text: &str, bar_color: Color) {
+    let bar = Paragraph::new(status_text)
+        .style(Style::default().fg(bar_color))
+        .block(Block::default().borders(Borders::ALL).title("Status"));
+    f.render_widget(bar, area);
+}
+
+fn render_output_panel(
+    f: &mut Frame,
+    area: Rect,
+    output_log: &[String],
+    scroll_offset: usize,
+    total_lines: usize,
+    actual_log_height: usize,
+) {
+    let visible_start = scroll_offset;
+    let visible_end = std::cmp::min(visible_start + actual_log_height, total_lines);
+
+    let lines: Vec<Line> = output_log[visible_start..visible_end]
+        .iter()
+        .map(|msg| Line::from(Span::raw(msg.clone())))
+        .collect();
+    let text = Text::from(lines);
+
+    let title = if total_lines > actual_log_height {
+        format!("Output [{}/{}]", visible_start + 1, total_lines)
+    } else {
+        "Output".to_string()
+    };
+
+    let output = Paragraph::new(text)
+        .block(Block::default().borders(Borders::ALL).title(title))
+        .wrap(ratatui::widgets::Wrap { trim: false })
+        .alignment(ratatui::layout::Alignment::Left);
+    f.render_widget(output, area);
+
+    if total_lines > actual_log_height {
+        let mut scrollbar_state =
+            ScrollbarState::new(total_lines.saturating_sub(actual_log_height))
+                .position(scroll_offset);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(Some("↑"))
+            .end_symbol(Some("↓"));
+        f.render_stateful_widget(scrollbar, area, &mut scrollbar_state);
+    }
+}
+
+fn render_peers_panel(f: &mut Frame, area: Rect, peers: &HashMap<PeerId, String>) {
+    let peer_items: Vec<ListItem> = peers
+        .iter()
+        .map(|(peer_id, name)| {
+            let peer_id_str = peer_id.to_string();
+            let peer_id_display = if peer_id_str.len() >= 20 {
+                &peer_id_str[..20]
+            } else {
+                &peer_id_str
+            };
+            let content = if name.is_empty() {
+                format!("{peer_id}")
+            } else if name.starts_with("Peer_") && name.contains(&peer_id.to_string()) {
+                format!("Peer_{peer_id_display} [{peer_id_display}]")
+            } else {
+                format!("{name} ({peer_id_display})")
+            };
+            ListItem::new(content)
+        })
+        .collect();
+
+    let peers_list = List::new(peer_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Connected Peers"),
+        )
+        .highlight_style(Style::default().fg(Color::Yellow));
+    f.render_widget(peers_list, area);
+}
+
+fn render_conversations_panel(
+    f: &mut Frame,
+    area: Rect,
+    conversations: &[crate::types::Conversation],
+    unread_count: usize,
+    view_mode: &ViewMode,
+    notification_config: &crate::types::MessageNotificationConfig,
+    list_state: &mut ListState,
+) {
+    let conversation_items: Vec<ListItem> = conversations
+        .iter()
+        .map(|conv| {
+            let sanitized_peer_name = ContentSanitizer::sanitize_for_display(&conv.peer_name);
+
+            let time_str = if conv.last_activity > 0 {
+                let datetime = UNIX_EPOCH + Duration::from_secs(conv.last_activity);
+                let local_datetime = DateTime::<Local>::from(datetime);
+                if notification_config.enhanced_timestamps {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let age_secs = now.saturating_sub(conv.last_activity);
+                    if age_secs < 60 {
+                        "now".to_string()
+                    } else if age_secs < 3600 {
+                        format!("{}m", age_secs / 60)
+                    } else if age_secs < 86400 {
+                        local_datetime.format("%H:%M").to_string()
+                    } else if age_secs < 604800 {
+                        local_datetime.format("%a %H:%M").to_string()
+                    } else {
+                        local_datetime.format("%m/%d").to_string()
+                    }
+                } else {
+                    local_datetime.format("%H:%M").to_string()
+                }
+            } else {
+                "--:--".to_string()
+            };
+
+            let unread_indicator = if conv.unread_count > 0 {
+                format!(" ({})", conv.unread_count)
+            } else {
+                String::new()
+            };
+            let item_text = format!(
+                "{} {} [{}]{}",
+                Icons::speech(),
+                sanitized_peer_name,
+                time_str,
+                unread_indicator
+            );
+            if notification_config.enable_color_coding && conv.unread_count > 0 {
+                ListItem::new(item_text).style(Style::default().fg(Color::Magenta))
+            } else {
+                ListItem::new(item_text)
+            }
+        })
+        .collect();
+
+    let message_title = if unread_count > 0 {
+        format!("Conversations [{}]", unread_count)
+    } else {
+        "Conversations".to_string()
+    };
+
+    let conversations_list = List::new(conversation_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(message_title)
+                .border_style(if matches!(view_mode, ViewMode::Conversations) {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                }),
+        )
+        .highlight_style(Style::default().fg(Color::Yellow));
+
+    if matches!(view_mode, ViewMode::Conversations) {
+        f.render_stateful_widget(conversations_list, area, list_state);
+    } else {
+        f.render_widget(conversations_list, area);
+    }
+}
+
+fn render_channel_story_panel(
+    f: &mut Frame,
+    area: Rect,
+    view_mode: &ViewMode,
+    channels: &[crate::types::Channel],
+    stories: &Stories,
+    unread_counts: &HashMap<String, usize>,
+    list_state: &mut ListState,
+) {
+    let (list_items, list_title) = match view_mode {
+        ViewMode::Channels => {
+            let channel_items: Vec<ListItem> = channels
+                .iter()
+                .map(|channel| {
+                    let story_count = stories.iter().filter(|s| s.channel == channel.name).count();
+                    let unread_count = unread_counts.get(&channel.name).unwrap_or(&0);
+                    let display_text = if *unread_count > 0 {
+                        format!(
+                            "{} {} [{}] ({} stories) - {}",
+                            Icons::folder(),
+                            channel.name,
+                            unread_count,
+                            story_count,
+                            channel.description
+                        )
+                    } else {
+                        format!(
+                            "{} {} ({} stories) - {}",
+                            Icons::folder(),
+                            channel.name,
+                            story_count,
+                            channel.description
+                        )
+                    };
+                    let item = ListItem::new(display_text);
+                    if *unread_count > 0 {
+                        // Highlight channels with unread stories in cyan to distinguish from selected items (yellow)
+                        item.style(Style::default().fg(Color::Cyan))
+                    } else {
+                        item
+                    }
+                })
+                .collect();
+            (
+                channel_items,
+                "Channels (Press Enter to view stories)".to_string(),
+            )
+        }
+        ViewMode::Stories(selected_channel) => {
+            let story_items: Vec<ListItem> = stories
+                .iter()
+                .filter(|story| story.channel == *selected_channel)
+                .map(|story| {
+                    let status = if story.public {
+                        Icons::book()
+                    } else {
+                        Icons::closed_book()
+                    };
+                    ListItem::new(format!("{} {}: {}", status, story.id, story.name))
+                })
+                .collect();
+            (
+                story_items,
+                format!("Stories in '{selected_channel}' (Press Esc to return to channels)"),
+            )
+        }
+        ViewMode::Conversations => (
+            Vec::new(),
+            "Use Tab to focus on Conversations panel".to_string(),
+        ),
+        ViewMode::ConversationView(_) => (
+            Vec::new(),
+            "Viewing conversation (Press Esc to return)".to_string(),
+        ),
+    };
+
+    let list = List::new(list_items)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(list_title)
+                .border_style(
+                    if matches!(view_mode, ViewMode::Channels | ViewMode::Stories(_)) {
+                        Style::default().fg(Color::Yellow)
+                    } else {
+                        Style::default()
+                    },
+                ),
+        )
+        .highlight_style(Style::default().fg(Color::Yellow));
+
+    if matches!(view_mode, ViewMode::Channels | ViewMode::Stories(_)) {
+        f.render_stateful_widget(list, area, list_state);
+    } else {
+        f.render_widget(list, area);
+    }
+}
+
+fn render_input_widget(
+    f: &mut Frame,
+    area: Rect,
+    input_mode: &InputMode,
+    view_mode: &ViewMode,
+    input: &str,
+) {
+    let input_style = match input_mode {
+        InputMode::Normal => Style::default(),
+        InputMode::Editing => Style::default().fg(Color::Yellow),
+        InputMode::CreatingStory { .. } => Style::default().fg(Color::Green),
+        InputMode::QuickReply { .. } => Style::default().fg(Color::Cyan),
+        InputMode::MessageComposition { .. } => Style::default().fg(Color::Magenta),
+    };
+
+    let input_text = match input_mode {
+        InputMode::Normal => normal_mode_hint(view_mode).to_string(),
+        InputMode::Editing => {
+            format!(
+                "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): {}",
+                input
+            )
+        }
+        InputMode::QuickReply { target_peer } => {
+            format!(
+                "{} Quick reply to {}: {}",
+                Icons::envelope(),
+                target_peer,
+                input
+            )
+        }
+        InputMode::MessageComposition {
+            target_peer, lines, ..
+        } => {
+            if lines.is_empty() {
+                format!(
+                    "{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): {}",
+                    Icons::memo(),
+                    target_peer,
+                    input
+                )
+            } else {
+                format!(
+                    "{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): {}",
+                    Icons::memo(),
+                    target_peer,
+                    lines.len() + 1,
+                    input
+                )
+            }
+        }
+        InputMode::CreatingStory { step, .. } => {
+            let prompt = match step {
+                StoryCreationStep::Name => format!("{} Story Name", Icons::memo()),
+                StoryCreationStep::Header => format!("{} Story Header", Icons::document()),
+                StoryCreationStep::Body => format!("{} Story Body", Icons::book()),
+                StoryCreationStep::Channel => {
+                    format!("{} Channel (Enter for 'general')", Icons::folder())
+                }
+            };
+            format!("{}: {}", prompt, input)
+        }
+    };
+
+    let input_widget = Paragraph::new(input_text)
+        .style(input_style)
+        .block(Block::default().borders(Borders::ALL).title("Input"));
+    f.render_widget(input_widget, area);
+}
+
+fn set_input_cursor(f: &mut Frame, area: Rect, input_mode: &InputMode, input: &str) {
+    let input_char_count = input.chars().count() as u16;
+    match input_mode {
+        InputMode::Editing => {
+            let prefix = "Command (Tab auto-complete, ↑/↓ history, Ctrl+L clear): ";
+            f.set_cursor_position(Position::new(
+                area.x + 1 + prefix.chars().count() as u16 + input_char_count,
+                area.y + 1,
+            ));
+        }
+        InputMode::QuickReply { target_peer } => {
+            let prefix = format!("{} Quick reply to {}: ", Icons::envelope(), target_peer);
+            f.set_cursor_position(Position::new(
+                area.x + 1 + prefix.chars().count() as u16 + input_char_count,
+                area.y + 1,
+            ));
+        }
+        InputMode::MessageComposition {
+            target_peer, lines, ..
+        } => {
+            let prefix = if lines.is_empty() {
+                format!(
+                    "{} Compose to {} (Enter new line, Ctrl+Enter/Ctrl+D send): ",
+                    Icons::memo(),
+                    target_peer
+                )
+            } else {
+                format!(
+                    "{} Compose to {} (Line {}, Ctrl+Enter/Ctrl+D send): ",
+                    Icons::memo(),
+                    target_peer,
+                    lines.len() + 1
+                )
+            };
+            f.set_cursor_position(Position::new(
+                area.x + 1 + prefix.chars().count() as u16 + input_char_count,
+                area.y + 1,
+            ));
+        }
+        InputMode::CreatingStory { step, .. } => {
+            let prefix = match step {
+                StoryCreationStep::Name => format!("{} Story Name: ", Icons::memo()),
+                StoryCreationStep::Header => format!("{} Story Header: ", Icons::document()),
+                StoryCreationStep::Body => format!("{} Story Body: ", Icons::book()),
+                StoryCreationStep::Channel => {
+                    format!("{} Channel (Enter for 'general'): ", Icons::folder())
+                }
+            };
+            f.set_cursor_position(Position::new(
+                area.x + 1 + prefix.chars().count() as u16 + input_char_count,
+                area.y + 1,
+            ));
+        }
+        _ => {}
+    }
+}
+
+/// Return the keyboard-hint string shown in the input bar during Normal mode.
+fn normal_mode_hint(view_mode: &ViewMode) -> &'static str {
+    match view_mode {
+        ViewMode::Channels => {
+            "Press 'i' for input, 'r' reply, 'm' compose, 'M' messages, Enter view, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit"
+        }
+        ViewMode::Stories(_) => {
+            "Press 'i' for input, 'r' reply, 'm' compose, 'M' messages, Enter view, Esc back, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit"
+        }
+        ViewMode::Conversations => {
+            "Press 'i' for input, 'r' reply, 'm' compose, 'N' channels, Enter view, ←/→ nav, ↑/↓ scroll, Ctrl+S auto-scroll, 'c' clear, 'q' quit"
+        }
+        ViewMode::ConversationView(_) => {
+            "Press 'i' for input, 'r' reply, 'm' compose, Esc back, 'c' clear, 'q' quit"
+        }
+    }
+}
+
+/// Find the longest common prefix shared by all `strings`, using a
+/// case-insensitive comparison while preserving the original casing from
+/// `strings[0]` in the returned value.
+///
+/// Returns `None` when the strings share no common leading characters.
 fn find_common_prefix(strings: &[String]) -> Option<String> {
     if strings.is_empty() {
         return None;
     }
-
     if strings.len() == 1 {
         return Some(strings[0].clone());
     }
 
-    let first = strings[0].to_lowercase();
-    let mut prefix_len = 0;
+    // Precompute lowercase char vectors once per string so that each position
+    // can be compared in O(1) instead of the O(i) cost of `.chars().nth(i)`.
+    // Total work is O(sum of string lengths), i.e. linear.
+    let first_chars: Vec<char> = strings[0].to_lowercase().chars().collect();
+    let rest_chars: Vec<Vec<char>> = strings[1..]
+        .iter()
+        .map(|s| s.to_lowercase().chars().collect())
+        .collect();
 
-    for i in 0..first.len() {
-        let ch = first.chars().nth(i)?;
+    let mut prefix_len = 0usize;
 
-        for string in &strings[1..] {
-            let other_ch = string.to_lowercase().chars().nth(i);
-            if other_ch != Some(ch) {
-                if prefix_len == 0 {
-                    return None;
-                } else {
-                    return Some(strings[0][..prefix_len].to_string());
-                }
+    'outer: for (i, &lower_ch) in first_chars.iter().enumerate() {
+        for other in &rest_chars {
+            if other.get(i) != Some(&lower_ch) {
+                break 'outer;
             }
         }
         prefix_len = i + 1;
     }
 
-    Some(strings[0][..prefix_len].to_string())
+    if prefix_len == 0 {
+        None
+    } else {
+        // Return original casing from the first string.
+        Some(strings[0].chars().take(prefix_len).collect())
+    }
+}
+
+/// Pure helper: compute the scroll position for the output log panel.
+fn compute_scroll_offset(
+    auto_scroll: bool,
+    total_lines: usize,
+    available_height: usize,
+    current_offset: usize,
+) -> usize {
+    if total_lines <= available_height {
+        0
+    } else if auto_scroll {
+        total_lines.saturating_sub(available_height)
+    } else {
+        let max = total_lines.saturating_sub(available_height);
+        current_offset.min(max)
+    }
 }
 
 fn format_timestamp(timestamp: u64) -> String {

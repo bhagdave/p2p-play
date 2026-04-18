@@ -4,6 +4,17 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **`event_processor.rs` refactored for maintainability**: Addressed 10 structural issues to reduce complexity and eliminate dead code with no behaviour change.
+  - Removed unused `_should_log_to_ui` computation from both connection-error handlers; demoted both to non-`async`.
+  - Replaced individual `(peer_names, sorted_peer_names_cache, local_peer_name)` parameters with `&mut PeerState` across `select_next_event`, `handle_swarm_event`, `handle_connection_closed`, and `process_event`.
+  - Extracted five timer-tick methods (`on_connection_maintenance_tick`, `on_bootstrap_retry_tick`, `on_bootstrap_status_tick`, `on_dm_retry_tick`, `on_network_health_tick`) from the `select_next_event` mega-`tokio::select!` block.
+  - Added `map_behaviour_to_event` free function covering all 10 behaviour variants; `handle_swarm_event` now has a single `Behaviour` arm with a targeted side-effect sub-match for mDNS and Kademlia.
+  - Extracted `remember_alias_on_disconnect` and `restore_aliases_for_connected_peers` helpers; `sync_known_peer_names` and `handle_connection_closed` delegate to them.
+  - `cleanup_timed_out_handshakes` now collects `(peer_id, is_bootstrap_peer)` pairs in one mutex-lock pass, then acts outside the lock.
+  - Channel receive arms replaced `.expect()` panics with `.map(EventType::…)` — no panic on sender drop.
+  - Introduced `TestEventProcessorBuilder` in the test module to eliminate ~50 lines of duplicated channel/logger setup.
+
 ### Added
 - **Network health in TUI status bar**: The status bar now appends the `NetworkHealthSummary` text alongside existing status fields — e.g. `Network Healthy (6/6 operations)` or `Network Issues (2/6 operations failing)`. The existing green/red/yellow colour coding is preserved; this adds human-readable detail to complement it.
 - **Startup peer reconnect**: On startup the application now reads up to 10 outbound peer connections (those with a stored multiaddr) from the database and attempts to re-dial them immediately after the swarm starts listening. Inbound-only peers (no multiaddr) are skipped. The peer multiaddr is now only stored for outbound (`Dialer`) connections so that the reconnect list stays accurate across restarts. A new `get_outbound_peers(limit)` storage helper queries the peers table for rows with a non-NULL multiaddr, ordered by `last_seen` descending.
@@ -18,6 +29,59 @@ All changes to this project will be documented in this file.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
 
 ### Changed
+- **`current_unix_timestamp()` shared helper**: The repeated 4-line `SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()` pattern (~50 occurrences) is now consolidated into a single `pub(crate) fn current_unix_timestamp() -> u64` defined in `src/time.rs` and re-exported at both crate roots (`lib.rs`, `main.rs`). Existing `storage::utils::get_current_timestamp()` delegates to it for backward compatibility.
+
+- **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
+- **Circuit breaker `status_string` magic number**: `CircuitBreakerInfo::status_string` hardcoded `3` as the success threshold in the `HalfOpen` recovery message. The value is now read from `success_threshold`, a new field on `CircuitBreakerInfo` populated from `CircuitBreakerConfig` in `get_state`. The displayed count now reflects actual config rather than a stale constant.
+- **Circuit breaker `HalfOpen` reopen failure count**: When a failure in `HalfOpen` state reopened the circuit, `failure_count` accumulated from the prior `Closed`-state run. Count is now reset to `1` on reopen so it reflects failures since the most recent open.
+- **Circuit breaker stale `last_failure_time` after recovery**: `last_failure_time` was never cleared when the circuit recovered. It is now set to `None` in `on_success` when in `Closed` state.
+- **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
+
+### Changed
+- **`network.rs` — decomposed into `network/` submodule**:
+  - Wire-protocol DTOs (`DirectMessageRequest/Response`, `NodeDescriptionRequest/Response`, `StorySyncRequest/Response`, `HandshakeRequest/Response`, `WasmCapabilitiesRequest/Response`, `WasmExecutionRequest/Response`) and `APP_*` constants moved to `src/network/protocol.rs`; all are re-exported from `src/network/mod.rs` so existing `crate::network::*` import paths are unchanged.
+  - `create_swarm` decomposed into three focused helpers: `build_transport` (TCP/DNS/noise/yamux stack), `build_behaviour` (all sub-behaviours), and `build_swarm_config` (dial concurrency + idle timeout).
+  - `noise::Config::new` and `mdns::tokio::Behaviour::new` now propagate errors via `NetworkResult` instead of `unwrap`/`expect`.
+  - Generic `make_cbor_behaviour` builder replaces six near-identical `request_response::cbor::Behaviour::new(...)` blocks.
+  - `impl_story_event_from!` macro reduces ten identical `From` impls to ten one-liner invocations.
+  - Type aliases (`DirectMessageBehaviour`, `DirectMessageEvent`, etc.) make `StoryBehaviour` and `StoryBehaviourEvent` definitions scannable.
+  - Named constants (`TCP_LISTEN_BACKLOG`, `TCP_TTL`, `YAMUX_MAX_STREAMS`, `SWARM_IDLE_CONNECTION_TIMEOUT_SECS`, `SWARM_DIAL_CONCURRENCY_FALLBACK`) replace inline magic numbers.
+  - `log_keypair_error` helper consolidates duplicate `ErrorLogger` creation in `generate_and_save_keypair`.
+  - `max_pending_outgoing` is now clamped to `1..=255` before converting to `NonZeroU8` so values above 255 saturate to 255 rather than wrapping to 0 and silently using the fallback.
+- **`validation.rs` — refactored for maintainability and correctness**:
+  - Introduced a shared `validate_text` pipeline helper (sanitize → empty check → length check → optional char check → return), eliminating ~120 lines of copy-pasted boilerplate across all `validate_*` methods.
+  - Unified the three identical identifier-character predicates (`is_valid_channel_name_char`, `is_valid_peer_name_char`, `is_valid_wasm_name_char`) into a single `is_valid_identifier_char`.
+  - Added `is_allowed_whitespace` helper to deduplicate the repeated whitespace `matches!` pattern across sanitizer methods.
+  - Length checks now use `chars().count()` (Unicode scalar values) instead of `.len()` (bytes), consistent with the "characters" wording in `ValidationError::TooLong`. Multi-byte characters now count correctly at the limit boundary.
+  - Added `ContentLimits::CHANNEL_DESCRIPTION_MAX`; fixed `validate_channel_description` which was incorrectly using `STORY_HEADER_MAX`.
+  - Moved the WASM allowed-type list to a module-level `WASM_PARAM_TYPES` constant instead of rebuilding it on every call to `validate_wasm_param_type`.
+  - `sanitize_for_display` consolidated from three separate allocating passes to one filter pass after ANSI stripping.
+  - Wired the three previously dead `ValidationError` variants (`ContainsAnsiEscapes`, `ContainsControlCharacters`, `ContainsBinaryData`) into strict validation paths: `ContentSanitizer::check_for_ansi_escapes`, `check_for_control_characters`, `check_for_binary_data`, and `ContentValidator::validate_received_content`. These reject dirty network content rather than silently sanitizing it.
+  - Split the flat `mod tests` into four focused submodules: `sanitizer`, `general_validation`, `wasm_validation`, and `strict_validation`.
+- **`ui.rs` — structural refactor for maintainability (no behaviour change)**:
+  - `handle_event` replaced by a slim exhaustive-`match` dispatcher plus five focused mode handlers (`handle_normal_mode_key`, `handle_editing_mode_key`, `handle_story_creation_key`, `handle_quick_reply_key`, `handle_message_composition_key`).
+  - Shared helpers extracted: `cancel_composition` (Esc/Ctrl+C for QuickReply/MessageComposition), `send_message_event` (msg command builder), `toggle_auto_scroll`.
+  - `draw()` decomposed into module-level render helpers (`render_status_bar`, `render_output_panel`, `render_peers_panel`, `render_conversations_panel`, `render_channel_story_panel`, `render_input_widget`, `set_input_cursor`) plus `build_status_text`/`status_bar_color` to collapse the duplicated status-bar format branches.
+  - `compute_scroll_offset` free function removes scroll logic duplicated between `calculate_current_scroll_position` and `draw()`.
+  - `current_list_len()` and `selected_index_for()` helpers eliminate repeated list-length/selection fallback code in `navigate_list_up/down` and `get_selected_channel/story`.
+  - `normal_mode_hint(view_mode)` replaces four hardcoded keyboard-hint strings.
+  - `find_common_prefix` rewritten to be Unicode-safe with O(n×m) precomputed-`Vec<char>` approach; previously used byte-index slicing and O(n²) `nth(i)` calls.
+  - `build_status_text`: peer-ID slice guarded with `.get(..12).unwrap_or(id)` to prevent a panic on unusually short IDs.
+- **`wasm_executor.rs` — refactored for maintainability and correctness**:
+  - `execute()` decomposed into focused helpers: `fetch_and_compile`, `build_wasi_context`, `build_store`, `instantiate_start`, `run_start_func`, and `classify_trap_error`.
+  - LRU compiled-module cache implemented (was dead code): modules are now cached by CID; subsequent calls for the same CID skip fetch + compile. Controlled by `WasmExecutorConfig` (`enable_cache`, `max_cached_modules`).
+  - `ExecutionRequest::validate()` added — rejects zero fuel, zero memory, `Some(0)` timeout, and over-limit memory with a typed `InvalidRequest` error before any network I/O.
+  - `classify_trap_error` uses typed downcasts (`I32Exit`, `Trap::OutOfFuel`) first; string matching only as a last resort, all in one place.
+  - `WasmExecutionError::ExecutionTimeout` now carries the actual configured duration (`ExecutionTimeout(u64)`) instead of hardcoding "30 seconds".
+  - `WasmExecutionError` moved to `errors.rs` alongside all other domain error types; re-exported from `wasm_executor` so existing import paths are unchanged.
+  - Named constants (`WASM_HEADER_LEN`, `PIPE_BUFFER_SIZE`, `BYTES_PER_MB`) replace scattered magic numbers.
+  - `MockContentFetcher` and WAT-based WASM builders consolidated into `tests/common/mod.rs::wasm_fixtures`. New `CountingMockContentFetcher` added to verify cache hit/miss and LRU eviction behaviour in tests.
+- **`crypto.rs` — real X25519 ECDH shared secret**: The shared secret used for direct message encryption was previously derived by hashing the two peers' public keys together (no private key involved), meaning any observer who knew both public keys could compute the same "secret". The shared secret is now derived via X25519 Diffie-Hellman: each side uses its own private key and the other's public key, so only the two communicating peers can derive the value. Ed25519 identity keys are converted to X25519 keys at the point of use following RFC 8037 (SHA-512 the seed, clamp per RFC 7748) for the private key, and via the birational Edwards-to-Montgomery map (`curve25519-dalek`'s `to_montgomery()`) for the public key. Added `x25519-dalek` and `curve25519-dalek` as direct dependencies (both were already transitive via libp2p). Removed the now-unnecessary key-sorting hack from the old implementation.
+- **`crypto.rs` — merged duplicate key derivation functions**: `derive_encryption_key` and `derive_decryption_key` were identical except for the error variant they produced. Consolidated into a single `derive_key(shared_secret, err_variant)` that accepts the appropriate `CryptoError` constructor as a function pointer.
+- **`crypto.rs` — `CryptoError` migrated to `thiserror`**: `CryptoError` was the only error type in the codebase still using a hand-written `Display` impl and a bare `impl std::error::Error {}`. Replaced with `#[derive(Error)]` and `#[error("...")]` attributes on each variant, matching the existing `Display` output exactly. Consistent with all other error types in `errors.rs`.
+- **`errors.rs` — `FetchError` migrated to `thiserror`**: `FetchError` previously had a manual `Display` impl, a bare `impl std::error::Error {}`. Replaced with `#[derive(Error)]`, removing ~15 lines of boilerplate. Now consistent with all other error types in the file.
+- **`errors.rs` — removed unused error variants**: Removed 17 dead variants across `StorageError`, `NetworkError`, `UIError`, and `ConfigError` that were suppressed with `#[allow(dead_code)]`. Variants removed were speculative or superseded: `StorageError::{StoryNotFound, ChannelNotFound, Migration}`, `NetworkError::{SwarmCreation, ListenFailed, PeerConnectionFailed, BroadcastFailed, DHTFailed, DirectMessageFailed, BootstrapFailed, Transport}`, `UIError::{StateTransition, Layout}`, `ConfigError::{FileNotFound, MissingField, InvalidValue}`. Associated constructor helpers (`connection_error`, `invalid_data`, `widget_error`, `validation_error`) also removed.
+- **`errors.rs` — removed `from_error` dead constructor helpers**: The `from_error<E: std::error::Error>(error, context)` methods on `StorageError`, `NetworkError`, `UIError`, and `ConfigError` were all `#[allow(dead_code)]` and performed the same `format!("{context}: {error}")` pattern. Removed all four — contextual error wrapping is handled at call sites or via `thiserror`'s `#[source]`.
 - **`bootstrap.rs` refactoring for maintainability**: Consolidated internal state in `AutoBootstrap` and improved separation of concerns.
   - `BootstrapState` struct — the three independently-locked fields (`status`, `retry_count`, `next_retry_time`) are now grouped into a single `Arc<Mutex<BootstrapState>>`, eliminating multi-lock sequences and ensuring state transitions are atomic.
   - `BootstrapState::set_failed` — extracted repeated "read retry_count, write Failed status" pattern (previously duplicated three times) into a single method.
@@ -33,6 +97,18 @@ All changes to this project will be documented in this file.
   - `print_error_chain` — error chain formatting moved from `main` into `errors.rs` as a reusable public utility.
   - `PeerState` struct — the three peer-tracking variables (`peer_names`, `local_peer_name`, `sorted_peer_names_cache`) previously threaded individually through `EventProcessor::run` are now grouped into a single `PeerState` struct defined in `handlers.rs`, reducing the `run` call-site from six arguments to four.
 - **Tests added** for the new public items: three integration tests for `ensure_general_channel_subscription` (subscribe when absent, idempotent when already subscribed, does not disturb other subscriptions); three unit tests for `PeerState::new`; two unit tests for `print_error_chain`.
+- **`handlers.rs` split into domain submodules**: The ~3k-line `src/handlers.rs` monolith has been split into seven focused submodules under `src/handlers/`. All existing public API is re-exported from `mod.rs` — no call-site changes required.
+  - `stories.rs` — story CRUD, search, filter, export
+  - `channels.rs` — channel CRUD, subscribe, auto-subscription
+  - `messaging.rs` — direct messages, peer naming, relay delivery, retry queue
+  - `bootstrap.rs` — DHT bootstrap and peer discovery
+  - `config.rs` — help text, config reload, auto-share, node descriptions
+  - `wasm.rs` — WASM capability advertisement and remote execution
+  - Shared helpers extracted: `resolve_peer_by_alias` (replaces copy-pasted alias→PeerId lookup in four functions), `current_unix_timestamp` (eliminates repeated `SystemTime::now()` boilerplate), `format_story_status`/`format_story_line` (shared story-row formatting).
+  - `handle_set_auto_subscription` now uses the existing `modify_config` helper instead of two duplicate load/modify/save blocks.
+  - `handle_help` iterates over a `HELP_ENTRIES` static table instead of ~90 individual `ui_logger.log()` calls.
+  - `handle_wasm_list` extracts `print_local_offerings`/`print_remote_offerings` helpers, eliminating a copy-pasted rendering block.
+  - 18 new unit tests covering `parse_direct_message_command` (8 cases), story formatting (4), `resolve_peer_by_alias` (2), `extract_peer_id_from_multiaddr` (2), `SortedPeerNamesCache` sort order, and `current_unix_timestamp`.
 
 ## [0.11.1]
 

@@ -16,10 +16,13 @@ mod network;
 mod network_circuit_breakers;
 mod relay;
 mod storage;
+mod time;
 mod types;
 mod ui;
 mod validation;
 mod wasm_executor;
+
+pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;

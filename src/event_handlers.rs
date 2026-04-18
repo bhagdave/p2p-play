@@ -973,10 +973,7 @@ pub async fn handle_request_response_event(
                         // Send response indicating rejection due to identity mismatch
                         let response = DirectMessageResponse {
                             received: false,
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
 
                         if let Err(e) = swarm
@@ -1020,10 +1017,7 @@ pub async fn handle_request_response_event(
 
                             let response = DirectMessageResponse {
                                 received: false,
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1060,10 +1054,7 @@ pub async fn handle_request_response_event(
                     // Send response acknowledging receipt
                     let response = DirectMessageResponse {
                         received: should_process,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
+                        timestamp: crate::current_unix_timestamp(),
                     };
 
                     // Send the response using the channel
@@ -1189,6 +1180,20 @@ pub async fn handle_channel_subscription_event(subscription: crate::types::Chann
     );
 }
 
+fn remove_pending_handshake_peer(
+    pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
+    peer: &PeerId,
+    context: &str,
+) {
+    let mut pending_peers = pending_handshake_peers.lock().unwrap();
+    if pending_peers.remove(peer).is_some() {
+        debug!(
+            "Removed peer {} from pending handshake list ({})",
+            peer, context
+        );
+    }
+}
+
 pub async fn handle_node_description_event(
     event: request_response::Event<NodeDescriptionRequest, NodeDescriptionResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -1224,10 +1229,7 @@ pub async fn handle_node_description_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
 
                             // Send the response
@@ -1269,10 +1271,7 @@ pub async fn handle_node_description_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1394,10 +1393,7 @@ pub async fn handle_story_sync_event(
                         } else {
                             format!(
                                 "{} seconds ago",
-                                std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs()
+                                crate::current_unix_timestamp()
                                     .saturating_sub(request.last_sync_timestamp)
                             )
                         }
@@ -1464,10 +1460,7 @@ pub async fn handle_story_sync_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                sync_timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                sync_timestamp: crate::current_unix_timestamp(),
                             };
 
                             // Send the response
@@ -1516,10 +1509,7 @@ pub async fn handle_story_sync_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                sync_timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                sync_timestamp: crate::current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1721,10 +1711,7 @@ pub async fn initiate_story_sync_with_peer(
     };
 
     // Calculate last_sync_timestamp based on sync_days configuration
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = crate::current_unix_timestamp();
     let sync_timeframe_seconds = (sync_days as u64) * 24 * 60 * 60; // Convert days to seconds
     let last_sync_timestamp = now.saturating_sub(sync_timeframe_seconds);
 
@@ -1919,16 +1906,11 @@ pub async fn handle_handshake_event(
                         )
                         .await;
 
-                        // Remove peer from pending handshake list
-                        {
-                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                            if pending_peers.remove(&peer).is_some() {
-                                debug!(
-                                    "Removed peer {} from pending handshake list after successful handshake",
-                                    peer
-                                );
-                            }
-                        }
+                        remove_pending_handshake_peer(
+                            pending_handshake_peers,
+                            &peer,
+                            "after successful handshake",
+                        );
 
                         // Log successful P2P-Play peer verification to UI
                         ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
@@ -1942,16 +1924,11 @@ pub async fn handle_handshake_event(
                         debug!("Disconnecting from incompatible peer: {}", peer);
                         let _ = swarm.disconnect_peer_id(peer);
 
-                        // Remove peer from pending handshake list
-                        {
-                            let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                            if pending_peers.remove(&peer).is_some() {
-                                debug!(
-                                    "Removed incompatible peer {} from pending handshake list",
-                                    peer
-                                );
-                            }
-                        }
+                        remove_pending_handshake_peer(
+                            pending_handshake_peers,
+                            &peer,
+                            "after incompatible handshake response",
+                        );
                     }
                 }
             }
@@ -1962,27 +1939,20 @@ pub async fn handle_handshake_event(
             debug!("Disconnecting from unresponsive peer: {}", peer);
             let _ = swarm.disconnect_peer_id(peer);
 
-            // Remove peer from pending handshake list
-            {
-                let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                if pending_peers.remove(&peer).is_some() {
-                    debug!(
-                        "Removed unresponsive peer {} from pending handshake list",
-                        peer
-                    );
-                }
-            }
+            remove_pending_handshake_peer(
+                pending_handshake_peers,
+                &peer,
+                "after outbound handshake failure",
+            );
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
             debug!("Handshake inbound failure with peer {}: {:?}", peer, error);
 
-            // Remove peer from pending handshake list
-            {
-                let mut pending_peers = pending_handshake_peers.lock().unwrap();
-                if pending_peers.remove(&peer).is_some() {
-                    debug!("Removed failed peer {} from pending handshake list", peer);
-                }
-            }
+            remove_pending_handshake_peer(
+                pending_handshake_peers,
+                &peer,
+                "after inbound handshake failure",
+            );
         }
         _ => {}
     }
@@ -2209,10 +2179,7 @@ pub async fn handle_wasm_capabilities_event(
                         peer_name: from_name,
                         wasm_enabled,
                         offerings,
-                        timestamp: std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs(),
+                        timestamp: crate::current_unix_timestamp(),
                     };
 
                     if let Err(e) = swarm
@@ -2320,10 +2287,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: 0,
                                 exit_code: -1,
                                 error: Some("Internal configuration error".to_string()),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
                             let _ = swarm
                                 .behaviour_mut()
@@ -2348,10 +2312,7 @@ pub async fn handle_wasm_execution_event(
                             error: Some(
                                 "Remote WASM execution is disabled on this node".to_string(),
                             ),
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2380,10 +2341,7 @@ pub async fn handle_wasm_execution_event(
                                         "Offering '{}' not found",
                                         request.offering_id
                                     )),
-                                    timestamp: std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default()
-                                        .as_secs(),
+                                    timestamp: crate::current_unix_timestamp(),
                                 };
                                 let _ = swarm
                                     .behaviour_mut()
@@ -2401,10 +2359,7 @@ pub async fn handle_wasm_execution_event(
                                     fuel_consumed: 0,
                                     exit_code: -1,
                                     error: Some("Internal error looking up offering".to_string()),
-                                    timestamp: std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .unwrap_or_default()
-                                        .as_secs(),
+                                    timestamp: crate::current_unix_timestamp(),
                                 };
                                 let _ = swarm
                                     .behaviour_mut()
@@ -2430,10 +2385,7 @@ pub async fn handle_wasm_execution_event(
                             fuel_consumed: 0,
                             exit_code: -1,
                             error: Some("CID verification failed".to_string()),
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2451,10 +2403,7 @@ pub async fn handle_wasm_execution_event(
                             fuel_consumed: 0,
                             exit_code: -1,
                             error: Some("Offering is currently disabled".to_string()),
-                            timestamp: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
+                            timestamp: crate::current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2494,10 +2443,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: 0,
                                 exit_code: -1,
                                 error: Some(format!("Failed to initialize WASM executor: {e}")),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             };
                             let _ = swarm
                                 .behaviour_mut()
@@ -2537,10 +2483,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: result.fuel_consumed,
                                 exit_code: result.exit_code,
                                 error: None,
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             }
                         }
                         Err(e) => {
@@ -2562,10 +2505,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed,
                                 exit_code: -1,
                                 error: Some(error_msg),
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
+                                timestamp: crate::current_unix_timestamp(),
                             }
                         }
                     };
@@ -3297,6 +3237,41 @@ mod tests {
         // Test that elapsed time calculation works
         assert!(one_minute_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
         assert!(thirty_seconds_ago.elapsed() >= MIN_RECONNECT_INTERVAL);
+    }
+
+    #[test]
+    fn test_remove_pending_handshake_peer_removes_entry() {
+        use libp2p::core::ConnectedPoint;
+        use std::time::Instant;
+
+        let peer_id = PeerId::random();
+        let pending_peer = PendingHandshakePeer {
+            peer_id,
+            connection_time: Instant::now(),
+            endpoint: ConnectedPoint::Listener {
+                local_addr: "/ip4/127.0.0.1/tcp/9001".parse().unwrap(),
+                send_back_addr: "/ip4/127.0.0.1/tcp/9002".parse().unwrap(),
+            },
+        };
+
+        let pending_handshake_peers = Arc::new(Mutex::new(HashMap::new()));
+        pending_handshake_peers
+            .lock()
+            .unwrap()
+            .insert(peer_id, pending_peer);
+
+        remove_pending_handshake_peer(
+            &pending_handshake_peers,
+            &peer_id,
+            "for unit test verification",
+        );
+
+        assert!(
+            !pending_handshake_peers
+                .lock()
+                .unwrap()
+                .contains_key(&peer_id)
+        );
     }
 
     #[tokio::test]
