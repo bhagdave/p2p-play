@@ -435,9 +435,16 @@ impl ContentValidator {
         let sanitized = Self::validate_text(
             name,
             ContentLimits::WASM_PARAM_NAME_MAX,
-            Some(|ch: char| ch.is_alphanumeric() || ch == '_'),
+            None,
             true,
         )?;
+
+        if !sanitized.chars().all(|ch| ch.is_alphanumeric() || ch == '_') {
+            return Err(ValidationError::InvalidFormat {
+                expected: "Parameter name using only letters, numbers, and underscores"
+                    .to_string(),
+            });
+        }
 
         // First character should not be a digit
         if sanitized
@@ -481,10 +488,14 @@ impl ContentValidator {
     /// Unlike the storage-oriented validators, this does **not** sanitize —
     /// it rejects on the first problem found:
     ///
-    /// * [`ValidationError::ContainsAnsiEscapes`] — ESC byte present
+    /// * [`ValidationError::ContainsAnsiEscapes`] — ESC byte present (checked
+    ///   first)
     /// * [`ValidationError::ContainsControlCharacters`] — non-whitespace
-    ///   control character present
-    /// * [`ValidationError::ContainsBinaryData`] — null byte present
+    ///   control character present, including null bytes (`\0`) (checked
+    ///   second)
+    /// * [`ValidationError::ContainsBinaryData`] — only returned when calling
+    ///   [`ContentSanitizer::check_for_binary_data`] directly; null bytes are
+    ///   caught by the control-character check above when using this method
     ///
     /// Use this to reject peer content that arrives already dirty, which may
     /// indicate a misbehaving or malicious peer.
@@ -601,7 +612,8 @@ mod tests {
         #[test]
         fn test_sanitize_for_display_single_pass() {
             // Verify that sanitize_for_display produces the same result as the
-            // old two-step approach (strip_control_characters + strip_binary_data).
+            // previous multi-pass sanitization flow, including ANSI escape
+            // stripping plus control-character and binary-data removal.
             let input = "Hello \x1b[31mWorld\x1b[0m\x00\x01 Test";
             let display = ContentSanitizer::sanitize_for_display(input);
             assert_eq!(display, "Hello World Test");
