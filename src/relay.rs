@@ -172,7 +172,6 @@ impl RelayService {
             .retain(|_, &mut timestamp| now.duration_since(timestamp) < timeout);
     }
 
-    /// Marks a relayed message as confirmed delivered and removes it from pending tracking.
     pub fn mark_confirmation_received(&mut self, message_id: &str) {
         self.pending_confirmations.remove(message_id);
     }

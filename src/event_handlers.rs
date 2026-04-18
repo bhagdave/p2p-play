@@ -729,15 +729,11 @@ pub async fn handle_floodsub_event(
                                 "Relay message decrypted and delivered locally: {}",
                                 relay_msg.message_id
                             );
-                            let delivery_timestamp = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs();
                             let confirmation = crate::types::RelayConfirmation {
                                 message_id: relay_msg.message_id.clone(),
                                 delivered_to: relay_msg.target_peer_id.clone(),
                                 relay_path_length: relay_msg.hop_count,
-                                delivery_timestamp,
+                                delivery_timestamp: crate::current_unix_timestamp(),
                             };
                             return Some(crate::types::ActionResult::BroadcastRelayConfirmation(
                                 Box::new(confirmation),
