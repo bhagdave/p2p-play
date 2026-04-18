@@ -16,22 +16,13 @@ mod network;
 mod network_circuit_breakers;
 mod relay;
 mod storage;
+mod time;
 mod types;
 mod ui;
 mod validation;
 mod wasm_executor;
 
-/// Returns the current Unix timestamp in seconds.
-///
-/// Mirrors the function in `lib.rs` so modules compiled as part of
-/// the binary crate can use `crate::current_unix_timestamp()` just as
-/// modules compiled as part of the library crate can.
-pub fn current_unix_timestamp() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
+pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
