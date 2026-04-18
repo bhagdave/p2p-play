@@ -394,9 +394,21 @@ async fn test_cache_respects_capacity() {
         .await;
     assert!(result.is_ok(), "Re-execution of evicted cid-1 failed");
 
-    assert_eq!(fetcher.fetch_count("cid-1"), 2, "cid-1 should be fetched twice (initial + after eviction)");
-    assert_eq!(fetcher.fetch_count("cid-2"), 1, "cid-2 should be fetched once");
-    assert_eq!(fetcher.fetch_count("cid-3"), 1, "cid-3 should be fetched once");
+    assert_eq!(
+        fetcher.fetch_count("cid-1"),
+        2,
+        "cid-1 should be fetched twice (initial + after eviction)"
+    );
+    assert_eq!(
+        fetcher.fetch_count("cid-2"),
+        1,
+        "cid-2 should be fetched once"
+    );
+    assert_eq!(
+        fetcher.fetch_count("cid-3"),
+        1,
+        "cid-3 should be fetched once"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
