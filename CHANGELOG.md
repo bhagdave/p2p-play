@@ -29,6 +29,26 @@ All changes to this project will be documented in this file.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
 
 ### Changed
+- **`network.rs` — decomposed into `network/` submodule**:
+  - Wire-protocol DTOs (`DirectMessageRequest/Response`, `NodeDescriptionRequest/Response`, `StorySyncRequest/Response`, `HandshakeRequest/Response`, `WasmCapabilitiesRequest/Response`, `WasmExecutionRequest/Response`) and `APP_*` constants moved to `src/network/protocol.rs`; all are re-exported from `src/network/mod.rs` so existing `crate::network::*` import paths are unchanged.
+  - `create_swarm` decomposed into three focused helpers: `build_transport` (TCP/DNS/noise/yamux stack), `build_behaviour` (all sub-behaviours), and `build_swarm_config` (dial concurrency + idle timeout).
+  - `noise::Config::new` and `mdns::tokio::Behaviour::new` now propagate errors via `NetworkResult` instead of `unwrap`/`expect`.
+  - Generic `make_cbor_behaviour` builder replaces six near-identical `request_response::cbor::Behaviour::new(...)` blocks.
+  - `impl_story_event_from!` macro reduces ten identical `From` impls to ten one-liner invocations.
+  - Type aliases (`DirectMessageBehaviour`, `DirectMessageEvent`, etc.) make `StoryBehaviour` and `StoryBehaviourEvent` definitions scannable.
+  - Named constants (`TCP_LISTEN_BACKLOG`, `TCP_TTL`, `YAMUX_MAX_STREAMS`, `SWARM_IDLE_CONNECTION_TIMEOUT_SECS`, `SWARM_DIAL_CONCURRENCY_FALLBACK`) replace inline magic numbers.
+  - `log_keypair_error` helper consolidates duplicate `ErrorLogger` creation in `generate_and_save_keypair`.
+  - `max_pending_outgoing` is now clamped to `1..=255` before converting to `NonZeroU8` so values above 255 saturate to 255 rather than wrapping to 0 and silently using the fallback.
+- **`validation.rs` — refactored for maintainability and correctness**:
+  - Introduced a shared `validate_text` pipeline helper (sanitize → empty check → length check → optional char check → return), eliminating ~120 lines of copy-pasted boilerplate across all `validate_*` methods.
+  - Unified the three identical identifier-character predicates (`is_valid_channel_name_char`, `is_valid_peer_name_char`, `is_valid_wasm_name_char`) into a single `is_valid_identifier_char`.
+  - Added `is_allowed_whitespace` helper to deduplicate the repeated whitespace `matches!` pattern across sanitizer methods.
+  - Length checks now use `chars().count()` (Unicode scalar values) instead of `.len()` (bytes), consistent with the "characters" wording in `ValidationError::TooLong`. Multi-byte characters now count correctly at the limit boundary.
+  - Added `ContentLimits::CHANNEL_DESCRIPTION_MAX`; fixed `validate_channel_description` which was incorrectly using `STORY_HEADER_MAX`.
+  - Moved the WASM allowed-type list to a module-level `WASM_PARAM_TYPES` constant instead of rebuilding it on every call to `validate_wasm_param_type`.
+  - `sanitize_for_display` consolidated from three separate allocating passes to one filter pass after ANSI stripping.
+  - Wired the three previously dead `ValidationError` variants (`ContainsAnsiEscapes`, `ContainsControlCharacters`, `ContainsBinaryData`) into strict validation paths: `ContentSanitizer::check_for_ansi_escapes`, `check_for_control_characters`, `check_for_binary_data`, and `ContentValidator::validate_received_content`. These reject dirty network content rather than silently sanitizing it.
+  - Split the flat `mod tests` into four focused submodules: `sanitizer`, `general_validation`, `wasm_validation`, and `strict_validation`.
 - **`ui.rs` — structural refactor for maintainability (no behaviour change)**:
   - `handle_event` replaced by a slim exhaustive-`match` dispatcher plus five focused mode handlers (`handle_normal_mode_key`, `handle_editing_mode_key`, `handle_story_creation_key`, `handle_quick_reply_key`, `handle_message_composition_key`).
   - Shared helpers extracted: `cancel_composition` (Esc/Ctrl+C for QuickReply/MessageComposition), `send_message_event` (msg command builder), `toggle_auto_scroll`.
