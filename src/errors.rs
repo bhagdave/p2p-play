@@ -4,10 +4,48 @@
 //! `Box<dyn Error>` usage throughout the codebase, providing better error
 //! debugging and user experience.
 
-use crate::crypto::CryptoError;
 use crate::relay::RelayError;
-use crate::wasm_executor::WasmExecutionError;
 use thiserror::Error;
+
+/// Errors that can occur during WASM execution
+#[derive(Debug, Error)]
+pub enum WasmExecutionError {
+    #[error("Failed to fetch WASM: {0}")]
+    FetchFailed(#[from] FetchError),
+
+    #[error("Invalid WASM binary: {reason}")]
+    InvalidWasm { reason: String },
+
+    #[error("WASM compilation failed: {0}")]
+    CompilationFailed(String),
+
+    #[error("WASM instantiation failed: {0}")]
+    InstantiationFailed(String),
+
+    #[error("WASM execution failed: {0}")]
+    ExecutionFailed(String),
+
+    #[error("Fuel exhausted after {consumed} units")]
+    FuelExhausted { consumed: u64 },
+
+    #[error("Memory limit exceeded")]
+    MemoryLimitExceeded,
+
+    #[error("Memory limit too large: {0} MB (maximum {1} MB)")]
+    MemoryLimitTooLarge(u32, u32),
+
+    #[error("Execution timeout after {0} seconds")]
+    ExecutionTimeout(u64),
+
+    #[error("Entry point '_start' not found")]
+    EntryPointNotFound,
+
+    #[error("WASI setup failed: {0}")]
+    WasiSetupFailed(String),
+
+    #[error("Invalid execution request: {0}")]
+    InvalidRequest(String),
+}
 
 /// Main application error type that chains all domain-specific errors
 #[derive(Error, Debug)]
@@ -151,6 +189,28 @@ pub fn print_error_chain(e: &dyn std::error::Error) {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum CryptoError {
+    EncryptionFailed(String),
+    DecryptionFailed(String),
+    SignatureFailed(String),
+    VerificationFailed(String),
+    InvalidInput(String),
+}
+
+impl std::fmt::Display for CryptoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CryptoError::EncryptionFailed(msg) => write!(f, "Encryption failed: {msg}"),
+            CryptoError::DecryptionFailed(msg) => write!(f, "Decryption failed: {msg}"),
+            CryptoError::SignatureFailed(msg) => write!(f, "Signature failed: {msg}"),
+            CryptoError::VerificationFailed(msg) => write!(f, "Verification failed: {msg}"),
+            CryptoError::InvalidInput(msg) => write!(f, "Invalid input: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for CryptoError {}
 /// Detects the network protocol from an error message
 ///
 /// Analyzes error text to identify which libp2p protocol is likely involved
