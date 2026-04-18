@@ -4,6 +4,17 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **`event_processor.rs` refactored for maintainability**: Addressed 10 structural issues to reduce complexity and eliminate dead code with no behaviour change.
+  - Removed unused `_should_log_to_ui` computation from both connection-error handlers; demoted both to non-`async`.
+  - Replaced individual `(peer_names, sorted_peer_names_cache, local_peer_name)` parameters with `&mut PeerState` across `select_next_event`, `handle_swarm_event`, `handle_connection_closed`, and `process_event`.
+  - Extracted five timer-tick methods (`on_connection_maintenance_tick`, `on_bootstrap_retry_tick`, `on_bootstrap_status_tick`, `on_dm_retry_tick`, `on_network_health_tick`) from the `select_next_event` mega-`tokio::select!` block.
+  - Added `map_behaviour_to_event` free function covering all 10 behaviour variants; `handle_swarm_event` now has a single `Behaviour` arm with a targeted side-effect sub-match for mDNS and Kademlia.
+  - Extracted `remember_alias_on_disconnect` and `restore_aliases_for_connected_peers` helpers; `sync_known_peer_names` and `handle_connection_closed` delegate to them.
+  - `cleanup_timed_out_handshakes` now collects `(peer_id, is_bootstrap_peer)` pairs in one mutex-lock pass, then acts outside the lock.
+  - Channel receive arms replaced `.expect()` panics with `.map(EventType::…)` — no panic on sender drop.
+  - Introduced `TestEventProcessorBuilder` in the test module to eliminate ~50 lines of duplicated channel/logger setup.
+
 ### Added
 - **Network health in TUI status bar**: The status bar now appends the `NetworkHealthSummary` text alongside existing status fields — e.g. `Network Healthy (6/6 operations)` or `Network Issues (2/6 operations failing)`. The existing green/red/yellow colour coding is preserved; this adds human-readable detail to complement it.
 - **Startup peer reconnect**: On startup the application now reads up to 10 outbound peer connections (those with a stored multiaddr) from the database and attempts to re-dial them immediately after the swarm starts listening. Inbound-only peers (no multiaddr) are skipped. The peer multiaddr is now only stored for outbound (`Dialer`) connections so that the reconnect list stays accurate across restarts. A new `get_outbound_peers(limit)` storage helper queries the peers table for rows with a non-NULL multiaddr, ordered by `last_seen` descending.
