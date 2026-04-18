@@ -40,13 +40,17 @@ impl SharedSecret {
     }
 }
 
-fn get_current_timestamp() -> Result<u64, CryptoError> {
+fn get_current_timestamp_with_error(
+    error_constructor: fn(String) -> CryptoError,
+) -> Result<u64, CryptoError> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|duration| duration.as_secs())
-        .map_err(|_| {
-            CryptoError::VerificationFailed("System time is before UNIX epoch".to_string())
-        })
+        .map_err(|_| error_constructor("System time is before UNIX epoch".to_string()))
+}
+
+fn get_current_timestamp() -> Result<u64, CryptoError> {
+    get_current_timestamp_with_error(CryptoError::VerificationFailed)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -220,7 +224,7 @@ impl CryptoService {
             )));
         }
 
-        let timestamp = get_current_timestamp()?;
+        let timestamp = get_current_timestamp_with_error(CryptoError::SignatureFailed)?;
         let mut message_to_sign = message.to_vec();
         message_to_sign.extend_from_slice(&timestamp.to_be_bytes());
 
