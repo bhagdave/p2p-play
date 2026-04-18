@@ -11,8 +11,6 @@ impl ContentLimits {
     pub const STORY_HEADER_MAX: usize = 200;
     pub const STORY_BODY_MAX: usize = 10_000;
     pub const CHANNEL_NAME_MAX: usize = 50;
-    /// Separate from `STORY_HEADER_MAX` so channel and story limits can
-    /// diverge independently in the future.
     pub const CHANNEL_DESCRIPTION_MAX: usize = 200;
     pub const PEER_NAME_MAX: usize = 30;
     pub const DIRECT_MESSAGE_MAX: usize = 1_000;
@@ -136,9 +134,6 @@ impl ContentSanitizer {
         result
     }
 
-    /// Returns `true` for whitespace characters that are allowed to pass
-    /// through both the sanitizer and the strict checker: space, tab,
-    /// newline, and carriage return.
     #[inline]
     fn is_allowed_whitespace(ch: char) -> bool {
         matches!(ch, ' ' | '\t' | '\n' | '\r')
@@ -156,10 +151,6 @@ impl ContentSanitizer {
             .collect()
     }
 
-    /// Strip ANSI escapes and all non-whitespace control characters.
-    /// The ANSI state machine requires its own pass, so this method performs
-    /// two allocations: one for ANSI removal and one for the control-char
-    /// filter.
     pub fn sanitize_for_display(text: &str) -> String {
         let no_ansi = Self::strip_ansi_escapes(text);
         no_ansi
@@ -175,12 +166,6 @@ impl ContentSanitizer {
             .filter(|&ch| ch != '\0' && (!ch.is_control() || matches!(ch, '\n' | '\r' | '\t')))
             .collect()
     }
-
-    // ========================================================================
-    // Strict checks — return errors instead of silently sanitizing.
-    // Use these when validating content received from the network, which
-    // should already be clean (sent through sanitize_for_storage by peers).
-    // ========================================================================
 
     /// Returns [`ValidationError::ContainsAnsiEscapes`] if the text
     /// contains any ESC byte (`\x1b`).
@@ -220,21 +205,6 @@ impl ContentSanitizer {
 pub struct ContentValidator;
 
 impl ContentValidator {
-    // ========================================================================
-    // Private pipeline helper
-    // ========================================================================
-
-    /// Common validation pipeline: sanitize → empty check → length check →
-    /// optional character check → return.
-    ///
-    /// * `max_chars` — limit measured in Unicode scalar values (characters),
-    ///   consistent with the "characters" wording in [`ValidationError::TooLong`].
-    /// * `char_predicate` — when `Some`, every character in the output must
-    ///   satisfy the predicate; failing characters are collected and returned
-    ///   as [`ValidationError::InvalidCharacters`].
-    /// * `trim_output` — when `true`, leading/trailing whitespace is stripped
-    ///   from the sanitized text before all checks and the trimmed value is
-    ///   returned; when `false`, the raw sanitized text is used and returned.
     fn validate_text(
         input: &str,
         max_chars: usize,
@@ -243,8 +213,6 @@ impl ContentValidator {
     ) -> ValidationResult<String> {
         let sanitized = ContentSanitizer::sanitize_for_storage(input);
 
-        // Empty check always uses the trimmed form so that whitespace-only
-        // strings are rejected regardless of `trim_output`.
         if sanitized.trim().is_empty() {
             return Err(ValidationError::Empty);
         }
