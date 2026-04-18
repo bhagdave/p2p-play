@@ -18,6 +18,15 @@ All changes to this project will be documented in this file.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
 
 ### Changed
+- **`ui.rs` — structural refactor for maintainability (no behaviour change)**:
+  - `handle_event` replaced by a slim exhaustive-`match` dispatcher plus five focused mode handlers (`handle_normal_mode_key`, `handle_editing_mode_key`, `handle_story_creation_key`, `handle_quick_reply_key`, `handle_message_composition_key`).
+  - Shared helpers extracted: `cancel_composition` (Esc/Ctrl+C for QuickReply/MessageComposition), `send_message_event` (msg command builder), `toggle_auto_scroll`.
+  - `draw()` decomposed into module-level render helpers (`render_status_bar`, `render_output_panel`, `render_peers_panel`, `render_conversations_panel`, `render_channel_story_panel`, `render_input_widget`, `set_input_cursor`) plus `build_status_text`/`status_bar_color` to collapse the duplicated status-bar format branches.
+  - `compute_scroll_offset` free function removes scroll logic duplicated between `calculate_current_scroll_position` and `draw()`.
+  - `current_list_len()` and `selected_index_for()` helpers eliminate repeated list-length/selection fallback code in `navigate_list_up/down` and `get_selected_channel/story`.
+  - `normal_mode_hint(view_mode)` replaces four hardcoded keyboard-hint strings.
+  - `find_common_prefix` rewritten to be Unicode-safe with O(n×m) precomputed-`Vec<char>` approach; previously used byte-index slicing and O(n²) `nth(i)` calls.
+  - `build_status_text`: peer-ID slice guarded with `.get(..12).unwrap_or(id)` to prevent a panic on unusually short IDs.
 - **`wasm_executor.rs` — refactored for maintainability and correctness**:
   - `execute()` decomposed into focused helpers: `fetch_and_compile`, `build_wasi_context`, `build_store`, `instantiate_start`, `run_start_func`, and `classify_trap_error`.
   - LRU compiled-module cache implemented (was dead code): modules are now cached by CID; subsequent calls for the same CID skip fetch + compile. Controlled by `WasmExecutorConfig` (`enable_cache`, `max_cached_modules`).

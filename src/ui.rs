@@ -153,6 +153,61 @@ mod tests {
             "overflowing log should render scrollbar markers"
         );
     }
+
+    // ---------------------------------------------------------------------------
+    // find_common_prefix tests
+    // ---------------------------------------------------------------------------
+
+    #[test]
+    fn test_find_common_prefix_empty() {
+        let result = find_common_prefix(&[]);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_find_common_prefix_single() {
+        let result = find_common_prefix(&["hello".to_string()]);
+        assert_eq!(result, Some("hello".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_exact_match() {
+        let strings = vec!["alice".to_string(), "alice2".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("alice".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_no_common() {
+        let strings = vec!["alice".to_string(), "bob".to_string()];
+        assert_eq!(find_common_prefix(&strings), None);
+    }
+
+    #[test]
+    fn test_find_common_prefix_partial() {
+        let strings = vec!["charlie".to_string(), "charles".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("charl".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_case_insensitive() {
+        // Comparison is case-insensitive; output uses original casing from first string.
+        let strings = vec!["Alice".to_string(), "alice2".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("Alice".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_differing_lengths() {
+        // Second string is a prefix of the first — common prefix is the shorter one.
+        let strings = vec!["foobar".to_string(), "foo".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("foo".to_string()));
+    }
+
+    #[test]
+    fn test_find_common_prefix_non_ascii() {
+        // Non-ASCII characters should be handled correctly via char iteration.
+        let strings = vec!["café".to_string(), "caféteria".to_string()];
+        assert_eq!(find_common_prefix(&strings), Some("café".to_string()));
+    }
 }
 use libp2p::PeerId;
 use log::debug;
@@ -385,16 +440,12 @@ impl App {
         if !should_process_key_event(&key) {
             return None;
         }
-        if matches!(self.input_mode, InputMode::Normal) {
-            self.handle_normal_mode_key(key)
-        } else if matches!(self.input_mode, InputMode::Editing) {
-            self.handle_editing_mode_key(key)
-        } else if matches!(self.input_mode, InputMode::CreatingStory { .. }) {
-            self.handle_story_creation_key(key)
-        } else if matches!(self.input_mode, InputMode::QuickReply { .. }) {
-            self.handle_quick_reply_key(key)
-        } else {
-            self.handle_message_composition_key(key)
+        match self.input_mode {
+            InputMode::Normal => self.handle_normal_mode_key(key),
+            InputMode::Editing => self.handle_editing_mode_key(key),
+            InputMode::CreatingStory { .. } => self.handle_story_creation_key(key),
+            InputMode::QuickReply { .. } => self.handle_quick_reply_key(key),
+            InputMode::MessageComposition { .. } => self.handle_message_composition_key(key),
         }
     }
 
@@ -431,10 +482,10 @@ impl App {
                 };
                 self.toggle_auto_scroll(key_name);
             }
-            KeyCode::Enter => match self.view_mode.clone() {
+            KeyCode::Enter => match &self.view_mode {
                 ViewMode::Channels => {
-                    if let Some(channel_name) = self.get_selected_channel() {
-                        self.enter_channel(channel_name.to_string());
+                    if let Some(channel_name) = self.get_selected_channel().map(|s| s.to_string()) {
+                        self.enter_channel(channel_name);
                     }
                 }
                 ViewMode::Stories(_) => {
@@ -455,7 +506,7 @@ impl App {
                 }
                 ViewMode::ConversationView(_) => {}
             },
-            KeyCode::Esc => match self.view_mode.clone() {
+            KeyCode::Esc => match &self.view_mode {
                 ViewMode::Stories(_) => self.return_to_channels(),
                 ViewMode::ConversationView(_) => {
                     self.view_mode = ViewMode::Conversations;
@@ -579,6 +630,28 @@ impl App {
     }
 
     fn handle_story_creation_key(&mut self, key: crossterm::event::KeyEvent) -> Option<AppEvent> {
+        match key.code {
+            KeyCode::Esc => {
+                self.cancel_story_creation();
+                return None;
+            }
+            KeyCode::Char(c) if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' => {
+                self.cancel_story_creation();
+                return None;
+            }
+            KeyCode::Char(c) => {
+                self.input.push(c);
+                return None;
+            }
+            KeyCode::Backspace => {
+                self.input.pop();
+                return None;
+            }
+            KeyCode::Enter => {} // handled below
+            _ => return None,
+        }
+
+        // KeyCode::Enter path — only here do we need the step/partial_story values.
         let (step, partial_story) = match self.input_mode.clone() {
             InputMode::CreatingStory {
                 step,
@@ -586,97 +659,79 @@ impl App {
             } => (step, partial_story),
             _ => return None,
         };
-        match key.code {
-            KeyCode::Esc => {
-                self.cancel_story_creation();
-            }
-            KeyCode::Enter => {
-                let input = self.input.trim().to_string();
-                self.input.clear();
-                let mut new_partial = partial_story.clone();
-                let mut next_step = None;
+        let input = self.input.trim().to_string();
+        self.input.clear();
+        let mut new_partial = partial_story.clone();
+        let mut next_step = None;
 
-                match step {
-                    StoryCreationStep::Name => {
-                        if input.is_empty() {
-                            self.add_to_log(format!(
-                                "{} Story name cannot be empty. Please try again:",
-                                Icons::cross()
-                            ));
-                            return None;
-                        }
-                        new_partial.name = Some(input);
-                        next_step = Some(StoryCreationStep::Header);
-                        self.add_to_log(format!("{} Story name saved", Icons::check()));
-                        self.add_to_log(format!("{} Enter story header:", Icons::document()));
-                    }
-                    StoryCreationStep::Header => {
-                        if input.is_empty() {
-                            self.add_to_log(format!(
-                                "{} Story header cannot be empty. Please try again:",
-                                Icons::cross()
-                            ));
-                            return None;
-                        }
-                        new_partial.header = Some(input);
-                        next_step = Some(StoryCreationStep::Body);
-                        self.add_to_log(format!("{} Story header saved", Icons::check()));
-                        self.add_to_log(format!("{} Enter story body:", Icons::book()));
-                    }
-                    StoryCreationStep::Body => {
-                        if input.is_empty() {
-                            self.add_to_log(format!(
-                                "{} Story body cannot be empty. Please try again:",
-                                Icons::cross()
-                            ));
-                            return None;
-                        }
-                        new_partial.body = Some(input);
-                        next_step = Some(StoryCreationStep::Channel);
-                        self.add_to_log(format!("{} Story body saved", Icons::check()));
-                        self.add_to_log(format!(
-                            "{} Enter channel (or press Enter for 'general'):",
-                            Icons::folder()
-                        ));
-                    }
-                    StoryCreationStep::Channel => {
-                        let channel = if input.is_empty() {
-                            "general".to_string()
-                        } else {
-                            input
-                        };
-                        new_partial.channel = Some(channel);
-                        if let (Some(name), Some(header), Some(body), Some(ch)) = (
-                            &new_partial.name,
-                            &new_partial.header,
-                            &new_partial.body,
-                            &new_partial.channel,
-                        ) {
-                            let create_command = format!("create s {name}|{header}|{body}|{ch}");
-                            self.input_mode = InputMode::Normal;
-                            self.add_to_log(format!("{} Story creation complete!", Icons::check()));
-                            return Some(AppEvent::Input(create_command));
-                        }
-                    }
+        match step {
+            StoryCreationStep::Name => {
+                if input.is_empty() {
+                    self.add_to_log(format!(
+                        "{} Story name cannot be empty. Please try again:",
+                        Icons::cross()
+                    ));
+                    return None;
                 }
-                if let Some(step) = next_step {
-                    self.input_mode = InputMode::CreatingStory {
-                        step,
-                        partial_story: new_partial,
-                    };
-                }
+                new_partial.name = Some(input);
+                next_step = Some(StoryCreationStep::Header);
+                self.add_to_log(format!("{} Story name saved", Icons::check()));
+                self.add_to_log(format!("{} Enter story header:", Icons::document()));
             }
-            KeyCode::Char(c) => {
-                if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                    self.cancel_story_creation();
+            StoryCreationStep::Header => {
+                if input.is_empty() {
+                    self.add_to_log(format!(
+                        "{} Story header cannot be empty. Please try again:",
+                        Icons::cross()
+                    ));
+                    return None;
+                }
+                new_partial.header = Some(input);
+                next_step = Some(StoryCreationStep::Body);
+                self.add_to_log(format!("{} Story header saved", Icons::check()));
+                self.add_to_log(format!("{} Enter story body:", Icons::book()));
+            }
+            StoryCreationStep::Body => {
+                if input.is_empty() {
+                    self.add_to_log(format!(
+                        "{} Story body cannot be empty. Please try again:",
+                        Icons::cross()
+                    ));
+                    return None;
+                }
+                new_partial.body = Some(input);
+                next_step = Some(StoryCreationStep::Channel);
+                self.add_to_log(format!("{} Story body saved", Icons::check()));
+                self.add_to_log(format!(
+                    "{} Enter channel (or press Enter for 'general'):",
+                    Icons::folder()
+                ));
+            }
+            StoryCreationStep::Channel => {
+                let channel = if input.is_empty() {
+                    "general".to_string()
                 } else {
-                    self.input.push(c);
+                    input
+                };
+                new_partial.channel = Some(channel);
+                if let (Some(name), Some(header), Some(body), Some(ch)) = (
+                    &new_partial.name,
+                    &new_partial.header,
+                    &new_partial.body,
+                    &new_partial.channel,
+                ) {
+                    let create_command = format!("create s {name}|{header}|{body}|{ch}");
+                    self.input_mode = InputMode::Normal;
+                    self.add_to_log(format!("{} Story creation complete!", Icons::check()));
+                    return Some(AppEvent::Input(create_command));
                 }
             }
-            KeyCode::Backspace => {
-                self.input.pop();
-            }
-            _ => {}
+        }
+        if let Some(step) = next_step {
+            self.input_mode = InputMode::CreatingStory {
+                step,
+                partial_story: new_partial,
+            };
         }
         None
     }
@@ -1234,7 +1289,7 @@ impl App {
         let peer_id_short = self
             .local_peer_id
             .as_ref()
-            .map(|id| &id[..12])
+            .map(|id| id.get(..12).unwrap_or(id.as_str()))
             .unwrap_or("unknown");
         let network_status_text = format!(
             "Network: {} peers | Bootstrap: {} | mDNS: {}",
@@ -1411,7 +1466,7 @@ pub async fn handle_ui_events(
 // ---------------------------------------------------------------------------
 
 fn render_status_bar(f: &mut Frame, area: Rect, status_text: &str, bar_color: Color) {
-    let bar = Paragraph::new(status_text.to_owned())
+    let bar = Paragraph::new(status_text)
         .style(Style::default().fg(bar_color))
         .block(Block::default().borders(Borders::ALL).title("Status"));
     f.render_widget(bar, area);
@@ -1831,16 +1886,20 @@ fn find_common_prefix(strings: &[String]) -> Option<String> {
         return Some(strings[0].clone());
     }
 
-    let mut prefix_len = 0usize; // measured in Unicode scalar values (chars)
+    // Precompute lowercase char vectors once per string so that each position
+    // can be compared in O(1) instead of the O(i) cost of `.chars().nth(i)`.
+    // Total work is O(sum of string lengths), i.e. linear.
+    let first_chars: Vec<char> = strings[0].to_lowercase().chars().collect();
+    let rest_chars: Vec<Vec<char>> = strings[1..]
+        .iter()
+        .map(|s| s.to_lowercase().chars().collect())
+        .collect();
 
-    // Iterate lazily over the first string's characters.  For each position
-    // we fetch the corresponding character from every other string via `nth(i)`
-    // rather than materialising full char vectors upfront.
-    'outer: for (i, orig_ch) in strings[0].chars().enumerate() {
-        let lower_ch = orig_ch.to_lowercase().next().unwrap_or(orig_ch);
-        for other in &strings[1..] {
-            let other_lower = other.chars().nth(i).and_then(|c| c.to_lowercase().next());
-            if other_lower != Some(lower_ch) {
+    let mut prefix_len = 0usize;
+
+    'outer: for (i, &lower_ch) in first_chars.iter().enumerate() {
+        for other in &rest_chars {
+            if other.get(i) != Some(&lower_ch) {
                 break 'outer;
             }
         }
