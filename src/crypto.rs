@@ -1,11 +1,11 @@
 use crate::errors::CryptoError;
 use chacha20poly1305::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
     ChaCha20Poly1305, Key, Nonce,
+    aead::{Aead, AeadCore, KeyInit, OsRng},
 };
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use hkdf::Hkdf;
-use libp2p::{identity::Keypair, PeerId};
+use libp2p::{PeerId, identity::Keypair};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519Secret};
