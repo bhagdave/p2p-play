@@ -501,8 +501,16 @@ impl EventProcessor {
         }
     }
 
-    /// Overwrites placeholder names in `peer_names` with the previously cached alias
-    /// for each peer.  Returns `true` if at least one entry was updated.
+    /// Overwrites names in `peer_names` with the previously cached alias whenever
+    /// the cached alias differs from the current entry.  Returns `true` if at least
+    /// one entry was updated.
+    ///
+    /// Note: every entry is eligible for restoration — the function applies cached
+    /// aliases regardless of whether the current name is a placeholder.  The
+    /// invariant that only user-set aliases are ever stored in `known_peer_names`
+    /// is enforced upstream by `sync_known_peer_names` and
+    /// `remember_alias_on_disconnect`, so in practice only genuinely useful
+    /// aliases are restored here.
     fn restore_aliases_for_connected_peers(
         &self,
         peer_names: &mut HashMap<PeerId, String>,
@@ -764,6 +772,20 @@ mod tests {
     // Shared test fixture
     // -----------------------------------------------------------------------
 
+    // Returns a unique path inside the OS temp directory for a test log file.
+    // Using per-invocation paths avoids cross-test interference when tests run
+    // in parallel, and ensures no fixed-name files are left in the repo root.
+    fn unique_test_log_path(name: &str) -> String {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let id = COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir()
+            .join(format!("p2p_play_test_{name}_{id}.log"))
+            .to_str()
+            .unwrap()
+            .to_string()
+    }
+
     struct TestEventProcessorBuilder {
         network_config: crate::types::NetworkConfig,
         dm_config: DirectMessageConfig,
@@ -801,8 +823,8 @@ mod tests {
 
             let pending_messages = Arc::new(Mutex::new(Vec::new()));
             let ui_logger = UILogger::new(ui_log_sender);
-            let error_logger = ErrorLogger::new("test_errors.log");
-            let bootstrap_logger = BootstrapLogger::new("test_bootstrap.log");
+            let error_logger = ErrorLogger::new(&unique_test_log_path("errors"));
+            let bootstrap_logger = BootstrapLogger::new(&unique_test_log_path("bootstrap"));
 
             let cb_config = crate::types::NetworkCircuitBreakerConfig {
                 enabled: false,
