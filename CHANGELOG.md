@@ -18,6 +18,15 @@ All changes to this project will be documented in this file.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
 
 ### Changed
+- **`wasm_executor.rs` — refactored for maintainability and correctness**:
+  - `execute()` decomposed into focused helpers: `fetch_and_compile`, `build_wasi_context`, `build_store`, `instantiate_start`, `run_start_func`, and `classify_trap_error`.
+  - LRU compiled-module cache implemented (was dead code): modules are now cached by CID; subsequent calls for the same CID skip fetch + compile. Controlled by `WasmExecutorConfig` (`enable_cache`, `max_cached_modules`).
+  - `ExecutionRequest::validate()` added — rejects zero fuel, zero memory, `Some(0)` timeout, and over-limit memory with a typed `InvalidRequest` error before any network I/O.
+  - `classify_trap_error` uses typed downcasts (`I32Exit`, `Trap::OutOfFuel`) first; string matching only as a last resort, all in one place.
+  - `WasmExecutionError::ExecutionTimeout` now carries the actual configured duration (`ExecutionTimeout(u64)`) instead of hardcoding "30 seconds".
+  - `WasmExecutionError` moved to `errors.rs` alongside all other domain error types; re-exported from `wasm_executor` so existing import paths are unchanged.
+  - Named constants (`WASM_HEADER_LEN`, `PIPE_BUFFER_SIZE`, `BYTES_PER_MB`) replace scattered magic numbers.
+  - `MockContentFetcher` and WAT-based WASM builders consolidated into `tests/common/mod.rs::wasm_fixtures`. New `CountingMockContentFetcher` added to verify cache hit/miss and LRU eviction behaviour in tests.
 - **`crypto.rs` — `CryptoError` migrated to `thiserror`**: `CryptoError` was the only error type in the codebase still using a hand-written `Display` impl and a bare `impl std::error::Error {}`. Replaced with `#[derive(Error)]` and `#[error("...")]` attributes on each variant, matching the existing `Display` output exactly. Consistent with all other error types in `errors.rs`.
 - **`errors.rs` — `FetchError` migrated to `thiserror`**: `FetchError` previously had a manual `Display` impl, a bare `impl std::error::Error {}`. Replaced with `#[derive(Error)]`, removing ~15 lines of boilerplate. Now consistent with all other error types in the file.
 - **`errors.rs` — removed unused error variants**: Removed 17 dead variants across `StorageError`, `NetworkError`, `UIError`, and `ConfigError` that were suppressed with `#[allow(dead_code)]`. Variants removed were speculative or superseded: `StorageError::{StoryNotFound, ChannelNotFound, Migration}`, `NetworkError::{SwarmCreation, ListenFailed, PeerConnectionFailed, BroadcastFailed, DHTFailed, DirectMessageFailed, BootstrapFailed, Transport}`, `UIError::{StateTransition, Layout}`, `ConfigError::{FileNotFound, MissingField, InvalidValue}`. Associated constructor helpers (`connection_error`, `invalid_data`, `widget_error`, `validation_error`) also removed.
