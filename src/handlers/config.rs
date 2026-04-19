@@ -9,7 +9,7 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, resolve_peer_by_alias, validate_and_log};
+use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, validate_and_log};
 
 // ---------------------------------------------------------------------------
 // Data-driven help text

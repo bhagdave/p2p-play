@@ -1423,7 +1423,7 @@ pub use test_utils::*;
 #[cfg(any(test, feature = "test-utils"))]
 pub mod test_utils {
     use crate::errors::StorageResult;
-    use crate::storage::mappers;
+    use crate::storage::{mappers, utils};
     use crate::types::{Stories, Story};
     use rusqlite::Connection;
     use tokio::fs;
