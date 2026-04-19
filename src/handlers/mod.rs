@@ -272,6 +272,44 @@ pub(super) fn resolve_peer_by_alias(
         .map(|(peer_id, _)| *peer_id)
 }
 
+/// Resolves a peer alias **and** checks that the swarm is currently connected to it.
+///
+/// On success returns `Some(PeerId)`.  On failure logs an appropriate user-facing message
+/// and returns `None`.
+///
+/// This consolidates the two-step pattern that every outbound request handler uses:
+/// ```ignore
+/// let peer = resolve_peer_by_alias(alias, peer_names)?;
+/// if !swarm.is_connected(&peer) { ... return; }
+/// ```
+pub(super) fn resolve_connected_peer(
+    alias: &str,
+    peer_names: &HashMap<PeerId, String>,
+    swarm: &libp2p::Swarm<crate::network::StoryBehaviour>,
+    ui_logger: &UILogger,
+) -> Option<PeerId> {
+    match resolve_peer_by_alias(alias, peer_names) {
+        None => {
+            ui_logger.log(format!(
+                "{} Peer '{alias}' not found in connected peers.",
+                crate::types::Icons::cross()
+            ));
+            None
+        }
+        Some(peer_id) => {
+            if !swarm.is_connected(&peer_id) {
+                ui_logger.log(format!(
+                    "{} Not connected to peer '{alias}'. Use 'connect' to establish connection.",
+                    crate::types::Icons::cross()
+                ));
+                None
+            } else {
+                Some(peer_id)
+            }
+        }
+    }
+}
+
 /// Extracts the `PeerId` from a `/p2p/<peer_id>` component of a multiaddr.
 pub fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
     for protocol in addr.iter() {

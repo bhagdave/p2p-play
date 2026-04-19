@@ -8,7 +8,7 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_peer_by_alias, validate_and_log};
+use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, resolve_peer_by_alias, validate_and_log};
 
 /// Dispatch `wasm <subcommand>` commands.
 pub async fn handle_wasm_command(
@@ -484,27 +484,10 @@ async fn handle_wasm_query(
 
     let peer_alias = args[0];
 
-    let target_peer = match resolve_peer_by_alias(peer_alias, peer_names) {
+    let target_peer = match resolve_connected_peer(peer_alias, peer_names, swarm, ui_logger) {
         Some(peer) => peer,
-        None => {
-            ui_logger.log(format!(
-                "{} Peer '{}' not found. Available peers: {}",
-                Icons::cross(),
-                peer_alias,
-                peer_names.values().cloned().collect::<Vec<_>>().join(", ")
-            ));
-            return;
-        }
+        None => return,
     };
-
-    if !swarm.is_connected(&target_peer) {
-        ui_logger.log(format!(
-            "{} Not connected to peer '{}'. Use 'connect' to establish connection.",
-            Icons::cross(),
-            peer_alias
-        ));
-        return;
-    }
 
     let from_name = local_peer_name
         .clone()
@@ -546,22 +529,10 @@ async fn handle_wasm_run(
     let offering_id = args[1];
     let run_args: Vec<String> = args[2..].iter().map(|s| s.to_string()).collect();
 
-    let target_peer = match resolve_peer_by_alias(peer_alias, peer_names) {
+    let target_peer = match resolve_connected_peer(peer_alias, peer_names, swarm, ui_logger) {
         Some(peer) => peer,
-        None => {
-            ui_logger.log(format!("{} Peer '{}' not found.", Icons::cross(), peer_alias));
-            return;
-        }
+        None => return,
     };
-
-    if !swarm.is_connected(&target_peer) {
-        ui_logger.log(format!(
-            "{} Not connected to peer '{}'.",
-            Icons::cross(),
-            peer_alias
-        ));
-        return;
-    }
 
     let cached_offerings =
         match crate::storage::get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
