@@ -1,5 +1,5 @@
 use crate::crypto::CryptoService;
-use crate::errors::RelayError;
+pub use crate::errors::RelayError;
 use crate::types::{DirectMessage, RelayConfig, RelayMessage};
 use libp2p::PeerId;
 use log::warn;
@@ -180,12 +180,12 @@ impl RelayService {
         &self.config
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn crypto_service(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn test_update_rate_limit(&mut self, peer_id: &PeerId) {
         self.update_rate_limit(peer_id);
     }
@@ -327,5 +327,31 @@ mod tests {
         // Cleanup should remove expired confirmations
         relay_service.cleanup_pending_confirmations();
         assert_eq!(relay_service.pending_confirmations.len(), 0);
+    }
+
+    #[test]
+    fn test_mark_confirmation_received_removes_pending_entry() {
+        let config = RelayConfig::new();
+        let crypto = create_test_crypto_service();
+        let mut relay_service = RelayService::new(config, crypto);
+
+        // Seed two pending confirmations
+        relay_service
+            .pending_confirmations
+            .insert("msg-abc".to_string(), Instant::now());
+        relay_service
+            .pending_confirmations
+            .insert("msg-xyz".to_string(), Instant::now());
+        assert_eq!(relay_service.pending_confirmations.len(), 2);
+
+        // Marking one as received should remove only that entry
+        relay_service.mark_confirmation_received("msg-abc");
+        assert!(!relay_service.pending_confirmations.contains_key("msg-abc"));
+        assert!(relay_service.pending_confirmations.contains_key("msg-xyz"));
+        assert_eq!(relay_service.pending_confirmations.len(), 1);
+
+        // Calling on a non-existent entry must not panic
+        relay_service.mark_confirmation_received("non-existent");
+        assert_eq!(relay_service.pending_confirmations.len(), 1);
     }
 }
