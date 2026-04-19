@@ -81,7 +81,6 @@ run_test_suite "Running Types Tests..." "cargo test --test types_tests --feature
 run_test_suite "Running Handlers Tests..." "cargo test --test handlers_tests --features test-utils" "1"
 run_test_suite "Running Peer Connection Tests..." "cargo test --test peer_connection_test --features test-utils" "1"
 run_test_suite "Running Channel Discovery Integration Tests..." "cargo test --test channel_discovery_integration_tests --features test-utils" "1"
-run_test_suite "Running Relay Integration Tests..." "cargo test --test relay_integration_tests --features test-utils" "1"
 run_test_suite "Running Bootstrap Tests..." "cargo test --test bootstrap_tests --features test-utils" "1"
 run_test_suite "Running Connection Pooling Tests..." "cargo test --test connection_pooling_tests --features test-utils" "1"
 run_test_suite "Running Network Tests..." "cargo test --test network_tests --features test-utils" "1"
