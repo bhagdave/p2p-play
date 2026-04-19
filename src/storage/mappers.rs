@@ -35,7 +35,8 @@ pub fn map_row_to_channel_unread_count(row: &Row) -> Result<(String, usize), rus
 /// Deserializes a JSON text column into `T`, mapping the error to a
 /// [`rusqlite::Error::FromSqlConversionFailure`].
 ///
-/// This removes 4 identical boilerplate blocks from the two WASM row mappers.
+/// Internal helper for the WASM row mappers in this file.  Not exported because
+/// callers outside this module should go through the row-mapper functions.
 fn deserialize_json_column<T>(json: &str) -> Result<T, rusqlite::Error>
 where
     T: serde::de::DeserializeOwned,

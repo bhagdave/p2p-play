@@ -365,10 +365,9 @@ fn handle_compose(
     peer_names: &HashMap<PeerId, String>,
     ui_logger: &UILogger,
 ) -> Option<ActionResult> {
-    let peer_name = cmd
-        .strip_prefix("compose ")
-        .map(str::trim)
-        .unwrap_or("");
+    // SAFETY: the match arm already guards `cmd.starts_with("compose ")`, so
+    // `strip_prefix` will always succeed here.
+    let peer_name = cmd.strip_prefix("compose ").unwrap().trim();
     if peer_name.is_empty() {
         ui_logger.usage("compose <peer_alias>");
         return None;

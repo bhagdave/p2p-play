@@ -72,6 +72,9 @@ impl UILogger {
 
     /// Logs a `Usage: <text>` line.  Prefer this over inline `.log("Usage: ...")` calls
     /// so that the wording is consistent and easy to grep.
+    ///
+    /// `pub(crate)` because callers in `event_handlers` (outside the `handlers` module
+    /// hierarchy) also need to emit usage hints via a `UILogger` reference.
     pub(crate) fn usage(&self, text: &str) {
         self.log(format!("Usage: {text}"));
     }

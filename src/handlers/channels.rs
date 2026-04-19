@@ -143,6 +143,11 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
 
 /// Renders a list of channels from a storage result, logging each line with
 /// the supplied heading/empty/error strings.
+///
+/// * `heading`      – printed first (e.g. "Available channels:").
+/// * `empty_msg`    – printed (indented) when `result` is `Ok` but the list is empty.
+/// * `error_prefix` – written to `error_logger` when `result` is `Err`; the error
+///                    detail is appended automatically.
 fn list_channel_results(
     result: crate::errors::StorageResult<Vec<crate::types::Channel>>,
     heading: &str,
