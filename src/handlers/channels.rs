@@ -11,7 +11,7 @@ use crate::validation::ContentValidator;
 use bytes::Bytes;
 use libp2p::swarm::Swarm;
 
-use super::{UILogger, modify_config, validate_and_log};
+use super::{UILogger, load_config_or_log, modify_config, validate_and_log};
 
 // ---------------------------------------------------------------------------
 // Shared formatting helpers
@@ -293,8 +293,10 @@ pub async fn handle_set_auto_subscription(
                 ui_logger.log(format!("{} Auto-subscription disabled", Icons::cross()));
             }
         }
-        Some("status") | None => match crate::storage::load_unified_network_config().await {
-            Ok(config) => {
+        Some("status") | None => {
+            if let Some(config) =
+                load_config_or_log(ui_logger, error_logger, "auto-subscription status").await
+            {
                 let status = if config
                     .channel_auto_subscription
                     .auto_subscribe_to_new_channels
@@ -317,11 +319,7 @@ pub async fn handle_set_auto_subscription(
                     config.channel_auto_subscription.max_auto_subscriptions
                 ));
             }
-            Err(e) => {
-                error_logger.log_error(&format!("Failed to load config: {e}"));
-                ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-            }
-        },
+        }
         _ => {
             ui_logger.log("Usage: set auto-sub [on|off|status]".to_string());
         }

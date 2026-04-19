@@ -8,7 +8,7 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, modify_config, resolve_peer_by_alias, validate_and_log};
+use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_peer_by_alias, validate_and_log};
 
 /// Dispatch `wasm <subcommand>` commands.
 pub async fn handle_wasm_command(
@@ -628,38 +628,34 @@ async fn handle_wasm_run(
 
 async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        match crate::storage::load_unified_network_config().await {
-            Ok(config) => {
-                ui_logger.log("WASM Capability Configuration:".to_string());
-                ui_logger.log(format!(
-                    "  Advertise capabilities: {}",
-                    if config.wasm.capability.advertise_capabilities {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
-                ));
-                ui_logger.log(format!(
-                    "  Allow remote execution: {}",
-                    if config.wasm.capability.allow_remote_execution {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
-                ));
-                ui_logger.log(format!(
-                    "  Max offerings: {}",
-                    config.wasm.capability.max_offerings
-                ));
-                ui_logger.log(format!(
-                    "  Max concurrent executions: {}",
-                    config.wasm.capability.max_concurrent_executions
-                ));
-            }
-            Err(e) => {
-                error_logger.log_error(&format!("Failed to load config: {e}"));
-                ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-            }
+        if let Some(config) =
+            load_config_or_log(ui_logger, error_logger, "wasm config status").await
+        {
+            ui_logger.log("WASM Capability Configuration:".to_string());
+            ui_logger.log(format!(
+                "  Advertise capabilities: {}",
+                if config.wasm.capability.advertise_capabilities {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            ui_logger.log(format!(
+                "  Allow remote execution: {}",
+                if config.wasm.capability.allow_remote_execution {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            ui_logger.log(format!(
+                "  Max offerings: {}",
+                config.wasm.capability.max_offerings
+            ));
+            ui_logger.log(format!(
+                "  Max concurrent executions: {}",
+                config.wasm.capability.max_concurrent_executions
+            ));
         }
         return;
     }
@@ -693,8 +689,10 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                     ));
                 }
             }
-            _ => match crate::storage::load_unified_network_config().await {
-                Ok(config) => {
+            _ => {
+                if let Some(config) =
+                    load_config_or_log(ui_logger, error_logger, "wasm advertise status").await
+                {
                     ui_logger.log(format!(
                         "WASM capability advertisement is {}",
                         if config.wasm.capability.advertise_capabilities {
@@ -704,11 +702,7 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                         }
                     ));
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to load config: {e}"));
-                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                }
-            },
+            }
         },
         "execute" => match value {
             "on" => {
@@ -733,8 +727,10 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                     ui_logger.log(format!("{} Remote WASM execution disabled", Icons::check()));
                 }
             }
-            _ => match crate::storage::load_unified_network_config().await {
-                Ok(config) => {
+            _ => {
+                if let Some(config) =
+                    load_config_or_log(ui_logger, error_logger, "wasm execute status").await
+                {
                     ui_logger.log(format!(
                         "Remote WASM execution is {}",
                         if config.wasm.capability.allow_remote_execution {
@@ -744,11 +740,7 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                         }
                     ));
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to load config: {e}"));
-                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                }
-            },
+            }
         },
         _ => {
             ui_logger.log("Usage: wasm config [advertise|execute] [on|off|status]".to_string());

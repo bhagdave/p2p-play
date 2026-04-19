@@ -226,6 +226,30 @@ where
     }
 }
 
+/// Loads the unified network config and returns it.
+///
+/// On failure, logs to both `error_logger` (operational) and `ui_logger` (user-facing) and
+/// returns `None`.  Callers can use `?`-style early-return on `None` instead of repeating the
+/// three-line error block every time a status sub-command needs the config.
+pub(super) async fn load_config_or_log(
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+    operation_context: &str,
+) -> Option<crate::types::UnifiedNetworkConfig> {
+    match crate::storage::load_unified_network_config().await {
+        Ok(config) => Some(config),
+        Err(e) => {
+            error_logger
+                .log_error(&format!("Failed to load config for {operation_context}: {e}"));
+            ui_logger.log(format!(
+                "{} Failed to load configuration",
+                crate::types::Icons::cross()
+            ));
+            None
+        }
+    }
+}
+
 /// Returns the current Unix timestamp in seconds.
 pub(super) fn current_unix_timestamp() -> u64 {
     crate::current_unix_timestamp()

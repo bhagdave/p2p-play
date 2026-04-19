@@ -9,7 +9,7 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, modify_config, resolve_peer_by_alias, validate_and_log};
+use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_peer_by_alias, validate_and_log};
 
 // ---------------------------------------------------------------------------
 // Data-driven help text
@@ -162,7 +162,6 @@ pub async fn handle_config_auto_share(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
 ) {
-    use crate::storage::load_unified_network_config;
 
     if let Some(setting) = cmd.strip_prefix("config auto-share ").map(|s| s.trim()) {
         match setting {
@@ -190,8 +189,10 @@ pub async fn handle_config_auto_share(
                     ));
                 }
             }
-            "status" => match load_unified_network_config().await {
-                Ok(config) => {
+            "status" => {
+                if let Some(config) =
+                    load_config_or_log(ui_logger, error_logger, "auto-share status").await
+                {
                     let status = if config.auto_share.global_auto_share {
                         "enabled"
                     } else {
@@ -204,14 +205,7 @@ pub async fn handle_config_auto_share(
                         config.auto_share.sync_days
                     ));
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to load auto-share config: {e}"));
-                    ui_logger.log(format!(
-                        "{} Failed to load auto-share status",
-                        Icons::cross()
-                    ));
-                }
-            },
+            }
             _ => {
                 ui_logger.log("Usage: config auto-share [on|off|status]".to_string());
             }
