@@ -38,16 +38,6 @@ pub fn get_timestamp_with_default(row: &Row, index: usize) -> Result<u64, rusqli
 }
 
 /// Collects all rows produced by a `query_map` call into a `Vec<T>`.
-///
-/// This replaces the repeated:
-/// ```ignore
-/// let mut vec = Vec::new();
-/// for item in mapped_rows {
-///     vec.push(item?);
-/// }
-/// Ok(vec)
-/// ```
-/// pattern scattered throughout `storage/core.rs`.
 pub fn collect_rows<T, F>(mapped: MappedRows<'_, F>) -> StorageResult<Vec<T>>
 where
     F: FnMut(&Row<'_>) -> rusqlite::Result<T>,

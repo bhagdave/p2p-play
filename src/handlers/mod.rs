@@ -279,12 +279,6 @@ pub(super) fn resolve_peer_by_alias(
 ///
 /// On success returns `Some(PeerId)`.  On failure logs an appropriate user-facing message
 /// and returns `None`.
-///
-/// This consolidates the two-step pattern that every outbound request handler uses:
-/// ```ignore
-/// let peer = resolve_peer_by_alias(alias, peer_names)?;
-/// if !swarm.is_connected(&peer) { ... return; }
-/// ```
 pub(super) fn resolve_connected_peer(
     alias: &str,
     peer_names: &HashMap<PeerId, String>,
@@ -294,8 +288,13 @@ pub(super) fn resolve_connected_peer(
     match resolve_peer_by_alias(alias, peer_names) {
         None => {
             ui_logger.log(format!(
-                "{} Peer '{alias}' not found in connected peers.",
-                crate::types::Icons::cross()
+                "{} Peer '{alias}' not found. Available peers: {}",
+                crate::types::Icons::cross(),
+                peer_names
+                    .values()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
             None
         }

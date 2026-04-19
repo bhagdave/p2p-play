@@ -79,13 +79,6 @@ impl FileLogger {
     }
 }
 
-// FileLogger is its own "base" (delegates to self).
-impl CategoryLoggerBase for FileLogger {
-    fn inner_logger(&self) -> &FileLogger {
-        self
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -354,9 +354,10 @@ async fn handle_connect(
     swarm: &mut Swarm<StoryBehaviour>,
     ui_logger: &UILogger,
 ) {
-    if let Some(addr) = cmd.strip_prefix("connect ") {
-        establish_direct_connection(swarm, addr, ui_logger).await;
-    }
+    let addr = cmd
+        .strip_prefix("connect ")
+        .expect("connect prefix already confirmed by caller");
+    establish_direct_connection(swarm, addr, ui_logger).await;
 }
 
 /// Handles a `compose <peer_alias>` command, returning `EnterMessageComposition` on success.
@@ -365,9 +366,10 @@ fn handle_compose(
     peer_names: &HashMap<PeerId, String>,
     ui_logger: &UILogger,
 ) -> Option<ActionResult> {
-    // SAFETY: the match arm already guards `cmd.starts_with("compose ")`, so
-    // `strip_prefix` will always succeed here.
-    let peer_name = cmd.strip_prefix("compose ").unwrap().trim();
+    let peer_name = cmd
+        .strip_prefix("compose ")
+        .expect("compose prefix already confirmed by caller")
+        .trim();
     if peer_name.is_empty() {
         ui_logger.usage("compose <peer_alias>");
         return None;
