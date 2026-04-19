@@ -303,7 +303,7 @@ impl EventProcessor {
     }
 
     async fn on_dm_retry_tick(
-        &self,
+        &mut self,
         swarm: &mut Swarm<StoryBehaviour>,
         peer_names: &HashMap<PeerId, String>,
     ) {
@@ -315,6 +315,9 @@ impl EventProcessor {
             &self.ui_logger,
         )
         .await;
+        if let Some(relay_svc) = &mut self.relay_service {
+            relay_svc.cleanup_pending_confirmations();
+        }
     }
 
     async fn on_network_health_tick(&self, app: &mut App) {
@@ -695,6 +698,7 @@ impl EventProcessor {
                 }
             }
             ActionResult::RebroadcastRelayMessage(_) => {}
+            ActionResult::BroadcastRelayConfirmation(_) => {}
             ActionResult::DirectMessageReceived(direct_message) => {
                 if let Err(e) =
                     crate::storage::save_direct_message(&direct_message, Some(peer_names)).await
