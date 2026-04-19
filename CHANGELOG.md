@@ -5,6 +5,9 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **`relay.rs` refactoring**: `RelayError` moved to `errors.rs` with `thiserror` derivation (alongside `CryptoError`); manual `Display`/`Error`/`From<CryptoError>` impls removed. Pending relay confirmations are now consumed: `mark_confirmation_received` removes acknowledged entries, and `cleanup_pending_confirmations` is called on every DM-retry tick. `RelayConfirmation` action added so the delivery side publishes an acknowledgment back to `RELAY_TOPIC`. Dead `crypto_service_for_testing` accessor removed; `crypto_service` scoped to `#[cfg(test)]`.
+
+### Changed
 - **`event_processor.rs` refactored for maintainability**: Addressed 10 structural issues to reduce complexity and eliminate dead code with no behaviour change.
   - Removed unused `_should_log_to_ui` computation from both connection-error handlers; demoted both to non-`async`.
   - Replaced individual `(peer_names, sorted_peer_names_cache, local_peer_name)` parameters with `&mut PeerState` across `select_next_event`, `handle_swarm_event`, `handle_connection_closed`, and `process_event`.

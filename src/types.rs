@@ -122,7 +122,7 @@ pub struct RelayMessage {
     pub relay_attempt: bool,                 // Distinguishes from direct attempts
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct RelayConfirmation {
     pub message_id: String,
     pub delivered_to: String,  // Target peer ID
@@ -366,6 +366,7 @@ pub enum ActionResult {
     StartStoryCreation,
     RefreshChannels,
     RebroadcastRelayMessage(Box<crate::types::RelayMessage>),
+    BroadcastRelayConfirmation(Box<crate::types::RelayConfirmation>),
     DirectMessageReceived(DirectMessage),
     EnterMessageComposition(String), // peer name
 }
