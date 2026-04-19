@@ -157,10 +157,7 @@ pub async fn read_local_stories() -> StorageResult<Stories> {
         conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
     let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
 
-    let mut stories = Vec::new();
-    for story in story_iter {
-        stories.push(story?);
-    }
+    let stories = utils::collect_rows(story_iter)?;
 
     Ok(stories)
 }
@@ -190,10 +187,7 @@ pub async fn read_local_stories_for_sync(
     let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     let story_iter = stmt.query_map(param_refs.as_slice(), mappers::map_row_to_story)?;
 
-    let mut stories = Vec::new();
-    for story in story_iter {
-        stories.push(story?);
-    }
+    let stories = utils::collect_rows(story_iter)?;
 
     Ok(stories)
 }
@@ -553,10 +547,7 @@ pub async fn read_channels() -> StorageResult<Channels> {
         .prepare("SELECT name, description, created_by, created_at FROM channels ORDER BY name")?;
     let channel_iter = stmt.query_map([], mappers::map_row_to_channel)?;
 
-    let mut channels = Vec::new();
-    for channel in channel_iter {
-        channels.push(channel?);
-    }
+    let channels = utils::collect_rows(channel_iter)?;
 
     Ok(channels)
 }
@@ -618,10 +609,7 @@ pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String
     )?;
     let channel_iter = stmt.query_map([peer_id], |row| row.get::<_, String>(0))?;
 
-    let mut channels = Vec::new();
-    for channel in channel_iter {
-        channels.push(channel?);
-    }
+    let channels = utils::collect_rows(channel_iter)?;
 
     Ok(channels)
 }
@@ -648,10 +636,7 @@ pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResu
         })
     })?;
 
-    let mut channels = Vec::new();
-    for channel in channel_iter {
-        channels.push(channel?);
-    }
+    let channels = utils::collect_rows(channel_iter)?;
 
     Ok(channels)
 }
@@ -679,10 +664,7 @@ pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels
         })
     })?;
 
-    let mut channels = Vec::new();
-    for channel in channel_iter {
-        channels.push(channel?);
-    }
+    let channels = utils::collect_rows(channel_iter)?;
 
     Ok(channels)
 }
@@ -971,10 +953,7 @@ pub async fn get_conversations_with_status() -> StorageResult<Vec<crate::types::
         })
     })?;
 
-    let mut conversations = Vec::new();
-    for conversation in conversation_iter {
-        conversations.push(conversation?);
-    }
+    let conversations = utils::collect_rows(conversation_iter)?;
 
     Ok(conversations)
 }
@@ -1016,10 +995,7 @@ pub async fn get_conversation_messages(
         })
     })?;
 
-    let mut messages = Vec::new();
-    for message in message_iter {
-        messages.push(message?);
-    }
+    let messages = utils::collect_rows(message_iter)?;
 
     Ok(messages)
 }
@@ -1162,10 +1138,7 @@ pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::ty
 
     let story_iter = stmt.query_map([channel], mappers::map_row_to_story)?;
 
-    let mut stories = Vec::new();
-    for story in story_iter {
-        stories.push(story?);
-    }
+    let stories = utils::collect_rows(story_iter)?;
 
     Ok(stories)
 }
@@ -1186,10 +1159,7 @@ pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::ty
 
     let story_iter = stmt.query_map([cutoff_timestamp], mappers::map_row_to_story)?;
 
-    let mut stories = Vec::new();
-    for story in story_iter {
-        stories.push(story?);
-    }
+    let stories = utils::collect_rows(story_iter)?;
 
     Ok(stories)
 }
@@ -1245,10 +1215,7 @@ pub async fn read_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOfferi
 
     let offering_iter = stmt.query_map([], mappers::map_row_to_wasm_offering)?;
 
-    let mut offerings = Vec::new();
-    for offering in offering_iter {
-        offerings.push(offering?);
-    }
+    let offerings = utils::collect_rows(offering_iter)?;
 
     Ok(offerings)
 }
@@ -1270,10 +1237,7 @@ pub async fn read_enabled_wasm_offerings() -> StorageResult<Vec<crate::types::Wa
 
     let offering_iter = stmt.query_map([], mappers::map_row_to_wasm_offering)?;
 
-    let mut offerings = Vec::new();
-    for offering in offering_iter {
-        offerings.push(offering?);
-    }
+    let offerings = utils::collect_rows(offering_iter)?;
 
     Ok(offerings)
 }
@@ -1426,10 +1390,7 @@ pub async fn get_cached_wasm_offerings_by_peer(
         Ok(offering)
     })?;
 
-    let mut offerings = Vec::new();
-    for offering in offering_iter {
-        offerings.push(offering?);
-    }
+    let offerings = utils::collect_rows(offering_iter)?;
 
     Ok(offerings)
 }
@@ -1451,10 +1412,7 @@ pub async fn get_all_cached_wasm_offerings()
 
     let offering_iter = stmt.query_map([], mappers::map_row_to_discovered_wasm_offering)?;
 
-    let mut offerings = Vec::new();
-    for offering in offering_iter {
-        offerings.push(offering?);
-    }
+    let offerings = utils::collect_rows(offering_iter)?;
 
     Ok(offerings)
 }
@@ -1594,10 +1552,7 @@ pub mod test_utils {
             )?;
             let story_iter = stmt.query_map([], mappers::map_row_to_story)?;
 
-            let mut stories = Vec::new();
-            for story in story_iter {
-                stories.push(story?);
-            }
+            let stories = utils::collect_rows(story_iter)?;
 
             Ok(stories)
         }
