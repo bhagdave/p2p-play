@@ -115,50 +115,54 @@ pub async fn handle_create_channel(
 pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     let rest = cmd.strip_prefix("ls ch");
     match rest {
-        Some(" available") => match read_channels().await {
-            Ok(channels) => {
-                ui_logger.log("Available channels:".to_string());
-                if channels.is_empty() {
-                    ui_logger.log("  (no channels discovered)".to_string());
-                } else {
-                    for channel in channels {
-                        ui_logger.log(format_channel_line(&channel.name, &channel.description));
-                    }
-                }
-            }
-            Err(e) => error_logger.log_error(&format!("Failed to read available channels: {e}")),
-        },
-        Some(" unsubscribed") => match read_unsubscribed_channels(&PEER_ID.to_string()).await {
-            Ok(channels) => {
-                ui_logger.log("Unsubscribed channels:".to_string());
-                if channels.is_empty() {
-                    ui_logger.log("  (no unsubscribed channels)".to_string());
-                } else {
-                    for channel in channels {
-                        ui_logger.log(format_channel_line(&channel.name, &channel.description));
-                    }
-                }
-            }
-            Err(e) => {
-                error_logger.log_error(&format!("Failed to read unsubscribed channels: {e}"))
-            }
-        },
-        Some("") | None => match read_channels().await {
-            Ok(channels) => {
-                ui_logger.log("Available channels:".to_string());
-                if channels.is_empty() {
-                    ui_logger.log("  (no channels discovered)".to_string());
-                } else {
-                    for channel in channels {
-                        ui_logger.log(format_channel_line(&channel.name, &channel.description));
-                    }
-                }
-            }
-            Err(e) => error_logger.log_error(&format!("Failed to read channels: {e}")),
-        },
+        Some(" available") | Some("") | None => {
+            list_channel_results(
+                read_channels().await,
+                "Available channels:",
+                "(no channels discovered)",
+                "Failed to read channels",
+                ui_logger,
+                error_logger,
+            );
+        }
+        Some(" unsubscribed") => {
+            list_channel_results(
+                read_unsubscribed_channels(&PEER_ID.to_string()).await,
+                "Unsubscribed channels:",
+                "(no unsubscribed channels)",
+                "Failed to read unsubscribed channels",
+                ui_logger,
+                error_logger,
+            );
+        }
         _ => {
             ui_logger.usage("ls ch [available|unsubscribed]");
         }
+    }
+}
+
+/// Renders a list of channels from a storage result, logging each line with
+/// the supplied heading/empty/error strings.
+fn list_channel_results(
+    result: crate::errors::StorageResult<Vec<crate::types::Channel>>,
+    heading: &str,
+    empty_msg: &str,
+    error_prefix: &str,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
+    match result {
+        Ok(channels) => {
+            ui_logger.log(heading.to_string());
+            if channels.is_empty() {
+                ui_logger.log(format!("  {empty_msg}"));
+            } else {
+                for channel in channels {
+                    ui_logger.log(format_channel_line(&channel.name, &channel.description));
+                }
+            }
+        }
+        Err(e) => error_logger.log_error(&format!("{error_prefix}: {e}")),
     }
 }
 
