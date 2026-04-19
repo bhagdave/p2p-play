@@ -243,6 +243,11 @@ impl AutoBootstrap {
         self.schedule_next_retry();
     }
 
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn get_status(&self) -> BootstrapStatus {
+        self.state.lock().unwrap().status.clone()
+    }
+
     pub fn get_status_string(&self) -> String {
         let state = self.state.lock().unwrap();
         match &state.status {
