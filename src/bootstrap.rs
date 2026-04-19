@@ -243,6 +243,7 @@ impl AutoBootstrap {
         self.schedule_next_retry();
     }
 
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn get_status(&self) -> BootstrapStatus {
         self.state.lock().unwrap().status.clone()
     }
