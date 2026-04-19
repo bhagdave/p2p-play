@@ -104,8 +104,8 @@ async fn test_attempt_bootstrap_empty_peers() {
     assert!(!result); // Should return false when no peers configured
 
     // Verify status is Failed because there were no peers to attempt
-    let status = bootstrap.status.lock().unwrap();
-    assert!(matches!(*status, BootstrapStatus::Failed { .. }));
+    let status = bootstrap.get_status();
+    assert!(matches!(status, BootstrapStatus::Failed { .. }));
 
     // Cleanup
     let _ = fs::remove_file(config_file);
@@ -146,8 +146,8 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     assert!(!result); // Should return false when no valid peers
 
     // Verify status is Failed because no valid peers could be added
-    let status = bootstrap.status.lock().unwrap();
-    assert!(matches!(*status, BootstrapStatus::Failed { .. }));
+    let status = bootstrap.get_status();
+    assert!(matches!(status, BootstrapStatus::Failed { .. }));
 
     // Cleanup
     let _ = fs::remove_file(config_file);
@@ -189,8 +189,8 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     assert!(!result); // Should return false when no peer IDs can be extracted
 
     // Verify status is set to Failed
-    let status = bootstrap.status.lock().unwrap();
-    match &*status {
+    let status = bootstrap.get_status();
+    match &status {
         BootstrapStatus::Failed {
             attempts,
             last_error,
@@ -198,7 +198,7 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
             assert_eq!(*attempts, 1);
             assert_eq!(last_error, "No valid bootstrap peers could be added");
         }
-        _ => panic!("Expected Failed status, got: {:?}", *status),
+        _ => panic!("Expected Failed status, got: {:?}", status),
     }
 
     // Cleanup
@@ -241,12 +241,12 @@ async fn test_attempt_bootstrap_valid_peer() {
     assert!(result);
 
     // Verify status is set to InProgress
-    let status = bootstrap.status.lock().unwrap();
-    match &*status {
+    let status = bootstrap.get_status();
+    match &status {
         BootstrapStatus::InProgress { attempts, .. } => {
             assert_eq!(*attempts, 1);
         }
-        _ => panic!("Expected InProgress status, got: {:?}", *status),
+        _ => panic!("Expected InProgress status, got: {:?}", status),
     }
 
     // Cleanup
@@ -290,8 +290,8 @@ async fn test_attempt_bootstrap_mixed_peers() {
     assert!(result);
 
     // Verify status is set to InProgress
-    let status = bootstrap.status.lock().unwrap();
-    match &*status {
+    let status = bootstrap.get_status();
+    match &status {
         BootstrapStatus::InProgress { attempts, .. } => {
             assert_eq!(*attempts, 1);
         }
@@ -337,14 +337,13 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     assert!(result1);
 
     // Verify status shows attempt 1
-    let status = bootstrap.status.lock().unwrap();
-    match &*status {
+    let status = bootstrap.get_status();
+    match &status {
         BootstrapStatus::InProgress { attempts, .. } => {
             assert_eq!(*attempts, 1);
         }
         _ => panic!("Expected InProgress status"),
     }
-    drop(status);
 
     // Reset to not started to allow another attempt
     bootstrap.reset();
@@ -356,8 +355,8 @@ async fn test_attempt_bootstrap_increments_retry_count() {
     assert!(result2);
 
     // Verify retry count incremented
-    let status = bootstrap.status.lock().unwrap();
-    match &*status {
+    let status = bootstrap.get_status();
+    match &status {
         BootstrapStatus::InProgress { attempts, .. } => {
             assert_eq!(*attempts, 1); // Reset clears retry count, so this would be 1
         }
@@ -405,8 +404,8 @@ async fn test_attempt_bootstrap_updates_status_timing() {
     assert!(result);
 
     // Verify status timing is reasonable
-    let status = bootstrap.status.lock().unwrap();
-    match &*status {
+    let status = bootstrap.get_status();
+    match &status {
         BootstrapStatus::InProgress { last_attempt, .. } => {
             assert!(*last_attempt >= before_attempt);
             assert!(*last_attempt <= after_attempt);
