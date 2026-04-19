@@ -66,6 +66,7 @@ run_test_suite "Running Enhanced Messaging Tests..." "cargo test --test enhanced
 run_test_suite "Running Story Sync Tests..." "cargo test --test story_sync_tests --features test-utils" "1"
 run_test_suite "Running Simple Conversation Tests..." "cargo test --test conversation_simple_tests --features test-utils" "1"
 run_test_suite "Running Crypto Error Tests..." "cargo test --test crypto_error_test --features test-utils" "1"
+run_test_suite "Running Relay Integration Tests..." "cargo test --test relay_integration_tests --features test-utils" "1"
 run_test_suite "Running UI Tests..." "cargo test --test ui_tests --features test-utils" "1"
 run_test_suite "Running Handshake Protocol Tests..." "cargo test --test handshake_protocol_tests --features test-utils" "1"
 run_test_suite "Running Channel Sync Tests..." "cargo test --test channel_sync_tests --features test-utils" "1"

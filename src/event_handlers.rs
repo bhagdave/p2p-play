@@ -729,6 +729,15 @@ pub async fn handle_floodsub_event(
                                 "Relay message decrypted and delivered locally: {}",
                                 relay_msg.message_id
                             );
+                            let confirmation = crate::types::RelayConfirmation {
+                                message_id: relay_msg.message_id.clone(),
+                                delivered_to: relay_msg.target_peer_id.clone(),
+                                relay_path_length: relay_msg.hop_count,
+                                delivery_timestamp: crate::current_unix_timestamp(),
+                            };
+                            return Some(crate::types::ActionResult::BroadcastRelayConfirmation(
+                                Box::new(confirmation),
+                            ));
                         }
                         Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
                             // Return action to re-broadcast the forwarded message via floodsub
@@ -777,6 +786,9 @@ pub async fn handle_floodsub_event(
                     &relay_confirmation.message_id[..8],
                     relay_confirmation.relay_path_length
                 ));
+                if let Some(relay_svc) = relay_service {
+                    relay_svc.mark_confirmation_received(&relay_confirmation.message_id);
+                }
             } else if let Ok(req) = serde_json::from_slice::<ListRequest>(&msg.data) {
                 match req.mode {
                     ListMode::ALL => {
@@ -2013,6 +2025,13 @@ pub async fn handle_event(
                                 .log_error(&format!("Failed to rebroadcast relay message: {e}"));
                         }
                     }
+                    crate::types::ActionResult::BroadcastRelayConfirmation(confirmation) => {
+                        // Broadcast delivery confirmation via floodsub
+                        if let Err(e) = broadcast_relay_confirmation(swarm, &confirmation).await {
+                            error_logger
+                                .log_error(&format!("Failed to broadcast relay confirmation: {e}"));
+                        }
+                    }
                     _ => {} // Other action results are not expected from floodsub events
                 }
             }
@@ -2900,6 +2919,26 @@ pub async fn broadcast_relay_message(
     Ok(())
 }
 
+pub async fn broadcast_relay_confirmation(
+    swarm: &mut Swarm<StoryBehaviour>,
+    confirmation: &crate::types::RelayConfirmation,
+) -> Result<(), String> {
+    let json = serde_json::to_string(confirmation)
+        .map_err(|e| format!("Failed to serialize relay confirmation: {e}"))?;
+
+    let json_bytes = Bytes::from(json.into_bytes());
+    swarm
+        .behaviour_mut()
+        .floodsub
+        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
+
+    debug!(
+        "Broadcasted relay confirmation for message ID: {}",
+        confirmation.message_id
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3388,4 +3427,99 @@ mod tests {
             default_config.retry_interval_seconds
         );
     }
+
+    /// Verify that the `DeliverLocally` branch of `handle_floodsub_event` returns a
+    /// `BroadcastRelayConfirmation` action containing the original message ID.
+    #[tokio::test]
+    async fn test_handle_floodsub_relay_deliver_locally_returns_confirmation() {
+        use crate::crypto::CryptoService;
+        use crate::relay::RelayService;
+        use crate::types::{ActionResult, DirectMessage, RelayConfig, RelayConfirmation};
+        use libp2p::floodsub::{FloodsubMessage, Topic};
+        use libp2p::identity::Keypair;
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+
+        // Build two keypairs: Alice (sender) and Bob (this node / receiver).
+        let alice_keypair = Keypair::generate_ed25519();
+        let bob_keypair = Keypair::generate_ed25519();
+        let alice_peer_id = libp2p::PeerId::from(alice_keypair.public());
+        let bob_peer_id = libp2p::PeerId::from(bob_keypair.public());
+
+        // Set up crypto services with each other's public keys.
+        let mut alice_crypto = CryptoService::new(alice_keypair.clone());
+        let mut bob_crypto = CryptoService::new(bob_keypair.clone());
+        alice_crypto
+            .add_peer_public_key(bob_peer_id, bob_keypair.public().encode_protobuf())
+            .unwrap();
+        bob_crypto
+            .add_peer_public_key(alice_peer_id, alice_keypair.public().encode_protobuf())
+            .unwrap();
+
+        // Alice creates a relay message addressed to Bob.
+        let mut alice_relay = RelayService::new(RelayConfig::new(), alice_crypto);
+        let dm = DirectMessage {
+            from_peer_id: alice_peer_id.to_string(),
+            from_name: "Alice".to_string(),
+            to_peer_id: bob_peer_id.to_string(),
+            to_name: "Bob".to_string(),
+            message: "relay test".to_string(),
+            timestamp: crate::current_unix_timestamp(),
+            is_outgoing: true,
+        };
+        let relay_msg = alice_relay
+            .create_relay_message(&dm, &bob_peer_id)
+            .expect("Alice should create relay message");
+        let expected_message_id = relay_msg.message_id.clone();
+
+        // Build the floodsub event carrying the serialized relay message.
+        let relay_data = serde_json::to_vec(&relay_msg).expect("serialise relay message");
+        let floodsub_event = libp2p::floodsub::Event::Message(FloodsubMessage {
+            source: alice_peer_id,
+            data: relay_data.into(),
+            sequence_number: vec![],
+            topics: vec![Topic::new("relay")],
+        });
+
+        // Bob's relay service is the local receiver.
+        let mut relay_service: Option<RelayService> =
+            Some(RelayService::new(RelayConfig::new(), bob_crypto));
+
+        // Alice must be a verified peer so the handler doesn't drop the message.
+        let verified_peers: Arc<Mutex<HashMap<libp2p::PeerId, String>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        verified_peers
+            .lock()
+            .unwrap()
+            .insert(alice_peer_id, "alice".to_string());
+
+        let (response_sender, _response_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let (ui_sender, _ui_receiver) = tokio::sync::mpsc::unbounded_channel();
+        let ui_logger = UILogger::new(ui_sender);
+        let error_logger = ErrorLogger::new("test_relay_confirmation.log");
+        let mut peer_names: HashMap<libp2p::PeerId, String> = HashMap::new();
+        let mut sorted_cache = crate::handlers::SortedPeerNamesCache::new();
+
+        let result = handle_floodsub_event(
+            floodsub_event,
+            response_sender,
+            &mut peer_names,
+            &None,
+            &mut sorted_cache,
+            &ui_logger,
+            &error_logger,
+            &mut relay_service,
+            &verified_peers,
+        )
+        .await;
+
+        match result {
+            Some(ActionResult::BroadcastRelayConfirmation(confirmation)) => {
+                assert_eq!(confirmation.message_id, expected_message_id);
+                assert_eq!(confirmation.delivered_to, bob_peer_id.to_string());
+            }
+            other => panic!("expected BroadcastRelayConfirmation, got {other:?}"),
+        }
+    }
 }
+

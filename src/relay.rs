@@ -1,5 +1,5 @@
 use crate::crypto::CryptoService;
-use crate::errors::CryptoError;
+pub use crate::errors::RelayError;
 use crate::types::{DirectMessage, RelayConfig, RelayMessage};
 use libp2p::PeerId;
 use log::warn;
@@ -19,31 +19,6 @@ pub enum RelayAction {
     DeliverLocally(DirectMessage),
     ForwardMessage(RelayMessage),
     DropMessage(String),
-}
-
-#[derive(Debug)]
-pub enum RelayError {
-    RateLimitExceeded,
-    InvalidMessage(String),
-    CryptoError(CryptoError),
-}
-
-impl std::fmt::Display for RelayError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RelayError::RateLimitExceeded => write!(f, "Rate limit exceeded for relay"),
-            RelayError::InvalidMessage(msg) => write!(f, "Invalid relay message: {msg}"),
-            RelayError::CryptoError(err) => write!(f, "Crypto error in relay: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for RelayError {}
-
-impl From<CryptoError> for RelayError {
-    fn from(error: CryptoError) -> Self {
-        RelayError::CryptoError(error)
-    }
 }
 
 impl RelayService {
@@ -189,7 +164,6 @@ impl RelayService {
         });
     }
 
-    #[allow(dead_code)]
     pub fn cleanup_pending_confirmations(&mut self) {
         let timeout = Duration::from_millis(self.config.relay_timeout_ms);
         let now = Instant::now();
@@ -198,21 +172,20 @@ impl RelayService {
             .retain(|_, &mut timestamp| now.duration_since(timestamp) < timeout);
     }
 
+    pub fn mark_confirmation_received(&mut self, message_id: &str) {
+        self.pending_confirmations.remove(message_id);
+    }
+
     pub fn config(&self) -> &RelayConfig {
         &self.config
     }
 
-    #[allow(dead_code)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn crypto_service(&mut self) -> &mut CryptoService {
         &mut self.crypto
     }
 
-    #[cfg(test)]
-    pub fn crypto_service_for_testing(&mut self) -> &mut CryptoService {
-        &mut self.crypto
-    }
-
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     pub fn test_update_rate_limit(&mut self, peer_id: &PeerId) {
         self.update_rate_limit(peer_id);
     }
@@ -354,5 +327,31 @@ mod tests {
         // Cleanup should remove expired confirmations
         relay_service.cleanup_pending_confirmations();
         assert_eq!(relay_service.pending_confirmations.len(), 0);
+    }
+
+    #[test]
+    fn test_mark_confirmation_received_removes_pending_entry() {
+        let config = RelayConfig::new();
+        let crypto = create_test_crypto_service();
+        let mut relay_service = RelayService::new(config, crypto);
+
+        // Seed two pending confirmations
+        relay_service
+            .pending_confirmations
+            .insert("msg-abc".to_string(), Instant::now());
+        relay_service
+            .pending_confirmations
+            .insert("msg-xyz".to_string(), Instant::now());
+        assert_eq!(relay_service.pending_confirmations.len(), 2);
+
+        // Marking one as received should remove only that entry
+        relay_service.mark_confirmation_received("msg-abc");
+        assert!(!relay_service.pending_confirmations.contains_key("msg-abc"));
+        assert!(relay_service.pending_confirmations.contains_key("msg-xyz"));
+        assert_eq!(relay_service.pending_confirmations.len(), 1);
+
+        // Calling on a non-existent entry must not panic
+        relay_service.mark_confirmation_received("non-existent");
+        assert_eq!(relay_service.pending_confirmations.len(), 1);
     }
 }

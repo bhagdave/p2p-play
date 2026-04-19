@@ -4,7 +4,6 @@
 //! `Box<dyn Error>` usage throughout the codebase, providing better error
 //! debugging and user experience.
 
-use crate::relay::RelayError;
 use thiserror::Error;
 
 /// Errors that can occur during WASM execution
@@ -73,6 +72,19 @@ pub enum AppError {
 
     #[error("Application error: {0}")]
     Application(String),
+}
+
+/// Relay-related errors for message routing operations
+#[derive(Error, Debug)]
+pub enum RelayError {
+    #[error("Rate limit exceeded for relay")]
+    RateLimitExceeded,
+
+    #[error("Invalid relay message: {0}")]
+    InvalidMessage(String),
+
+    #[error("Crypto error in relay: {0}")]
+    CryptoError(#[from] CryptoError),
 }
 
 /// Storage-related errors for database and file operations
