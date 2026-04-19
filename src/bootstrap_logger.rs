@@ -18,6 +18,16 @@ impl BootstrapLogger {
         }
     }
 
+    /// Returns the path to the log file.
+    pub fn file_path(&self) -> &str {
+        CategoryLoggerBase::file_path(self)
+    }
+
+    /// Removes the log file (no-op if it does not exist).
+    pub fn clear_log(&self) -> std::io::Result<()> {
+        CategoryLoggerBase::clear_log(self)
+    }
+
     pub fn log(&self, message: &str) {
         self.logger.log_with_category("BOOTSTRAP", message);
     }
