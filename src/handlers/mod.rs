@@ -69,6 +69,12 @@ impl UILogger {
     pub fn log(&self, message: String) {
         let _ = self.sender.send(message);
     }
+
+    /// Logs a `Usage: <text>` line.  Prefer this over inline `.log("Usage: ...")` calls
+    /// so that the wording is consistent and easy to grep.
+    pub(crate) fn usage(&self, text: &str) {
+        self.log(format!("Usage: {text}"));
+    }
 }
 
 /// Caches peer names sorted longest-first for prefix-safe command parsing.

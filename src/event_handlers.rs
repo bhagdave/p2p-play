@@ -287,7 +287,7 @@ pub async fn handle_input_event(
             if let Some(peer_name) = cmd.strip_prefix("compose ") {
                 let peer_name = peer_name.trim();
                 if peer_name.is_empty() {
-                    ui_logger.log("Usage: compose <peer_alias>".to_string());
+                    ui_logger.usage("compose <peer_alias>");
                 } else {
                     // Check if peer exists
                     let peer_exists = peer_names.values().any(|name| name == peer_name);
@@ -308,7 +308,7 @@ pub async fn handle_input_event(
                     }
                 }
             } else {
-                ui_logger.log("Usage: compose <peer_alias>".to_string());
+                ui_logger.usage("compose <peer_alias>");
             }
         }
         cmd if cmd.starts_with("msg ") => {

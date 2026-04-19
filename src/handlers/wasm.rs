@@ -96,7 +96,7 @@ fn show_wasm_usage(ui_logger: &UILogger) {
 
 async fn handle_wasm_create(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm create <name>|<description>|<ipfs_cid>|<version>".to_string());
+        ui_logger.usage("wasm create <name>|<description>|<ipfs_cid>|<version>");
         return;
     }
 
@@ -104,7 +104,7 @@ async fn handle_wasm_create(args: &[&str], ui_logger: &UILogger, error_logger: &
     let parts: Vec<&str> = full_arg.split('|').collect();
 
     if parts.len() < 4 {
-        ui_logger.log("Usage: wasm create <name>|<description>|<ipfs_cid>|<version>".to_string());
+        ui_logger.usage("wasm create <name>|<description>|<ipfs_cid>|<version>");
         ui_logger.log(
             "Example: wasm create echo-module|A simple echo module|QmXyz123|1.0.0".to_string(),
         );
@@ -265,7 +265,7 @@ async fn print_remote_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger
 
 async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm show <id>".to_string());
+        ui_logger.usage("wasm show <id>");
         return;
     }
 
@@ -314,7 +314,7 @@ async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &Er
 
 async fn handle_wasm_toggle(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm toggle <id>".to_string());
+        ui_logger.usage("wasm toggle <id>");
         return;
     }
 
@@ -353,7 +353,7 @@ async fn handle_wasm_toggle(args: &[&str], ui_logger: &UILogger, error_logger: &
 
 async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm delete <id>".to_string());
+        ui_logger.usage("wasm delete <id>");
         return;
     }
 
@@ -375,9 +375,8 @@ async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &
 
 async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.len() < 2 {
-        ui_logger.log(
-            "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
-                .to_string(),
+        ui_logger.usage(
+            "wasm param add <offering_id> <name>|<type>|<description>|<required>",
         );
         return;
     }
@@ -385,9 +384,8 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
     match args[0] {
         "add" => {
             if args.len() < 3 {
-                ui_logger.log(
-                    "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
-                        .to_string(),
+                ui_logger.usage(
+                    "wasm param add <offering_id> <name>|<type>|<description>|<required>",
                 );
                 return;
             }
@@ -397,10 +395,7 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
             let parts: Vec<&str> = param_spec.split('|').collect();
 
             if parts.len() < 4 {
-                ui_logger.log(
-                    "Usage: wasm param add <id> <name>|<type>|<description>|<required>"
-                        .to_string(),
-                );
+                ui_logger.usage("wasm param add <id> <name>|<type>|<description>|<required>");
                 ui_logger.log("Types: string, bytes, json, int, float, bool, file".to_string());
                 return;
             }
@@ -468,9 +463,8 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
             }
         }
         _ => {
-            ui_logger.log(
-                "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
-                    .to_string(),
+            ui_logger.usage(
+                "wasm param add <offering_id> <name>|<type>|<description>|<required>",
             );
         }
     }
@@ -484,7 +478,7 @@ async fn handle_wasm_query(
     ui_logger: &UILogger,
 ) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm query <peer_alias>".to_string());
+        ui_logger.usage("wasm query <peer_alias>");
         return;
     }
 
@@ -544,7 +538,7 @@ async fn handle_wasm_run(
     error_logger: &ErrorLogger,
 ) {
     if args.len() < 2 {
-        ui_logger.log("Usage: wasm run <peer_alias> <offering_id> [args...]".to_string());
+        ui_logger.usage("wasm run <peer_alias> <offering_id> [args...]");
         return;
     }
 
@@ -743,7 +737,7 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
             }
         },
         _ => {
-            ui_logger.log("Usage: wasm config [advertise|execute] [on|off|status]".to_string());
+            ui_logger.usage("wasm config [advertise|execute] [on|off|status]");
         }
     }
 }

@@ -35,7 +35,7 @@ pub async fn handle_set_name(
 
         Some(PeerName::new(PEER_ID.to_string(), validated_name))
     } else {
-        ui_logger.log("Usage: name <alias>".to_string());
+        ui_logger.usage("name <alias>");
         None
     }
 }
@@ -99,7 +99,7 @@ pub async fn handle_direct_message_with_relay(
             match parse_direct_message_command(rest, sorted_peer_names_cache.get_sorted_names()) {
                 Some((name, msg)) => (name, msg),
                 None => {
-                    ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
+                    ui_logger.usage("msg <peer_alias> <message>");
                     return;
                 }
             };
@@ -246,7 +246,7 @@ pub async fn handle_direct_message_with_relay(
             ui_logger,
         );
     } else {
-        ui_logger.log("Usage: msg <peer_alias> <message>".to_string());
+        ui_logger.usage("msg <peer_alias> <message>");
     }
 }
 

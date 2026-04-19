@@ -207,11 +207,11 @@ pub async fn handle_config_auto_share(
                 }
             }
             _ => {
-                ui_logger.log("Usage: config auto-share [on|off|status]".to_string());
+                ui_logger.usage("config auto-share [on|off|status]");
             }
         }
     } else {
-        ui_logger.log("Usage: config auto-share [on|off|status]".to_string());
+        ui_logger.usage("config auto-share [on|off|status]");
     }
 }
 
@@ -254,7 +254,7 @@ pub async fn handle_config_sync_days(
             }
         }
     } else {
-        ui_logger.log("Usage: config sync-days <number>".to_string());
+        ui_logger.usage("config sync-days <number>");
     }
 }
 
@@ -265,7 +265,7 @@ pub async fn handle_config_sync_days(
 pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
     if parts.len() < 3 {
-        ui_logger.log("Usage: create desc <description>".to_string());
+        ui_logger.usage("create desc <description>");
         return;
     }
 
@@ -302,7 +302,7 @@ pub async fn handle_get_description(
 ) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
     if parts.len() < 3 {
-        ui_logger.log("Usage: get desc <peer_alias>".to_string());
+        ui_logger.usage("get desc <peer_alias>");
         return;
     }
 

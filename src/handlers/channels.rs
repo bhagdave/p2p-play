@@ -157,7 +157,7 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
             Err(e) => error_logger.log_error(&format!("Failed to read channels: {e}")),
         },
         _ => {
-            ui_logger.log("Usage: ls ch [available|unsubscribed]".to_string());
+            ui_logger.usage("ls ch [available|unsubscribed]");
         }
     }
 }
@@ -172,12 +172,12 @@ pub async fn handle_subscribe_channel(
     } else if let Some(name) = cmd.strip_prefix("sub ") {
         name.trim()
     } else {
-        ui_logger.log("Usage: sub ch <channel_name> or sub <channel_name>".to_string());
+        ui_logger.usage("sub ch <channel_name> or sub <channel_name>");
         return None;
     };
 
     if channel_name.is_empty() {
-        ui_logger.log("Usage: sub ch <channel_name> or sub <channel_name>".to_string());
+        ui_logger.usage("sub ch <channel_name> or sub <channel_name>");
         return None;
     }
 
@@ -224,12 +224,12 @@ pub async fn handle_unsubscribe_channel(
     } else if let Some(name) = cmd.strip_prefix("unsub ") {
         name.trim()
     } else {
-        ui_logger.log("Usage: unsub ch <channel_name> or unsub <channel_name>".to_string());
+        ui_logger.usage("unsub ch <channel_name> or unsub <channel_name>");
         return None;
     };
 
     if channel_name.is_empty() {
-        ui_logger.log("Usage: unsub ch <channel_name> or unsub <channel_name>".to_string());
+        ui_logger.usage("unsub ch <channel_name> or unsub <channel_name>");
         return None;
     }
 
@@ -321,7 +321,7 @@ pub async fn handle_set_auto_subscription(
             }
         }
         _ => {
-            ui_logger.log("Usage: set auto-sub [on|off|status]".to_string());
+            ui_logger.usage("set auto-sub [on|off|status]");
         }
     }
 }
