@@ -256,7 +256,7 @@ pub async fn handle_input_event(
 
         // ── messaging ────────────────────────────────────────────────────────
         cmd if cmd.starts_with("msg ") => {
-            handle_direct_message_with_relay(
+            return handle_direct_message_with_relay(
                 cmd,
                 swarm,
                 peer_names,
@@ -3572,4 +3572,3 @@ mod tests {
         }
     }
 }
-
