@@ -314,11 +314,10 @@ async fn try_relay_delivery(
                     direct_msg.to_name
                 ));
                 ui_logger.log(format!(
-                        "{} Message queued - will be delivered when {} comes online and security keys are exchanged",
-                        Icons::envelope()
-                        ,
-                        direct_msg.to_name
-                    ));
+                    "{} Message queued - will be delivered when {} comes online and security keys are exchanged",
+                    Icons::envelope(),
+                    direct_msg.to_name
+                ));
                 ui_logger.log(format!(
                     "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
                     Icons::memo()
