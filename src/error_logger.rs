@@ -21,6 +21,14 @@ impl ErrorLogger {
         self.logger.log_with_category("ERROR", error_message);
     }
 
+    pub fn file_path(&self) -> &str {
+        CategoryLoggerBase::file_path(self)
+    }
+
+    pub fn clear_log(&self) -> std::io::Result<()> {
+        CategoryLoggerBase::clear_log(self)
+    }
+
     pub fn log_network_error(&self, source: &str, error_message: &str) {
         self.logger
             .log_with_category(&format!("NETWORK_ERROR [{}]", source), error_message);
