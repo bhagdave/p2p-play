@@ -349,11 +349,7 @@ async fn handle_set_name_and_broadcast(
 }
 
 /// Dials the address provided in a `connect <multiaddr>` command.
-async fn handle_connect(
-    cmd: &str,
-    swarm: &mut Swarm<StoryBehaviour>,
-    ui_logger: &UILogger,
-) {
+async fn handle_connect(cmd: &str, swarm: &mut Swarm<StoryBehaviour>, ui_logger: &UILogger) {
     let addr = cmd
         .strip_prefix("connect ")
         .expect("connect prefix already confirmed by caller");
@@ -375,9 +371,7 @@ fn handle_compose(
         return None;
     }
     if peer_names.values().any(|name| name == peer_name) {
-        Some(ActionResult::EnterMessageComposition(
-            peer_name.to_string(),
-        ))
+        Some(ActionResult::EnterMessageComposition(peer_name.to_string()))
     } else {
         ui_logger.log(format!(
             "❌ Peer '{peer_name}' not found. Available peers: {}",

@@ -137,8 +137,8 @@ pub async fn handle_direct_message_with_relay(
             None => return None,
         };
 
-        let target_peer_info = resolve_peer_by_alias(&to_name, peer_names)
-            .map(|peer_id| (peer_id, false));
+        let target_peer_info =
+            resolve_peer_by_alias(&to_name, peer_names).map(|peer_id| (peer_id, false));
 
         if let Some((target_peer_id, _)) = target_peer_info {
             let prefer_direct = relay_service
@@ -310,8 +310,7 @@ async fn try_relay_delivery(
             {
                 ui_logger.log(format!(
                     "{} Cannot send secure message to offline peer '{}'",
-                    Icons::warning()
-                    ,
+                    Icons::warning(),
                     direct_msg.to_name
                 ));
                 ui_logger.log(format!(
@@ -387,7 +386,10 @@ mod tests {
     fn test_parse_dm_basic() {
         let names = vec!["alice".to_string(), "bob".to_string()];
         let result = parse_direct_message_command("alice Hello there", &names);
-        assert_eq!(result, Some(("alice".to_string(), "Hello there".to_string())));
+        assert_eq!(
+            result,
+            Some(("alice".to_string(), "Hello there".to_string()))
+        );
     }
 
     #[test]
@@ -419,10 +421,7 @@ mod tests {
         // sort longest-first as the real cache does
         names.sort_by_key(|b| std::cmp::Reverse(b.len()));
         let result = parse_direct_message_command("alice bob Hello", &names);
-        assert_eq!(
-            result,
-            Some(("alice bob".to_string(), "Hello".to_string()))
-        );
+        assert_eq!(result, Some(("alice bob".to_string(), "Hello".to_string())));
     }
 
     #[test]
