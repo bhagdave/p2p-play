@@ -69,6 +69,15 @@ impl UILogger {
     pub fn log(&self, message: String) {
         let _ = self.sender.send(message);
     }
+
+    /// Logs a `Usage: <text>` line.  Prefer this over inline `.log("Usage: ...")` calls
+    /// so that the wording is consistent and easy to grep.
+    ///
+    /// `pub(crate)` because callers in `event_handlers` (outside the `handlers` module
+    /// hierarchy) also need to emit usage hints via a `UILogger` reference.
+    pub(crate) fn usage(&self, text: &str) {
+        self.log(format!("Usage: {text}"));
+    }
 }
 
 /// Caches peer names sorted longest-first for prefix-safe command parsing.
@@ -226,6 +235,30 @@ where
     }
 }
 
+/// Loads the unified network config and returns it.
+///
+/// On failure, logs to both `error_logger` (operational) and `ui_logger` (user-facing) and
+/// returns `None`.  Callers can use `?`-style early-return on `None` instead of repeating the
+/// three-line error block every time a status sub-command needs the config.
+pub(super) async fn load_config_or_log(
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+    operation_context: &str,
+) -> Option<crate::types::UnifiedNetworkConfig> {
+    match crate::storage::load_unified_network_config().await {
+        Ok(config) => Some(config),
+        Err(e) => {
+            error_logger
+                .log_error(&format!("Failed to load config for {operation_context}: {e}"));
+            ui_logger.log(format!(
+                "{} Failed to load configuration",
+                crate::types::Icons::cross()
+            ));
+            None
+        }
+    }
+}
+
 /// Returns the current Unix timestamp in seconds.
 pub(super) fn current_unix_timestamp() -> u64 {
     crate::current_unix_timestamp()
@@ -240,6 +273,43 @@ pub(super) fn resolve_peer_by_alias(
         .iter()
         .find(|(_, name)| name.as_str() == alias)
         .map(|(peer_id, _)| *peer_id)
+}
+
+/// Resolves a peer alias **and** checks that the swarm is currently connected to it.
+///
+/// On success returns `Some(PeerId)`.  On failure logs an appropriate user-facing message
+/// and returns `None`.
+pub(super) fn resolve_connected_peer(
+    alias: &str,
+    peer_names: &HashMap<PeerId, String>,
+    swarm: &libp2p::Swarm<crate::network::StoryBehaviour>,
+    ui_logger: &UILogger,
+) -> Option<PeerId> {
+    match resolve_peer_by_alias(alias, peer_names) {
+        None => {
+            ui_logger.log(format!(
+                "{} Peer '{alias}' not found. Available peers: {}",
+                crate::types::Icons::cross(),
+                peer_names
+                    .values()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            None
+        }
+        Some(peer_id) => {
+            if !swarm.is_connected(&peer_id) {
+                ui_logger.log(format!(
+                    "{} Not connected to peer '{alias}'. Use 'connect' to establish connection.",
+                    crate::types::Icons::cross()
+                ));
+                None
+            } else {
+                Some(peer_id)
+            }
+        }
+    }
 }
 
 /// Extracts the `PeerId` from a `/p2p/<peer_id>` component of a multiaddr.

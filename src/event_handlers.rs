@@ -183,16 +183,26 @@ pub async fn handle_input_event(
 ) -> Option<ActionResult> {
     let line = line.trim();
     match line {
+        // ── channel management ───────────────────────────────────────────────
         cmd if cmd.starts_with("ls ch") => handle_list_channels(cmd, ui_logger, error_logger).await,
         "ls sub" => handle_list_subscriptions(ui_logger, error_logger).await,
+        cmd if cmd.starts_with("sub ") => {
+            return handle_subscribe_channel(cmd, ui_logger, error_logger).await;
+        }
+        cmd if cmd.starts_with("unsub ") => {
+            return handle_unsubscribe_channel(cmd, ui_logger, error_logger).await;
+        }
+        cmd if cmd.starts_with("set auto-sub") => {
+            handle_set_auto_subscription(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("create ch") => {
+            return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger)
+                .await;
+        }
+
+        // ── story management ─────────────────────────────────────────────────
         cmd if cmd.starts_with("ls s") => {
             handle_list_stories(cmd, swarm, ui_logger, error_logger).await
-        }
-        cmd if cmd.starts_with("search ") => {
-            handle_search_stories(cmd, ui_logger, error_logger).await
-        }
-        cmd if cmd.starts_with("filter ") => {
-            handle_filter_stories(cmd, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("create s") => {
             return handle_create_stories_with_sender(
@@ -203,20 +213,6 @@ pub async fn handle_input_event(
             )
             .await;
         }
-        cmd if cmd.starts_with("create ch") => {
-            return handle_create_channel(cmd, swarm, local_peer_name, ui_logger, error_logger)
-                .await;
-        }
-        cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
-        cmd if cmd.starts_with("sub ") => {
-            return handle_subscribe_channel(cmd, ui_logger, error_logger).await;
-        }
-        cmd if cmd.starts_with("unsub ") => {
-            return handle_unsubscribe_channel(cmd, ui_logger, error_logger).await;
-        }
-        cmd if cmd.starts_with("set auto-sub") => {
-            handle_set_auto_subscription(cmd, ui_logger, error_logger).await
-        }
         cmd if cmd.starts_with("publish s") => {
             handle_publish_story(cmd, story_sender.clone(), ui_logger, error_logger).await
         }
@@ -224,12 +220,14 @@ pub async fn handle_input_event(
             let local_peer_id = swarm.local_peer_id().to_string();
             handle_show_story(cmd, ui_logger, &local_peer_id).await
         }
-        "show desc" => handle_show_description(ui_logger).await,
-        cmd if cmd.starts_with("get desc") => {
-            handle_get_description(cmd, ui_logger, swarm, local_peer_name, peer_names).await
-        }
         cmd if cmd.starts_with("delete s") => {
             return handle_delete_story(cmd, ui_logger, error_logger).await;
+        }
+        cmd if cmd.starts_with("search ") => {
+            handle_search_stories(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("filter ") => {
+            handle_filter_stories(cmd, ui_logger, error_logger).await
         }
         cmd if cmd.starts_with("export s") => {
             handle_export_story(
@@ -240,77 +238,23 @@ pub async fn handle_input_event(
             )
             .await
         }
-        cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
-        cmd if cmd.starts_with("peer id") => ui_logger.log(format!("Local Peer ID: {}", *PEER_ID)),
-        cmd if cmd.starts_with("reload config") => handle_reload_config(cmd, ui_logger).await,
-        cmd if cmd.starts_with("config auto-share") => {
-            handle_config_auto_share(cmd, ui_logger, error_logger).await
-        }
-        cmd if cmd.starts_with("config sync-days") => {
-            handle_config_sync_days(cmd, ui_logger, error_logger).await
-        }
-        cmd if cmd.starts_with("dht bootstrap") => {
-            handle_dht_bootstrap(cmd, swarm, ui_logger).await
-        }
-        cmd if cmd.starts_with("dht peers") => handle_dht_get_peers(cmd, swarm, ui_logger).await,
-        cmd if cmd.starts_with("quit") => {
-            // Coverage skip: process::exit doesn't return, so it can't be tested normally
-            #[allow(unreachable_code)]
-            process::exit(0)
-        }
+
+        // ── peer / node management ───────────────────────────────────────────
         "name" => {
-            // Show current alias when no arguments provided
-            match local_peer_name {
-                Some(name) => ui_logger.log(format!("Current alias: {name}")),
-                None => ui_logger.log("No alias set. Use 'name <alias>' to set one.".to_string()),
-            }
+            handle_show_name(local_peer_name, ui_logger);
         }
         cmd if cmd.starts_with("name ") => {
-            if let Some(peer_name) = handle_set_name(cmd, local_peer_name, ui_logger).await {
-                // Broadcast the peer name to connected peers
-                let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
-                let json_bytes = Bytes::from(json.into_bytes());
-                swarm
-                    .behaviour_mut()
-                    .floodsub
-                    .publish(TOPIC.clone(), json_bytes);
-                debug!("Broadcasted peer name to connected peers");
-            }
+            return handle_set_name_and_broadcast(cmd, swarm, local_peer_name, ui_logger).await;
         }
+        cmd if cmd.starts_with("peer id") => ui_logger.log(format!("Local Peer ID: {}", *PEER_ID)),
         cmd if cmd.starts_with("connect ") => {
-            if let Some(addr) = cmd.strip_prefix("connect ") {
-                establish_direct_connection(swarm, addr, ui_logger).await;
-            }
+            handle_connect(cmd, swarm, ui_logger).await;
         }
         cmd if cmd.starts_with("compose ") => {
-            // Handle compose command to enter message composition mode
-            if let Some(peer_name) = cmd.strip_prefix("compose ") {
-                let peer_name = peer_name.trim();
-                if peer_name.is_empty() {
-                    ui_logger.log("Usage: compose <peer_alias>".to_string());
-                } else {
-                    // Check if peer exists
-                    let peer_exists = peer_names.values().any(|name| name == peer_name);
-                    if peer_exists {
-                        return Some(crate::types::ActionResult::EnterMessageComposition(
-                            peer_name.to_string(),
-                        ));
-                    } else {
-                        ui_logger.log(format!(
-                            "❌ Peer '{}' not found. Available peers: {}",
-                            peer_name,
-                            peer_names
-                                .values()
-                                .map(|s| s.as_str())
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        ));
-                    }
-                }
-            } else {
-                ui_logger.log("Usage: compose <peer_alias>".to_string());
-            }
+            return handle_compose(cmd, peer_names, ui_logger);
         }
+
+        // ── messaging ────────────────────────────────────────────────────────
         cmd if cmd.starts_with("msg ") => {
             handle_direct_message_with_relay(
                 cmd,
@@ -325,6 +269,30 @@ pub async fn handle_input_event(
             )
             .await;
         }
+
+        // ── descriptions ─────────────────────────────────────────────────────
+        cmd if cmd.starts_with("create desc") => handle_create_description(cmd, ui_logger).await,
+        "show desc" => handle_show_description(ui_logger).await,
+        cmd if cmd.starts_with("get desc") => {
+            handle_get_description(cmd, ui_logger, swarm, local_peer_name, peer_names).await
+        }
+
+        // ── configuration ────────────────────────────────────────────────────
+        cmd if cmd.starts_with("reload config") => handle_reload_config(cmd, ui_logger).await,
+        cmd if cmd.starts_with("config auto-share") => {
+            handle_config_auto_share(cmd, ui_logger, error_logger).await
+        }
+        cmd if cmd.starts_with("config sync-days") => {
+            handle_config_sync_days(cmd, ui_logger, error_logger).await
+        }
+
+        // ── DHT ──────────────────────────────────────────────────────────────
+        cmd if cmd.starts_with("dht bootstrap") => {
+            handle_dht_bootstrap(cmd, swarm, ui_logger).await
+        }
+        cmd if cmd.starts_with("dht peers") => handle_dht_get_peers(cmd, swarm, ui_logger).await,
+
+        // ── WASM ─────────────────────────────────────────────────────────────
         cmd if cmd.starts_with("wasm ") => {
             handle_wasm_command(
                 cmd,
@@ -336,9 +304,91 @@ pub async fn handle_input_event(
             )
             .await;
         }
+
+        // ── meta ─────────────────────────────────────────────────────────────
+        cmd if cmd.starts_with("help") => handle_help(cmd, ui_logger).await,
+        cmd if cmd.starts_with("quit") => {
+            // Coverage skip: process::exit doesn't return, so it can't be tested normally
+            #[allow(unreachable_code)]
+            process::exit(0)
+        }
         _ => ui_logger.log("unknown command".to_string()),
     }
     None
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers extracted from handle_input_event arms
+// ---------------------------------------------------------------------------
+
+/// Shows the locally configured peer alias, or a hint if none is set.
+fn handle_show_name(local_peer_name: &Option<String>, ui_logger: &UILogger) {
+    match local_peer_name {
+        Some(name) => ui_logger.log(format!("Current alias: {name}")),
+        None => ui_logger.log("No alias set. Use 'name <alias>' to set one.".to_string()),
+    }
+}
+
+/// Validates and saves the peer name, then broadcasts it to all connected peers.
+async fn handle_set_name_and_broadcast(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    local_peer_name: &mut Option<String>,
+    ui_logger: &UILogger,
+) -> Option<ActionResult> {
+    if let Some(peer_name) = handle_set_name(cmd, local_peer_name, ui_logger).await {
+        let json = serde_json::to_string(&peer_name).expect("can jsonify peer name");
+        let json_bytes = Bytes::from(json.into_bytes());
+        swarm
+            .behaviour_mut()
+            .floodsub
+            .publish(TOPIC.clone(), json_bytes);
+        debug!("Broadcasted peer name to connected peers");
+    }
+    None
+}
+
+/// Dials the address provided in a `connect <multiaddr>` command.
+async fn handle_connect(
+    cmd: &str,
+    swarm: &mut Swarm<StoryBehaviour>,
+    ui_logger: &UILogger,
+) {
+    let addr = cmd
+        .strip_prefix("connect ")
+        .expect("connect prefix already confirmed by caller");
+    establish_direct_connection(swarm, addr, ui_logger).await;
+}
+
+/// Handles a `compose <peer_alias>` command, returning `EnterMessageComposition` on success.
+fn handle_compose(
+    cmd: &str,
+    peer_names: &HashMap<PeerId, String>,
+    ui_logger: &UILogger,
+) -> Option<ActionResult> {
+    let peer_name = cmd
+        .strip_prefix("compose ")
+        .expect("compose prefix already confirmed by caller")
+        .trim();
+    if peer_name.is_empty() {
+        ui_logger.usage("compose <peer_alias>");
+        return None;
+    }
+    if peer_names.values().any(|name| name == peer_name) {
+        Some(ActionResult::EnterMessageComposition(
+            peer_name.to_string(),
+        ))
+    } else {
+        ui_logger.log(format!(
+            "❌ Peer '{peer_name}' not found. Available peers: {}",
+            peer_names
+                .values()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        None
+    }
 }
 
 pub async fn handle_mdns_event(

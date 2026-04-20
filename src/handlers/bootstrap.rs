@@ -66,7 +66,7 @@ fn show_bootstrap_usage(ui_logger: &UILogger) {
 
 async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: dht bootstrap add <multiaddr>".to_string());
+        ui_logger.usage("dht bootstrap add <multiaddr>");
         return;
     }
 
@@ -95,7 +95,7 @@ async fn handle_bootstrap_add(args: &[&str], ui_logger: &UILogger) {
 
 async fn handle_bootstrap_remove(args: &[&str], ui_logger: &UILogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: dht bootstrap remove <multiaddr>".to_string());
+        ui_logger.usage("dht bootstrap remove <multiaddr>");
         return;
     }
 

@@ -1,7 +1,13 @@
-use crate::file_logger::FileLogger;
+use crate::file_logger::{CategoryLoggerBase, FileLogger};
 
 pub struct ErrorLogger {
     logger: FileLogger,
+}
+
+impl CategoryLoggerBase for ErrorLogger {
+    fn inner_logger(&self) -> &FileLogger {
+        &self.logger
+    }
 }
 
 impl ErrorLogger {
@@ -11,13 +17,16 @@ impl ErrorLogger {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn file_path(&self) -> &str {
-        self.logger.file_path()
-    }
-
     pub fn log_error(&self, error_message: &str) {
         self.logger.log_with_category("ERROR", error_message);
+    }
+
+    pub fn file_path(&self) -> &str {
+        CategoryLoggerBase::file_path(self)
+    }
+
+    pub fn clear_log(&self) -> std::io::Result<()> {
+        CategoryLoggerBase::clear_log(self)
     }
 
     pub fn log_network_error(&self, source: &str, error_message: &str) {
@@ -28,11 +37,6 @@ impl ErrorLogger {
     pub fn log_network_error_fmt(&self, source: &str, args: std::fmt::Arguments) {
         self.logger
             .log_with_category_fmt(&format!("NETWORK_ERROR [{}]", source), args);
-    }
-
-    #[allow(dead_code)]
-    pub fn clear_log(&self) -> std::io::Result<()> {
-        self.logger.clear_log()
     }
 }
 

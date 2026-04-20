@@ -32,29 +32,33 @@ pub fn map_row_to_channel_unread_count(row: &Row) -> Result<(String, usize), rus
     Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
 }
 
+/// Deserializes a JSON text column into `T`, mapping the error to a
+/// [`rusqlite::Error::FromSqlConversionFailure`].
+///
+/// Internal helper for the WASM row mappers in this file.  Not exported because
+/// callers outside this module should go through the row-mapper functions.
+fn deserialize_json_column<T>(col: usize, json: &str) -> Result<T, rusqlite::Error>
+where
+    T: serde::de::DeserializeOwned,
+{
+    serde_json::from_str(json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
+            col,
+            rusqlite::types::Type::Text,
+            Box::new(e),
+        )
+    })
+}
+
 /// Map a database row to a WasmOffering struct
 /// Expected columns: id, name, description, ipfs_cid, parameters_json, resource_requirements_json, version, enabled, created_at, updated_at
 pub fn map_row_to_wasm_offering(row: &Row) -> Result<WasmOffering, rusqlite::Error> {
     let parameters_json: String = row.get(4)?;
     let resource_requirements_json: String = row.get(5)?;
 
-    // deserialize parameters and throw error if the json is invalid
-    let parameters: Vec<WasmParameter> = serde_json::from_str(&parameters_json).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(
-            parameters_json.len(),
-            rusqlite::types::Type::Text,
-            Box::new(e),
-        )
-    })?;
-
+    let parameters: Vec<WasmParameter> = deserialize_json_column(4, &parameters_json)?;
     let resource_requirements: WasmResourceRequirements =
-        serde_json::from_str(&resource_requirements_json).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                resource_requirements_json.len(),
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            )
-        })?;
+        deserialize_json_column(5, &resource_requirements_json)?;
 
     Ok(WasmOffering {
         id: row.get(0)?,
@@ -79,21 +83,9 @@ pub fn map_row_to_discovered_wasm_offering(
     let parameters_json: String = row.get(5)?;
     let resource_requirements_json: String = row.get(6)?;
 
-    let parameters: Vec<WasmParameter> = serde_json::from_str(&parameters_json).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(
-            parameters_json.len(),
-            rusqlite::types::Type::Text,
-            Box::new(e),
-        )
-    })?;
+    let parameters: Vec<WasmParameter> = deserialize_json_column(5, &parameters_json)?;
     let resource_requirements: WasmResourceRequirements =
-        serde_json::from_str(&resource_requirements_json).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                resource_requirements_json.len(),
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            )
-        })?;
+        deserialize_json_column(6, &resource_requirements_json)?;
 
     let offering = WasmOffering {
         id: row.get(0)?,
@@ -145,5 +137,23 @@ mod tests {
         assert!(story_result.public);
         assert_eq!(story_result.channel, "general");
         assert_eq!(story_result.created_at, 1000);
+    }
+
+    #[test]
+    fn test_deserialize_json_column_valid() {
+        let json = r#"[]"#;
+        let result: Result<Vec<WasmParameter>, _> = deserialize_json_column(0, json);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_deserialize_json_column_invalid() {
+        let bad_json = "not json";
+        let result: Result<Vec<WasmParameter>, rusqlite::Error> =
+            deserialize_json_column(4, bad_json);
+        assert!(matches!(
+            result,
+            Err(rusqlite::Error::FromSqlConversionFailure(4, ..))
+        ));
     }
 }

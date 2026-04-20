@@ -5,6 +5,14 @@ All changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Changed
+- **Refactor: code-sharing improvements across handlers, storage, and loggers**: Eight targeted refactors to eliminate repeated boilerplate with no behaviour change.
+  - Added `storage::utils::collect_rows` generic helper and replaced all repeated `query_map` collection loops in `storage/core.rs`.
+  - Consolidated handler UX patterns via `UILogger::usage`, `load_config_or_log`, and `resolve_connected_peer` (restoring available-peer list in not-found errors).
+  - Introduced `CategoryLoggerBase` trait for `BootstrapLogger` and `ErrorLogger`; restored inherent `file_path`/`clear_log` on both so callers need not import the trait.
+  - Removed redundant `if let` guard in `handle_connect` and changed `unwrap()` to `expect()` in `handle_compose`.
+  - Fixed `deserialize_json_column` in `storage/mappers.rs` to report the correct column index in `FromSqlConversionFailure` errors.
+
+### Changed
 - **`relay.rs` refactoring**: `RelayError` moved to `errors.rs` with `thiserror` derivation (alongside `CryptoError`); manual `Display`/`Error`/`From<CryptoError>` impls removed. Pending relay confirmations are now consumed: `mark_confirmation_received` removes acknowledged entries, and `cleanup_pending_confirmations` is called on every DM-retry tick. `RelayConfirmation` action added so the delivery side publishes an acknowledgment back to `RELAY_TOPIC`. Dead `crypto_service_for_testing` accessor removed; `crypto_service` scoped to `#[cfg(test)]`.
 
 ### Changed

@@ -8,7 +8,7 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, modify_config, resolve_peer_by_alias, validate_and_log};
+use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, validate_and_log};
 
 /// Dispatch `wasm <subcommand>` commands.
 pub async fn handle_wasm_command(
@@ -96,7 +96,7 @@ fn show_wasm_usage(ui_logger: &UILogger) {
 
 async fn handle_wasm_create(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm create <name>|<description>|<ipfs_cid>|<version>".to_string());
+        ui_logger.usage("wasm create <name>|<description>|<ipfs_cid>|<version>");
         return;
     }
 
@@ -104,7 +104,7 @@ async fn handle_wasm_create(args: &[&str], ui_logger: &UILogger, error_logger: &
     let parts: Vec<&str> = full_arg.split('|').collect();
 
     if parts.len() < 4 {
-        ui_logger.log("Usage: wasm create <name>|<description>|<ipfs_cid>|<version>".to_string());
+        ui_logger.usage("wasm create <name>|<description>|<ipfs_cid>|<version>");
         ui_logger.log(
             "Example: wasm create echo-module|A simple echo module|QmXyz123|1.0.0".to_string(),
         );
@@ -265,7 +265,7 @@ async fn print_remote_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger
 
 async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm show <id>".to_string());
+        ui_logger.usage("wasm show <id>");
         return;
     }
 
@@ -314,7 +314,7 @@ async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &Er
 
 async fn handle_wasm_toggle(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm toggle <id>".to_string());
+        ui_logger.usage("wasm toggle <id>");
         return;
     }
 
@@ -353,7 +353,7 @@ async fn handle_wasm_toggle(args: &[&str], ui_logger: &UILogger, error_logger: &
 
 async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm delete <id>".to_string());
+        ui_logger.usage("wasm delete <id>");
         return;
     }
 
@@ -375,9 +375,8 @@ async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &
 
 async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.len() < 2 {
-        ui_logger.log(
-            "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
-                .to_string(),
+        ui_logger.usage(
+            "wasm param add <offering_id> <name>|<type>|<description>|<required>",
         );
         return;
     }
@@ -385,9 +384,8 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
     match args[0] {
         "add" => {
             if args.len() < 3 {
-                ui_logger.log(
-                    "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
-                        .to_string(),
+                ui_logger.usage(
+                    "wasm param add <offering_id> <name>|<type>|<description>|<required>",
                 );
                 return;
             }
@@ -397,10 +395,7 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
             let parts: Vec<&str> = param_spec.split('|').collect();
 
             if parts.len() < 4 {
-                ui_logger.log(
-                    "Usage: wasm param add <id> <name>|<type>|<description>|<required>"
-                        .to_string(),
-                );
+                ui_logger.usage("wasm param add <id> <name>|<type>|<description>|<required>");
                 ui_logger.log("Types: string, bytes, json, int, float, bool, file".to_string());
                 return;
             }
@@ -468,9 +463,8 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
             }
         }
         _ => {
-            ui_logger.log(
-                "Usage: wasm param add <offering_id> <name>|<type>|<description>|<required>"
-                    .to_string(),
+            ui_logger.usage(
+                "wasm param add <offering_id> <name>|<type>|<description>|<required>",
             );
         }
     }
@@ -484,33 +478,16 @@ async fn handle_wasm_query(
     ui_logger: &UILogger,
 ) {
     if args.is_empty() {
-        ui_logger.log("Usage: wasm query <peer_alias>".to_string());
+        ui_logger.usage("wasm query <peer_alias>");
         return;
     }
 
     let peer_alias = args[0];
 
-    let target_peer = match resolve_peer_by_alias(peer_alias, peer_names) {
+    let target_peer = match resolve_connected_peer(peer_alias, peer_names, swarm, ui_logger) {
         Some(peer) => peer,
-        None => {
-            ui_logger.log(format!(
-                "{} Peer '{}' not found. Available peers: {}",
-                Icons::cross(),
-                peer_alias,
-                peer_names.values().cloned().collect::<Vec<_>>().join(", ")
-            ));
-            return;
-        }
+        None => return,
     };
-
-    if !swarm.is_connected(&target_peer) {
-        ui_logger.log(format!(
-            "{} Not connected to peer '{}'. Use 'connect' to establish connection.",
-            Icons::cross(),
-            peer_alias
-        ));
-        return;
-    }
 
     let from_name = local_peer_name
         .clone()
@@ -544,7 +521,7 @@ async fn handle_wasm_run(
     error_logger: &ErrorLogger,
 ) {
     if args.len() < 2 {
-        ui_logger.log("Usage: wasm run <peer_alias> <offering_id> [args...]".to_string());
+        ui_logger.usage("wasm run <peer_alias> <offering_id> [args...]");
         return;
     }
 
@@ -552,22 +529,10 @@ async fn handle_wasm_run(
     let offering_id = args[1];
     let run_args: Vec<String> = args[2..].iter().map(|s| s.to_string()).collect();
 
-    let target_peer = match resolve_peer_by_alias(peer_alias, peer_names) {
+    let target_peer = match resolve_connected_peer(peer_alias, peer_names, swarm, ui_logger) {
         Some(peer) => peer,
-        None => {
-            ui_logger.log(format!("{} Peer '{}' not found.", Icons::cross(), peer_alias));
-            return;
-        }
+        None => return,
     };
-
-    if !swarm.is_connected(&target_peer) {
-        ui_logger.log(format!(
-            "{} Not connected to peer '{}'.",
-            Icons::cross(),
-            peer_alias
-        ));
-        return;
-    }
 
     let cached_offerings =
         match crate::storage::get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
@@ -628,38 +593,34 @@ async fn handle_wasm_run(
 
 async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.is_empty() {
-        match crate::storage::load_unified_network_config().await {
-            Ok(config) => {
-                ui_logger.log("WASM Capability Configuration:".to_string());
-                ui_logger.log(format!(
-                    "  Advertise capabilities: {}",
-                    if config.wasm.capability.advertise_capabilities {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
-                ));
-                ui_logger.log(format!(
-                    "  Allow remote execution: {}",
-                    if config.wasm.capability.allow_remote_execution {
-                        "enabled"
-                    } else {
-                        "disabled"
-                    }
-                ));
-                ui_logger.log(format!(
-                    "  Max offerings: {}",
-                    config.wasm.capability.max_offerings
-                ));
-                ui_logger.log(format!(
-                    "  Max concurrent executions: {}",
-                    config.wasm.capability.max_concurrent_executions
-                ));
-            }
-            Err(e) => {
-                error_logger.log_error(&format!("Failed to load config: {e}"));
-                ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-            }
+        if let Some(config) =
+            load_config_or_log(ui_logger, error_logger, "wasm config status").await
+        {
+            ui_logger.log("WASM Capability Configuration:".to_string());
+            ui_logger.log(format!(
+                "  Advertise capabilities: {}",
+                if config.wasm.capability.advertise_capabilities {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            ui_logger.log(format!(
+                "  Allow remote execution: {}",
+                if config.wasm.capability.allow_remote_execution {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            ));
+            ui_logger.log(format!(
+                "  Max offerings: {}",
+                config.wasm.capability.max_offerings
+            ));
+            ui_logger.log(format!(
+                "  Max concurrent executions: {}",
+                config.wasm.capability.max_concurrent_executions
+            ));
         }
         return;
     }
@@ -693,8 +654,10 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                     ));
                 }
             }
-            _ => match crate::storage::load_unified_network_config().await {
-                Ok(config) => {
+            _ => {
+                if let Some(config) =
+                    load_config_or_log(ui_logger, error_logger, "wasm advertise status").await
+                {
                     ui_logger.log(format!(
                         "WASM capability advertisement is {}",
                         if config.wasm.capability.advertise_capabilities {
@@ -704,11 +667,7 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                         }
                     ));
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to load config: {e}"));
-                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                }
-            },
+            }
         },
         "execute" => match value {
             "on" => {
@@ -733,8 +692,10 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                     ui_logger.log(format!("{} Remote WASM execution disabled", Icons::check()));
                 }
             }
-            _ => match crate::storage::load_unified_network_config().await {
-                Ok(config) => {
+            _ => {
+                if let Some(config) =
+                    load_config_or_log(ui_logger, error_logger, "wasm execute status").await
+                {
                     ui_logger.log(format!(
                         "Remote WASM execution is {}",
                         if config.wasm.capability.allow_remote_execution {
@@ -744,14 +705,10 @@ async fn handle_wasm_config(args: &[&str], ui_logger: &UILogger, error_logger: &
                         }
                     ));
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to load config: {e}"));
-                    ui_logger.log(format!("{} Failed to load configuration", Icons::cross()));
-                }
-            },
+            }
         },
         _ => {
-            ui_logger.log("Usage: wasm config [advertise|execute] [on|off|status]".to_string());
+            ui_logger.usage("wasm config [advertise|execute] [on|off|status]");
         }
     }
 }

@@ -257,7 +257,7 @@ pub async fn handle_show_story(cmd: &str, ui_logger: &UILogger, peer_id: &str) {
             }
         }
     } else {
-        ui_logger.log("Usage: show story <id>".to_string());
+        ui_logger.usage("show story <id>");
     }
 }
 
@@ -275,7 +275,7 @@ pub async fn handle_delete_story(
             id_strings.into_iter().filter(|s| !s.is_empty()).collect();
 
         if valid_id_strings.is_empty() {
-            ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
+            ui_logger.usage("delete s <id1>[,<id2>,<id3>...]");
             return None;
         }
 
@@ -327,7 +327,7 @@ pub async fn handle_delete_story(
             return Some(ActionResult::RefreshStories);
         }
     } else {
-        ui_logger.log("Usage: delete s <id1>[,<id2>,<id3>...]".to_string());
+        ui_logger.usage("delete s <id1>[,<id2>,<id3>...]");
     }
     None
 }
@@ -336,7 +336,7 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
     if let Some(rest) = cmd.strip_prefix("search ") {
         let parts: Vec<&str> = rest.split_whitespace().collect();
         if parts.is_empty() {
-            ui_logger.log("Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]".to_string());
+            ui_logger.usage("search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]");
             return;
         }
 
@@ -399,7 +399,7 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
             }
         }
     } else {
-        ui_logger.log("Usage: search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]".to_string());
+        ui_logger.usage("search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]");
     }
 }
 
@@ -408,7 +408,7 @@ pub async fn handle_filter_stories(cmd: &str, ui_logger: &UILogger, error_logger
         if let Some(channel) = rest.strip_prefix("channel ") {
             let channel_name = channel.trim();
             if channel_name.is_empty() {
-                ui_logger.log("Usage: filter channel <channel_name>".to_string());
+                ui_logger.usage("filter channel <channel_name>");
                 return;
             }
 
@@ -457,15 +457,14 @@ pub async fn handle_filter_stories(cmd: &str, ui_logger: &UILogger, error_logger
                 },
                 Err(_) => {
                     ui_logger.log(format!("Invalid number of days: '{days_str}'"));
-                    ui_logger.log("Usage: filter recent <days>".to_string());
+                    ui_logger.usage("filter recent <days>");
                 }
             }
         } else {
-            ui_logger
-                .log("Usage: filter channel <channel_name> | filter recent <days>".to_string());
+            ui_logger.usage("filter channel <channel_name> | filter recent <days>");
         }
     } else {
-        ui_logger.log("Usage: filter channel <channel_name> | filter recent <days>".to_string());
+        ui_logger.usage("filter channel <channel_name> | filter recent <days>");
     }
 }
 
@@ -478,15 +477,14 @@ pub async fn handle_export_story(
     let rest = match cmd.strip_prefix("export s ") {
         Some(r) => r.trim(),
         None => {
-            ui_logger
-                .log("Usage: export s <id|all> <md|json>  (exports to ./exports/)".to_string());
+            ui_logger.usage("export s <id|all> <md|json>  (exports to ./exports/)");
             return;
         }
     };
 
     let parts: Vec<&str> = rest.splitn(2, ' ').collect();
     if parts.len() != 2 {
-        ui_logger.log("Usage: export s <id|all> <md|json>".to_string());
+        ui_logger.usage("export s <id|all> <md|json>");
         return;
     }
 

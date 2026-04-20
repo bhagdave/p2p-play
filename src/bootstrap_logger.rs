@@ -1,8 +1,14 @@
-use crate::file_logger::FileLogger;
+use crate::file_logger::{CategoryLoggerBase, FileLogger};
 use log::warn;
 
 pub struct BootstrapLogger {
     logger: FileLogger,
+}
+
+impl CategoryLoggerBase for BootstrapLogger {
+    fn inner_logger(&self) -> &FileLogger {
+        &self.logger
+    }
 }
 
 impl BootstrapLogger {
@@ -12,9 +18,14 @@ impl BootstrapLogger {
         }
     }
 
-    #[allow(dead_code)]
+    /// Returns the path to the log file.
     pub fn file_path(&self) -> &str {
-        self.logger.file_path()
+        CategoryLoggerBase::file_path(self)
+    }
+
+    /// Removes the log file (no-op if it does not exist).
+    pub fn clear_log(&self) -> std::io::Result<()> {
+        CategoryLoggerBase::clear_log(self)
     }
 
     pub fn log(&self, message: &str) {
@@ -36,10 +47,5 @@ impl BootstrapLogger {
     pub fn log_error(&self, message: &str) {
         warn!("Bootstrap Error: {message}");
         self.logger.log_with_category("BOOTSTRAP_ERROR", message);
-    }
-
-    #[allow(dead_code)]
-    pub fn clear_log(&self) -> std::io::Result<()> {
-        self.logger.clear_log()
     }
 }

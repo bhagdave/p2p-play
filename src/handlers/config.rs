@@ -9,7 +9,7 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, modify_config, resolve_peer_by_alias, validate_and_log};
+use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, validate_and_log};
 
 // ---------------------------------------------------------------------------
 // Data-driven help text
@@ -162,7 +162,6 @@ pub async fn handle_config_auto_share(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
 ) {
-    use crate::storage::load_unified_network_config;
 
     if let Some(setting) = cmd.strip_prefix("config auto-share ").map(|s| s.trim()) {
         match setting {
@@ -190,8 +189,10 @@ pub async fn handle_config_auto_share(
                     ));
                 }
             }
-            "status" => match load_unified_network_config().await {
-                Ok(config) => {
+            "status" => {
+                if let Some(config) =
+                    load_config_or_log(ui_logger, error_logger, "auto-share status").await
+                {
                     let status = if config.auto_share.global_auto_share {
                         "enabled"
                     } else {
@@ -204,20 +205,13 @@ pub async fn handle_config_auto_share(
                         config.auto_share.sync_days
                     ));
                 }
-                Err(e) => {
-                    error_logger.log_error(&format!("Failed to load auto-share config: {e}"));
-                    ui_logger.log(format!(
-                        "{} Failed to load auto-share status",
-                        Icons::cross()
-                    ));
-                }
-            },
+            }
             _ => {
-                ui_logger.log("Usage: config auto-share [on|off|status]".to_string());
+                ui_logger.usage("config auto-share [on|off|status]");
             }
         }
     } else {
-        ui_logger.log("Usage: config auto-share [on|off|status]".to_string());
+        ui_logger.usage("config auto-share [on|off|status]");
     }
 }
 
@@ -260,7 +254,7 @@ pub async fn handle_config_sync_days(
             }
         }
     } else {
-        ui_logger.log("Usage: config sync-days <number>".to_string());
+        ui_logger.usage("config sync-days <number>");
     }
 }
 
@@ -271,7 +265,7 @@ pub async fn handle_config_sync_days(
 pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
     if parts.len() < 3 {
-        ui_logger.log("Usage: create desc <description>".to_string());
+        ui_logger.usage("create desc <description>");
         return;
     }
 
@@ -308,26 +302,16 @@ pub async fn handle_get_description(
 ) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
     if parts.len() < 3 {
-        ui_logger.log("Usage: get desc <peer_alias>".to_string());
+        ui_logger.usage("get desc <peer_alias>");
         return;
     }
 
     let peer_alias = parts[2];
 
-    let target_peer = match resolve_peer_by_alias(peer_alias, peer_names) {
+    let target_peer = match resolve_connected_peer(peer_alias, peer_names, swarm, ui_logger) {
         Some(peer) => peer,
-        None => {
-            ui_logger.log(format!("Peer '{peer_alias}' not found in connected peers."));
-            return;
-        }
+        None => return,
     };
-
-    if !swarm.is_connected(&target_peer) {
-        ui_logger.log(format!(
-            "Not connected to peer '{peer_alias}'. Use 'connect' to establish connection."
-        ));
-        return;
-    }
 
     let from_name = local_peer_name.as_deref().unwrap_or("Unknown");
 
