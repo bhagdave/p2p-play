@@ -64,7 +64,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Returns `true` if the bootstrap is currently in the `InProgress` state.
     pub fn is_in_progress(&self) -> bool {
         matches!(
             self.state.lock().unwrap().status,
@@ -275,7 +274,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Returns a short, stable label for display in the TUI status bar.
     pub fn get_bootstrap_short_status(&self) -> String {
         let state = self.state.lock().unwrap();
         match &state.status {
