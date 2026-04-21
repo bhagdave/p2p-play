@@ -21,10 +21,12 @@ impl ErrorLogger {
         self.logger.log_with_category("ERROR", error_message);
     }
 
+    #[allow(dead_code)]
     pub fn file_path(&self) -> &str {
         CategoryLoggerBase::file_path(self)
     }
 
+    #[allow(dead_code)]
     pub fn clear_log(&self) -> std::io::Result<()> {
         CategoryLoggerBase::clear_log(self)
     }

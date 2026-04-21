@@ -181,6 +181,7 @@ impl<F: ContentFetcher> WasmExecutor<F> {
     }
 
     /// Create a new WASM executor with a custom executor configuration
+    #[allow(dead_code)]
     pub fn with_config(fetcher: Arc<F>, config: WasmExecutorConfig) -> WasmResult<Self> {
         Self::with_configs(fetcher, config, WasmConfig::new())
     }

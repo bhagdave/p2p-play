@@ -7,6 +7,7 @@ use std::path::Path;
 ///
 /// Provides default `file_path` and `clear_log` methods so that every wrapper only
 /// needs to implement `inner_logger()` instead of repeating the forwarding boilerplate.
+#[allow(dead_code)]
 pub trait CategoryLoggerBase {
     /// Returns a reference to the underlying [`FileLogger`].
     fn inner_logger(&self) -> &FileLogger;
@@ -61,6 +62,7 @@ impl FileLogger {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn clear_log(&self) -> std::io::Result<()> {
         if Path::new(&self.file_path).exists() {
             std::fs::remove_file(&self.file_path)?;
@@ -74,6 +76,7 @@ impl FileLogger {
             .to_string()
     }
 
+    #[allow(dead_code)]
     pub fn file_path(&self) -> &str {
         &self.file_path
     }

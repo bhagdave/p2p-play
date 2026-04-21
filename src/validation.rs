@@ -36,8 +36,11 @@ pub enum ValidationError {
         invalid_chars: Vec<char>,
     },
     ContainsControlCharacters,
+    #[allow(dead_code)]
     ContainsAnsiEscapes,
+    #[allow(dead_code)]
     ContainsBinaryData,
+    #[allow(dead_code)]
     InvalidFormat {
         expected: String,
     },
@@ -139,12 +142,14 @@ impl ContentSanitizer {
         matches!(ch, ' ' | '\t' | '\n' | '\r')
     }
 
+    #[allow(dead_code)]
     pub fn strip_control_characters(text: &str) -> String {
         text.chars()
             .filter(|&ch| !ch.is_control() || Self::is_allowed_whitespace(ch))
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn strip_binary_data(text: &str) -> String {
         text.chars()
             .filter(|&ch| ch != '\0' && (!ch.is_control() || Self::is_allowed_whitespace(ch)))
@@ -467,6 +472,7 @@ impl ContentValidator {
     ///
     /// Use this to reject peer content that arrives already dirty, which may
     /// indicate a misbehaving or malicious peer.
+    #[allow(dead_code)] 
     pub fn validate_received_content(text: &str) -> ValidationResult<()> {
         ContentSanitizer::check_for_ansi_escapes(text)?;
         ContentSanitizer::check_for_control_characters(text)?;
