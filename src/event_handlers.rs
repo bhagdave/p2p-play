@@ -1,4 +1,5 @@
 use crate::content_fetcher::GatewayFetcher;
+use crate::constants::{*};
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
@@ -11,7 +12,7 @@ use crate::handlers::{
     handle_unsubscribe_channel, handle_wasm_command,
 };
 use crate::network::{
-    APP_NAME, APP_VERSION, DirectMessageRequest, DirectMessageResponse, HandshakeRequest,
+    DirectMessageRequest, DirectMessageResponse, HandshakeRequest,
     HandshakeResponse, NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour,
     TOPIC, WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest,
     WasmExecutionResponse,
@@ -560,14 +561,14 @@ pub async fn handle_floodsub_event(
                         // Validate the alias length before persisting to prevent unbounded
                         // data being written to disk from untrusted network input.
                         let alias_to_persist = if peer_name.name.len()
-                            <= crate::validation::ContentLimits::PEER_NAME_MAX
+                            <= ContentLimits::PEER_NAME_MAX
                         {
                             Some(peer_name.name.as_str())
                         } else {
                             debug!(
                                 "Peer {} alias exceeds PEER_NAME_MAX ({}), skipping persistence",
                                 peer_id,
-                                crate::validation::ContentLimits::PEER_NAME_MAX
+                                ContentLimits::PEER_NAME_MAX
                             );
                             None
                         };

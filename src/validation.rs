@@ -2,29 +2,7 @@
 /// capability-exchange parameter declarations.  Stored as a module-level
 /// constant so the list is easy to extend and is not rebuilt on every call
 /// to [`ContentValidator::validate_wasm_param_type`].
-const WASM_PARAM_TYPES: &[&str] = &["string", "bytes", "json", "int", "float", "bool", "file"];
-
-pub struct ContentLimits;
-
-impl ContentLimits {
-    pub const STORY_NAME_MAX: usize = 100;
-    pub const STORY_HEADER_MAX: usize = 200;
-    pub const STORY_BODY_MAX: usize = 10_000;
-    pub const CHANNEL_NAME_MAX: usize = 50;
-    pub const CHANNEL_DESCRIPTION_MAX: usize = 200;
-    pub const PEER_NAME_MAX: usize = 30;
-    pub const DIRECT_MESSAGE_MAX: usize = 1_000;
-    pub const NODE_DESCRIPTION_MAX: usize = 2_000;
-
-    // WASM offering limits
-    pub const WASM_OFFERING_NAME_MAX: usize = 100;
-    pub const WASM_OFFERING_DESCRIPTION_MAX: usize = 500;
-    pub const WASM_IPFS_CID_MAX: usize = 100;
-    pub const WASM_VERSION_MAX: usize = 20;
-    pub const WASM_PARAM_NAME_MAX: usize = 50;
-    pub const WASM_PARAM_TYPE_MAX: usize = 20;
-}
-
+use crate::constants::{*};
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationError {
     TooLong {

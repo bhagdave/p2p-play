@@ -26,6 +26,7 @@ pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
+use constants::UNIFIED_CONFIG_FILE;
 use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
@@ -48,7 +49,6 @@ use log::error;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
-const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
 use constants::BOOTSTRAP_LOG_FILE;
 
 /// Peer-to-peer story sharing application.

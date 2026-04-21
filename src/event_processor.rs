@@ -1,12 +1,13 @@
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
+use crate::constants::{*};
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
 use crate::handlers::{PeerState, SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
 use crate::network::{
-    APP_NAME, APP_VERSION, HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
+    HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
 };
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
@@ -24,12 +25,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, interval};
-
-const BOOTSTRAP_RETRY_INTERVAL_SECS: u64 = 5;
-const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
-const DM_RETRY_INTERVAL_SECS: u64 = 10;
-
-const HANDSHAKE_TIMEOUT_SECS: u64 = 60;
 
 pub struct EventProcessor {
     ui_rcv: mpsc::UnboundedReceiver<AppEvent>,
@@ -492,7 +487,7 @@ impl EventProcessor {
     /// `PEER_NAME_MAX` characters (currently 30), while the placeholder is always
     /// longer (5 + ~52 chars for the base58-encoded PeerId).
     fn is_user_set_peer_name(name: &str) -> bool {
-        name.len() <= crate::validation::ContentLimits::PEER_NAME_MAX
+        name.len() <= ContentLimits::PEER_NAME_MAX
     }
 
     /// Saves the peer's alias into `known_peer_names` when the alias is a user-set

@@ -4,6 +4,7 @@
 //! validate them, and execute them with resource limits (fuel/memory).
 
 use crate::content_fetcher::ContentFetcher;
+use crate::constants::{*};
 use crate::types::WasmConfig;
 use bytes::Bytes;
 use lru::LruCache;
@@ -16,19 +17,6 @@ use wasmtime_wasi::preview1;
 // Re-export so callers can still import WasmExecutionError from this module.
 pub use crate::errors::WasmExecutionError;
 
-/// WASM magic bytes: "\0asm"
-const WASM_MAGIC: &[u8] = b"\0asm";
-
-/// Expected WASM version bytes (version 1)
-const WASM_VERSION: &[u8] = &[0x01, 0x00, 0x00, 0x00];
-
-/// Length of a valid WASM binary header in bytes (4-byte magic + 4-byte version)
-const WASM_HEADER_LEN: usize = 8;
-
-/// Size of each I/O pipe buffer in bytes (64 KiB)
-const PIPE_BUFFER_SIZE: usize = 64 * 1024;
-
-const BYTES_PER_MB: usize = 1024 * 1024;
 
 /// Result type for WASM execution operations
 pub type WasmResult<T> = Result<T, WasmExecutionError>;

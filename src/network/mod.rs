@@ -7,6 +7,10 @@
 pub mod protocol;
 pub use protocol::*;
 
+use crate::constants::{
+    APP_PROTOCOL, YAMUX_MAX_STREAMS, SWARM_DIAL_CONCURRENCY_FALLBACK, SWARM_IDLE_CONNECTION_TIMEOUT_SECS,
+    TCP_LISTEN_BACKLOG, TCP_TTL
+};
 use crate::errors::NetworkResult;
 use crate::types::NetworkConfig;
 use crate::types::PingConfig;
@@ -17,20 +21,6 @@ use log::warn;
 use once_cell::sync::Lazy;
 use std::fs;
 use std::iter;
-
-// ── Transport / swarm tuning constants ───────────────────────────────────────
-
-/// TCP listen-socket backlog (pending-connection queue depth).
-const TCP_LISTEN_BACKLOG: u32 = 1024;
-/// IP time-to-live set on outgoing TCP segments.
-const TCP_TTL: u32 = 64;
-/// Maximum concurrent multiplexed streams per yamux session.
-const YAMUX_MAX_STREAMS: usize = 512;
-/// Seconds an idle connection is kept open before the swarm closes it.
-const SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 60;
-/// Fallback dial-concurrency factor used when the config value cannot be
-/// represented as a `NonZeroU8`.
-const SWARM_DIAL_CONCURRENCY_FALLBACK: u8 = 8;
 
 // ── Type aliases ─────────────────────────────────────────────────────────────
 

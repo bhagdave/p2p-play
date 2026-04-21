@@ -1,5 +1,5 @@
 use crate::bootstrap_logger::BootstrapLogger;
-use crate::constants::BOOTSTRAP_LOG_FILE;
+use crate::constants::{BOOTSTRAP_LOG_FILE, UNIFIED_CONFIG_FILE};
 use crate::handlers::{UILogger, extract_peer_id_from_multiaddr};
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
@@ -7,8 +7,6 @@ use libp2p::swarm::Swarm;
 use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum BootstrapStatus {

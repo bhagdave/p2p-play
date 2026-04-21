@@ -3,13 +3,6 @@
 //! Each pair of `Request`/`Response` structs corresponds to one libp2p
 //! request-response behaviour defined in the parent module.
 
-/// Application-level protocol identifier used during peer handshakes.
-pub const APP_PROTOCOL: &str = "/p2p-play/handshake/1.0.0";
-/// Application version string derived from `Cargo.toml`.
-pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-/// Application name string derived from `Cargo.toml`.
-pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
-
 // ── Direct messaging ─────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
