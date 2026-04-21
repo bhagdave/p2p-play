@@ -1193,9 +1193,13 @@ async fn test_handle_direct_message_with_relay_prefer_direct() {
     use libp2p::identity::Keypair;
     use p2p_play::crypto::CryptoService;
     use p2p_play::relay::RelayService;
+    use p2p_play::storage::clear_database_for_testing;
     use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
+
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    clear_database_for_testing().await.unwrap();
 
     // Setup test environment
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
@@ -1227,7 +1231,7 @@ async fn test_handle_direct_message_with_relay_prefer_direct() {
     let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
 
     // Test: Send message with prefer_direct=true
-    p2p_play::handlers::handle_direct_message_with_relay(
+    let result = p2p_play::handlers::handle_direct_message_with_relay(
         "msg TestPeer Hello there",
         &mut swarm,
         &peer_names,
@@ -1239,6 +1243,8 @@ async fn test_handle_direct_message_with_relay_prefer_direct() {
         &pending_messages,
     )
     .await;
+
+    assert_eq!(result, Some(ActionResult::RefreshConversations));
 
     // Collect all log messages
     let mut log_messages = Vec::new();
@@ -1277,9 +1283,13 @@ async fn test_handle_direct_message_with_relay_prefer_relay() {
     use libp2p::identity::Keypair;
     use p2p_play::crypto::CryptoService;
     use p2p_play::relay::RelayService;
+    use p2p_play::storage::clear_database_for_testing;
     use p2p_play::types::RelayConfig;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
+
+    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
+    clear_database_for_testing().await.unwrap();
 
     // Setup test environment
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();
@@ -1289,9 +1299,10 @@ async fn test_handle_direct_message_with_relay_prefer_relay() {
     let network_config = p2p_play::types::NetworkConfig::new();
     let mut swarm = create_swarm(&ping_config, &network_config).expect("Failed to create swarm");
 
-    // Create a connected peer
+    // Create a connected peer with a known public key (required for relay encryption)
     let mut peer_names = HashMap::new();
-    let connected_peer_id = libp2p::PeerId::random();
+    let target_keypair = Keypair::generate_ed25519();
+    let connected_peer_id = libp2p::PeerId::from(target_keypair.public());
     peer_names.insert(connected_peer_id, "TestPeer".to_string());
 
     let local_peer_name = Some("LocalPeer".to_string());
@@ -1309,9 +1320,15 @@ async fn test_handle_direct_message_with_relay_prefer_relay() {
     let keypair = Keypair::generate_ed25519();
     let crypto_service = CryptoService::new(keypair);
     let mut relay_service = Some(RelayService::new(relay_config, crypto_service));
+    relay_service
+        .as_mut()
+        .unwrap()
+        .crypto_service()
+        .add_peer_public_key(connected_peer_id, target_keypair.public().encode_protobuf())
+        .unwrap();
 
     // Test: Send message with prefer_direct=false
-    p2p_play::handlers::handle_direct_message_with_relay(
+    let result = p2p_play::handlers::handle_direct_message_with_relay(
         "msg TestPeer Hello relay",
         &mut swarm,
         &peer_names,
@@ -1323,6 +1340,8 @@ async fn test_handle_direct_message_with_relay_prefer_relay() {
         &pending_messages,
     )
     .await;
+
+    assert_eq!(result, Some(ActionResult::RefreshConversations));
 
     // Collect all log messages
     let mut log_messages = Vec::new();

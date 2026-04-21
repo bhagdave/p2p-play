@@ -697,6 +697,9 @@ impl EventProcessor {
                     }
                 }
             }
+            ActionResult::RefreshConversations => {
+                app.refresh_conversations().await;
+            }
             ActionResult::RebroadcastRelayMessage(_) => {}
             ActionResult::BroadcastRelayConfirmation(_) => {}
             ActionResult::DirectMessageReceived(direct_message) => {

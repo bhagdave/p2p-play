@@ -365,6 +365,7 @@ pub enum ActionResult {
     RefreshStories,
     StartStoryCreation,
     RefreshChannels,
+    RefreshConversations,
     RebroadcastRelayMessage(Box<crate::types::RelayMessage>),
     BroadcastRelayConfirmation(Box<crate::types::RelayConfirmation>),
     DirectMessageReceived(DirectMessage),

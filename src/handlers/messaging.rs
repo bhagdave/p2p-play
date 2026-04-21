@@ -4,7 +4,9 @@ use crate::errors::{CryptoError, RelayError};
 use crate::network::{DirectMessageRequest, PEER_ID, StoryBehaviour};
 use crate::relay::RelayService;
 use crate::storage::save_local_peer_name;
-use crate::types::{DirectMessage, DirectMessageConfig, Icons, PeerName, PendingDirectMessage};
+use crate::types::{
+    ActionResult, DirectMessage, DirectMessageConfig, Icons, PeerName, PendingDirectMessage,
+};
 use crate::validation::ContentValidator;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
@@ -93,27 +95,27 @@ pub async fn handle_direct_message_with_relay(
     dm_config: &DirectMessageConfig,
     relay_service: &mut Option<RelayService>,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
-) {
+) -> Option<ActionResult> {
     if let Some(rest) = cmd.strip_prefix("msg ") {
         let (to_name, message) =
             match parse_direct_message_command(rest, sorted_peer_names_cache.get_sorted_names()) {
                 Some((name, msg)) => (name, msg),
                 None => {
                     ui_logger.usage("msg <peer_alias> <message>");
-                    return;
+                    return None;
                 }
             };
 
         if to_name.is_empty() || message.is_empty() {
             ui_logger.log("Both peer alias and message must be non-empty".to_string());
-            return;
+            return None;
         }
 
         let from_name = match local_peer_name {
             Some(name) => name.clone(),
             None => {
                 ui_logger.log("You must set your name first using 'name <alias>'".to_string());
-                return;
+                return None;
             }
         };
 
@@ -123,7 +125,7 @@ pub async fn handle_direct_message_with_relay(
             ui_logger,
         ) {
             Some(name) => name,
-            None => return,
+            None => return None,
         };
 
         let message = match validate_and_log(
@@ -132,11 +134,11 @@ pub async fn handle_direct_message_with_relay(
             ui_logger,
         ) {
             Some(msg) => msg,
-            None => return,
+            None => return None,
         };
 
-        let target_peer_info = resolve_peer_by_alias(&to_name, peer_names)
-            .map(|peer_id| (peer_id, false));
+        let target_peer_info =
+            resolve_peer_by_alias(&to_name, peer_names).map(|peer_id| (peer_id, false));
 
         if let Some((target_peer_id, _)) = target_peer_info {
             let prefer_direct = relay_service
@@ -158,11 +160,6 @@ pub async fn handle_direct_message_with_relay(
                     timestamp: current_unix_timestamp(),
                 };
 
-                let request_id = swarm
-                    .behaviour_mut()
-                    .request_response
-                    .send_request(&target_peer_id, direct_msg_request.clone());
-
                 let outgoing_message = crate::types::DirectMessage {
                     from_peer_id: direct_msg_request.from_peer_id.clone(),
                     from_name: direct_msg_request.from_name.clone(),
@@ -173,19 +170,25 @@ pub async fn handle_direct_message_with_relay(
                     is_outgoing: true,
                 };
 
+                let request_id = swarm
+                    .behaviour_mut()
+                    .request_response
+                    .send_request(&target_peer_id, direct_msg_request.clone());
+
+                ui_logger.log(format!(
+                    "Direct message sent to {to_name} (request_id: {request_id:?})"
+                ));
+
                 if let Err(e) =
                     crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await
                 {
                     ui_logger.log(format!("Failed to save outgoing message: {}", e));
                 } else {
                     ui_logger.log(format!("Saved outgoing message to {}", to_name));
+                    return Some(ActionResult::RefreshConversations);
                 }
 
-                ui_logger.log(format!(
-                    "Direct message sent to {to_name} (request_id: {request_id:?})"
-                ));
-
-                return;
+                return None;
             }
         }
 
@@ -213,21 +216,38 @@ pub async fn handle_direct_message_with_relay(
                     pending_messages,
                     ui_logger,
                 );
-                return;
+                return None;
+            };
+
+            let outgoing_message = DirectMessage {
+                from_peer_id: PEER_ID.to_string(),
+                from_name: from_name.clone(),
+                to_peer_id: relay_target_peer_id.to_string(),
+                to_name: to_name.clone(),
+                message: message.clone(),
+                timestamp: current_unix_timestamp(),
+                is_outgoing: true,
             };
 
             if try_relay_delivery(
                 swarm,
                 relay_svc,
-                &from_name,
-                &to_name,
-                &message,
+                &outgoing_message,
                 &relay_target_peer_id,
                 ui_logger,
             )
             .await
             {
-                return;
+                if let Err(e) =
+                    crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await
+                {
+                    ui_logger.log(format!("Failed to save outgoing relay message: {}", e));
+                } else {
+                    ui_logger.log(format!("Saved outgoing relay message to {}", to_name));
+                    return Some(ActionResult::RefreshConversations);
+                }
+
+                return None;
             }
         }
 
@@ -248,39 +268,30 @@ pub async fn handle_direct_message_with_relay(
     } else {
         ui_logger.usage("msg <peer_alias> <message>");
     }
+    None
 }
 
 async fn try_relay_delivery(
     swarm: &mut Swarm<StoryBehaviour>,
     relay_service: &mut RelayService,
-    from_name: &str,
-    to_name: &str,
-    message: &str,
+    direct_msg: &DirectMessage,
     target_peer_id: &PeerId,
     ui_logger: &UILogger,
 ) -> bool {
     ui_logger.log(format!(
-        "{} Trying relay delivery to {to_name}...",
-        Icons::speech()
+        "{} Trying relay delivery to {}...",
+        Icons::speech(),
+        direct_msg.to_name
     ));
 
-    let direct_msg = DirectMessage {
-        from_peer_id: PEER_ID.to_string(),
-        from_name: from_name.to_string(),
-        to_peer_id: target_peer_id.to_string(),
-        to_name: to_name.to_string(),
-        message: message.to_string(),
-        timestamp: current_unix_timestamp(),
-        is_outgoing: true,
-    };
-
-    match relay_service.create_relay_message(&direct_msg, target_peer_id) {
+    match relay_service.create_relay_message(direct_msg, target_peer_id) {
         Ok(relay_msg) => {
             match crate::event_handlers::broadcast_relay_message(swarm, &relay_msg).await {
                 Ok(()) => {
                     ui_logger.log(format!(
-                        "{} Message sent to {to_name} via relay network",
-                        Icons::check()
+                        "{} Message sent to {} via relay network",
+                        Icons::check(),
+                        direct_msg.to_name
                     ));
                     true
                 }
@@ -298,13 +309,15 @@ async fn try_relay_delivery(
                 && msg.contains("Public key not found")
             {
                 ui_logger.log(format!(
-                    "{} Cannot send secure message to offline peer '{to_name}'",
-                    Icons::warning()
+                    "{} Cannot send secure message to offline peer '{}'",
+                    Icons::warning(),
+                    direct_msg.to_name
                 ));
                 ui_logger.log(format!(
-                        "{} Message queued - will be delivered when {to_name} comes online and security keys are exchanged",
-                        Icons::envelope()
-                    ));
+                    "{} Message queued - will be delivered when {} comes online and security keys are exchanged",
+                    Icons::envelope(),
+                    direct_msg.to_name
+                ));
                 ui_logger.log(format!(
                     "{}  Tip: Both peers must be online simultaneously for secure messaging setup",
                     Icons::memo()
@@ -372,7 +385,10 @@ mod tests {
     fn test_parse_dm_basic() {
         let names = vec!["alice".to_string(), "bob".to_string()];
         let result = parse_direct_message_command("alice Hello there", &names);
-        assert_eq!(result, Some(("alice".to_string(), "Hello there".to_string())));
+        assert_eq!(
+            result,
+            Some(("alice".to_string(), "Hello there".to_string()))
+        );
     }
 
     #[test]
@@ -404,10 +420,7 @@ mod tests {
         // sort longest-first as the real cache does
         names.sort_by_key(|b| std::cmp::Reverse(b.len()));
         let result = parse_direct_message_command("alice bob Hello", &names);
-        assert_eq!(
-            result,
-            Some(("alice bob".to_string(), "Hello".to_string()))
-        );
+        assert_eq!(result, Some(("alice bob".to_string(), "Hello".to_string())));
     }
 
     #[test]
