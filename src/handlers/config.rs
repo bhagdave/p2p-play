@@ -1,8 +1,6 @@
-//! Configuration, description, and help handlers.
-
 use crate::error_logger::ErrorLogger;
 use crate::network::{NodeDescriptionRequest, PEER_ID, StoryBehaviour};
-use crate::storage::{load_node_description, save_node_description};
+use crate::storage::{load_node_description, load_unified_network_config, save_node_description};
 use crate::types::Icons;
 use crate::validation::ContentValidator;
 use libp2p::PeerId;
@@ -13,10 +11,6 @@ use super::{
     UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer,
     validate_and_log,
 };
-
-// ---------------------------------------------------------------------------
-// Data-driven help text
-// ---------------------------------------------------------------------------
 
 /// Each entry is a help line.
 static HELP_ENTRIES: &[&str] = &[
@@ -104,12 +98,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Config handlers
-// ---------------------------------------------------------------------------
-
 pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
-    use crate::storage::load_unified_network_config;
 
     match load_unified_network_config().await {
         Ok(config) => {
