@@ -1,30 +1,19 @@
-//! Channel command handlers: create, list, subscribe, unsubscribe, auto-subscription.
-
 use crate::error_logger::ErrorLogger;
 use crate::network::{PEER_ID, StoryBehaviour, TOPIC};
 use crate::storage::{
     create_channel, read_channels, read_subscribed_channels, read_unsubscribed_channels,
     subscribe_to_channel, unsubscribe_from_channel,
 };
-use crate::types::{ActionResult, Icons};
+use crate::types::{ActionResult, Channel, Icons, PublishedChannel};
 use crate::validation::ContentValidator;
 use bytes::Bytes;
 use libp2p::swarm::Swarm;
 
 use super::{UILogger, load_config_or_log, modify_config, validate_and_log};
 
-// ---------------------------------------------------------------------------
-// Shared formatting helpers
-// ---------------------------------------------------------------------------
-
-/// One-line channel summary: `  <name> - <description>`.
 fn format_channel_line(name: &str, description: &str) -> String {
     format!("  {} - {}", name, description)
 }
-
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
 
 pub async fn handle_create_channel(
     cmd: &str,
@@ -71,12 +60,12 @@ pub async fn handle_create_channel(
                     .log_error(&format!("Failed to auto-subscribe to created channel: {e}"));
             }
 
-            let channel = crate::types::Channel::new(
+            let channel = Channel::new(
                 validated_name.clone(),
                 validated_description,
                 creator.clone(),
             );
-            let published_channel = crate::types::PublishedChannel::new(channel.clone(), creator);
+            let published_channel = PublishedChannel::new(channel.clone(), creator);
 
             let published_json = match serde_json::to_string(&published_channel) {
                 Ok(json) => json,
@@ -141,13 +130,6 @@ pub async fn handle_list_channels(cmd: &str, ui_logger: &UILogger, error_logger:
     }
 }
 
-/// Renders a list of channels from a storage result, logging each line with
-/// the supplied heading/empty/error strings.
-///
-/// * `heading`      – printed first (e.g. "Available channels:").
-/// * `empty_msg`    – printed (indented) when `result` is `Ok` but the list is empty.
-/// * `error_prefix` – written to `error_logger` when `result` is `Err`; the error
-///                    detail is appended automatically.
 fn list_channel_results(
     result: crate::errors::StorageResult<Vec<crate::types::Channel>>,
     heading: &str,
