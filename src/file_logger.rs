@@ -3,21 +3,13 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
 
-/// A shared trait implemented by logger types that wrap a [`FileLogger`].
-///
-/// Provides default `file_path` and `clear_log` methods so that every wrapper only
-/// needs to implement `inner_logger()` instead of repeating the forwarding boilerplate.
-#[allow(dead_code)]
 pub trait CategoryLoggerBase {
-    /// Returns a reference to the underlying [`FileLogger`].
     fn inner_logger(&self) -> &FileLogger;
 
-    /// Returns the path to the log file.
     fn file_path(&self) -> &str {
         self.inner_logger().file_path()
     }
 
-    /// Removes the log file (no-op if it does not exist).
     fn clear_log(&self) -> std::io::Result<()> {
         self.inner_logger().clear_log()
     }
@@ -62,7 +54,6 @@ impl FileLogger {
         Ok(())
     }
 
-    #[allow(dead_code)]
     pub fn clear_log(&self) -> std::io::Result<()> {
         if Path::new(&self.file_path).exists() {
             std::fs::remove_file(&self.file_path)?;
