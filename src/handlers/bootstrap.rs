@@ -1,5 +1,3 @@
-//! DHT bootstrap and peer-discovery handlers.
-
 use crate::network::StoryBehaviour;
 use crate::storage::{load_bootstrap_config, save_bootstrap_config};
 use libp2p::swarm::Swarm;
@@ -45,10 +43,6 @@ pub async fn handle_dht_get_peers(
     let _query_id = swarm.behaviour_mut().kad.get_closest_peers(*PEER_ID);
     ui_logger.log("DHT peer search started (results will appear in events)".to_string());
 }
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
 
 fn show_bootstrap_usage(ui_logger: &UILogger) {
     ui_logger.log("DHT Bootstrap Commands:".to_string());
