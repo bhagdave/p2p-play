@@ -238,13 +238,11 @@ impl<F: ContentFetcher> WasmExecutor<F> {
     /// the compilation step.
     async fn fetch_and_compile(&self, cid: &str) -> WasmResult<Module> {
         // Return a clone of the cached module if one exists
-        if let Some(cache) = &self.module_cache {
-            if let Ok(mut guard) = cache.lock() {
-                if let Some(module) = guard.get(cid) {
+        if let Some(cache) = &self.module_cache
+            && let Ok(mut guard) = cache.lock()
+                && let Some(module) = guard.get(cid) {
                     return Ok(module.clone());
                 }
-            }
-        }
 
         let wasm_bytes = self
             .fetcher
@@ -258,11 +256,10 @@ impl<F: ContentFetcher> WasmExecutor<F> {
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
 
         // Store the freshly compiled module in the cache
-        if let Some(cache) = &self.module_cache {
-            if let Ok(mut guard) = cache.lock() {
+        if let Some(cache) = &self.module_cache
+            && let Ok(mut guard) = cache.lock() {
                 guard.put(cid.to_string(), module.clone());
             }
-        }
 
         Ok(module)
     }
@@ -396,13 +393,10 @@ fn classify_trap_error(e: anyhow::Error, fuel_consumed: u64) -> WasmResult<i32> 
 
     // Typed trap: fuel exhaustion
     if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
-        match trap {
-            wasmtime::Trap::OutOfFuel => {
-                return Err(WasmExecutionError::FuelExhausted {
-                    consumed: fuel_consumed,
-                });
-            }
-            _ => {}
+        if trap == &wasmtime::Trap::OutOfFuel {
+            return Err(WasmExecutionError::FuelExhausted {
+                consumed: fuel_consumed,
+            });
         }
     }
 

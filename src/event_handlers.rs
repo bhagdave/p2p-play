@@ -575,13 +575,12 @@ pub async fn handle_floodsub_event(
                         // Persist the alias to the database without altering is_connected
                         // state, since a broadcast message may arrive via relay rather
                         // than directly from the peer.
-                        if let Some(alias) = alias_to_persist {
-                            if let Err(e) = upsert_peer_alias(&peer_id.to_string(), alias).await {
+                        if let Some(alias) = alias_to_persist
+                            && let Err(e) = upsert_peer_alias(&peer_id.to_string(), alias).await {
                                 error_logger.log_error(&format!(
                                     "Failed to persist peer alias for {peer_id}: {e}"
                                 ));
                             }
-                        }
                     }
                 }
             } else if let Ok(published_channel) =
