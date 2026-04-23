@@ -26,7 +26,7 @@ pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
-use constants::{BOOTSTRAP_LOG_FILE, UNIFIED_CONFIG_FILE, ERRORS_LOG_FILE};
+use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
@@ -90,7 +90,7 @@ fn main() {
         }
     }
 
-    // Build the Tokio runtime manually 
+    // Build the Tokio runtime manually
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

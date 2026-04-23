@@ -2,7 +2,7 @@
 /// capability-exchange parameter declarations.  Stored as a module-level
 /// constant so the list is easy to extend and is not rebuilt on every call
 /// to [`ContentValidator::validate_wasm_param_type`].
-use crate::constants::{*};
+use crate::constants::*;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationError {
     TooLong {
@@ -383,17 +383,14 @@ impl ContentValidator {
 
     /// Validate a WASM parameter name
     pub fn validate_wasm_param_name(name: &str) -> ValidationResult<String> {
-        let sanitized = Self::validate_text(
-            name,
-            ContentLimits::WASM_PARAM_NAME_MAX,
-            None,
-            true,
-        )?;
+        let sanitized = Self::validate_text(name, ContentLimits::WASM_PARAM_NAME_MAX, None, true)?;
 
-        if !sanitized.chars().all(|ch| ch.is_alphanumeric() || ch == '_') {
+        if !sanitized
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || ch == '_')
+        {
             return Err(ValidationError::InvalidFormat {
-                expected: "Parameter name using only letters, numbers, and underscores"
-                    .to_string(),
+                expected: "Parameter name using only letters, numbers, and underscores".to_string(),
             });
         }
 
@@ -450,7 +447,7 @@ impl ContentValidator {
     ///
     /// Use this to reject peer content that arrives already dirty, which may
     /// indicate a misbehaving or malicious peer.
-    #[allow(dead_code)] 
+    #[allow(dead_code)]
     pub fn validate_received_content(text: &str) -> ValidationResult<()> {
         ContentSanitizer::check_for_ansi_escapes(text)?;
         ContentSanitizer::check_for_control_characters(text)?;

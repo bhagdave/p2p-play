@@ -8,7 +8,10 @@ use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, validate_and_log};
+use super::{
+    UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer,
+    validate_and_log,
+};
 
 /// Dispatch `wasm <subcommand>` commands.
 pub async fn handle_wasm_command(
@@ -281,7 +284,11 @@ async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &Er
             ui_logger.log(format!("  IPFS CID: {}", offering.ipfs_cid));
             ui_logger.log(format!(
                 "  Status: {}",
-                if offering.enabled { "enabled" } else { "disabled" }
+                if offering.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
             ));
             ui_logger.log(format!("  Parameters: {}", offering.parameters.len()));
             for param in &offering.parameters {
@@ -290,7 +297,11 @@ async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &Er
                     param.name,
                     param.param_type,
                     param.description,
-                    if param.required { "[required]" } else { "[optional]" }
+                    if param.required {
+                        "[required]"
+                    } else {
+                        "[optional]"
+                    }
                 ));
             }
             ui_logger.log(format!(
@@ -327,7 +338,11 @@ async fn handle_wasm_toggle(args: &[&str], ui_logger: &UILogger, error_logger: &
                 Ok(true) => {
                     ui_logger.log(format!(
                         "{} Offering '{}' is now {}",
-                        if new_state { Icons::check() } else { Icons::cross() },
+                        if new_state {
+                            Icons::check()
+                        } else {
+                            Icons::cross()
+                        },
                         offering.name,
                         if new_state { "enabled" } else { "disabled" }
                     ));
@@ -375,18 +390,15 @@ async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &
 
 async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.len() < 2 {
-        ui_logger.usage(
-            "wasm param add <offering_id> <name>|<type>|<description>|<required>",
-        );
+        ui_logger.usage("wasm param add <offering_id> <name>|<type>|<description>|<required>");
         return;
     }
 
     match args[0] {
         "add" => {
             if args.len() < 3 {
-                ui_logger.usage(
-                    "wasm param add <offering_id> <name>|<type>|<description>|<required>",
-                );
+                ui_logger
+                    .usage("wasm param add <offering_id> <name>|<type>|<description>|<required>");
                 return;
             }
 
@@ -463,9 +475,7 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
             }
         }
         _ => {
-            ui_logger.usage(
-                "wasm param add <offering_id> <name>|<type>|<description>|<required>",
-            );
+            ui_logger.usage("wasm param add <offering_id> <name>|<type>|<description>|<required>");
         }
     }
 }

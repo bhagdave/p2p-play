@@ -1045,8 +1045,8 @@ pub async fn search_stories(
     }
 
     if let Some(days) = query.date_range_days {
-        let cutoff_timestamp = crate::current_unix_timestamp()
-            .saturating_sub((days as u64) * 24 * 60 * 60); // Subtract N days in seconds
+        let cutoff_timestamp =
+            crate::current_unix_timestamp().saturating_sub((days as u64) * 24 * 60 * 60); // Subtract N days in seconds
 
         sql.push_str(" AND s.created_at >= ?");
         params.push(Box::new(cutoff_timestamp));
@@ -1147,8 +1147,8 @@ pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::ty
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    let cutoff_timestamp = crate::current_unix_timestamp()
-        .saturating_sub((days as u64) * 24 * 60 * 60);
+    let cutoff_timestamp =
+        crate::current_unix_timestamp().saturating_sub((days as u64) * 24 * 60 * 60);
 
     let mut stmt = conn.prepare(
         "SELECT id, name, header, body, public, channel, created_at 
@@ -1741,8 +1741,7 @@ pub mod test_utils {
         let conn_arc = super::get_db_connection().await?;
         let conn = conn_arc.lock().await;
 
-        let cutoff = crate::current_unix_timestamp()
-            .saturating_sub(max_age_secs);
+        let cutoff = crate::current_unix_timestamp().saturating_sub(max_age_secs);
 
         let rows_affected = conn.execute(
             "DELETE FROM discovered_wasm_offerings WHERE last_seen_at < ?",

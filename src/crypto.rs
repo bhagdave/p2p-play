@@ -1,8 +1,7 @@
-use crate::errors::CryptoError;
 use crate::constants::{
-    MIN_PUBLIC_KEY_SIZE, MAX_MESSAGE_SIZE, REPLAY_PROTECTION_WINDOW_SECS,
-    ENCRYPTION_CONTEXT
+    ENCRYPTION_CONTEXT, MAX_MESSAGE_SIZE, MIN_PUBLIC_KEY_SIZE, REPLAY_PROTECTION_WINDOW_SECS,
 };
+use crate::errors::CryptoError;
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
     aead::{Aead, AeadCore, KeyInit, OsRng},

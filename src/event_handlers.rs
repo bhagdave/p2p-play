@@ -1,5 +1,5 @@
+use crate::constants::*;
 use crate::content_fetcher::GatewayFetcher;
-use crate::constants::{*};
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
@@ -12,10 +12,9 @@ use crate::handlers::{
     handle_unsubscribe_channel, handle_wasm_command,
 };
 use crate::network::{
-    DirectMessageRequest, DirectMessageResponse, HandshakeRequest,
-    HandshakeResponse, NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour,
-    TOPIC, WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest,
-    WasmExecutionResponse,
+    DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
+    NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour, TOPIC,
+    WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest, WasmExecutionResponse,
 };
 use crate::storage::{load_node_description, save_received_story, upsert_peer_alias};
 use crate::types::{

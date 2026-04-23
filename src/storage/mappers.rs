@@ -42,11 +42,7 @@ where
     T: serde::de::DeserializeOwned,
 {
     serde_json::from_str(json).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(
-            col,
-            rusqlite::types::Type::Text,
-            Box::new(e),
-        )
+        rusqlite::Error::FromSqlConversionFailure(col, rusqlite::types::Type::Text, Box::new(e))
     })
 }
 

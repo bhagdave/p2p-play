@@ -1,14 +1,12 @@
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
-use crate::constants::{*};
+use crate::constants::*;
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
 use crate::handlers::{PeerState, SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
-use crate::network::{
-    HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent,
-};
+use crate::network::{HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent};
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;

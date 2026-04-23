@@ -42,7 +42,9 @@ pub fn collect_rows<T, F>(mapped: MappedRows<'_, F>) -> StorageResult<Vec<T>>
 where
     F: FnMut(&Row<'_>) -> rusqlite::Result<T>,
 {
-    mapped.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    mapped
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(Into::into)
 }
 
 #[cfg(test)]

@@ -94,8 +94,7 @@ async fn test_attempt_bootstrap_empty_peers() {
     // Initialize bootstrap with the config that has empty peers
     let mut bootstrap_config = p2p_play::types::BootstrapConfig::new();
     bootstrap_config.clear_peers(); // Clear the default peers to test empty case
-    bootstrap
-        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -136,8 +135,7 @@ async fn test_attempt_bootstrap_invalid_multiaddr() {
     bootstrap_config.clear_peers(); // Clear the default peers
     bootstrap_config.add_peer("invalid-multiaddr".to_string());
     bootstrap_config.add_peer("also-invalid".to_string());
-    bootstrap
-        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -179,8 +177,7 @@ async fn test_attempt_bootstrap_valid_multiaddr_no_peer_id() {
     let mut bootstrap_config = p2p_play::types::BootstrapConfig::new();
     bootstrap_config.clear_peers(); // Clear the default peers
     bootstrap_config.add_peer("/ip4/127.0.0.1/tcp/8080".to_string()); // Valid multiaddr but no peer ID
-    bootstrap
-        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -230,8 +227,7 @@ async fn test_attempt_bootstrap_valid_peer() {
 
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
-    bootstrap
-        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -279,8 +275,7 @@ async fn test_attempt_bootstrap_mixed_peers() {
 
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
-    bootstrap
-        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
 
     let result = bootstrap
         .attempt_bootstrap(&mut swarm, &bootstrap_logger, &error_logger)
@@ -327,8 +322,7 @@ async fn test_attempt_bootstrap_increments_retry_count() {
 
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
-    bootstrap
-        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
 
     // First attempt
     let result1 = bootstrap
@@ -392,8 +386,7 @@ async fn test_attempt_bootstrap_updates_status_timing() {
 
     // Initialize bootstrap with the config
     let bootstrap_config = p2p_play::types::BootstrapConfig::new();
-    bootstrap
-        .initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&bootstrap_config, &bootstrap_logger, &error_logger);
 
     let before_attempt = std::time::Instant::now();
     let result = bootstrap
@@ -433,8 +426,7 @@ async fn test_run_auto_bootstrap_with_retry_notifies_ui_on_failure() {
     // Initialise with a config that has no valid peers so attempt_bootstrap fails
     let mut config = p2p_play::types::BootstrapConfig::new();
     config.clear_peers();
-    bootstrap
-        .initialise(&config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&config, &bootstrap_logger, &error_logger);
 
     p2p_play::bootstrap::run_auto_bootstrap_with_retry(
         &mut bootstrap,
@@ -492,8 +484,7 @@ async fn test_run_auto_bootstrap_with_retry_exhausted_shows_config_hint() {
         retry_interval_ms: 0,
         bootstrap_timeout_ms: 30000,
     };
-    bootstrap
-        .initialise(&config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&config, &bootstrap_logger, &error_logger);
 
     p2p_play::bootstrap::run_auto_bootstrap_with_retry(
         &mut bootstrap,
@@ -541,8 +532,7 @@ async fn test_bootstrap_retry_message_includes_max_count() {
     // Config with no peers so bootstrap fails immediately, but retries remain (max=10)
     let mut config = p2p_play::types::BootstrapConfig::new();
     config.clear_peers();
-    bootstrap
-        .initialise(&config, &bootstrap_logger, &error_logger);
+    bootstrap.initialise(&config, &bootstrap_logger, &error_logger);
 
     p2p_play::bootstrap::run_auto_bootstrap_with_retry(
         &mut bootstrap,

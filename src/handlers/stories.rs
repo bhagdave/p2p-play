@@ -385,11 +385,7 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
                         } else {
                             String::new()
                         };
-                        ui_logger.log(format!(
-                            "{}{}",
-                            format_story_line(story),
-                            relevance
-                        ));
+                        ui_logger.log(format!("{}{}", format_story_line(story), relevance));
                     }
                 }
             }
@@ -399,7 +395,9 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
             }
         }
     } else {
-        ui_logger.usage("search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]");
+        ui_logger.usage(
+            "search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]",
+        );
     }
 }
 

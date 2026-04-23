@@ -3,8 +3,8 @@
 //! This module provides functionality to fetch WASM binaries from IPFS,
 //! validate them, and execute them with resource limits (fuel/memory).
 
+use crate::constants::*;
 use crate::content_fetcher::ContentFetcher;
-use crate::constants::{*};
 use crate::types::WasmConfig;
 use bytes::Bytes;
 use lru::LruCache;
@@ -16,7 +16,6 @@ use wasmtime_wasi::preview1;
 
 // Re-export so callers can still import WasmExecutionError from this module.
 pub use crate::errors::WasmExecutionError;
-
 
 /// Result type for WASM execution operations
 pub type WasmResult<T> = Result<T, WasmExecutionError>;

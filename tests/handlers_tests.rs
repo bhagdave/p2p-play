@@ -1657,10 +1657,10 @@ fn test_validate_direct_message_at_max_length() {
 #[tokio::test]
 async fn test_handle_direct_message_too_long() {
     use libp2p::identity::Keypair;
+    use p2p_play::constants::ContentLimits;
     use p2p_play::crypto::CryptoService;
     use p2p_play::relay::RelayService;
     use p2p_play::types::RelayConfig;
-    use p2p_play::constants::ContentLimits;
     use std::collections::HashMap;
 
     let (sender, mut receiver) = mpsc::unbounded_channel::<String>();

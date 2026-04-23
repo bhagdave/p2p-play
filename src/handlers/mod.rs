@@ -32,10 +32,7 @@ pub use config::{
     handle_config_auto_share, handle_config_sync_days, handle_create_description,
     handle_get_description, handle_help, handle_reload_config, handle_show_description,
 };
-pub use messaging::{
-    handle_direct_message_with_relay,
-    handle_set_name,
-};
+pub use messaging::{handle_direct_message_with_relay, handle_set_name};
 // Used by integration tests (tests/handlers_tests.rs) via the library API.
 #[allow(unused_imports)]
 pub use messaging::parse_direct_message_command;
@@ -248,8 +245,9 @@ pub(super) async fn load_config_or_log(
     match crate::storage::load_unified_network_config().await {
         Ok(config) => Some(config),
         Err(e) => {
-            error_logger
-                .log_error(&format!("Failed to load config for {operation_context}: {e}"));
+            error_logger.log_error(&format!(
+                "Failed to load config for {operation_context}: {e}"
+            ));
             ui_logger.log(format!(
                 "{} Failed to load configuration",
                 crate::types::Icons::cross()
@@ -458,8 +456,7 @@ mod tests {
     #[test]
     fn test_extract_peer_id_from_multiaddr_absent() {
         use std::str::FromStr;
-        let addr =
-            libp2p::Multiaddr::from_str("/ip4/127.0.0.1/tcp/4001").expect("valid multiaddr");
+        let addr = libp2p::Multiaddr::from_str("/ip4/127.0.0.1/tcp/4001").expect("valid multiaddr");
         assert!(extract_peer_id_from_multiaddr(&addr).is_none());
     }
 }
