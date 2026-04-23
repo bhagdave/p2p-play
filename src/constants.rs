@@ -2,6 +2,7 @@
 //!
 
 pub const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
+pub const ERRORS_LOG_FILE: &str = "errors.log";
 pub const WASM_MAGIC: &[u8] = b"\0asm";
 pub const WASM_VERSION: &[u8] = &[0x01, 0x00, 0x00, 0x00];
 pub const WASM_HEADER_LEN: usize = 8;

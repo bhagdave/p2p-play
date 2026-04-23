@@ -26,7 +26,7 @@ pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
-use constants::UNIFIED_CONFIG_FILE;
+use constants::{BOOTSTRAP_LOG_FILE, UNIFIED_CONFIG_FILE, ERRORS_LOG_FILE};
 use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
@@ -49,22 +49,17 @@ use log::error;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
-use constants::BOOTSTRAP_LOG_FILE;
-
-/// Peer-to-peer story sharing application.
 #[derive(Parser, Debug)]
 #[command(name = "p2p-play", about = "Peer-to-peer story sharing application")]
 struct Cli {
-    /// Directory for storing data files (database, logs, config, and peer key).
-    /// The directory is created automatically if it does not exist.
     #[arg(long, value_name = "PATH")]
     data_dir: Option<std::path::PathBuf>,
 }
 
-// Synchronous entry-point so that the Tokio runtime is started *after*
-// the data directory is resolved and the DATA_DIR env var is set.
-// This guarantees that the env-var write happens before any worker threads
-// are spawned, making the `set_var` call free of data races.
+// Synchronous entry-point so that the Tokio runtime startafter*
+// the data dir is resolved and  env var set.
+// To ensre that the env-var write happens before  worker threads
+// are spawned, making `set_var` free of races.
 fn main() {
     let cli = Cli::parse();
 
@@ -77,8 +72,6 @@ fn main() {
             );
             std::process::exit(1);
         }
-        // Canonicalize to an absolute path so relative --data-dir values work
-        // regardless of later working-directory changes.
         let canonical = match std::fs::canonicalize(&data_dir) {
             Ok(p) => p,
             Err(e) => {
@@ -97,7 +90,7 @@ fn main() {
         }
     }
 
-    // Build the Tokio runtime manually (equivalent to #[tokio::main]).
+    // Build the Tokio runtime manually 
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -150,13 +143,13 @@ async fn run_app() -> AppResult<()> {
     };
     let mut peer_state = PeerState::new(local_peer_name);
 
-    let errors_log_is_new = !std::path::Path::new(&get_data_path("errors.log")).exists();
+    let errors_log_is_new = !std::path::Path::new(&get_data_path(ERRORS_LOG_FILE)).exists();
     let bootstrap_log_is_new = !std::path::Path::new(&get_data_path(BOOTSTRAP_LOG_FILE)).exists();
     let (channels, loggers) = setup_communication_channels();
     if errors_log_is_new {
         app.add_to_log(format!(
             "Logging errors to: {}",
-            get_data_path("errors.log")
+            get_data_path(ERRORS_LOG_FILE)
         ));
     }
     if bootstrap_log_is_new {
@@ -312,9 +305,6 @@ async fn reconnect_stored_peers(
     swarm: &mut Swarm<impl libp2p::swarm::NetworkBehaviour>,
     app: &mut App,
 ) {
-    // Reconnect to peers that were previously dialled (outbound connections stored in DB).
-    // We silently skip peers whose multiaddr cannot be parsed or dialled — failures here
-    // are non-fatal and will be retried naturally via mDNS/Kademlia discovery.
     match storage::get_outbound_peers(10).await {
         Ok(addrs) => {
             for addr_str in addrs {
