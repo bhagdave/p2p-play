@@ -241,10 +241,6 @@ pub async fn handle_config_sync_days(cmd: &str, ui_logger: &UILogger, error_logg
     }
 }
 
-// ---------------------------------------------------------------------------
-// Description handlers
-// ---------------------------------------------------------------------------
-
 pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
     if parts.len() < 3 {
