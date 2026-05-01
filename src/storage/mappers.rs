@@ -32,26 +32,15 @@ pub fn map_row_to_channel_unread_count(row: &Row) -> Result<(String, usize), rus
     Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as usize))
 }
 
-/// Deserializes a JSON text column into `T`, mapping the error to a
-/// [`rusqlite::Error::FromSqlConversionFailure`].
-///
-/// Internal helper for the WASM row mappers in this file.  Not exported because
-/// callers outside this module should go through the row-mapper functions.
 fn deserialize_json_column<T>(col: usize, json: &str) -> Result<T, rusqlite::Error>
 where
     T: serde::de::DeserializeOwned,
 {
     serde_json::from_str(json).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(
-            col,
-            rusqlite::types::Type::Text,
-            Box::new(e),
-        )
+        rusqlite::Error::FromSqlConversionFailure(col, rusqlite::types::Type::Text, Box::new(e))
     })
 }
 
-/// Map a database row to a WasmOffering struct
-/// Expected columns: id, name, description, ipfs_cid, parameters_json, resource_requirements_json, version, enabled, created_at, updated_at
 pub fn map_row_to_wasm_offering(row: &Row) -> Result<WasmOffering, rusqlite::Error> {
     let parameters_json: String = row.get(4)?;
     let resource_requirements_json: String = row.get(5)?;
@@ -74,8 +63,6 @@ pub fn map_row_to_wasm_offering(row: &Row) -> Result<WasmOffering, rusqlite::Err
     })
 }
 
-/// Map a database row to a WasmOffering from the discovered_wasm_offerings table
-/// Expected columns: id, peer_id, name, description, ipfs_cid, parameters_json, resource_requirements_json, version, discovered_at, last_seen_at
 pub fn map_row_to_discovered_wasm_offering(
     row: &Row,
 ) -> Result<(String, WasmOffering), rusqlite::Error> {

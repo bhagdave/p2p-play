@@ -1,3 +1,6 @@
+use crate::constants::{
+    ENCRYPTION_CONTEXT, MAX_MESSAGE_SIZE, MIN_PUBLIC_KEY_SIZE, REPLAY_PROTECTION_WINDOW_SECS,
+};
 use crate::errors::CryptoError;
 use chacha20poly1305::{
     ChaCha20Poly1305, Key, Nonce,
@@ -10,12 +13,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256, Sha512};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret as X25519Secret};
 use zeroize::{Zeroize, ZeroizeOnDrop};
-
-// Security constants
-const ENCRYPTION_CONTEXT: &[u8] = b"p2p-play-encryption";
-const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB limit
-const REPLAY_PROTECTION_WINDOW_SECS: u64 = 300; // 5 minutes
-const MIN_PUBLIC_KEY_SIZE: usize = 32; // Minimum expected public key size
 
 #[derive(ZeroizeOnDrop)]
 struct SecureKey([u8; 32]);

@@ -1,5 +1,3 @@
-//! Story command handlers: create, list, publish, show, delete, search, filter, export.
-
 use crate::error_logger::ErrorLogger;
 use crate::storage::{
     create_new_story_with_channel, delete_local_story, filter_stories_by_channel,
@@ -14,11 +12,6 @@ use libp2p::swarm::Swarm;
 use super::{UILogger, validate_and_log};
 use crate::network::{StoryBehaviour, TOPIC};
 
-// ---------------------------------------------------------------------------
-// Shared formatting helpers
-// ---------------------------------------------------------------------------
-
-/// Returns the public/private icon + label string for a story.
 pub(super) fn format_story_status(public: bool) -> String {
     if public {
         format!("{} Public", Icons::book())
@@ -27,7 +20,6 @@ pub(super) fn format_story_status(public: bool) -> String {
     }
 }
 
-/// One-line story summary: `<status> | Channel: <ch> | <id>: <name>`.
 pub(super) fn format_story_line(story: &Story) -> String {
     format!(
         "{} | Channel: {} | {}: {}",
@@ -38,7 +30,6 @@ pub(super) fn format_story_line(story: &Story) -> String {
     )
 }
 
-/// One-line story summary without channel: `<status> | <id>: <name>`.
 pub(super) fn format_story_line_no_channel(story: &Story) -> String {
     format!(
         "{} | {}: {}",
@@ -47,10 +38,6 @@ pub(super) fn format_story_line_no_channel(story: &Story) -> String {
         story.name
     )
 }
-
-// ---------------------------------------------------------------------------
-// Handlers
-// ---------------------------------------------------------------------------
 
 pub async fn handle_list_stories(
     cmd: &str,
@@ -385,11 +372,7 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
                         } else {
                             String::new()
                         };
-                        ui_logger.log(format!(
-                            "{}{}",
-                            format_story_line(story),
-                            relevance
-                        ));
+                        ui_logger.log(format!("{}{}", format_story_line(story), relevance));
                     }
                 }
             }
@@ -399,7 +382,9 @@ pub async fn handle_search_stories(cmd: &str, ui_logger: &UILogger, error_logger
             }
         }
     } else {
-        ui_logger.usage("search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]");
+        ui_logger.usage(
+            "search <query> [channel:<channel>] [author:<peer>] [recent:<days>] [public|private]",
+        );
     }
 }
 

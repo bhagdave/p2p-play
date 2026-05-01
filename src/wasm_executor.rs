@@ -3,6 +3,7 @@
 //! This module provides functionality to fetch WASM binaries from IPFS,
 //! validate them, and execute them with resource limits (fuel/memory).
 
+use crate::constants::*;
 use crate::content_fetcher::ContentFetcher;
 use crate::types::WasmConfig;
 use bytes::Bytes;
@@ -15,20 +16,6 @@ use wasmtime_wasi::preview1;
 
 // Re-export so callers can still import WasmExecutionError from this module.
 pub use crate::errors::WasmExecutionError;
-
-/// WASM magic bytes: "\0asm"
-const WASM_MAGIC: &[u8] = b"\0asm";
-
-/// Expected WASM version bytes (version 1)
-const WASM_VERSION: &[u8] = &[0x01, 0x00, 0x00, 0x00];
-
-/// Length of a valid WASM binary header in bytes (4-byte magic + 4-byte version)
-const WASM_HEADER_LEN: usize = 8;
-
-/// Size of each I/O pipe buffer in bytes (64 KiB)
-const PIPE_BUFFER_SIZE: usize = 64 * 1024;
-
-const BYTES_PER_MB: usize = 1024 * 1024;
 
 /// Result type for WASM execution operations
 pub type WasmResult<T> = Result<T, WasmExecutionError>;
@@ -181,6 +168,7 @@ impl<F: ContentFetcher> WasmExecutor<F> {
     }
 
     /// Create a new WASM executor with a custom executor configuration
+    #[allow(dead_code)]
     pub fn with_config(fetcher: Arc<F>, config: WasmExecutorConfig) -> WasmResult<Self> {
         Self::with_configs(fetcher, config, WasmConfig::new())
     }
@@ -250,12 +238,11 @@ impl<F: ContentFetcher> WasmExecutor<F> {
     /// the compilation step.
     async fn fetch_and_compile(&self, cid: &str) -> WasmResult<Module> {
         // Return a clone of the cached module if one exists
-        if let Some(cache) = &self.module_cache {
-            if let Ok(mut guard) = cache.lock() {
-                if let Some(module) = guard.get(cid) {
-                    return Ok(module.clone());
-                }
-            }
+        if let Some(cache) = &self.module_cache
+            && let Ok(mut guard) = cache.lock()
+            && let Some(module) = guard.get(cid)
+        {
+            return Ok(module.clone());
         }
 
         let wasm_bytes = self
@@ -270,10 +257,10 @@ impl<F: ContentFetcher> WasmExecutor<F> {
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
 
         // Store the freshly compiled module in the cache
-        if let Some(cache) = &self.module_cache {
-            if let Ok(mut guard) = cache.lock() {
-                guard.put(cid.to_string(), module.clone());
-            }
+        if let Some(cache) = &self.module_cache
+            && let Ok(mut guard) = cache.lock()
+        {
+            guard.put(cid.to_string(), module.clone());
         }
 
         Ok(module)
@@ -407,16 +394,12 @@ fn classify_trap_error(e: anyhow::Error, fuel_consumed: u64) -> WasmResult<i32> 
     }
 
     // Typed trap: fuel exhaustion
-    if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
-        match trap {
-            wasmtime::Trap::OutOfFuel => {
-                return Err(WasmExecutionError::FuelExhausted {
-                    consumed: fuel_consumed,
-                });
-            }
-            _ => {}
+    if let Some(trap) = e.downcast_ref::<wasmtime::Trap>()
+        && trap == &wasmtime::Trap::OutOfFuel {
+            return Err(WasmExecutionError::FuelExhausted {
+                consumed: fuel_consumed,
+            });
         }
-    }
 
     // String-based fallback for cases not covered by typed downcasts
     let error_str = e.to_string();

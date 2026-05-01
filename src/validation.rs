@@ -2,29 +2,7 @@
 /// capability-exchange parameter declarations.  Stored as a module-level
 /// constant so the list is easy to extend and is not rebuilt on every call
 /// to [`ContentValidator::validate_wasm_param_type`].
-const WASM_PARAM_TYPES: &[&str] = &["string", "bytes", "json", "int", "float", "bool", "file"];
-
-pub struct ContentLimits;
-
-impl ContentLimits {
-    pub const STORY_NAME_MAX: usize = 100;
-    pub const STORY_HEADER_MAX: usize = 200;
-    pub const STORY_BODY_MAX: usize = 10_000;
-    pub const CHANNEL_NAME_MAX: usize = 50;
-    pub const CHANNEL_DESCRIPTION_MAX: usize = 200;
-    pub const PEER_NAME_MAX: usize = 30;
-    pub const DIRECT_MESSAGE_MAX: usize = 1_000;
-    pub const NODE_DESCRIPTION_MAX: usize = 2_000;
-
-    // WASM offering limits
-    pub const WASM_OFFERING_NAME_MAX: usize = 100;
-    pub const WASM_OFFERING_DESCRIPTION_MAX: usize = 500;
-    pub const WASM_IPFS_CID_MAX: usize = 100;
-    pub const WASM_VERSION_MAX: usize = 20;
-    pub const WASM_PARAM_NAME_MAX: usize = 50;
-    pub const WASM_PARAM_TYPE_MAX: usize = 20;
-}
-
+use crate::constants::*;
 #[derive(Debug, Clone, PartialEq)]
 pub enum ValidationError {
     TooLong {
@@ -36,8 +14,11 @@ pub enum ValidationError {
         invalid_chars: Vec<char>,
     },
     ContainsControlCharacters,
+    #[allow(dead_code)]
     ContainsAnsiEscapes,
+    #[allow(dead_code)]
     ContainsBinaryData,
+    #[allow(dead_code)]
     InvalidFormat {
         expected: String,
     },
@@ -139,12 +120,14 @@ impl ContentSanitizer {
         matches!(ch, ' ' | '\t' | '\n' | '\r')
     }
 
+    #[allow(dead_code)]
     pub fn strip_control_characters(text: &str) -> String {
         text.chars()
             .filter(|&ch| !ch.is_control() || Self::is_allowed_whitespace(ch))
             .collect()
     }
 
+    #[allow(dead_code)]
     pub fn strip_binary_data(text: &str) -> String {
         text.chars()
             .filter(|&ch| ch != '\0' && (!ch.is_control() || Self::is_allowed_whitespace(ch)))
@@ -400,17 +383,14 @@ impl ContentValidator {
 
     /// Validate a WASM parameter name
     pub fn validate_wasm_param_name(name: &str) -> ValidationResult<String> {
-        let sanitized = Self::validate_text(
-            name,
-            ContentLimits::WASM_PARAM_NAME_MAX,
-            None,
-            true,
-        )?;
+        let sanitized = Self::validate_text(name, ContentLimits::WASM_PARAM_NAME_MAX, None, true)?;
 
-        if !sanitized.chars().all(|ch| ch.is_alphanumeric() || ch == '_') {
+        if !sanitized
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || ch == '_')
+        {
             return Err(ValidationError::InvalidFormat {
-                expected: "Parameter name using only letters, numbers, and underscores"
-                    .to_string(),
+                expected: "Parameter name using only letters, numbers, and underscores".to_string(),
             });
         }
 
@@ -467,6 +447,7 @@ impl ContentValidator {
     ///
     /// Use this to reject peer content that arrives already dirty, which may
     /// indicate a misbehaving or malicious peer.
+    #[allow(dead_code)]
     pub fn validate_received_content(text: &str) -> ValidationResult<()> {
         ContentSanitizer::check_for_ansi_escapes(text)?;
         ContentSanitizer::check_for_control_characters(text)?;

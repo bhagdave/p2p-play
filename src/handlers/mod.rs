@@ -1,6 +1,6 @@
-//! Command handlers for the p2p-play application.
+//! Command handlers
 //!
-//! This module is split into domain-focused submodules:
+//! This module is split into domain submodules:
 //!
 //! | Submodule      | Responsibility                                      |
 //! |----------------|-----------------------------------------------------|
@@ -32,10 +32,7 @@ pub use config::{
     handle_config_auto_share, handle_config_sync_days, handle_create_description,
     handle_get_description, handle_help, handle_reload_config, handle_show_description,
 };
-pub use messaging::{
-    handle_direct_message_with_relay,
-    handle_set_name,
-};
+pub use messaging::{handle_direct_message_with_relay, handle_set_name};
 // Used by integration tests (tests/handlers_tests.rs) via the library API.
 #[allow(unused_imports)]
 pub use messaging::parse_direct_message_command;
@@ -45,10 +42,6 @@ pub use stories::{
     handle_show_story,
 };
 pub use wasm::handle_wasm_command;
-
-// ---------------------------------------------------------------------------
-// Shared infrastructure
-// ---------------------------------------------------------------------------
 
 use crate::error_logger::ErrorLogger;
 use libp2p::PeerId;
@@ -70,11 +63,6 @@ impl UILogger {
         let _ = self.sender.send(message);
     }
 
-    /// Logs a `Usage: <text>` line.  Prefer this over inline `.log("Usage: ...")` calls
-    /// so that the wording is consistent and easy to grep.
-    ///
-    /// `pub(crate)` because callers in `event_handlers` (outside the `handlers` module
-    /// hierarchy) also need to emit usage hints via a `UILogger` reference.
     pub(crate) fn usage(&self, text: &str) {
         self.log(format!("Usage: {text}"));
     }
@@ -112,7 +100,6 @@ impl SortedPeerNamesCache {
     }
 }
 
-/// Groups peer-tracking state threaded through the event loop.
 pub struct PeerState {
     pub peer_names: HashMap<PeerId, String>,
     pub local_peer_name: Option<String>,
@@ -129,16 +116,6 @@ impl PeerState {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Module-internal shared helpers
-// (pub(super) so submodules can call them via `super::`)
-// ---------------------------------------------------------------------------
-
-/// Validates input and logs a user-facing error if validation fails.
-///
-/// # Error policy
-/// User input errors are shown in the UI but not written to the error log,
-/// because they are expected and should not clutter the operational log.
 pub(super) fn validate_and_log<T>(
     validator_result: Result<T, crate::validation::ValidationError>,
     error_type: &str,
@@ -153,10 +130,6 @@ pub(super) fn validate_and_log<T>(
     }
 }
 
-/// Loads the unified config, applies `modifier`, and saves it.  
-/// On failure, logs to both `error_logger` (operational) and `ui_logger` (user-facing).
-///
-/// Returns `true` on success, `false` on any error.
 pub(super) async fn modify_config<F>(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
@@ -196,10 +169,6 @@ where
     }
 }
 
-/// Loads the bootstrap config, applies `modifier`, and saves it.
-///
-/// `modifier` returns `false` to indicate that no save is needed (e.g. the peer
-/// already existed).  Returns `true` only when the save succeeded.
 pub(super) async fn modify_bootstrap_config<F>(
     ui_logger: &UILogger,
     operation_name: &str,
@@ -235,11 +204,6 @@ where
     }
 }
 
-/// Loads the unified network config and returns it.
-///
-/// On failure, logs to both `error_logger` (operational) and `ui_logger` (user-facing) and
-/// returns `None`.  Callers can use `?`-style early-return on `None` instead of repeating the
-/// three-line error block every time a status sub-command needs the config.
 pub(super) async fn load_config_or_log(
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
@@ -248,8 +212,9 @@ pub(super) async fn load_config_or_log(
     match crate::storage::load_unified_network_config().await {
         Ok(config) => Some(config),
         Err(e) => {
-            error_logger
-                .log_error(&format!("Failed to load config for {operation_context}: {e}"));
+            error_logger.log_error(&format!(
+                "Failed to load config for {operation_context}: {e}"
+            ));
             ui_logger.log(format!(
                 "{} Failed to load configuration",
                 crate::types::Icons::cross()
@@ -259,12 +224,10 @@ pub(super) async fn load_config_or_log(
     }
 }
 
-/// Returns the current Unix timestamp in seconds.
 pub(super) fn current_unix_timestamp() -> u64 {
     crate::current_unix_timestamp()
 }
 
-/// Looks up a connected peer by display alias.  Returns `None` when not found.
 pub(super) fn resolve_peer_by_alias(
     alias: &str,
     peer_names: &HashMap<PeerId, String>,
@@ -275,10 +238,6 @@ pub(super) fn resolve_peer_by_alias(
         .map(|(peer_id, _)| *peer_id)
 }
 
-/// Resolves a peer alias **and** checks that the swarm is currently connected to it.
-///
-/// On success returns `Some(PeerId)`.  On failure logs an appropriate user-facing message
-/// and returns `None`.
 pub(super) fn resolve_connected_peer(
     alias: &str,
     peer_names: &HashMap<PeerId, String>,
@@ -312,7 +271,6 @@ pub(super) fn resolve_connected_peer(
     }
 }
 
-/// Extracts the `PeerId` from a `/p2p/<peer_id>` component of a multiaddr.
 pub fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId> {
     for protocol in addr.iter() {
         if let libp2p::multiaddr::Protocol::P2p(peer_id) = protocol {
@@ -322,14 +280,12 @@ pub fn extract_peer_id_from_multiaddr(addr: &libp2p::Multiaddr) -> Option<PeerId
     None
 }
 
-/// Updates the unread-story counts displayed in the TUI.
 pub async fn refresh_unread_counts_for_ui(app: &mut crate::ui::App, peer_id: &str) {
     if let Ok(unread_counts) = crate::storage::get_unread_counts_by_channel(peer_id).await {
         app.update_unread_counts(unread_counts);
     }
 }
 
-/// Dials a multiaddr and adds all already-connected peers to the floodsub view.
 pub async fn establish_direct_connection(
     swarm: &mut libp2p::Swarm<crate::network::StoryBehaviour>,
     addr_str: &str,
@@ -338,7 +294,6 @@ pub async fn establish_direct_connection(
     establish_direct_connection_impl(swarm, addr_str, ui_logger, |s, a| s.dial(a)).await;
 }
 
-/// Inner implementation that accepts an injectable dial function for testability.
 pub async fn establish_direct_connection_impl<F>(
     swarm: &mut libp2p::Swarm<crate::network::StoryBehaviour>,
     addr_str: &str,
@@ -458,8 +413,7 @@ mod tests {
     #[test]
     fn test_extract_peer_id_from_multiaddr_absent() {
         use std::str::FromStr;
-        let addr =
-            libp2p::Multiaddr::from_str("/ip4/127.0.0.1/tcp/4001").expect("valid multiaddr");
+        let addr = libp2p::Multiaddr::from_str("/ip4/127.0.0.1/tcp/4001").expect("valid multiaddr");
         assert!(extract_peer_id_from_multiaddr(&addr).is_none());
     }
 }

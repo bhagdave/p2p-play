@@ -1,5 +1,5 @@
 use crate::bootstrap_logger::BootstrapLogger;
-use crate::constants::BOOTSTRAP_LOG_FILE;
+use crate::constants::{BOOTSTRAP_LOG_FILE, UNIFIED_CONFIG_FILE};
 use crate::handlers::{UILogger, extract_peer_id_from_multiaddr};
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
@@ -7,8 +7,6 @@ use libp2p::swarm::Swarm;
 use log::warn;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum BootstrapStatus {
@@ -64,7 +62,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Returns `true` if the bootstrap is currently in the `InProgress` state.
     pub fn is_in_progress(&self) -> bool {
         matches!(
             self.state.lock().unwrap().status,
@@ -275,7 +272,6 @@ impl AutoBootstrap {
         }
     }
 
-    /// Returns a short, stable label for display in the TUI status bar.
     pub fn get_bootstrap_short_status(&self) -> String {
         let state = self.state.lock().unwrap();
         match &state.status {

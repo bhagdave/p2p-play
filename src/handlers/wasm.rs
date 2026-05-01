@@ -1,16 +1,21 @@
-//! WASM capability command handlers.
-
 use crate::error_logger::ErrorLogger;
 use crate::network::{PEER_ID, StoryBehaviour, WasmCapabilitiesRequest, WasmExecutionRequest};
-use crate::types::Icons;
+use crate::storage::{
+    create_wasm_offering, delete_wasm_offering, get_all_cached_wasm_offerings,
+    get_cached_wasm_offerings_by_peer, get_wasm_offering_by_id, read_wasm_offerings,
+    toggle_wasm_offering,
+};
+use crate::types::{Icons, WasmParameter};
 use crate::validation::ContentValidator;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, validate_and_log};
+use super::{
+    UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer,
+    validate_and_log,
+};
 
-/// Dispatch `wasm <subcommand>` commands.
 pub async fn handle_wasm_command(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -51,10 +56,6 @@ pub async fn handle_wasm_command(
         _ => show_wasm_usage(ui_logger),
     }
 }
-
-// ---------------------------------------------------------------------------
-// Private helpers
-// ---------------------------------------------------------------------------
 
 fn show_wasm_usage(ui_logger: &UILogger) {
     ui_logger.log("WASM Commands:".to_string());
@@ -159,7 +160,7 @@ async fn handle_wasm_create(args: &[&str], ui_logger: &UILogger, error_logger: &
         validated_version,
     );
 
-    match crate::storage::create_wasm_offering(&offering).await {
+    match create_wasm_offering(&offering).await {
         Ok(_) => {
             ui_logger.log(format!(
                 "{} WASM offering '{}' created successfully (ID: {})",
@@ -175,7 +176,6 @@ async fn handle_wasm_create(args: &[&str], ui_logger: &UILogger, error_logger: &
     }
 }
 
-/// Print one offering row.
 fn print_offering(offering: &crate::types::WasmOffering, ui_logger: &UILogger) {
     let status = if offering.enabled {
         format!("{} enabled", Icons::check())
@@ -210,7 +210,7 @@ async fn handle_wasm_list(args: &[&str], ui_logger: &UILogger, error_logger: &Er
 }
 
 async fn print_local_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    match crate::storage::read_wasm_offerings().await {
+    match read_wasm_offerings().await {
         Ok(offerings) => {
             ui_logger.log(format!("Local WASM Offerings ({}):", offerings.len()));
             if offerings.is_empty() {
@@ -229,7 +229,7 @@ async fn print_local_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger)
 }
 
 async fn print_remote_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger) {
-    match crate::storage::get_all_cached_wasm_offerings().await {
+    match get_all_cached_wasm_offerings().await {
         Ok(offerings) => {
             ui_logger.log(format!("Discovered WASM Offerings ({}):", offerings.len()));
             if offerings.is_empty() {
@@ -271,7 +271,7 @@ async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &Er
 
     let id = args[0];
 
-    match crate::storage::get_wasm_offering_by_id(id).await {
+    match get_wasm_offering_by_id(id).await {
         Ok(Some(offering)) => {
             ui_logger.log(format!("{} WASM Offering Details:", Icons::chart()));
             ui_logger.log(format!("  ID: {}", offering.id));
@@ -281,7 +281,11 @@ async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &Er
             ui_logger.log(format!("  IPFS CID: {}", offering.ipfs_cid));
             ui_logger.log(format!(
                 "  Status: {}",
-                if offering.enabled { "enabled" } else { "disabled" }
+                if offering.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
             ));
             ui_logger.log(format!("  Parameters: {}", offering.parameters.len()));
             for param in &offering.parameters {
@@ -290,7 +294,11 @@ async fn handle_wasm_show(args: &[&str], ui_logger: &UILogger, error_logger: &Er
                     param.name,
                     param.param_type,
                     param.description,
-                    if param.required { "[required]" } else { "[optional]" }
+                    if param.required {
+                        "[required]"
+                    } else {
+                        "[optional]"
+                    }
                 ));
             }
             ui_logger.log(format!(
@@ -320,14 +328,18 @@ async fn handle_wasm_toggle(args: &[&str], ui_logger: &UILogger, error_logger: &
 
     let id = args[0];
 
-    match crate::storage::get_wasm_offering_by_id(id).await {
+    match get_wasm_offering_by_id(id).await {
         Ok(Some(offering)) => {
             let new_state = !offering.enabled;
-            match crate::storage::toggle_wasm_offering(id, new_state).await {
+            match toggle_wasm_offering(id, new_state).await {
                 Ok(true) => {
                     ui_logger.log(format!(
                         "{} Offering '{}' is now {}",
-                        if new_state { Icons::check() } else { Icons::cross() },
+                        if new_state {
+                            Icons::check()
+                        } else {
+                            Icons::cross()
+                        },
                         offering.name,
                         if new_state { "enabled" } else { "disabled" }
                     ));
@@ -359,7 +371,7 @@ async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &
 
     let id = args[0];
 
-    match crate::storage::delete_wasm_offering(id).await {
+    match delete_wasm_offering(id).await {
         Ok(true) => {
             ui_logger.log(format!("{} Offering deleted successfully", Icons::check()));
         }
@@ -375,18 +387,15 @@ async fn handle_wasm_delete(args: &[&str], ui_logger: &UILogger, error_logger: &
 
 async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if args.len() < 2 {
-        ui_logger.usage(
-            "wasm param add <offering_id> <name>|<type>|<description>|<required>",
-        );
+        ui_logger.usage("wasm param add <offering_id> <name>|<type>|<description>|<required>");
         return;
     }
 
     match args[0] {
         "add" => {
             if args.len() < 3 {
-                ui_logger.usage(
-                    "wasm param add <offering_id> <name>|<type>|<description>|<required>",
-                );
+                ui_logger
+                    .usage("wasm param add <offering_id> <name>|<type>|<description>|<required>");
                 return;
             }
 
@@ -425,9 +434,9 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
 
             let required = matches!(required_str.as_str(), "true" | "yes" | "1" | "required");
 
-            match crate::storage::get_wasm_offering_by_id(offering_id).await {
+            match get_wasm_offering_by_id(offering_id).await {
                 Ok(Some(mut offering)) => {
-                    let new_param = crate::types::WasmParameter::new(
+                    let new_param = WasmParameter::new(
                         validated_name.clone(),
                         validated_type,
                         param_desc.to_string(),
@@ -463,9 +472,7 @@ async fn handle_wasm_param(args: &[&str], ui_logger: &UILogger, error_logger: &E
             }
         }
         _ => {
-            ui_logger.usage(
-                "wasm param add <offering_id> <name>|<type>|<description>|<required>",
-            );
+            ui_logger.usage("wasm param add <offering_id> <name>|<type>|<description>|<required>");
         }
     }
 }
@@ -534,19 +541,18 @@ async fn handle_wasm_run(
         None => return,
     };
 
-    let cached_offerings =
-        match crate::storage::get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
-            Ok(offerings) => offerings,
-            Err(e) => {
-                error_logger.log_error(&format!("Failed to get cached offerings: {e}"));
-                ui_logger.log(format!(
-                    "{} Failed to find offering. Try 'wasm query {}' first.",
-                    Icons::cross(),
-                    peer_alias
-                ));
-                return;
-            }
-        };
+    let cached_offerings = match get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
+        Ok(offerings) => offerings,
+        Err(e) => {
+            error_logger.log_error(&format!("Failed to get cached offerings: {e}"));
+            ui_logger.log(format!(
+                "{} Failed to find offering. Try 'wasm query {}' first.",
+                Icons::cross(),
+                peer_alias
+            ));
+            return;
+        }
+    };
 
     let ipfs_cid = match cached_offerings.iter().find(|o| o.id == offering_id) {
         Some(o) => o.ipfs_cid.clone(),

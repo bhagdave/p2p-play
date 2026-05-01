@@ -1,4 +1,5 @@
-use p2p_play::network::{APP_NAME, APP_VERSION, HandshakeRequest, HandshakeResponse};
+use p2p_play::constants::{APP_NAME, APP_VERSION};
+use p2p_play::network::{HandshakeRequest, HandshakeResponse};
 
 /// Test handshake request serialization and deserialization
 #[test]

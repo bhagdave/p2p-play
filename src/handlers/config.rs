@@ -1,19 +1,16 @@
-//! Configuration, description, and help handlers.
-
 use crate::error_logger::ErrorLogger;
 use crate::network::{NodeDescriptionRequest, PEER_ID, StoryBehaviour};
-use crate::storage::{load_node_description, save_node_description};
+use crate::storage::{load_node_description, load_unified_network_config, save_node_description};
 use crate::types::Icons;
 use crate::validation::ContentValidator;
 use libp2p::PeerId;
 use libp2p::swarm::Swarm;
 use std::collections::HashMap;
 
-use super::{UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer, validate_and_log};
-
-// ---------------------------------------------------------------------------
-// Data-driven help text
-// ---------------------------------------------------------------------------
+use super::{
+    UILogger, current_unix_timestamp, load_config_or_log, modify_config, resolve_connected_peer,
+    validate_and_log,
+};
 
 /// Each entry is a help line.
 static HELP_ENTRIES: &[&str] = &[
@@ -101,13 +98,7 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Config handlers
-// ---------------------------------------------------------------------------
-
 pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
-    use crate::storage::load_unified_network_config;
-
     match load_unified_network_config().await {
         Ok(config) => {
             if let Err(e) = config.validate() {
@@ -157,12 +148,7 @@ pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
     }
 }
 
-pub async fn handle_config_auto_share(
-    cmd: &str,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
-
+pub async fn handle_config_auto_share(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if let Some(setting) = cmd.strip_prefix("config auto-share ").map(|s| s.trim()) {
         match setting {
             "on" => {
@@ -215,11 +201,7 @@ pub async fn handle_config_auto_share(
     }
 }
 
-pub async fn handle_config_sync_days(
-    cmd: &str,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
-) {
+pub async fn handle_config_sync_days(cmd: &str, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     if let Some(days_str) = cmd.strip_prefix("config sync-days ").map(|s| s.trim()) {
         match days_str.parse::<u32>() {
             Ok(days) => {
@@ -257,10 +239,6 @@ pub async fn handle_config_sync_days(
         ui_logger.usage("config sync-days <number>");
     }
 }
-
-// ---------------------------------------------------------------------------
-// Description handlers
-// ---------------------------------------------------------------------------
 
 pub async fn handle_create_description(cmd: &str, ui_logger: &UILogger) {
     let parts: Vec<&str> = cmd.splitn(3, ' ').collect();
