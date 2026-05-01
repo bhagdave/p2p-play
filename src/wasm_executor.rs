@@ -394,13 +394,12 @@ fn classify_trap_error(e: anyhow::Error, fuel_consumed: u64) -> WasmResult<i32> 
     }
 
     // Typed trap: fuel exhaustion
-    if let Some(trap) = e.downcast_ref::<wasmtime::Trap>() {
-        if trap == &wasmtime::Trap::OutOfFuel {
+    if let Some(trap) = e.downcast_ref::<wasmtime::Trap>()
+        && trap == &wasmtime::Trap::OutOfFuel {
             return Err(WasmExecutionError::FuelExhausted {
                 consumed: fuel_consumed,
             });
         }
-    }
 
     // String-based fallback for cases not covered by typed downcasts
     let error_str = e.to_string();

@@ -754,12 +754,11 @@ fn update_bootstrap_status(
         },
         libp2p::kad::Event::RoutingUpdated {
             is_new_peer: true, ..
-        } => {
-            if auto_bootstrap.is_in_progress() {
+        }
+            if auto_bootstrap.is_in_progress() => {
                 let peer_count = swarm.behaviour_mut().kad.kbuckets().count();
                 auto_bootstrap.mark_connected(peer_count);
             }
-        }
         _ => {}
     }
 }

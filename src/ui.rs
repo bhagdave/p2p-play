@@ -563,8 +563,8 @@ impl App {
                     return Some(AppEvent::Input(input));
                 }
             }
-            KeyCode::Up => {
-                if !self.input_history.is_empty() {
+            KeyCode::Up
+                if !self.input_history.is_empty() => {
                     match self.history_index {
                         None => {
                             self.history_index = Some(self.input_history.len() - 1);
@@ -577,7 +577,6 @@ impl App {
                         _ => {}
                     }
                 }
-            }
             KeyCode::Down => {
                 if let Some(idx) = self.history_index {
                     if idx < self.input_history.len() - 1 {
