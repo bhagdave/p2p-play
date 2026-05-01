@@ -1,9 +1,10 @@
 use crate::error_logger::ErrorLogger;
-use crate::storage::{
-    create_wasm_offering, get_all_cached_wasm_offerings, get_cached_wasm_offerings_by_peer, 
-    get_wasm_offering_by_id, read_wasm_offerings, toggle_wasm_offering, delete_wasm_offering,
-};
 use crate::network::{PEER_ID, StoryBehaviour, WasmCapabilitiesRequest, WasmExecutionRequest};
+use crate::storage::{
+    create_wasm_offering, delete_wasm_offering, get_all_cached_wasm_offerings,
+    get_cached_wasm_offerings_by_peer, get_wasm_offering_by_id, read_wasm_offerings,
+    toggle_wasm_offering,
+};
 use crate::types::{Icons, WasmParameter};
 use crate::validation::ContentValidator;
 use libp2p::PeerId;
@@ -540,19 +541,18 @@ async fn handle_wasm_run(
         None => return,
     };
 
-    let cached_offerings =
-        match get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
-            Ok(offerings) => offerings,
-            Err(e) => {
-                error_logger.log_error(&format!("Failed to get cached offerings: {e}"));
-                ui_logger.log(format!(
-                    "{} Failed to find offering. Try 'wasm query {}' first.",
-                    Icons::cross(),
-                    peer_alias
-                ));
-                return;
-            }
-        };
+    let cached_offerings = match get_cached_wasm_offerings_by_peer(&target_peer.to_string()).await {
+        Ok(offerings) => offerings,
+        Err(e) => {
+            error_logger.log_error(&format!("Failed to get cached offerings: {e}"));
+            ui_logger.log(format!(
+                "{} Failed to find offering. Try 'wasm query {}' first.",
+                Icons::cross(),
+                peer_alias
+            ));
+            return;
+        }
+    };
 
     let ipfs_cid = match cached_offerings.iter().find(|o| o.id == offering_id) {
         Some(o) => o.ipfs_cid.clone(),

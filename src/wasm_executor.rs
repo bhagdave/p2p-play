@@ -240,9 +240,10 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         // Return a clone of the cached module if one exists
         if let Some(cache) = &self.module_cache
             && let Ok(mut guard) = cache.lock()
-                && let Some(module) = guard.get(cid) {
-                    return Ok(module.clone());
-                }
+            && let Some(module) = guard.get(cid)
+        {
+            return Ok(module.clone());
+        }
 
         let wasm_bytes = self
             .fetcher
@@ -257,9 +258,10 @@ impl<F: ContentFetcher> WasmExecutor<F> {
 
         // Store the freshly compiled module in the cache
         if let Some(cache) = &self.module_cache
-            && let Ok(mut guard) = cache.lock() {
-                guard.put(cid.to_string(), module.clone());
-            }
+            && let Ok(mut guard) = cache.lock()
+        {
+            guard.put(cid.to_string(), module.clone());
+        }
 
         Ok(module)
     }

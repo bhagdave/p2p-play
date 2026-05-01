@@ -12,7 +12,6 @@ use libp2p::swarm::Swarm;
 use super::{UILogger, validate_and_log};
 use crate::network::{StoryBehaviour, TOPIC};
 
-
 pub(super) fn format_story_status(public: bool) -> String {
     if public {
         format!("{} Public", Icons::book())

@@ -25,9 +25,6 @@ fn get_database_path() -> String {
         return db_path;
     }
 
-    // When DATA_DIR is set, place the DB there; otherwise use the previous
-    // default so that Path::parent() is never an empty string and
-    // create_dir_all("") cannot fail at startup.
     match std::env::var("DATA_DIR") {
         Ok(_) => crate::data_dir::get_data_path("stories.db"),
         Err(_) => "./stories.db".to_string(),
@@ -200,7 +197,6 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
 
-    // Get unique channel names from stories
     let mut unique_channels: std::collections::HashSet<String> = std::collections::HashSet::new();
     for story in stories {
         unique_channels.insert(story.channel.clone());
@@ -210,7 +206,6 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         return Ok(Vec::new());
     }
 
-    // Build query to get channel metadata for these channels
     let placeholders = vec!["?"; unique_channels.len()].join(",");
     let query = format!(
         "SELECT name, description, created_by, created_at FROM channels WHERE name IN ({placeholders}) ORDER BY name"
@@ -424,9 +419,6 @@ pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
     }
 }
 
-/// Upsert a peer record. Updates `alias`, `multiaddr`, `last_seen`, and `is_connected`
-/// when the `peer_id` already exists, or inserts a new row otherwise.
-/// Pass `None` for `alias` or `multiaddr` to leave existing values unchanged on conflict.
 pub async fn upsert_peer(
     peer_id: &str,
     alias: Option<&str>,
@@ -455,10 +447,6 @@ pub async fn upsert_peer(
     Ok(())
 }
 
-/// Update the alias for a known peer without changing the `is_connected` state.
-/// If the peer does not yet exist in the database, a row is inserted with
-/// `is_connected = false` as a conservative default so that the alias is not
-/// lost even if the connection event was never persisted.
 pub async fn upsert_peer_alias(peer_id: &str, alias: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -479,7 +467,6 @@ pub async fn upsert_peer_alias(peer_id: &str, alias: &str) -> StorageResult<()> 
     Ok(())
 }
 
-/// Mark a peer as disconnected in the database.
 pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -494,10 +481,6 @@ pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
     Ok(())
 }
 
-/// Return the multiaddrs of up to `limit` outbound peers (those that have a
-/// non-NULL `multiaddr`), ordered by `last_seen` descending so we try the most
-/// recently seen peers first.  These are the peers we should attempt to
-/// reconnect to on startup.
 pub async fn get_outbound_peers(limit: usize) -> StorageResult<Vec<String>> {
     let limit = i64::try_from(limit).map_err(|_| {
         rusqlite::Error::InvalidParameterName("limit exceeds i64 range".to_string())
@@ -566,9 +549,6 @@ pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageR
     Ok(())
 }
 
-/// Ensures the peer is subscribed to the "general" channel.
-/// If the current subscriptions cannot be read, subscription is attempted anyway.
-/// Safe to call multiple times — subscribing when already subscribed is a no-op.
 pub async fn ensure_general_channel_subscription(peer_id: &str) -> StorageResult<()> {
     match read_subscribed_channels(peer_id).await {
         Ok(subscriptions) => {
@@ -1164,11 +1144,6 @@ pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::ty
     Ok(stories)
 }
 
-// ============================================================================
-// WASM Offering Storage Operations
-// ============================================================================
-
-/// Create a new WASM offering
 pub async fn create_wasm_offering(offering: &crate::types::WasmOffering) -> StorageResult<()> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1199,7 +1174,6 @@ pub async fn create_wasm_offering(offering: &crate::types::WasmOffering) -> Stor
     Ok(())
 }
 
-/// Read all local WASM offerings
 pub async fn read_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOffering>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1220,7 +1194,6 @@ pub async fn read_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOfferi
     Ok(offerings)
 }
 
-/// Read only enabled WASM offerings (for capability advertisement)
 pub async fn read_enabled_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOffering>> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1242,7 +1215,6 @@ pub async fn read_enabled_wasm_offerings() -> StorageResult<Vec<crate::types::Wa
     Ok(offerings)
 }
 
-/// Get a WASM offering by its ID
 pub async fn get_wasm_offering_by_id(
     id: &str,
 ) -> StorageResult<Option<crate::types::WasmOffering>> {
@@ -1267,7 +1239,6 @@ pub async fn get_wasm_offering_by_id(
     }
 }
 
-/// Update a WASM offering
 pub async fn update_wasm_offering(offering: &crate::types::WasmOffering) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1299,7 +1270,6 @@ pub async fn update_wasm_offering(offering: &crate::types::WasmOffering) -> Stor
     Ok(rows_affected > 0)
 }
 
-/// Toggle a WASM offering's enabled state
 pub async fn toggle_wasm_offering(id: &str, enabled: bool) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1314,7 +1284,6 @@ pub async fn toggle_wasm_offering(id: &str, enabled: bool) -> StorageResult<bool
     Ok(rows_affected > 0)
 }
 
-/// Delete a WASM offering
 pub async fn delete_wasm_offering(id: &str) -> StorageResult<bool> {
     let conn_arc = get_db_connection().await?;
     let conn = conn_arc.lock().await;
@@ -1324,11 +1293,6 @@ pub async fn delete_wasm_offering(id: &str) -> StorageResult<bool> {
     Ok(rows_affected > 0)
 }
 
-// ============================================================================
-// Discovered WASM Offerings Cache Operations
-// ============================================================================
-
-/// Cache a discovered WASM offering from another peer
 pub async fn cache_discovered_wasm_offering(
     peer_id: &str,
     offering: &crate::types::WasmOffering,
@@ -1368,7 +1332,6 @@ pub async fn cache_discovered_wasm_offering(
     Ok(())
 }
 
-/// Get cached WASM offerings from a specific peer
 pub async fn get_cached_wasm_offerings_by_peer(
     peer_id: &str,
 ) -> StorageResult<Vec<crate::types::WasmOffering>> {
@@ -1395,7 +1358,6 @@ pub async fn get_cached_wasm_offerings_by_peer(
     Ok(offerings)
 }
 
-/// Get all cached WASM offerings from all peers
 pub async fn get_all_cached_wasm_offerings()
 -> StorageResult<Vec<(String, crate::types::WasmOffering)>> {
     let conn_arc = get_db_connection().await?;

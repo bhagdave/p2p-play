@@ -99,7 +99,6 @@ pub async fn handle_help(_cmd: &str, ui_logger: &UILogger) {
 }
 
 pub async fn handle_reload_config(_cmd: &str, ui_logger: &UILogger) {
-
     match load_unified_network_config().await {
         Ok(config) => {
             if let Err(e) = config.validate() {

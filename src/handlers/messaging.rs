@@ -31,7 +31,10 @@ pub async fn handle_set_name(
         *local_peer_name = Some(validated_name.clone());
 
         if let Err(e) = save_local_peer_name(&validated_name).await {
-            ui_logger.log(format!("{} Warning: Failed to save peer name: {e}", Icons::warning()));
+            ui_logger.log(format!(
+                "{} Warning: Failed to save peer name: {e}",
+                Icons::warning()
+            ));
         }
 
         Some(PeerName::new(PEER_ID.to_string(), validated_name))
@@ -179,7 +182,11 @@ pub async fn handle_direct_message_with_relay(
                 if let Err(e) =
                     crate::storage::save_direct_message(&outgoing_message, Some(peer_names)).await
                 {
-                    ui_logger.log(format!("{} Failed to save outgoing message: {}", Icons::cross() ,e));
+                    ui_logger.log(format!(
+                        "{} Failed to save outgoing message: {}",
+                        Icons::cross(),
+                        e
+                    ));
                 } else {
                     ui_logger.log(format!("Saved outgoing message to {}", to_name));
                     return Some(ActionResult::RefreshConversations);
@@ -235,10 +242,12 @@ pub async fn handle_direct_message_with_relay(
             )
             .await
             {
-                if let Err(e) =
-                    save_direct_message(&outgoing_message, Some(peer_names)).await
-                {
-                    ui_logger.log(format!("{} Failed to save outgoing relay message: {}", Icons::cross(), e));
+                if let Err(e) = save_direct_message(&outgoing_message, Some(peer_names)).await {
+                    ui_logger.log(format!(
+                        "{} Failed to save outgoing relay message: {}",
+                        Icons::cross(),
+                        e
+                    ));
                 } else {
                     ui_logger.log(format!("Saved outgoing relay message to {}", to_name));
                     return Some(ActionResult::RefreshConversations);
@@ -282,25 +291,23 @@ async fn try_relay_delivery(
     ));
 
     match relay_service.create_relay_message(direct_msg, target_peer_id) {
-        Ok(relay_msg) => {
-            match broadcast_relay_message(swarm, &relay_msg).await {
-                Ok(()) => {
-                    ui_logger.log(format!(
-                        "{} Message sent to {} via relay network",
-                        Icons::check(),
-                        direct_msg.to_name
-                    ));
-                    true
-                }
-                Err(e) => {
-                    ui_logger.log(format!(
-                        "{} Failed to broadcast relay message: {e}",
-                        Icons::cross()
-                    ));
-                    false
-                }
+        Ok(relay_msg) => match broadcast_relay_message(swarm, &relay_msg).await {
+            Ok(()) => {
+                ui_logger.log(format!(
+                    "{} Message sent to {} via relay network",
+                    Icons::check(),
+                    direct_msg.to_name
+                ));
+                true
             }
-        }
+            Err(e) => {
+                ui_logger.log(format!(
+                    "{} Failed to broadcast relay message: {e}",
+                    Icons::cross()
+                ));
+                false
+            }
+        },
         Err(e) => {
             if let RelayError::CryptoError(CryptoError::EncryptionFailed(msg)) = &e
                 && msg.contains("Public key not found")
