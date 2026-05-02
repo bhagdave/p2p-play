@@ -1726,12 +1726,6 @@ pub async fn initiate_story_sync_with_peer(
         debug!(
             "Sent story sync request to peer {peer_id} (request ID: {request_id:?}, sync days: {sync_days})"
         );
-        ui_logger.log(format!(
-            "{} Requesting stories from {} (syncing {} days)",
-            Icons::sync(),
-            peer_id,
-            sync_days
-        ));
     }
 }
 
@@ -1894,8 +1888,6 @@ pub async fn handle_handshake_event(
                             "after successful handshake",
                         );
 
-                        // Log successful P2P-Play peer verification to UI
-                        ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
                     } else {
                         debug!(
                             "❌ Handshake failed with peer {}: not a compatible P2P-Play node",
@@ -2116,7 +2108,6 @@ pub async fn handle_event(
     None
 }
 
-/// Handle WASM capabilities request/response events
 pub async fn handle_wasm_capabilities_event(
     event: request_response::Event<WasmCapabilitiesRequest, WasmCapabilitiesResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -2237,7 +2228,6 @@ pub async fn handle_wasm_capabilities_event(
     }
 }
 
-/// Handle WASM execution request/response events
 pub async fn handle_wasm_execution_event(
     event: request_response::Event<WasmExecutionRequest, WasmExecutionResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
