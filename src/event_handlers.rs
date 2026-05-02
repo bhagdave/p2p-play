@@ -2266,11 +2266,12 @@ pub async fn handle_wasm_capabilities_event(
                     // Show offerings to user
                     for offering in &response.offerings {
                         ui_logger.log(format!(
-                            "  {} {} (v{}) - {}",
+                            "  {} {} (v{}) - {} (ID: {})",
                             Icons::chart(),
                             offering.name,
                             offering.version,
-                            offering.description
+                            offering.description,
+                            offering.id
                         ));
                     }
                 }
