@@ -4,6 +4,22 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Network health in TUI status bar**: The status bar now appends the `NetworkHealthSummary` text alongside existing status fields — e.g. `Network Healthy (6/6 operations)` or `Network Issues (2/6 operations failing)`. The existing green/red/yellow colour coding is preserved; this adds human-readable detail to complement it.
+- **Startup peer reconnect**: On startup the application now reads up to 10 outbound peer connections (those with a stored multiaddr) from the database and attempts to re-dial them immediately after the swarm starts listening. Inbound-only peers (no multiaddr) are skipped. The peer multiaddr is now only stored for outbound (`Dialer`) connections so that the reconnect list stays accurate across restarts. A new `get_outbound_peers(limit)` storage helper queries the peers table for rows with a non-NULL multiaddr, ordered by `last_seen` descending.
+- **Peer alias persistence**: Peer information (peer_id, alias, multiaddr, last_seen, is_connected) is now stored in a new `peers` SQLite table. The table is updated when a connection is established (capturing peer_id and multiaddr), when an alias is received over the network (capturing the alias), and when a connection is closed (marking the peer as disconnected). An `upsert_peer` function and a `mark_peer_disconnected` helper are available in `src/storage/core.rs`.
+- **Direct message length validation**: Enforce `ContentLimits::DIRECT_MESSAGE_MAX` (1,000 characters) when sending direct messages. Messages exceeding the limit are rejected with a descriptive error. Incoming oversized messages are also rejected on the receiving side.
+- **WASM offering**: List of WASM offerings includes ID so it is easier to request run
+
+### Fixed
+- **WASM Execution**: Fixed the WASI context expecting arguements to be POSIX compliant and contain the program name as the first arguement.
+- **Outgoing DM conversation refresh parity**: Sent direct messages now follow the same conversation surfacing behavior as received messages. Successful outgoing direct and relay sends are persisted to conversations and trigger a conversation-list refresh so both message directions appear consistently.
+- **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
+- **Circuit breaker `status_string` magic number**: `CircuitBreakerInfo::status_string` hardcoded `3` as the success threshold in the `HalfOpen` recovery message. The value is now read from `success_threshold`, a new field on `CircuitBreakerInfo` populated from `CircuitBreakerConfig` in `get_state`. The displayed count now reflects actual config rather than a stale constant.
+- **Circuit breaker `HalfOpen` reopen failure count**: When a failure in `HalfOpen` state reopened the circuit, `failure_count` accumulated from the prior `Closed`-state run. Count is now reset to `1` on reopen so it reflects failures since the most recent open.
+- **Circuit breaker stale `last_failure_time` after recovery**: `last_failure_time` was never cleared when the circuit recovered. It is now set to `None` in `on_success` when in `Closed` state.
+- **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
+
 ### Changed
 - **Refactor: code-sharing improvements across handlers, storage, and loggers**: Eight targeted refactors to eliminate repeated boilerplate with no behaviour change.
   - Added `storage::utils::collect_rows` generic helper and replaced all repeated `query_map` collection loops in `storage/core.rs`.
@@ -11,11 +27,7 @@ All changes to this project will be documented in this file.
   - Introduced `CategoryLoggerBase` trait for `BootstrapLogger` and `ErrorLogger`; restored inherent `file_path`/`clear_log` on both so callers need not import the trait.
   - Removed redundant `if let` guard in `handle_connect` and changed `unwrap()` to `expect()` in `handle_compose`.
   - Fixed `deserialize_json_column` in `storage/mappers.rs` to report the correct column index in `FromSqlConversionFailure` errors.
-
-### Changed
 - **`relay.rs` refactoring**: `RelayError` moved to `errors.rs` with `thiserror` derivation (alongside `CryptoError`); manual `Display`/`Error`/`From<CryptoError>` impls removed. Pending relay confirmations are now consumed: `mark_confirmation_received` removes acknowledged entries, and `cleanup_pending_confirmations` is called on every DM-retry tick. `RelayConfirmation` action added so the delivery side publishes an acknowledgment back to `RELAY_TOPIC`. Dead `crypto_service_for_testing` accessor removed; `crypto_service` scoped to `#[cfg(test)]`.
-
-### Changed
 - **`event_processor.rs` refactored for maintainability**: Addressed 10 structural issues to reduce complexity and eliminate dead code with no behaviour change.
   - Removed unused `_should_log_to_ui` computation from both connection-error handlers; demoted both to non-`async`.
   - Replaced individual `(peer_names, sorted_peer_names_cache, local_peer_name)` parameters with `&mut PeerState` across `select_next_event`, `handle_swarm_event`, `handle_connection_closed`, and `process_event`.
@@ -25,22 +37,6 @@ All changes to this project will be documented in this file.
   - `cleanup_timed_out_handshakes` now collects `(peer_id, is_bootstrap_peer)` pairs in one mutex-lock pass, then acts outside the lock.
   - Channel receive arms replaced `.expect()` panics with `.map(EventType::…)` — no panic on sender drop.
   - Introduced `TestEventProcessorBuilder` in the test module to eliminate ~50 lines of duplicated channel/logger setup.
-
-### Added
-- **Network health in TUI status bar**: The status bar now appends the `NetworkHealthSummary` text alongside existing status fields — e.g. `Network Healthy (6/6 operations)` or `Network Issues (2/6 operations failing)`. The existing green/red/yellow colour coding is preserved; this adds human-readable detail to complement it.
-- **Startup peer reconnect**: On startup the application now reads up to 10 outbound peer connections (those with a stored multiaddr) from the database and attempts to re-dial them immediately after the swarm starts listening. Inbound-only peers (no multiaddr) are skipped. The peer multiaddr is now only stored for outbound (`Dialer`) connections so that the reconnect list stays accurate across restarts. A new `get_outbound_peers(limit)` storage helper queries the peers table for rows with a non-NULL multiaddr, ordered by `last_seen` descending.
-- **Peer alias persistence**: Peer information (peer_id, alias, multiaddr, last_seen, is_connected) is now stored in a new `peers` SQLite table. The table is updated when a connection is established (capturing peer_id and multiaddr), when an alias is received over the network (capturing the alias), and when a connection is closed (marking the peer as disconnected). An `upsert_peer` function and a `mark_peer_disconnected` helper are available in `src/storage/core.rs`.
-- **Direct message length validation**: Enforce `ContentLimits::DIRECT_MESSAGE_MAX` (1,000 characters) when sending direct messages. Messages exceeding the limit are rejected with a descriptive error. Incoming oversized messages are also rejected on the receiving side.
-
-### Fixed
-- **Outgoing DM conversation refresh parity**: Sent direct messages now follow the same conversation surfacing behavior as received messages. Successful outgoing direct and relay sends are persisted to conversations and trigger a conversation-list refresh so both message directions appear consistently.
-- **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
-- **Circuit breaker `status_string` magic number**: `CircuitBreakerInfo::status_string` hardcoded `3` as the success threshold in the `HalfOpen` recovery message. The value is now read from `success_threshold`, a new field on `CircuitBreakerInfo` populated from `CircuitBreakerConfig` in `get_state`. The displayed count now reflects actual config rather than a stale constant.
-- **Circuit breaker `HalfOpen` reopen failure count**: When a failure in `HalfOpen` state reopened the circuit, `failure_count` accumulated from the prior `Closed`-state run. Count is now reset to `1` on reopen so it reflects failures since the most recent open.
-- **Circuit breaker stale `last_failure_time` after recovery**: `last_failure_time` was never cleared when the circuit recovered. It is now set to `None` in `on_success` when in `Closed` state.
-- **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
-
-### Changed
 - **`current_unix_timestamp()` shared helper**: The repeated 4-line `SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()` pattern (~50 occurrences) is now consolidated into a single `pub(crate) fn current_unix_timestamp() -> u64` defined in `src/time.rs` and re-exported at both crate roots (`lib.rs`, `main.rs`). Existing `storage::utils::get_current_timestamp()` delegates to it for backward compatibility.
 
 - **`wasm query <peer>` silent failure**: The response to a WASM capabilities query was silently discarded because `event_processor.rs` had no match arms for `StoryBehaviourEvent::WasmCapabilities` and `StoryBehaviourEvent::WasmExecution`. Both events fell through to the `_ => None` catch-all before reaching their handlers. Added the missing routing arms so query results and execution responses now appear in the output panel. Fixes #307.
@@ -48,8 +44,6 @@ All changes to this project will be documented in this file.
 - **Circuit breaker `HalfOpen` reopen failure count**: When a failure in `HalfOpen` state reopened the circuit, `failure_count` accumulated from the prior `Closed`-state run. Count is now reset to `1` on reopen so it reflects failures since the most recent open.
 - **Circuit breaker stale `last_failure_time` after recovery**: `last_failure_time` was never cleared when the circuit recovered. It is now set to `None` in `on_success` when in `Closed` state.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
-
-### Changed
 - **`network.rs` — decomposed into `network/` submodule**:
   - Wire-protocol DTOs (`DirectMessageRequest/Response`, `NodeDescriptionRequest/Response`, `StorySyncRequest/Response`, `HandshakeRequest/Response`, `WasmCapabilitiesRequest/Response`, `WasmExecutionRequest/Response`) and `APP_*` constants moved to `src/network/protocol.rs`; all are re-exported from `src/network/mod.rs` so existing `crate::network::*` import paths are unchanged.
   - `create_swarm` decomposed into three focused helpers: `build_transport` (TCP/DNS/noise/yamux stack), `build_behaviour` (all sub-behaviours), and `build_swarm_config` (dial concurrency + idle timeout).
