@@ -482,7 +482,7 @@ async fn test_compiled_wasm_multiple_additions() {
     windows,
     ignore = "wasmtime async fiber + proc_exit(non-zero) aborts on Windows"
 )]
-async fn test_compiled_wasm_missing_args() {
+async fn test_compiled_wasm_wrong_arg_count() {
     let test_cases = vec![
         vec![],
         vec!["5".to_string()],
