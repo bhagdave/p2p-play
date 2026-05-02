@@ -247,11 +247,12 @@ async fn print_remote_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger
                         current_peer = peer_id;
                     }
                     ui_logger.log(format!(
-                        "    {} {} (v{}) - {}",
+                        "    {} {} (v{}) - {} (ID: {})",
                         Icons::chart(),
                         offering.name,
                         offering.version,
-                        offering.description
+                        offering.description,
+                        offering.id
                     ));
                 }
             }
