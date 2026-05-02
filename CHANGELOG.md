@@ -22,6 +22,7 @@ All changes to this project will be documented in this file.
 - **Circuit breaker request counter inflated by rejected calls**: `total_requests` was incremented for every `can_execute` call including rejected ones (circuit open). Counter now only increments when the request is actually permitted.
 
 ### Changed
+- **Reduced story-sync UI noise**: Removed automatic TUI log messages for background story-sync activity — sync requests, sent/received story counts, sync summaries, and the peer-verification confirmation on handshake. These events are still logged at `debug` level; the TUI log pane now only shows messages relevant to user-initiated actions.
 - **Refactor: code-sharing improvements across handlers, storage, and loggers**: Eight targeted refactors to eliminate repeated boilerplate with no behaviour change.
   - Added `storage::utils::collect_rows` generic helper and replaced all repeated `query_map` collection loops in `storage/core.rs`.
   - Consolidated handler UX patterns via `UILogger::usage`, `load_config_or_log`, and `resolve_connected_peer` (restoring available-peer list in not-found errors).

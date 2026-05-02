@@ -1424,21 +1424,6 @@ pub async fn handle_story_sync_event(
                         request.from_name, request.from_peer_id, request.subscribed_channels
                     );
 
-                    ui_logger.log(format!(
-                        "{} Story sync request from {} (last sync: {})",
-                        Icons::sync(),
-                        request.from_name,
-                        if request.last_sync_timestamp == 0 {
-                            "never".to_string()
-                        } else {
-                            format!(
-                                "{} seconds ago",
-                                crate::current_unix_timestamp()
-                                    .saturating_sub(request.last_sync_timestamp)
-                            )
-                        }
-                    ));
-
                     // Get local stories that match the peer's subscribed channels and are newer than last sync
                     match crate::storage::read_local_stories_for_sync(
                         request.last_sync_timestamp,
@@ -1457,8 +1442,6 @@ pub async fn handle_story_sync_event(
                                     .collect::<std::collections::HashSet<_>>(),
                                 request.last_sync_timestamp
                             );
-
-                            let story_count = filtered_stories.len();
 
                             // Get ALL available channels for discovery, not just channels associated with the stories
                             let channels = match crate::storage::read_channels().await {
@@ -1524,12 +1507,6 @@ pub async fn handle_story_sync_event(
                                 ));
                             } else {
                                 debug!("Sent story sync response to {peer}");
-                                ui_logger.log(format!(
-                                    "{} Sent {} stories to {}",
-                                    Icons::sync(),
-                                    story_count,
-                                    request.from_name
-                                ));
                             }
                         }
                         Err(e) => {
@@ -1578,23 +1555,9 @@ pub async fn handle_story_sync_event(
                     );
 
                     if response.stories.is_empty() {
-                        ui_logger.log(format!(
-                            "{} No new stories from {}",
-                            Icons::sync(),
-                            response.from_name
-                        ));
                         return;
                     }
 
-                    ui_logger.log(format!(
-                        "{} Received {} stories from {}",
-                        Icons::sync(),
-                        response.stories.len(),
-                        response.from_name
-                    ));
-
-                    // Process discovered channels first (before stories for logical order)
-                    let mut discovered_channels_count = 0;
                     debug!(
                         "Received {} channels from {}: {:?}",
                         response.channels.len(),
@@ -1614,7 +1577,6 @@ pub async fn handle_story_sync_event(
                         .await
                         {
                             Ok(count) => {
-                                discovered_channels_count = count;
                                 debug!(
                                     "Channel discovery result: {} new channels from {} (out of {} total channels received)",
                                     count,
@@ -1641,11 +1603,9 @@ pub async fn handle_story_sync_event(
                     }
 
                     // Save received stories (with deduplication handled by save_received_story)
-                    let mut saved_count = 0;
                     for story in response.stories {
                         match crate::storage::save_received_story(story.clone()).await {
                             Ok(_) => {
-                                saved_count += 1;
                                 debug!("Saved story: {}", story.name);
                             }
                             Err(e) => {
@@ -1662,31 +1622,6 @@ pub async fn handle_story_sync_event(
                                 }
                             }
                         }
-                    }
-
-                    // Provide comprehensive sync summary
-                    if discovered_channels_count > 0 && saved_count > 0 {
-                        ui_logger.log(format!(
-                            "{} Sync complete: {} stories, {} channels from {}",
-                            Icons::checkmark(),
-                            saved_count,
-                            discovered_channels_count,
-                            response.from_name
-                        ));
-                    } else if saved_count > 0 {
-                        ui_logger.log(format!(
-                            "{} Saved {} new stories from {}",
-                            Icons::checkmark(),
-                            saved_count,
-                            response.from_name
-                        ));
-                    } else if discovered_channels_count > 0 {
-                        ui_logger.log(format!(
-                            "{} Discovered {} channels from {} (no new stories)",
-                            Icons::checkmark(),
-                            discovered_channels_count,
-                            response.from_name
-                        ));
                     }
                 }
             }
@@ -1739,8 +1674,6 @@ pub async fn initiate_story_sync_with_peer(
     peer_id: PeerId,
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
-    ui_logger: &UILogger,
-    _error_logger: &ErrorLogger,
 ) {
     debug!("Initiating story sync with peer {peer_id}");
 
@@ -1784,12 +1717,6 @@ pub async fn initiate_story_sync_with_peer(
         debug!(
             "Sent story sync request to peer {peer_id} (request ID: {request_id:?}, sync days: {sync_days})"
         );
-        ui_logger.log(format!(
-            "{} Requesting stories from {} (syncing {} days)",
-            Icons::sync(),
-            peer_id,
-            sync_days
-        ));
     }
 }
 
@@ -1798,8 +1725,6 @@ pub async fn execute_deferred_peer_operations(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) {
@@ -1827,7 +1752,7 @@ pub async fn execute_deferred_peer_operations(
     retry_messages_for_peer(peer_id, swarm, dm_config, pending_messages, peer_names).await;
 
     // Initiate story synchronization with the verified peer
-    initiate_story_sync_with_peer(peer_id, swarm, local_peer_name, ui_logger, error_logger).await;
+    initiate_story_sync_with_peer(peer_id, swarm, local_peer_name).await;
 
     debug!(
         "Completed deferred operations for verified peer {}",
@@ -1841,7 +1766,6 @@ pub async fn handle_handshake_event(
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
-    ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
@@ -1939,8 +1863,6 @@ pub async fn handle_handshake_event(
                             swarm,
                             peer_names,
                             local_peer_name,
-                            ui_logger,
-                            error_logger,
                             dm_config,
                             pending_messages,
                         )
@@ -1952,8 +1874,6 @@ pub async fn handle_handshake_event(
                             "after successful handshake",
                         );
 
-                        // Log successful P2P-Play peer verification to UI
-                        ui_logger.log(format!("✅ Verified P2P-Play peer: {}", peer));
                     } else {
                         debug!(
                             "❌ Handshake failed with peer {}: not a compatible P2P-Play node",
@@ -2126,7 +2046,6 @@ pub async fn handle_event(
                 peer_names,
                 local_peer_name,
                 sorted_peer_names_cache,
-                ui_logger,
                 error_logger,
                 dm_config,
                 pending_messages,
@@ -2174,7 +2093,6 @@ pub async fn handle_event(
     None
 }
 
-/// Handle WASM capabilities request/response events
 pub async fn handle_wasm_capabilities_event(
     event: request_response::Event<WasmCapabilitiesRequest, WasmCapabilitiesResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -2295,7 +2213,6 @@ pub async fn handle_wasm_capabilities_event(
     }
 }
 
-/// Handle WASM execution request/response events
 pub async fn handle_wasm_execution_event(
     event: request_response::Event<WasmExecutionRequest, WasmExecutionResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
