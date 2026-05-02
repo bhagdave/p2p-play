@@ -1443,8 +1443,6 @@ pub async fn handle_story_sync_event(
                                 request.last_sync_timestamp
                             );
 
-                            let story_count = filtered_stories.len();
-
                             // Get ALL available channels for discovery, not just channels associated with the stories
                             let channels = match crate::storage::read_channels().await {
                                 Ok(all_channels) => {
@@ -1560,8 +1558,6 @@ pub async fn handle_story_sync_event(
                         return;
                     }
 
-                    // Process discovered channels first (before stories for logical order)
-                    let mut discovered_channels_count = 0;
                     debug!(
                         "Received {} channels from {}: {:?}",
                         response.channels.len(),
@@ -1581,7 +1577,6 @@ pub async fn handle_story_sync_event(
                         .await
                         {
                             Ok(count) => {
-                                discovered_channels_count = count;
                                 debug!(
                                     "Channel discovery result: {} new channels from {} (out of {} total channels received)",
                                     count,
@@ -1608,11 +1603,9 @@ pub async fn handle_story_sync_event(
                     }
 
                     // Save received stories (with deduplication handled by save_received_story)
-                    let mut saved_count = 0;
                     for story in response.stories {
                         match crate::storage::save_received_story(story.clone()).await {
                             Ok(_) => {
-                                saved_count += 1;
                                 debug!("Saved story: {}", story.name);
                             }
                             Err(e) => {
@@ -1681,8 +1674,6 @@ pub async fn initiate_story_sync_with_peer(
     peer_id: PeerId,
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
-    ui_logger: &UILogger,
-    _error_logger: &ErrorLogger,
 ) {
     debug!("Initiating story sync with peer {peer_id}");
 
@@ -1734,8 +1725,6 @@ pub async fn execute_deferred_peer_operations(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
-    ui_logger: &UILogger,
-    error_logger: &ErrorLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
 ) {
@@ -1763,7 +1752,7 @@ pub async fn execute_deferred_peer_operations(
     retry_messages_for_peer(peer_id, swarm, dm_config, pending_messages, peer_names).await;
 
     // Initiate story synchronization with the verified peer
-    initiate_story_sync_with_peer(peer_id, swarm, local_peer_name, ui_logger, error_logger).await;
+    initiate_story_sync_with_peer(peer_id, swarm, local_peer_name).await;
 
     debug!(
         "Completed deferred operations for verified peer {}",
@@ -1777,7 +1766,6 @@ pub async fn handle_handshake_event(
     peer_names: &mut HashMap<PeerId, String>,
     local_peer_name: &Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
-    ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
@@ -1875,8 +1863,6 @@ pub async fn handle_handshake_event(
                             swarm,
                             peer_names,
                             local_peer_name,
-                            ui_logger,
-                            error_logger,
                             dm_config,
                             pending_messages,
                         )
@@ -2060,7 +2046,6 @@ pub async fn handle_event(
                 peer_names,
                 local_peer_name,
                 sorted_peer_names_cache,
-                ui_logger,
                 error_logger,
                 dm_config,
                 pending_messages,
