@@ -428,7 +428,7 @@ async fn test_compiled_wasm_happy_path_addition() {
     let fetcher = Arc::new(MockContentFetcher::new(load_compiled_wasm_binary()));
     let executor = WasmExecutor::new(fetcher).unwrap();
 
-    let args = vec!["add".to_string(), "3".to_string(), "5".to_string()];
+    let args = vec!["3".to_string(), "5".to_string()];
     let result = executor
         .execute(ExecutionRequest::new("test-cid".to_string()).with_args(args))
         .await;
@@ -456,7 +456,7 @@ async fn test_compiled_wasm_multiple_additions() {
     let executor = WasmExecutor::new(fetcher).unwrap();
 
     for (a, b, expected) in test_cases {
-        let args = vec!["add".to_string(), a.to_string(), b.to_string()];
+        let args = vec![a.to_string(), b.to_string()];
         let result = executor
             .execute(ExecutionRequest::new("test-cid".to_string()).with_args(args))
             .await;
@@ -482,11 +482,11 @@ async fn test_compiled_wasm_multiple_additions() {
     windows,
     ignore = "wasmtime async fiber + proc_exit(non-zero) aborts on Windows"
 )]
-async fn test_compiled_wasm_missing_args() {
+async fn test_compiled_wasm_wrong_arg_count() {
     let test_cases = vec![
-        vec!["add".to_string()],
-        vec!["add".to_string(), "5".to_string()],
         vec![],
+        vec!["5".to_string()],
+        vec!["1".to_string(), "2".to_string(), "3".to_string()],
     ];
 
     let fetcher = Arc::new(MockContentFetcher::new(load_compiled_wasm_binary()));
@@ -518,10 +518,10 @@ async fn test_compiled_wasm_missing_args() {
 )]
 async fn test_compiled_wasm_invalid_args() {
     let test_cases = vec![
-        vec!["add".to_string(), "foo".to_string(), "5".to_string()],
-        vec!["add".to_string(), "3".to_string(), "bar".to_string()],
-        vec!["add".to_string(), "foo".to_string(), "bar".to_string()],
-        vec!["add".to_string(), "3.14".to_string(), "5".to_string()],
+        vec!["foo".to_string(), "5".to_string()],
+        vec!["3".to_string(), "bar".to_string()],
+        vec!["foo".to_string(), "bar".to_string()],
+        vec!["3.14".to_string(), "5".to_string()],
     ];
 
     let fetcher = Arc::new(MockContentFetcher::new(load_compiled_wasm_binary()));
@@ -551,7 +551,7 @@ async fn test_compiled_wasm_fuel_consumption() {
     let fetcher = Arc::new(MockContentFetcher::new(load_compiled_wasm_binary()));
     let executor = WasmExecutor::new(fetcher).unwrap();
 
-    let args = vec!["add".to_string(), "42".to_string(), "58".to_string()];
+    let args = vec!["42".to_string(), "58".to_string()];
     let request = ExecutionRequest::new("test-cid".to_string())
         .with_args(args)
         .with_fuel_limit(10_000_000);
