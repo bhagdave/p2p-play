@@ -1424,21 +1424,6 @@ pub async fn handle_story_sync_event(
                         request.from_name, request.from_peer_id, request.subscribed_channels
                     );
 
-                    ui_logger.log(format!(
-                        "{} Story sync request from {} (last sync: {})",
-                        Icons::sync(),
-                        request.from_name,
-                        if request.last_sync_timestamp == 0 {
-                            "never".to_string()
-                        } else {
-                            format!(
-                                "{} seconds ago",
-                                crate::current_unix_timestamp()
-                                    .saturating_sub(request.last_sync_timestamp)
-                            )
-                        }
-                    ));
-
                     // Get local stories that match the peer's subscribed channels and are newer than last sync
                     match crate::storage::read_local_stories_for_sync(
                         request.last_sync_timestamp,
@@ -1524,12 +1509,6 @@ pub async fn handle_story_sync_event(
                                 ));
                             } else {
                                 debug!("Sent story sync response to {peer}");
-                                ui_logger.log(format!(
-                                    "{} Sent {} stories to {}",
-                                    Icons::sync(),
-                                    story_count,
-                                    request.from_name
-                                ));
                             }
                         }
                         Err(e) => {
@@ -1578,20 +1557,8 @@ pub async fn handle_story_sync_event(
                     );
 
                     if response.stories.is_empty() {
-                        ui_logger.log(format!(
-                            "{} No new stories from {}",
-                            Icons::sync(),
-                            response.from_name
-                        ));
                         return;
                     }
-
-                    ui_logger.log(format!(
-                        "{} Received {} stories from {}",
-                        Icons::sync(),
-                        response.stories.len(),
-                        response.from_name
-                    ));
 
                     // Process discovered channels first (before stories for logical order)
                     let mut discovered_channels_count = 0;
@@ -1662,31 +1629,6 @@ pub async fn handle_story_sync_event(
                                 }
                             }
                         }
-                    }
-
-                    // Provide comprehensive sync summary
-                    if discovered_channels_count > 0 && saved_count > 0 {
-                        ui_logger.log(format!(
-                            "{} Sync complete: {} stories, {} channels from {}",
-                            Icons::checkmark(),
-                            saved_count,
-                            discovered_channels_count,
-                            response.from_name
-                        ));
-                    } else if saved_count > 0 {
-                        ui_logger.log(format!(
-                            "{} Saved {} new stories from {}",
-                            Icons::checkmark(),
-                            saved_count,
-                            response.from_name
-                        ));
-                    } else if discovered_channels_count > 0 {
-                        ui_logger.log(format!(
-                            "{} Discovered {} channels from {} (no new stories)",
-                            Icons::checkmark(),
-                            discovered_channels_count,
-                            response.from_name
-                        ));
                     }
                 }
             }
