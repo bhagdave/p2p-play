@@ -523,8 +523,10 @@ async fn test_stories_with_channels() {
 
     use p2p_play::storage::*;
 
-    // Initialize database
-    ensure_stories_file_exists().await.unwrap();
+    // Set up isolated test database so this test never touches the production stories.db
+    let db_path = setup_test_database().await;
+
+    // Clear any leftover data for a clean slate
     clear_database_for_testing().await.unwrap();
 
     // Create stories in different channels using database functions
@@ -550,6 +552,8 @@ async fn test_stories_with_channels() {
     assert_eq!(tech_story.channel, "general");
     assert_eq!(gaming_story.channel, "gaming");
     assert_eq!(news_story.channel, "news");
+
+    cleanup_test_database(&db_path).await;
 }
 
 #[tokio::test]
@@ -732,14 +736,7 @@ async fn test_story_serialization_with_channel() {
 
 #[tokio::test]
 async fn test_channel_subscription_data_structures() {
-    let _lock = TEST_DB_MUTEX.lock().unwrap(); // Ensure test isolation
-
-    use p2p_play::storage::*;
     use p2p_play::types::*;
-
-    // Initialize and clear database to be safe
-    ensure_stories_file_exists().await.unwrap();
-    clear_database_for_testing().await.unwrap();
 
     // Test Channel creation
     let channel = Channel::new(
