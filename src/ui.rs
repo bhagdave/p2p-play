@@ -563,20 +563,17 @@ impl App {
                     return Some(AppEvent::Input(input));
                 }
             }
-            KeyCode::Up
-                if !self.input_history.is_empty() => {
-                    match self.history_index {
-                        None => {
-                            self.history_index = Some(self.input_history.len() - 1);
-                            self.input = self.input_history[self.input_history.len() - 1].clone();
-                        }
-                        Some(idx) if idx > 0 => {
-                            self.history_index = Some(idx - 1);
-                            self.input = self.input_history[idx - 1].clone();
-                        }
-                        _ => {}
-                    }
+            KeyCode::Up if !self.input_history.is_empty() => match self.history_index {
+                None => {
+                    self.history_index = Some(self.input_history.len() - 1);
+                    self.input = self.input_history[self.input_history.len() - 1].clone();
                 }
+                Some(idx) if idx > 0 => {
+                    self.history_index = Some(idx - 1);
+                    self.input = self.input_history[idx - 1].clone();
+                }
+                _ => {}
+            },
             KeyCode::Down => {
                 if let Some(idx) = self.history_index {
                     if idx < self.input_history.len() - 1 {
