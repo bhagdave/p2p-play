@@ -71,7 +71,7 @@ pub async fn handle_create_channel(
                 Ok(json) => json,
                 Err(e) => {
                     error_logger.log_error(&format!("Failed to serialize published channel: {e}"));
-                    return Some(ActionResult::RefreshStories);
+                    return Some(ActionResult::RefreshChannels);
                 }
             };
             let published_json_bytes = Bytes::from(published_json.into_bytes());
@@ -84,7 +84,7 @@ pub async fn handle_create_channel(
                 Ok(json) => json,
                 Err(e) => {
                     error_logger.log_error(&format!("Failed to serialize legacy channel: {e}"));
-                    return Some(ActionResult::RefreshStories);
+                    return Some(ActionResult::RefreshChannels);
                 }
             };
             let legacy_json_bytes = Bytes::from(legacy_json.into_bytes());
@@ -95,7 +95,7 @@ pub async fn handle_create_channel(
 
             ui_logger.log(format!("Channel '{validated_name}' shared with network"));
 
-            return Some(ActionResult::RefreshStories);
+            return Some(ActionResult::RefreshChannels);
         }
     }
     None

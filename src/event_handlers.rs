@@ -1,5 +1,6 @@
 use crate::constants::*;
 use crate::content_fetcher::GatewayFetcher;
+use crate::data_dir::get_data_path;
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
     SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
@@ -16,11 +17,12 @@ use crate::network::{
     NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour, TOPIC,
     WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest, WasmExecutionResponse,
 };
-use crate::storage::{load_node_description, save_received_story, upsert_peer_alias};
+use crate::relay::RelayAction::{DeliverLocally, DropMessage, ForwardMessage};
+use crate::storage::{create_channel, load_node_description, save_received_story, upsert_peer_alias};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
-    PublishedStory,
+    PublishedStory, RelayConfirmation
 };
 use crate::wasm_executor::{ExecutionRequest, WasmExecutionError, WasmExecutor};
 
@@ -628,7 +630,7 @@ pub async fn handle_floodsub_event(
                         debug!("Ignoring invalid published channel with empty name or description");
                     } else {
                         // Save the channel first - synchronously to ensure it exists before subscription
-                        let channel_saved = match crate::storage::create_channel(
+                        let channel_saved = match create_channel(
                             &channel_to_save.name,
                             &channel_to_save.description,
                             &channel_to_save.created_by,
@@ -720,7 +722,7 @@ pub async fn handle_floodsub_event(
                     }
 
                     // Distinguish error types
-                    match crate::storage::create_channel(
+                    match create_channel(
                         &channel_to_save.name,
                         &channel_to_save.description,
                         &channel_to_save.created_by,
@@ -739,7 +741,7 @@ pub async fn handle_floodsub_event(
                         Err(e) => {
                             // Create error logger for spawned task
                             let error_logger_for_task =
-                                ErrorLogger::new(&crate::data_dir::get_data_path("errors.log"));
+                                ErrorLogger::new(&get_data_path("errors.log"));
                             crate::log_network_error!(
                                 error_logger_for_task,
                                 "storage",
@@ -761,10 +763,10 @@ pub async fn handle_floodsub_event(
                 // Process relay message if relay service is available
                 if let Some(relay_svc) = relay_service {
                     match relay_svc.process_relay_message(&relay_msg) {
-                        Ok(crate::relay::RelayAction::DeliverLocally(direct_msg)) => {
+                        Ok(DeliverLocally(direct_msg)) => {
                             ui_logger.log(format!(
                                 "{} Relay message delivered: {} -> {}: {}",
-                                crate::types::Icons::speech(),
+                                Icons::speech(),
                                 direct_msg.from_name,
                                 direct_msg.to_name,
                                 direct_msg.message
@@ -773,31 +775,31 @@ pub async fn handle_floodsub_event(
                                 "Relay message decrypted and delivered locally: {}",
                                 relay_msg.message_id
                             );
-                            let confirmation = crate::types::RelayConfirmation {
+                            let confirmation = RelayConfirmation {
                                 message_id: relay_msg.message_id.clone(),
                                 delivered_to: relay_msg.target_peer_id.clone(),
                                 relay_path_length: relay_msg.hop_count,
                                 delivery_timestamp: crate::current_unix_timestamp(),
                             };
-                            return Some(crate::types::ActionResult::BroadcastRelayConfirmation(
+                            return Some(ActionResult::BroadcastRelayConfirmation(
                                 Box::new(confirmation),
                             ));
                         }
-                        Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
+                        Ok(ForwardMessage(forward_msg)) => {
                             // Return action to re-broadcast the forwarded message via floodsub
                             debug!("Forwarding relay message: {}", forward_msg.message_id);
                             ui_logger.log(format!(
                                 "{} Forwarding relay message {} (hops: {}/{})",
-                                crate::types::Icons::antenna(),
+                                Icons::antenna(),
                                 &forward_msg.message_id[..8],
                                 forward_msg.hop_count,
                                 forward_msg.max_hops
                             ));
-                            return Some(crate::types::ActionResult::RebroadcastRelayMessage(
+                            return Some(ActionResult::RebroadcastRelayMessage(
                                 Box::new(forward_msg),
                             ));
                         }
-                        Ok(crate::relay::RelayAction::DropMessage(reason)) => {
+                        Ok(DropMessage(reason)) => {
                             debug!(
                                 "Dropping relay message {}: {}",
                                 relay_msg.message_id, reason
