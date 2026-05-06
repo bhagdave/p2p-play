@@ -115,16 +115,15 @@ async fn test_floodsub_duplicate_channel_still_returns_refresh_channels() {
         "A duplicate channel".to_string(),
         source.to_string(),
     );
+    let channel_data = serde_json::to_vec(&channel).unwrap();
 
     // First arrival — channel is new.
-    let first_result = call_handler(source, serde_json::to_vec(&channel).unwrap(), &verified_peers)
-        .await;
+    let first_result =
+        call_handler(source, channel_data.clone(), &verified_peers).await;
     assert_eq!(first_result, Some(ActionResult::RefreshChannels));
 
     // Second arrival — UNIQUE constraint fires, but must still refresh.
-    let second_result =
-        call_handler(source, serde_json::to_vec(&channel).unwrap(), &verified_peers)
-            .await;
+    let second_result = call_handler(source, channel_data, &verified_peers).await;
     assert_eq!(second_result, Some(ActionResult::RefreshChannels));
 }
 
