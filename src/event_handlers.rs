@@ -725,7 +725,7 @@ pub async fn handle_floodsub_event(
                     {
                         Ok(_) => {
                             ui_logger.log(format!(
-                                "📺 Channel '{}' added to your channels list",
+                                "📺 Channel '{}' added to your available channels",
                                 channel.name
                             ));
                             return Some(crate::types::ActionResult::RefreshChannels);
