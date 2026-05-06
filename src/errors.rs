@@ -1,12 +1,5 @@
-//! Centralized error handling for P2P-Play application
-//!
-//! This module defines domain-specific error types that replace the generic
-//! `Box<dyn Error>` usage throughout the codebase, providing better error
-//! debugging and user experience.
-
 use thiserror::Error;
 
-/// Errors that can occur during WASM execution
 #[derive(Debug, Error)]
 pub enum WasmExecutionError {
     #[error("Failed to fetch WASM: {0}")]
@@ -46,7 +39,6 @@ pub enum WasmExecutionError {
     InvalidRequest(String),
 }
 
-/// Main application error type that chains all domain-specific errors
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error("Storage error: {0}")]
@@ -74,7 +66,6 @@ pub enum AppError {
     Application(String),
 }
 
-/// Relay-related errors for message routing operations
 #[derive(Error, Debug)]
 pub enum RelayError {
     #[error("Rate limit exceeded for relay")]
@@ -87,7 +78,6 @@ pub enum RelayError {
     CryptoError(#[from] CryptoError),
 }
 
-/// Storage-related errors for database and file operations
 #[derive(Error, Debug)]
 pub enum StorageError {
     #[error("Database error: {0}")]
@@ -118,7 +108,6 @@ pub enum StorageError {
     },
 }
 
-/// Network-related errors for libp2p and P2P operations
 #[derive(Error, Debug)]
 pub enum NetworkError {
     #[error("Protocol error: {protocol} - {reason}")]
@@ -128,7 +117,6 @@ pub enum NetworkError {
     Serialization(#[from] serde_json::Error),
 }
 
-/// UI-related errors for terminal interface operations
 #[derive(Error, Debug)]
 pub enum UIError {
     #[error("Terminal initialization failed: {0}")]
@@ -145,7 +133,6 @@ pub enum UIError {
     Widget { widget: String, reason: String },
 }
 
-/// Configuration-related errors
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("Invalid config format: {reason}")]
@@ -183,7 +170,6 @@ pub enum FetchError {
     InvalidWasm,
 }
 
-/// Result type aliases for common error combinations
 pub type AppResult<T> = Result<T, AppError>;
 pub type StorageResult<T> = Result<T, StorageError>;
 pub type NetworkResult<T> = Result<T, NetworkError>;
@@ -214,10 +200,7 @@ pub enum CryptoError {
     #[error("Invalid input: {0}")]
     InvalidInput(String),
 }
-/// Detects the network protocol from an error message
-///
-/// Analyzes error text to identify which libp2p protocol is likely involved
-/// based on common protocol-specific terms and patterns.
+
 fn detect_protocol_from_error(error_message: &str) -> String {
     let lower_msg = error_message.to_lowercase();
 
@@ -345,7 +328,6 @@ impl From<&str> for ConfigError {
 }
 
 impl StorageError {
-    /// Create a database connection error with context
     #[allow(dead_code)]
     pub fn connection_error(reason: impl Into<String>) -> Self {
         StorageError::DatabaseConnection {
@@ -353,7 +335,6 @@ impl StorageError {
         }
     }
 
-    /// Create an invalid data error with context
     #[allow(dead_code)]
     pub fn invalid_data(reason: impl Into<String>) -> Self {
         StorageError::InvalidStoryData {
@@ -361,7 +342,6 @@ impl StorageError {
         }
     }
 
-    /// Create a batch operation error with summary
     pub fn batch_operation_failed(successful: usize, failed: usize, failures: Vec<String>) -> Self {
         StorageError::BatchOperationFailed {
             successful,
@@ -372,7 +352,6 @@ impl StorageError {
 }
 
 impl NetworkError {
-    /// Create a protocol error with context
     #[allow(dead_code)]
     pub fn protocol_error(protocol: impl Into<String>, reason: impl Into<String>) -> Self {
         NetworkError::ProtocolError {
@@ -383,7 +362,6 @@ impl NetworkError {
 }
 
 impl UIError {
-    /// Create a widget error with context
     #[allow(dead_code)]
     pub fn widget_error(widget: impl Into<String>, reason: impl Into<String>) -> Self {
         UIError::Widget {
@@ -394,7 +372,6 @@ impl UIError {
 }
 
 impl ConfigError {
-    /// Create a validation error with context
     #[allow(dead_code)]
     pub fn validation_error(reason: impl Into<String>) -> Self {
         ConfigError::Validation {

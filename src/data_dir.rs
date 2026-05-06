@@ -1,15 +1,7 @@
-/// Returns a path within the configured data directory for the given filename.
-///
-/// The data directory is controlled by the `DATA_DIR` environment variable,
-/// which is set at startup when the `--data-dir` CLI flag is provided.
-/// If `DATA_DIR` is not set, the filename is returned as-is, which resolves
-/// to the current working directory (preserving the previous default behaviour).
 pub fn get_data_path(filename: &str) -> String {
     build_data_path(std::env::var("DATA_DIR").ok().as_deref(), filename)
 }
 
-/// Inner helper used by `get_data_path` and by unit tests (which need to
-/// inject a specific directory without touching the process environment).
 pub(crate) fn build_data_path(data_dir: Option<&str>, filename: &str) -> String {
     if let Some(dir) = data_dir {
         std::path::Path::new(dir)

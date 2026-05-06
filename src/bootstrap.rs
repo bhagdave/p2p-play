@@ -1,5 +1,6 @@
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::{BOOTSTRAP_LOG_FILE, UNIFIED_CONFIG_FILE};
+use crate::error_logger::ErrorLogger;
 use crate::handlers::{UILogger, extract_peer_id_from_multiaddr};
 use crate::network::StoryBehaviour;
 use crate::types::BootstrapConfig;
@@ -82,7 +83,7 @@ impl AutoBootstrap {
         &mut self,
         bootstrap_config: &BootstrapConfig,
         bootstrap_logger: &BootstrapLogger,
-        _error_logger: &crate::error_logger::ErrorLogger,
+        _error_logger: &ErrorLogger,
     ) {
         self.config = Some(bootstrap_config.clone());
         bootstrap_logger.log_init(&format!(
@@ -120,7 +121,7 @@ impl AutoBootstrap {
         &mut self,
         swarm: &mut Swarm<StoryBehaviour>,
         bootstrap_logger: &BootstrapLogger,
-        error_logger: &crate::error_logger::ErrorLogger,
+        error_logger: &ErrorLogger,
     ) -> bool {
         let config = match &self.config {
             Some(config) => config,
@@ -302,7 +303,7 @@ pub async fn run_auto_bootstrap_with_retry(
     auto_bootstrap: &mut AutoBootstrap,
     swarm: &mut Swarm<StoryBehaviour>,
     bootstrap_logger: &BootstrapLogger,
-    error_logger: &crate::error_logger::ErrorLogger,
+    error_logger: &ErrorLogger,
     ui_logger: &UILogger,
 ) {
     if !auto_bootstrap.should_retry() {
@@ -586,7 +587,7 @@ mod tests {
     async fn test_initialise_without_config_file() {
         let mut bootstrap = AutoBootstrap::new();
         let bootstrap_logger = create_test_bootstrap_logger();
-        let error_logger = crate::error_logger::ErrorLogger::new("test_errors.log");
+        let error_logger = ErrorLogger::new("test_errors.log");
         let test_config = BootstrapConfig::new();
 
         bootstrap.initialise(&test_config, &bootstrap_logger, &error_logger);

@@ -1,6 +1,3 @@
-//! Shared application-wide constants.
-//!
-
 pub const BOOTSTRAP_LOG_FILE: &str = "bootstrap.log";
 pub const ERRORS_LOG_FILE: &str = "errors.log";
 pub const WASM_MAGIC: &[u8] = b"\0asm";
@@ -33,25 +30,14 @@ impl ContentLimits {
     pub const WASM_PARAM_TYPE_MAX: usize = 20;
 }
 
-/// Application-level protocol identifier used during peer handshakes.
 pub const APP_PROTOCOL: &str = "/p2p-play/handshake/1.0.0";
-/// Application version string derived from `Cargo.toml`.
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-/// Application name string derived from `Cargo.toml`.
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
-//
-// ── Transport / swarm tuning constants ───────────────────────────────────────
 
-/// TCP listen-socket backlog (pending-connection queue depth).
 pub const TCP_LISTEN_BACKLOG: u32 = 1024;
-/// IP time-to-live set on outgoing TCP segments.
 pub const TCP_TTL: u32 = 64;
-/// Maximum concurrent multiplexed streams per yamux session.
 pub const YAMUX_MAX_STREAMS: usize = 512;
-/// Seconds an idle connection is kept open before the swarm closes it.
 pub const SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 60;
-/// Fallback dial-concurrency factor used when the config value cannot be
-/// represented as a `NonZeroU8`.
 pub const SWARM_DIAL_CONCURRENCY_FALLBACK: u8 = 8;
 // Security constants
 pub const ENCRYPTION_CONTEXT: &[u8] = b"p2p-play-encryption";
