@@ -16,11 +16,14 @@ use crate::network::{
     NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour, TOPIC,
     WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest, WasmExecutionResponse,
 };
-use crate::storage::{load_node_description, save_received_story, upsert_peer_alias};
+use crate::relay::RelayAction::{DeliverLocally, DropMessage, ForwardMessage};
+use crate::storage::{
+    create_channel, load_node_description, save_received_story, upsert_peer_alias,
+};
 use crate::types::{
     ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
     ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
-    PublishedStory,
+    PublishedStory, RelayConfirmation,
 };
 use crate::wasm_executor::{ExecutionRequest, WasmExecutionError, WasmExecutor};
 
@@ -628,7 +631,7 @@ pub async fn handle_floodsub_event(
                         debug!("Ignoring invalid published channel with empty name or description");
                     } else {
                         // Save the channel first - synchronously to ensure it exists before subscription
-                        let channel_saved = match crate::storage::create_channel(
+                        let channel_saved = match create_channel(
                             &channel_to_save.name,
                             &channel_to_save.description,
                             &channel_to_save.created_by,
@@ -671,31 +674,35 @@ pub async fn handle_floodsub_event(
                         };
 
                         // Only attempt auto-subscription AFTER successful channel creation to avoid race condition
-                        if channel_saved && should_auto_subscribe {
-                            match handle_auto_subscription(
-                                &peer_id_str,
-                                &channel_to_save.name,
-                                max_auto_subs,
-                                ui_logger,
-                            )
-                            .await
-                            {
-                                Ok(true) => {
-                                    ui_logger.log(format!(
-                                        "✅ Auto-subscribed to channel '{}'",
-                                        channel_to_save.name
-                                    ));
-                                }
-                                Ok(false) => {
-                                    // Auto-subscription was skipped (already subscribed or limit reached)
-                                }
-                                Err(e) => {
-                                    ui_logger.log(format!(
-                                        "❌ Failed to auto-subscribe to '{}': {}",
-                                        channel_to_save.name, e
-                                    ));
+                        if channel_saved {
+                            if should_auto_subscribe {
+                                match handle_auto_subscription(
+                                    &peer_id_str,
+                                    &channel_to_save.name,
+                                    max_auto_subs,
+                                    ui_logger,
+                                )
+                                .await
+                                {
+                                    Ok(true) => {
+                                        ui_logger.log(format!(
+                                            "✅ Auto-subscribed to channel '{}'",
+                                            channel_to_save.name
+                                        ));
+                                    }
+                                    Ok(false) => {
+                                        // Auto-subscription was skipped (already subscribed or limit reached)
+                                    }
+                                    Err(e) => {
+                                        ui_logger.log(format!(
+                                            "❌ Failed to auto-subscribe to '{}': {}",
+                                            channel_to_save.name, e
+                                        ));
+                                    }
                                 }
                             }
+
+                            return Some(crate::types::ActionResult::RefreshChannels);
                         }
                     }
                 }
@@ -709,47 +716,35 @@ pub async fn handle_floodsub_event(
                     channel.name, channel.description
                 ));
 
-                // Save the received channel to local storage asynchronously
-                let channel_to_save = channel.clone();
-                let ui_logger_clone = ui_logger.clone();
-                tokio::spawn(async move {
-                    // Add validation before saving
-                    if channel_to_save.name.is_empty() || channel_to_save.description.is_empty() {
-                        debug!("Ignoring invalid channel with empty name or description");
-                        return;
-                    }
-
-                    // Distinguish error types
-                    match crate::storage::create_channel(
-                        &channel_to_save.name,
-                        &channel_to_save.description,
-                        &channel_to_save.created_by,
-                    )
-                    .await
+                // Save the received channel to local storage synchronously so caller can refresh TUI
+                if channel.name.is_empty() || channel.description.is_empty() {
+                    debug!("Ignoring invalid channel with empty name or description");
+                } else {
+                    match create_channel(&channel.name, &channel.description, &channel.created_by)
+                        .await
                     {
                         Ok(_) => {
-                            ui_logger_clone.log(format!(
-                                "📺 Channel '{}' added to your channels list",
-                                channel_to_save.name
+                            ui_logger.log(format!(
+                                "📺 Channel '{}' added to your available channels",
+                                channel.name
                             ));
+                            return Some(crate::types::ActionResult::RefreshChannels);
                         }
                         Err(e) if e.to_string().contains("UNIQUE constraint") => {
-                            debug!("Channel '{}' already exists", channel_to_save.name);
+                            debug!("Channel '{}' already exists", channel.name);
+                            return Some(crate::types::ActionResult::RefreshChannels);
                         }
                         Err(e) => {
-                            // Create error logger for spawned task
-                            let error_logger_for_task =
-                                ErrorLogger::new(&crate::data_dir::get_data_path("errors.log"));
                             crate::log_network_error!(
-                                error_logger_for_task,
+                                error_logger,
                                 "storage",
                                 "Failed to save received channel '{}': {}",
-                                channel_to_save.name,
+                                channel.name,
                                 e
                             );
                         }
                     }
-                });
+                }
             } else if let Ok(relay_msg) =
                 serde_json::from_slice::<crate::types::RelayMessage>(&msg.data)
             {
@@ -761,10 +756,10 @@ pub async fn handle_floodsub_event(
                 // Process relay message if relay service is available
                 if let Some(relay_svc) = relay_service {
                     match relay_svc.process_relay_message(&relay_msg) {
-                        Ok(crate::relay::RelayAction::DeliverLocally(direct_msg)) => {
+                        Ok(DeliverLocally(direct_msg)) => {
                             ui_logger.log(format!(
                                 "{} Relay message delivered: {} -> {}: {}",
-                                crate::types::Icons::speech(),
+                                Icons::speech(),
                                 direct_msg.from_name,
                                 direct_msg.to_name,
                                 direct_msg.message
@@ -773,31 +768,31 @@ pub async fn handle_floodsub_event(
                                 "Relay message decrypted and delivered locally: {}",
                                 relay_msg.message_id
                             );
-                            let confirmation = crate::types::RelayConfirmation {
+                            let confirmation = RelayConfirmation {
                                 message_id: relay_msg.message_id.clone(),
                                 delivered_to: relay_msg.target_peer_id.clone(),
                                 relay_path_length: relay_msg.hop_count,
                                 delivery_timestamp: crate::current_unix_timestamp(),
                             };
-                            return Some(crate::types::ActionResult::BroadcastRelayConfirmation(
-                                Box::new(confirmation),
-                            ));
+                            return Some(ActionResult::BroadcastRelayConfirmation(Box::new(
+                                confirmation,
+                            )));
                         }
-                        Ok(crate::relay::RelayAction::ForwardMessage(forward_msg)) => {
+                        Ok(ForwardMessage(forward_msg)) => {
                             // Return action to re-broadcast the forwarded message via floodsub
                             debug!("Forwarding relay message: {}", forward_msg.message_id);
                             ui_logger.log(format!(
                                 "{} Forwarding relay message {} (hops: {}/{})",
-                                crate::types::Icons::antenna(),
+                                Icons::antenna(),
                                 &forward_msg.message_id[..8],
                                 forward_msg.hop_count,
                                 forward_msg.max_hops
                             ));
-                            return Some(crate::types::ActionResult::RebroadcastRelayMessage(
-                                Box::new(forward_msg),
-                            ));
+                            return Some(ActionResult::RebroadcastRelayMessage(Box::new(
+                                forward_msg,
+                            )));
                         }
-                        Ok(crate::relay::RelayAction::DropMessage(reason)) => {
+                        Ok(DropMessage(reason)) => {
                             debug!(
                                 "Dropping relay message {}: {}",
                                 relay_msg.message_id, reason
@@ -1873,7 +1868,6 @@ pub async fn handle_handshake_event(
                             &peer,
                             "after successful handshake",
                         );
-
                     } else {
                         debug!(
                             "❌ Handshake failed with peer {}: not a compatible P2P-Play node",
@@ -1981,6 +1975,9 @@ pub async fn handle_event(
                 match action_result {
                     crate::types::ActionResult::RefreshStories => {
                         return Some(ActionResult::RefreshStories);
+                    }
+                    crate::types::ActionResult::RefreshChannels => {
+                        return Some(ActionResult::RefreshChannels);
                     }
                     crate::types::ActionResult::RebroadcastRelayMessage(relay_msg) => {
                         // Rebroadcast the relay message via floodsub
