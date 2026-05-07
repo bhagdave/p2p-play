@@ -33,7 +33,7 @@ pub async fn handle_wasm_command(
 
     match parts[1] {
         "create" => handle_wasm_create(&parts[2..], ui_logger, error_logger).await,
-        "ls" | "list" => handle_wasm_list(&parts[2..], ui_logger, error_logger).await,
+        "ls" | "list" => handle_wasm_list(&parts[2..], &peer_names, ui_logger, error_logger).await,
         "show" => handle_wasm_show(&parts[2..], ui_logger, error_logger).await,
         "toggle" => handle_wasm_toggle(&parts[2..], ui_logger, error_logger).await,
         "delete" => handle_wasm_delete(&parts[2..], ui_logger, error_logger).await,
@@ -192,19 +192,19 @@ fn print_offering(offering: &crate::types::WasmOffering, ui_logger: &UILogger) {
     ));
 }
 
-async fn handle_wasm_list(args: &[&str], ui_logger: &UILogger, error_logger: &ErrorLogger) {
+async fn handle_wasm_list(args: &[&str], peer_names: &HashMap<PeerId, String>, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     let filter = args.first().copied().unwrap_or("all");
 
     match filter {
         "local" => print_local_offerings(ui_logger, error_logger).await,
-        "remote" => print_remote_offerings(ui_logger, error_logger).await,
+        "remote" => print_remote_offerings(peer_names, ui_logger, error_logger).await,
         // "all" or any unrecognised value shows both sections
         "all" | _ => {
             ui_logger.log("=== Local Offerings ===".to_string());
             print_local_offerings(ui_logger, error_logger).await;
             ui_logger.log("".to_string());
             ui_logger.log("=== Remote Offerings ===".to_string());
-            print_remote_offerings(ui_logger, error_logger).await;
+            print_remote_offerings(peer_names, ui_logger, error_logger).await;
         }
     }
 }
@@ -228,7 +228,7 @@ async fn print_local_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger)
     }
 }
 
-async fn print_remote_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger) {
+async fn print_remote_offerings(peer_names: &HashMap<PeerId, String>, ui_logger: &UILogger, error_logger: &ErrorLogger) {
     match get_all_cached_wasm_offerings().await {
         Ok(offerings) => {
             ui_logger.log(format!("Discovered WASM Offerings ({}):", offerings.len()));
@@ -239,11 +239,16 @@ async fn print_remote_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger
             } else {
                 let mut current_peer = String::new();
                 for (peer_id, offering) in offerings {
+                    // get peer name from peer_id if available, otherwise show shortened peer_id
+                    let peer_name = peer_names
+                        .get(&PeerId::from_bytes(peer_id.as_bytes()).unwrap_or_else(|_| PeerId::random()))
+                        .cloned()
+                        .unwrap_or_else(|| peer_id[..12.min(peer_id.len())].to_string());
                     if peer_id != current_peer {
                         ui_logger.log(format!(
                             "  From peer {}:",
-                            &peer_id[..12.min(peer_id.len())]
-                        ));
+                            &peer_name)
+                        );
                         current_peer = peer_id;
                     }
                     ui_logger.log(format!(
