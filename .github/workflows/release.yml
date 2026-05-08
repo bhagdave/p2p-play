@@ -80,6 +80,11 @@ jobs:
 
     - name: Run tests
       run: |
+        if [ -n "${{ matrix.linker }}" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${{ matrix.linker }}"
+          export CC_aarch64_unknown_linux_gnu="${{ matrix.linker }}"
+        fi
+
         if [ -f "./scripts/test_runner.sh" ]; then
           chmod +x ./scripts/test_runner.sh
           ./scripts/test_runner.sh
@@ -87,21 +92,23 @@ jobs:
           cargo test
         fi
       shell: bash
-      env:
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
-        CC_aarch64_unknown_linux_gnu: ${{ matrix.linker }}
 
     - name: Build release binary
-      run: cargo build --release --target ${{ matrix.target }}
-      env:
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.linker }}
-        CC_aarch64_unknown_linux_gnu: ${{ matrix.linker }}
+      run: |
+        if [ -n "${{ matrix.linker }}" ]; then
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER="${{ matrix.linker }}"
+          export CC_aarch64_unknown_linux_gnu="${{ matrix.linker }}"
+        fi
+
+        cargo build --release --target ${{ matrix.target }}
 
     - name: Prepare artifact (Unix)
       if: matrix.os != 'windows-latest'
       run: |
         cp target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ${{ matrix.asset_name }}
-        ${{ matrix.strip_tool }} ${{ matrix.asset_name }} || true
+        if [ -n "${{ matrix.strip_tool }}" ]; then
+          ${{ matrix.strip_tool }} ${{ matrix.asset_name }} || true
+        fi
 
     - name: Prepare artifact (Windows)
       if: matrix.os == 'windows-latest'
