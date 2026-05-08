@@ -19,9 +19,7 @@ static TEST_DB_MUTEX: Mutex<()> = Mutex::new(());
 
 async fn setup_test_db() -> TempDir {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
-    let db_path = temp_dir
-        .path()
-        .join("test_channel_floodsub_refresh.db");
+    let db_path = temp_dir.path().join("test_channel_floodsub_refresh.db");
     unsafe {
         std::env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
     }
@@ -118,8 +116,7 @@ async fn test_floodsub_duplicate_channel_still_returns_refresh_channels() {
     let channel_data = serde_json::to_vec(&channel).unwrap();
 
     // First arrival — channel is new.
-    let first_result =
-        call_handler(source, channel_data.clone(), &verified_peers).await;
+    let first_result = call_handler(source, channel_data.clone(), &verified_peers).await;
     assert_eq!(first_result, Some(ActionResult::RefreshChannels));
 
     // Second arrival — UNIQUE constraint fires, but must still refresh.
