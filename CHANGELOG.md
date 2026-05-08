@@ -4,6 +4,9 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Linux aarch64 release build**: The release workflow now publishes a `p2p-play-linux-aarch64` asset so Raspberry Pi and other ARM64 Linux systems can download a prebuilt binary instead of building locally.
+
 ### Fixed
 - **`wasm ls` remote peer display now uses saved aliases**: Remote offerings now show saved peer aliases for disconnected peers instead of raw Peer IDs.
 - **Windows build: `test_fetch_returns_not_found_on_404` connection abort**: The mock HTTP server used in content-fetcher tests now reads the incoming request headers before sending its response. On Windows, closing the socket while the client was still sending the request triggered a TCP RST (WSAECONNABORTED / error 10053), causing the client to see a connection error instead of the expected 404 response.
