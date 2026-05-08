@@ -4,6 +4,9 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **`wasm ls` remote peer display now uses saved aliases**: Remote offerings now show saved peer aliases for disconnected peers instead of raw Peer IDs.
+
 ## [0.12.0] - 2026-06-15
 
 ### Added
