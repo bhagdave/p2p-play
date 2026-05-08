@@ -270,12 +270,12 @@ async fn print_remote_offerings(
                 };
                 let mut current_peer = String::new();
                 for (peer_id, offering) in offerings {
-                    let peer_name = resolve_remote_offering_peer_display(
-                        &peer_id,
-                        peer_names,
-                        &saved_peer_aliases,
-                    );
                     if peer_id != current_peer {
+                        let peer_name = resolve_remote_offering_peer_display(
+                            &peer_id,
+                            peer_names,
+                            &saved_peer_aliases,
+                        );
                         ui_logger.log(format!("  From peer {}:", &peer_name));
                         current_peer = peer_id;
                     }
