@@ -103,12 +103,8 @@ pub struct ExecutionResult {
 pub struct WasmExecutorConfig {
     pub enable_cache: bool,
     pub max_cached_modules: usize,
-    /// Size of the stack allocated for each async WASM fiber.
-    ///
-    /// The default (8 MiB) is intentionally larger than Wasmtime's own
-    /// built-in default (2 MiB) to prevent `STATUS_STACK_BUFFER_OVERRUN`
-    /// panics on Windows when fuel-exhaustion traps are propagated through
-    /// the fiber switching mechanism in debug builds.
+    /// Size in bytes of the stack allocated for each async WASM fiber.
+    /// Increase from Wasmtime's default to avoid STATUS_STACK_BUFFER_OVERRUN on Windows.
     pub async_stack_size: usize,
 }
 
@@ -117,7 +113,7 @@ impl Default for WasmExecutorConfig {
         Self {
             enable_cache: true,
             max_cached_modules: 10,
-            async_stack_size: 8 * 1024 * 1024, // 8 MiB
+            async_stack_size: DEFAULT_ASYNC_STACK_SIZE,
         }
     }
 }
@@ -578,7 +574,7 @@ mod tests {
         let config = WasmExecutorConfig::default();
         assert!(config.enable_cache);
         assert_eq!(config.max_cached_modules, 10);
-        assert_eq!(config.async_stack_size, 8 * 1024 * 1024);
+        assert_eq!(config.async_stack_size, DEFAULT_ASYNC_STACK_SIZE);
     }
 
     // --- StoreLimitsBuilder (sanity check) ---
