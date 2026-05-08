@@ -16,6 +16,19 @@ use super::{
     validate_and_log,
 };
 
+fn resolve_remote_offering_peer_display(
+    peer_id: &str,
+    peer_names: &HashMap<PeerId, String>,
+    saved_peer_aliases: &HashMap<String, String>,
+) -> String {
+    peer_id
+        .parse::<PeerId>()
+        .ok()
+        .and_then(|parsed_peer_id| peer_names.get(&parsed_peer_id).cloned())
+        .or_else(|| saved_peer_aliases.get(peer_id).cloned())
+        .unwrap_or_else(|| peer_id[..12.min(peer_id.len())].to_string())
+}
+
 pub async fn handle_wasm_command(
     cmd: &str,
     swarm: &mut Swarm<StoryBehaviour>,
@@ -33,7 +46,7 @@ pub async fn handle_wasm_command(
 
     match parts[1] {
         "create" => handle_wasm_create(&parts[2..], ui_logger, error_logger).await,
-        "ls" | "list" => handle_wasm_list(&parts[2..], &peer_names, ui_logger, error_logger).await,
+        "ls" | "list" => handle_wasm_list(&parts[2..], peer_names, ui_logger, error_logger).await,
         "show" => handle_wasm_show(&parts[2..], ui_logger, error_logger).await,
         "toggle" => handle_wasm_toggle(&parts[2..], ui_logger, error_logger).await,
         "delete" => handle_wasm_delete(&parts[2..], ui_logger, error_logger).await,
@@ -192,7 +205,12 @@ fn print_offering(offering: &crate::types::WasmOffering, ui_logger: &UILogger) {
     ));
 }
 
-async fn handle_wasm_list(args: &[&str], peer_names: &HashMap<PeerId, String>, ui_logger: &UILogger, error_logger: &ErrorLogger) {
+async fn handle_wasm_list(
+    args: &[&str],
+    peer_names: &HashMap<PeerId, String>,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
     let filter = args.first().copied().unwrap_or("all");
 
     match filter {
@@ -228,7 +246,11 @@ async fn print_local_offerings(ui_logger: &UILogger, error_logger: &ErrorLogger)
     }
 }
 
-async fn print_remote_offerings(peer_names: &HashMap<PeerId, String>, ui_logger: &UILogger, error_logger: &ErrorLogger) {
+async fn print_remote_offerings(
+    peer_names: &HashMap<PeerId, String>,
+    ui_logger: &UILogger,
+    error_logger: &ErrorLogger,
+) {
     match get_all_cached_wasm_offerings().await {
         Ok(offerings) => {
             ui_logger.log(format!("Discovered WASM Offerings ({}):", offerings.len()));
@@ -237,18 +259,24 @@ async fn print_remote_offerings(peer_names: &HashMap<PeerId, String>, ui_logger:
                     "  (no discovered offerings - use 'wasm query <peer>' to discover)".to_string(),
                 );
             } else {
+                let saved_peer_aliases = match crate::storage::get_all_peer_aliases().await {
+                    Ok(aliases) => aliases,
+                    Err(e) => {
+                        error_logger.log_error(&format!(
+                            "Failed to load saved peer aliases for WASM listing: {e}"
+                        ));
+                        HashMap::new()
+                    }
+                };
                 let mut current_peer = String::new();
                 for (peer_id, offering) in offerings {
-                    // get peer name from peer_id if available, otherwise show shortened peer_id
-                    let peer_name = peer_names
-                        .get(&PeerId::from_bytes(peer_id.as_bytes()).unwrap_or_else(|_| PeerId::random()))
-                        .cloned()
-                        .unwrap_or_else(|| peer_id[..12.min(peer_id.len())].to_string());
+                    let peer_name = resolve_remote_offering_peer_display(
+                        &peer_id,
+                        peer_names,
+                        &saved_peer_aliases,
+                    );
                     if peer_id != current_peer {
-                        ui_logger.log(format!(
-                            "  From peer {}:",
-                            &peer_name)
-                        );
+                        ui_logger.log(format!("  From peer {}:", &peer_name));
                         current_peer = peer_id;
                     }
                     ui_logger.log(format!(
@@ -266,6 +294,57 @@ async fn print_remote_offerings(peer_names: &HashMap<PeerId, String>, ui_logger:
             error_logger.log_error(&format!("Failed to list cached WASM offerings: {e}"));
             ui_logger.log(format!("{} Failed to list offerings", Icons::cross()));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_remote_offering_peer_display;
+    use libp2p::PeerId;
+    use std::collections::HashMap;
+
+    #[test]
+    fn resolve_remote_offering_peer_display_uses_connected_alias_first() {
+        let peer_id = PeerId::random();
+        let peer_id_str = peer_id.to_string();
+
+        let mut connected_names = HashMap::new();
+        connected_names.insert(peer_id, "live-alias".to_string());
+
+        let mut saved_aliases = HashMap::new();
+        saved_aliases.insert(peer_id_str.clone(), "saved-alias".to_string());
+
+        let display =
+            resolve_remote_offering_peer_display(&peer_id_str, &connected_names, &saved_aliases);
+
+        assert_eq!(display, "live-alias");
+    }
+
+    #[test]
+    fn resolve_remote_offering_peer_display_falls_back_to_saved_alias() {
+        let peer_id = PeerId::random();
+        let peer_id_str = peer_id.to_string();
+
+        let connected_names = HashMap::new();
+        let mut saved_aliases = HashMap::new();
+        saved_aliases.insert(peer_id_str.clone(), "saved-alias".to_string());
+
+        let display =
+            resolve_remote_offering_peer_display(&peer_id_str, &connected_names, &saved_aliases);
+
+        assert_eq!(display, "saved-alias");
+    }
+
+    #[test]
+    fn resolve_remote_offering_peer_display_uses_short_peer_id_when_no_alias_exists() {
+        let peer_id = PeerId::random().to_string();
+        let connected_names = HashMap::new();
+        let saved_aliases = HashMap::new();
+
+        let display =
+            resolve_remote_offering_peer_display(&peer_id, &connected_names, &saved_aliases);
+
+        assert_eq!(display, peer_id[..12.min(peer_id.len())].to_string());
     }
 }
 
