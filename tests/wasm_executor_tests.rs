@@ -358,6 +358,7 @@ async fn test_cache_disabled_still_works() {
     let config = WasmExecutorConfig {
         enable_cache: false,
         max_cached_modules: 0,
+        ..Default::default()
     };
     let executor = WasmExecutor::with_config(fetcher, config).unwrap();
 
@@ -378,6 +379,7 @@ async fn test_cache_respects_capacity() {
     let config = WasmExecutorConfig {
         enable_cache: true,
         max_cached_modules: 2,
+        ..Default::default()
     };
     let executor = WasmExecutor::with_config(Arc::clone(&fetcher), config).unwrap();
 

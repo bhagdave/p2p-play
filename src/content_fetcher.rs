@@ -133,10 +133,28 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             if let Ok((mut socket, _)) = listener.accept().await {
+                // Drain the incoming HTTP request headers before responding.
+                // On Windows, closing the socket without reading the request
+                // causes a TCP RST (WSAECONNABORTED / error 10053) that races
+                // with the client reading the response.
+                use tokio::io::AsyncReadExt;
+                let mut buf = [0u8; 4096];
+                loop {
+                    match socket.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            // HTTP headers end with a blank line (\r\n\r\n)
+                            if buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                                break;
+                            }
+                        }
+                    }
+                }
                 let response = format!(
                     "HTTP/1.1 {status_line}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                 );
                 let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
             }
         });
         format!("http://{addr}")
