@@ -5,10 +5,9 @@ use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
 use crate::migrations;
 
@@ -33,7 +32,7 @@ fn get_database_path() -> String {
 
 type DbPool = Pool<SqliteConnectionManager>;
 
-static DB_POOL_STATE: once_cell::sync::Lazy<RwLock<Option<(DbPool, String)>>> =
+static DB_POOL: once_cell::sync::Lazy<RwLock<Option<(DbPool, String)>>> =
     once_cell::sync::Lazy::new(|| RwLock::new(None));
 
 struct PoolConfig {
@@ -79,54 +78,24 @@ fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
     Ok(pool)
 }
 
-pub async fn get_db_connection() -> StorageResult<Arc<Mutex<Connection>>> {
+pub async fn get_db_connection() -> StorageResult<r2d2::PooledConnection<SqliteConnectionManager>> {
     let current_path = get_database_path();
-
     {
-        let state = DB_POOL_STATE.read().await;
+        let state = DB_POOL.read().await;
         if let Some((pool, stored_path)) = state.as_ref()
             && stored_path == &current_path
         {
-            let _pooled_conn = pool
-                .get()
-                .map_err(|e| format!("Failed to get connection from pool: {e}"))?;
-
-            let conn = Connection::open(&current_path)?;
-            conn.execute_batch(
-                "PRAGMA foreign_keys = ON;
-                     PRAGMA synchronous = NORMAL;
-                     PRAGMA cache_size = -64000;
-                     PRAGMA temp_store = MEMORY;
-                     PRAGMA journal_mode = WAL;",
-            )?;
-
-            return Ok(Arc::new(Mutex::new(conn)));
+            return pool.get().map_err(|e| format!("pool error: {e}").into());
         }
     }
-
     let pool = create_db_pool(&current_path)?;
-
-    let conn = Connection::open(&current_path)?;
-    conn.execute_batch(
-        "PRAGMA foreign_keys = ON;
-         PRAGMA synchronous = NORMAL;
-         PRAGMA cache_size = -64000;
-         PRAGMA temp_store = MEMORY;
-         PRAGMA journal_mode = WAL;",
-    )?;
-    let conn_arc = Arc::new(Mutex::new(conn));
-
-    {
-        let mut state = DB_POOL_STATE.write().await;
-        *state = Some((pool, current_path));
-    }
-
-    Ok(conn_arc)
+    let conn = pool.get().map_err(|e| format!("pool error: {e}"))?;
+    let mut state = DB_POOL.write().await;*state = Some((pool, current_path));
+    Ok(conn)
 }
 
 async fn create_tables() -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     migrations::create_tables(&conn)?;
     Ok(())
@@ -147,8 +116,7 @@ pub async fn ensure_stories_file_exists() -> StorageResult<()> {
 }
 
 pub async fn read_local_stories() -> StorageResult<Stories> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt =
         conn.prepare("SELECT id, name, header, body, public, channel, created_at FROM stories ORDER BY created_at DESC")?;
@@ -163,8 +131,7 @@ pub async fn read_local_stories_for_sync(
     last_sync_timestamp: u64,
     subscribed_channels: &[String],
 ) -> StorageResult<Stories> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut query = "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE public = 1 AND created_at > ?".to_string();
     let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(last_sync_timestamp as i64)];
@@ -194,8 +161,7 @@ pub async fn get_channels_for_stories(stories: &[Story]) -> StorageResult<Channe
         return Ok(Vec::new());
     }
 
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut unique_channels: std::collections::HashSet<String> = std::collections::HashSet::new();
     for story in stories {
@@ -280,9 +246,9 @@ pub async fn create_new_story_with_channel(
     body: &str,
     channel: &str,
 ) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
+    let conn = get_db_connection().await?;
 
-    let next_id = utils::get_next_id(&conn_arc, "stories").await?;
+    let next_id = utils::get_next_id(&conn, "stories").await?;
 
     let created_at = utils::get_current_timestamp();
 
@@ -291,7 +257,6 @@ pub async fn create_new_story_with_channel(
         Err(_) => true, // Default to true if config can't be loaded
     };
 
-    let conn = conn_arc.lock().await;
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
@@ -312,8 +277,7 @@ pub async fn publish_story(
     id: usize,
     sender: tokio::sync::mpsc::UnboundedSender<Story>,
 ) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let rows_affected = conn.execute(
         "UPDATE stories SET public = ? WHERE id = ?",
@@ -345,8 +309,7 @@ pub async fn publish_story(
 }
 
 pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let rows_affected = conn.execute("DELETE FROM stories WHERE id = ?", [&id.to_string()])?;
 
@@ -358,10 +321,9 @@ pub async fn delete_local_story(id: usize) -> StorageResult<bool> {
 }
 
 pub async fn save_received_story(story: Story) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
+    let conn = get_db_connection().await?;
 
     {
-        let conn = conn_arc.lock().await;
         let mut stmt =
             conn.prepare("SELECT id FROM stories WHERE name = ? AND header = ? AND body = ?")?;
         let existing = stmt.query_row(
@@ -374,9 +336,8 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
         }
     }
 
-    let new_id = utils::get_next_id(&conn_arc, "stories").await?;
+    let new_id = utils::get_next_id(&conn, "stories").await?;
 
-    let conn = conn_arc.lock().await;
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
@@ -394,8 +355,7 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
 }
 
 pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     conn.execute(
         "INSERT OR REPLACE INTO peer_name (id, name) VALUES (1, ?)",
@@ -406,8 +366,7 @@ pub async fn save_local_peer_name(name: &str) -> StorageResult<()> {
 }
 
 pub async fn load_local_peer_name() -> StorageResult<Option<String>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare("SELECT name FROM peer_name WHERE id = 1")?;
     let result = stmt.query_row([], |row| row.get::<_, String>(0));
@@ -425,8 +384,7 @@ pub async fn upsert_peer(
     multiaddr: Option<&str>,
     is_connected: bool,
 ) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let last_seen = utils::get_current_timestamp() as i64;
     let is_connected_db = if is_connected { 1i64 } else { 0i64 };
@@ -448,8 +406,7 @@ pub async fn upsert_peer(
 }
 
 pub async fn upsert_peer_alias(peer_id: &str, alias: &str) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let last_seen = utils::get_current_timestamp() as i64;
 
@@ -468,8 +425,7 @@ pub async fn upsert_peer_alias(peer_id: &str, alias: &str) -> StorageResult<()> 
 }
 
 pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let last_seen = utils::get_current_timestamp() as i64;
 
@@ -482,8 +438,7 @@ pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
 }
 
 pub async fn get_all_peer_aliases() -> StorageResult<HashMap<String, String>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         "SELECT peer_id, alias FROM peers WHERE alias IS NOT NULL AND TRIM(alias) != ''",
@@ -508,8 +463,7 @@ pub async fn get_outbound_peers(limit: usize) -> StorageResult<Vec<String>> {
         rusqlite::Error::InvalidParameterName("limit exceeds i64 range".to_string())
     })?;
 
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         "SELECT multiaddr FROM peers WHERE multiaddr IS NOT NULL ORDER BY last_seen DESC LIMIT ?1",
@@ -522,8 +476,7 @@ pub async fn get_outbound_peers(limit: usize) -> StorageResult<Vec<String>> {
 }
 
 pub async fn create_channel(name: &str, description: &str, created_by: &str) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let timestamp = utils::get_current_timestamp();
 
@@ -536,8 +489,7 @@ pub async fn create_channel(name: &str, description: &str, created_by: &str) -> 
 }
 
 pub async fn channel_exists(name: &str) -> StorageResult<bool> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare("SELECT 1 FROM channels WHERE name = ? LIMIT 1")?;
     let exists = stmt.exists([name])?;
@@ -545,8 +497,7 @@ pub async fn channel_exists(name: &str) -> StorageResult<bool> {
 }
 
 pub async fn read_channels() -> StorageResult<Channels> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn
         .prepare("SELECT name, description, created_by, created_at FROM channels ORDER BY name")?;
@@ -558,8 +509,7 @@ pub async fn read_channels() -> StorageResult<Channels> {
 }
 
 pub async fn subscribe_to_channel(peer_id: &str, channel_name: &str) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let timestamp = utils::get_current_timestamp();
 
@@ -591,8 +541,7 @@ pub async fn ensure_general_channel_subscription(peer_id: &str) -> StorageResult
 }
 
 pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     conn.execute(
         "DELETE FROM channel_subscriptions WHERE peer_id = ? AND channel_name = ?",
@@ -603,8 +552,7 @@ pub async fn unsubscribe_from_channel(peer_id: &str, channel_name: &str) -> Stor
 }
 
 pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         "SELECT channel_name FROM channel_subscriptions WHERE peer_id = ? ORDER BY channel_name",
@@ -617,8 +565,7 @@ pub async fn read_subscribed_channels(peer_id: &str) -> StorageResult<Vec<String
 }
 
 pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResult<Channels> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -644,8 +591,7 @@ pub async fn read_subscribed_channels_with_details(peer_id: &str) -> StorageResu
 }
 
 pub async fn read_unsubscribed_channels(peer_id: &str) -> StorageResult<Channels> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -680,8 +626,7 @@ pub async fn save_direct_message(
     message: &crate::types::DirectMessage,
     peer_names: Option<&std::collections::HashMap<libp2p::PeerId, String>>,
 ) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
     let is_read = message.is_outgoing; // Outgoing messages are considered read by default
 
     let origin_peer_id = if message.is_outgoing {
@@ -884,8 +829,7 @@ pub async fn mark_story_as_read(
     peer_id: &str,
     channel_name: &str,
 ) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let read_at = utils::get_current_timestamp();
 
@@ -898,8 +842,7 @@ pub async fn mark_story_as_read(
 }
 
 pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMap<String, usize>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -923,8 +866,7 @@ pub async fn get_unread_counts_by_channel(peer_id: &str) -> StorageResult<HashMa
 }
 
 pub async fn get_conversations_with_status() -> StorageResult<Vec<crate::types::Conversation>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -961,8 +903,7 @@ pub async fn get_conversations_with_status() -> StorageResult<Vec<crate::types::
 }
 
 pub async fn mark_conversation_messages_as_read(peer_id: &str) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     conn.execute(
         "UPDATE direct_messages SET is_read = 1 WHERE remote_peer_id = ? AND is_outgoing = 0 AND is_read = 0",
@@ -975,8 +916,7 @@ pub async fn mark_conversation_messages_as_read(peer_id: &str) -> StorageResult<
 pub async fn get_conversation_messages(
     peer_id: &str,
 ) -> StorageResult<Vec<crate::types::DirectMessage>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         "SELECT remote_peer_id, to_peer_id, message, timestamp, is_outgoing, is_read FROM direct_messages dm 
@@ -1007,8 +947,7 @@ pub async fn search_stories(
 ) -> StorageResult<crate::types::SearchResults> {
     use crate::types::{SearchResult, SearchResults};
 
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let has_text_search = !query.text.trim().is_empty();
     let search_pattern = if has_text_search {
@@ -1128,8 +1067,7 @@ fn calculate_simple_relevance(story: &crate::types::Story, search_term: &str) ->
 }
 
 pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::types::Stories> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         "SELECT id, name, header, body, public, channel, created_at 
@@ -1146,8 +1084,7 @@ pub async fn filter_stories_by_channel(channel: &str) -> StorageResult<crate::ty
 }
 
 pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::types::Stories> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let cutoff_timestamp =
         crate::current_unix_timestamp().saturating_sub((days as u64) * 24 * 60 * 60);
@@ -1167,8 +1104,7 @@ pub async fn filter_stories_by_recent_days(days: u32) -> StorageResult<crate::ty
 }
 
 pub async fn create_wasm_offering(offering: &crate::types::WasmOffering) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let parameters_json = serde_json::to_string(&offering.parameters)?;
     let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
@@ -1197,8 +1133,7 @@ pub async fn create_wasm_offering(offering: &crate::types::WasmOffering) -> Stor
 }
 
 pub async fn read_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOffering>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -1217,8 +1152,7 @@ pub async fn read_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOfferi
 }
 
 pub async fn read_enabled_wasm_offerings() -> StorageResult<Vec<crate::types::WasmOffering>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -1240,8 +1174,7 @@ pub async fn read_enabled_wasm_offerings() -> StorageResult<Vec<crate::types::Wa
 pub async fn get_wasm_offering_by_id(
     id: &str,
 ) -> StorageResult<Option<crate::types::WasmOffering>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -1262,8 +1195,7 @@ pub async fn get_wasm_offering_by_id(
 }
 
 pub async fn update_wasm_offering(offering: &crate::types::WasmOffering) -> StorageResult<bool> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let parameters_json = serde_json::to_string(&offering.parameters)?;
     let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
@@ -1293,8 +1225,7 @@ pub async fn update_wasm_offering(offering: &crate::types::WasmOffering) -> Stor
 }
 
 pub async fn toggle_wasm_offering(id: &str, enabled: bool) -> StorageResult<bool> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let updated_at = crate::current_unix_timestamp();
 
@@ -1307,8 +1238,7 @@ pub async fn toggle_wasm_offering(id: &str, enabled: bool) -> StorageResult<bool
 }
 
 pub async fn delete_wasm_offering(id: &str) -> StorageResult<bool> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let rows_affected = conn.execute("DELETE FROM wasm_offerings WHERE id = ?", [id])?;
 
@@ -1319,8 +1249,7 @@ pub async fn cache_discovered_wasm_offering(
     peer_id: &str,
     offering: &crate::types::WasmOffering,
 ) -> StorageResult<()> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let parameters_json = serde_json::to_string(&offering.parameters)?;
     let resource_requirements_json = serde_json::to_string(&offering.resource_requirements)?;
@@ -1357,8 +1286,7 @@ pub async fn cache_discovered_wasm_offering(
 pub async fn get_cached_wasm_offerings_by_peer(
     peer_id: &str,
 ) -> StorageResult<Vec<crate::types::WasmOffering>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -1382,8 +1310,7 @@ pub async fn get_cached_wasm_offerings_by_peer(
 
 pub async fn get_all_cached_wasm_offerings()
 -> StorageResult<Vec<(String, crate::types::WasmOffering)>> {
-    let conn_arc = get_db_connection().await?;
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await?;
 
     let mut stmt = conn.prepare(
         r#"
@@ -1434,8 +1361,7 @@ pub mod test_utils {
     where
         F: FnOnce(&Connection) -> StorageResult<R>,
     {
-        let conn_arc = super::get_db_connection().await?;
-        let conn = conn_arc.lock().await;
+        let conn = super::get_db_connection().await?;
 
         conn.execute("BEGIN TRANSACTION", [])?;
 
@@ -1455,8 +1381,7 @@ pub mod test_utils {
     where
         F: FnOnce(&Connection) -> StorageResult<R>,
     {
-        let conn_arc = super::get_db_connection().await?;
-        let conn = conn_arc.lock().await;
+        let conn = super::get_db_connection().await?;
 
         conn.execute("BEGIN DEFERRED", [])?;
 
@@ -1477,8 +1402,7 @@ pub mod test_utils {
         reset_db_connection_for_testing().await?;
         super::ensure_stories_file_exists().await?;
 
-        let conn_arc = super::get_db_connection().await?;
-        let conn = conn_arc.lock().await;
+        let conn = super::get_db_connection().await?;
 
         conn.execute("PRAGMA foreign_keys = OFF", [])?;
 
@@ -1663,8 +1587,7 @@ pub mod test_utils {
     }
 
     pub async fn get_stories_by_channel(channel_name: &str) -> StorageResult<Stories> {
-        let conn_arc = super::get_db_connection().await?;
-        let conn = conn_arc.lock().await;
+        let conn = super::get_db_connection().await?;
 
         let mut stmt = conn.prepare(
             "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE channel = ? AND public = 1 ORDER BY created_at DESC",
@@ -1684,8 +1607,7 @@ pub mod test_utils {
 
         super::ensure_stories_file_exists().await?;
 
-        let conn_arc = super::get_db_connection().await?;
-        let conn = conn_arc.lock().await;
+        let conn = super::get_db_connection().await?;
 
         conn.execute("DELETE FROM direct_messages", [])?; // Clear first - has FK to conversations
         conn.execute("DELETE FROM conversations", [])?; // Clear second - referenced by direct_messages
@@ -1708,8 +1630,7 @@ pub mod test_utils {
     }
 
     pub async fn is_story_read(story_id: usize, peer_id: &str) -> StorageResult<bool> {
-        let conn_arc = super::get_db_connection().await?;
-        let conn = conn_arc.lock().await;
+        let conn = super::get_db_connection().await?;
 
         let mut stmt = conn
             .prepare("SELECT COUNT(*) FROM story_read_status WHERE story_id = ? AND peer_id = ?")?;
@@ -1722,8 +1643,7 @@ pub mod test_utils {
 
     /// Clean up stale discovered WASM offerings (older than max_age_secs)
     pub async fn cleanup_stale_wasm_offerings(max_age_secs: u64) -> StorageResult<usize> {
-        let conn_arc = super::get_db_connection().await?;
-        let conn = conn_arc.lock().await;
+        let conn = super::get_db_connection().await?;
 
         let cutoff = crate::current_unix_timestamp().saturating_sub(max_age_secs);
 
@@ -1775,8 +1695,7 @@ mod read_status_tests {
             .expect("Failed to create channel");
 
         // Make the story public so it shows up in unread counts
-        let conn_arc = get_db_connection().await.expect("Failed to get connection");
-        let conn = conn_arc.lock().await;
+        let conn = get_db_connection().await.expect("Failed to get connection");
         conn.execute("UPDATE stories SET public = 1 WHERE id = 0", [])
             .expect("Failed to make story public");
         drop(conn); // Release the lock
@@ -1841,8 +1760,7 @@ mod peers_tests {
             .await
             .expect("upsert_peer should succeed");
 
-        let conn_arc = get_db_connection().await.expect("Failed to get connection");
-        let conn = conn_arc.lock().await;
+        let conn = get_db_connection().await.expect("Failed to get connection");
 
         let (alias, stored_multiaddr, is_connected): (Option<String>, Option<String>, i64) = conn
             .query_row(
@@ -1886,8 +1804,7 @@ mod peers_tests {
             .await
             .expect("Alias update should succeed");
 
-        let conn_arc = get_db_connection().await.expect("Failed to get connection");
-        let conn = conn_arc.lock().await;
+        let conn = get_db_connection().await.expect("Failed to get connection");
 
         let (stored_alias, stored_multiaddr): (Option<String>, Option<String>) = conn
             .query_row(
@@ -1929,8 +1846,7 @@ mod peers_tests {
             .await
             .expect("mark_peer_disconnected should succeed");
 
-        let conn_arc = get_db_connection().await.expect("Failed to get connection");
-        let conn = conn_arc.lock().await;
+        let conn = get_db_connection().await.expect("Failed to get connection");
 
         let is_connected: i64 = conn
             .query_row(
@@ -1975,8 +1891,7 @@ mod peers_tests {
             .await
             .expect("upsert_peer update should succeed");
 
-        let conn_arc = get_db_connection().await.expect("Failed to get connection");
-        let conn = conn_arc.lock().await;
+        let conn = get_db_connection().await.expect("Failed to get connection");
 
         let (stored_alias, stored_multiaddr): (Option<String>, Option<String>) = conn
             .query_row(
@@ -2022,8 +1937,7 @@ mod peers_tests {
             .await
             .expect("upsert_peer_alias should succeed");
 
-        let conn_arc = get_db_connection().await.expect("Failed to get connection");
-        let conn = conn_arc.lock().await;
+        let conn = get_db_connection().await.expect("Failed to get connection");
 
         let (stored_alias, is_connected): (Option<String>, i64) = conn
             .query_row(
@@ -2060,8 +1974,7 @@ mod peers_tests {
             .await
             .expect("upsert_peer_alias should succeed");
 
-        let conn_arc = get_db_connection().await.expect("Failed to get connection");
-        let conn = conn_arc.lock().await;
+        let conn = get_db_connection().await.expect("Failed to get connection");
 
         let (stored_alias, is_connected): (Option<String>, i64) = conn
             .query_row(
@@ -2264,8 +2177,7 @@ mod peers_tests {
         // Directly update last_seen with deterministic integer timestamps so the
         // ordering assertion is stable regardless of wall-clock resolution.
         {
-            let conn_arc = get_db_connection().await.expect("get connection");
-            let conn = conn_arc.lock().await;
+            let conn = get_db_connection().await.expect("get connection");
             conn.execute(
                 "UPDATE peers SET last_seen = 100 WHERE peer_id = ?1",
                 ["12D3KooWOrder1"],
