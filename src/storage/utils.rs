@@ -5,7 +5,7 @@ pub fn get_current_timestamp() -> u64 {
     crate::current_unix_timestamp()
 }
 
-pub async fn get_next_id(conn: &Connection, table: &str) -> StorageResult<i64> {
+pub fn get_next_id(conn: &Connection, table: &str) -> StorageResult<i64> {
     let query = format!("SELECT COALESCE(MAX(id), -1) + 1 as next_id FROM {table}");
     let mut stmt = conn.prepare(&query)?;
     let next_id: i64 = stmt.query_row([], |row| row.get(0))?;

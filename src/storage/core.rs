@@ -248,7 +248,7 @@ pub async fn create_new_story_with_channel(
 ) -> StorageResult<()> {
     let conn = get_db_connection().await?;
 
-    let next_id = utils::get_next_id(&conn, "stories").await?;
+    let next_id = utils::get_next_id(&conn, "stories")?;
 
     let created_at = utils::get_current_timestamp();
 
@@ -336,7 +336,7 @@ pub async fn save_received_story(story: Story) -> StorageResult<()> {
         }
     }
 
-    let new_id = utils::get_next_id(&conn, "stories").await?;
+    let new_id = utils::get_next_id(&conn, "stories")?;
 
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1340,7 +1340,7 @@ pub mod test_utils {
     use tokio::fs;
 
     pub async fn reset_db_connection_for_testing() -> StorageResult<()> {
-        let mut state = super::DB_POOL_STATE.write().await;
+        let mut state = super::DB_POOL.write().await;
         *state = None;
         // Add a small delay to ensure any pending database operations complete
         tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -1348,7 +1348,7 @@ pub mod test_utils {
     }
 
     pub async fn get_pool_stats() -> Option<(u32, u32, u32)> {
-        let state = super::DB_POOL_STATE.read().await;
+        let state = super::DB_POOL.read().await;
         if let Some((pool, _)) = state.as_ref() {
             let state = pool.state();
             Some((state.connections, state.idle_connections, pool.max_size()))
