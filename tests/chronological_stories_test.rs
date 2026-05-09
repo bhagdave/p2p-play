@@ -16,8 +16,7 @@ async fn test_story_chronological_order_and_channel_display() {
     ensure_stories_file_exists().await.unwrap();
 
     // Clear the database manually to ensure clean state
-    let conn_arc = p2p_play::storage::get_db_connection().await.unwrap();
-    let conn = conn_arc.lock().await;
+    let conn = p2p_play::storage::get_db_connection().await.unwrap();
     conn.execute("DELETE FROM stories", []).unwrap();
     drop(conn); // Release the lock
 

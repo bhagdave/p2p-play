@@ -329,11 +329,9 @@ async fn test_conversation_with_no_messages_last_activity() {
     save_direct_message(&msg, Some(&peer_names)).await.unwrap();
 
     // Manually delete the message to test the NULLS LAST behavior
-    let conn_arc = get_db_connection().await.unwrap();
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await.unwrap();
     conn.execute("DELETE FROM direct_messages", []).unwrap();
     drop(conn);
-    drop(conn_arc);
 
     let conversations = get_conversations_with_status().await.unwrap();
     // The conversation should still exist but with no last activity
