@@ -9,7 +9,7 @@ All changes to this project will be documented in this file.
 
 ### Fixed
 - **`wasm ls` remote peer display now uses saved aliases**: Remote offerings now show saved peer aliases for disconnected peers instead of raw Peer IDs.
-- ** Fixed too many open File Descriptors**: Removed the constant db connection opening to try and solve the too many open fioles problems on OSX. 
+- **Too many open file descriptors on macOS**: Reduced constant database connection opening to help prevent too many open file descriptor errors on macOS.
 
 ## [0.12.0] - 2026-06-15
 
