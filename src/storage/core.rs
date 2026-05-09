@@ -80,6 +80,7 @@ fn create_db_pool(db_path: &str) -> StorageResult<DbPool> {
 
 pub async fn get_db_connection() -> StorageResult<r2d2::PooledConnection<SqliteConnectionManager>> {
     let current_path = get_database_path();
+
     {
         let state = DB_POOL.read().await;
         if let Some((pool, stored_path)) = state.as_ref()
@@ -88,9 +89,18 @@ pub async fn get_db_connection() -> StorageResult<r2d2::PooledConnection<SqliteC
             return pool.get().map_err(|e| format!("pool error: {e}").into());
         }
     }
+
+    let mut state = DB_POOL.write().await;
+    if let Some((pool, stored_path)) = state.as_ref()
+        && stored_path == &current_path
+    {
+        return pool.get().map_err(|e| format!("pool error: {e}").into());
+    }
+
     let pool = create_db_pool(&current_path)?;
     let conn = pool.get().map_err(|e| format!("pool error: {e}"))?;
-    let mut state = DB_POOL.write().await;*state = Some((pool, current_path));
+    *state = Some((pool, current_path));
+
     Ok(conn)
 }
 
@@ -246,16 +256,14 @@ pub async fn create_new_story_with_channel(
     body: &str,
     channel: &str,
 ) -> StorageResult<()> {
-    let conn = get_db_connection().await?;
-
-    let next_id = utils::get_next_id(&conn, "stories")?;
-
-    let created_at = utils::get_current_timestamp();
-
     let should_be_public = match load_unified_network_config().await {
         Ok(config) => config.auto_share.global_auto_share,
         Err(_) => true, // Default to true if config can't be loaded
     };
+
+    let conn = get_db_connection().await?;
+    let next_id = utils::get_next_id(&conn, "stories")?;
+    let created_at = utils::get_current_timestamp();
 
     conn.execute(
         "INSERT INTO stories (id, name, header, body, public, channel, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
