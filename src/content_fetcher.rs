@@ -1,3 +1,4 @@
+use crate::constants::MAX_HEADER_BYTES;
 use crate::errors::FetchError;
 use std::time::Duration;
 
@@ -137,14 +138,20 @@ mod tests {
                 // On Windows, closing the socket without reading the request
                 // causes a TCP RST (WSAECONNABORTED / error 10053) that races
                 // with the client reading the response.
+                // Accumulate into a Vec so \r\n\r\n split across TCP reads is
+                // detected. Stop at MAX_HEADER_BYTES to bound memory usage.
                 use tokio::io::AsyncReadExt;
+                let mut accumulated = Vec::new();
                 let mut buf = [0u8; 4096];
                 loop {
+                    if accumulated.len() >= MAX_HEADER_BYTES {
+                        break;
+                    }
                     match socket.read(&mut buf).await {
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
-                            // HTTP headers end with a blank line (\r\n\r\n)
-                            if buf[..n].windows(4).any(|w| w == b"\r\n\r\n") {
+                            accumulated.extend_from_slice(&buf[..n]);
+                            if accumulated.windows(4).any(|w| w == b"\r\n\r\n") {
                                 break;
                             }
                         }
