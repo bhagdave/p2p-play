@@ -259,8 +259,7 @@ async fn test_connection_pool_resilience() {
     }
 
     // Verify all connections work
-    for (i, conn_arc) in connections.iter().enumerate() {
-        let conn = conn_arc.lock().await;
+    for (i, conn) in connections.iter().enumerate() {
         let result = conn.prepare("SELECT 1");
         assert!(result.is_ok(), "Connection {} should be valid", i);
     }
@@ -274,8 +273,7 @@ async fn test_connection_pool_resilience() {
     let new_conn = get_db_connection()
         .await
         .expect("Failed to get connection after reset");
-    let conn = new_conn.lock().await;
-    let result = conn.prepare("SELECT 1");
+    let result = new_conn.prepare("SELECT 1");
     assert!(result.is_ok(), "Connection should work after pool reset");
 
     println!("✅ Connection pool resilience test passed!");
@@ -299,8 +297,7 @@ async fn test_optimized_database_pragmas() {
         .await
         .expect("Failed to initialize storage");
 
-    let conn_arc = get_db_connection().await.expect("Failed to get connection");
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await.expect("Failed to get connection");
 
     // Check that foreign keys are enabled
     let mut stmt = conn
