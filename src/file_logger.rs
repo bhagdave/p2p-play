@@ -45,12 +45,14 @@ impl FileLogger {
     }
 
     fn write_to_file(&self, content: &str) -> std::io::Result<()> {
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.file_path)?;
-        file.write_all(content.as_bytes())?;
-        file.flush()?;
+        {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&self.file_path)?;
+            file.write_all(content.as_bytes())?;
+            file.flush()?;
+        }
         Ok(())
     }
 
@@ -76,7 +78,14 @@ impl FileLogger {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::NamedTempFile;
+    use std::path::PathBuf;
+    use tempfile::{NamedTempFile, tempdir};
+
+    fn temp_log_path(file_name: &str) -> (tempfile::TempDir, PathBuf) {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(file_name);
+        (dir, path)
+    }
 
     #[test]
     fn test_file_logger_creation() {
@@ -154,5 +163,30 @@ mod tests {
         let timestamp = FileLogger::format_timestamp();
         assert!(timestamp.contains("UTC"));
         assert!(timestamp.len() > 10);
+    }
+
+    #[cfg(unix)]
+    fn open_fd_count() -> usize {
+        std::fs::read_dir("/dev/fd").unwrap().count()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_logging_does_not_leak_file_descriptors() {
+        let (_dir, path) = temp_log_path("file_logger_fd_leak.log");
+        let path = path.to_str().unwrap();
+        let logger = FileLogger::new(path);
+
+        let baseline_fd_count = open_fd_count();
+
+        for i in 0..512 {
+            logger.log_with_category("TEST", &format!("message {i}"));
+        }
+
+        let final_fd_count = open_fd_count();
+        assert!(
+            final_fd_count <= baseline_fd_count + 3,
+            "file descriptor leak suspected: baseline={baseline_fd_count}, final={final_fd_count}"
+        );
     }
 }

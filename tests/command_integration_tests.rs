@@ -25,8 +25,7 @@ async fn test_new_commands_integration() {
         .expect("Failed to initialize storage");
 
     // Clear all existing data for clean test
-    let conn_arc = get_db_connection().await.expect("Failed to get connection");
-    let conn = conn_arc.lock().await;
+    let conn = get_db_connection().await.expect("Failed to get connection");
     conn.execute("DELETE FROM channel_subscriptions", [])
         .expect("Failed to clear subscriptions");
     conn.execute("DELETE FROM channels", [])
