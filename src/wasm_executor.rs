@@ -103,6 +103,7 @@ pub struct ExecutionResult {
 pub struct WasmExecutorConfig {
     pub enable_cache: bool,
     pub max_cached_modules: usize,
+    pub async_stack_size: usize,
 }
 
 impl Default for WasmExecutorConfig {
@@ -110,6 +111,7 @@ impl Default for WasmExecutorConfig {
         Self {
             enable_cache: true,
             max_cached_modules: 10,
+            async_stack_size: DEFAULT_ASYNC_STACK_SIZE,
         }
     }
 }
@@ -142,7 +144,10 @@ impl<F: ContentFetcher> WasmExecutor<F> {
         resource_config: WasmConfig,
     ) -> WasmResult<Self> {
         let mut engine_config = Config::new();
-        engine_config.async_support(true).consume_fuel(true);
+        engine_config
+            .async_support(true)
+            .consume_fuel(true)
+            .async_stack_size(executor_config.async_stack_size);
 
         let engine = Engine::new(&engine_config)
             .map_err(|e| WasmExecutionError::CompilationFailed(e.to_string()))?;
@@ -567,6 +572,7 @@ mod tests {
         let config = WasmExecutorConfig::default();
         assert!(config.enable_cache);
         assert_eq!(config.max_cached_modules, 10);
+        assert_eq!(config.async_stack_size, DEFAULT_ASYNC_STACK_SIZE);
     }
 
     // --- StoreLimitsBuilder (sanity check) ---
