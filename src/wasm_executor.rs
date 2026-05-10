@@ -103,8 +103,6 @@ pub struct ExecutionResult {
 pub struct WasmExecutorConfig {
     pub enable_cache: bool,
     pub max_cached_modules: usize,
-    /// Size in bytes of the stack allocated for each async WASM fiber.
-    /// Increase from Wasmtime's default to avoid STATUS_STACK_BUFFER_OVERRUN on Windows.
     pub async_stack_size: usize,
 }
 

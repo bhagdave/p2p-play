@@ -1,4 +1,4 @@
-use crate::constants::MAX_HEADER_BYTES;
+use crate::constants::{HTTP_HEADER_END, HTTP_READ_BUF_SIZE, MAX_HEADER_BYTES};
 use crate::errors::FetchError;
 use std::time::Duration;
 
@@ -134,15 +134,9 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             if let Ok((mut socket, _)) = listener.accept().await {
-                // Drain the incoming HTTP request headers before responding.
-                // On Windows, closing the socket without reading the request
-                // causes a TCP RST (WSAECONNABORTED / error 10053) that races
-                // with the client reading the response.
-                // Accumulate into a Vec so \r\n\r\n split across TCP reads is
-                // detected. Stop at MAX_HEADER_BYTES to bound memory usage.
                 use tokio::io::AsyncReadExt;
                 let mut accumulated = Vec::new();
-                let mut buf = [0u8; 4096];
+                let mut buf = [0u8; HTTP_READ_BUF_SIZE];
                 loop {
                     if accumulated.len() >= MAX_HEADER_BYTES {
                         break;
@@ -151,7 +145,7 @@ mod tests {
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
                             accumulated.extend_from_slice(&buf[..n]);
-                            if accumulated.windows(4).any(|w| w == b"\r\n\r\n") {
+                            if accumulated.windows(HTTP_HEADER_END.len()).any(|w| w == HTTP_HEADER_END) {
                                 break;
                             }
                         }

@@ -8,10 +8,10 @@ pub const WASM_VERSION: &[u8] = &[0x01, 0x00, 0x00, 0x00];
 pub const WASM_HEADER_LEN: usize = 8;
 pub const PIPE_BUFFER_SIZE: usize = 64 * 1024;
 pub const BYTES_PER_MB: usize = 1024 * 1024;
-/// Maximum number of bytes read while draining incoming HTTP request headers.
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;
+pub const HTTP_READ_BUF_SIZE: usize = 4096;
+pub const HTTP_HEADER_END: &[u8] = b"\r\n\r\n";
 /// Default async fiber stack size for Wasmtime (8 MiB).
-/// Larger than Wasmtime's built-in default to avoid STATUS_STACK_BUFFER_OVERRUN on Windows.
 pub const DEFAULT_ASYNC_STACK_SIZE: usize = 8 * 1024 * 1024;
 pub const WASM_PARAM_TYPES: &[&str] = &["string", "bytes", "json", "int", "float", "bool", "file"];
 
