@@ -1,8 +1,12 @@
+use crate::bootstrap_logger::BootstrapLogger;
+use crate::circuit_breaker::CircuitBreakerError;
 use crate::constants::*;
 use crate::content_fetcher::GatewayFetcher;
+use crate::current_unix_timestamp;
+use crate::data_dir::get_data_path;
 use crate::error_logger::ErrorLogger;
 use crate::handlers::{
-    SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
+    self, SortedPeerNamesCache, UILogger, establish_direct_connection, handle_config_auto_share,
     handle_config_sync_days, handle_create_channel, handle_create_description,
     handle_create_stories_with_sender, handle_delete_story, handle_direct_message_with_relay,
     handle_export_story, handle_filter_stories, handle_get_description, handle_help,
@@ -11,21 +15,36 @@ use crate::handlers::{
     handle_show_description, handle_show_story, handle_subscribe_channel,
     handle_unsubscribe_channel, handle_wasm_command,
 };
+use crate::log_network_error;
 use crate::network::{
     DirectMessageRequest, DirectMessageResponse, HandshakeRequest, HandshakeResponse,
-    NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, StoryBehaviour, TOPIC,
-    WasmCapabilitiesRequest, WasmCapabilitiesResponse, WasmExecutionRequest, WasmExecutionResponse,
+    NodeDescriptionRequest, NodeDescriptionResponse, PEER_ID, RELAY_TOPIC, StoryBehaviour,
+    StorySyncRequest, StorySyncResponse, TOPIC, WasmCapabilitiesRequest, WasmCapabilitiesResponse,
+    WasmExecutionRequest, WasmExecutionResponse,
 };
-use crate::relay::RelayAction::{DeliverLocally, DropMessage, ForwardMessage};
+use crate::network_circuit_breakers::NetworkCircuitBreakers;
+use crate::relay::{
+    RelayAction::{DeliverLocally, DropMessage, ForwardMessage},
+    RelayService,
+};
 use crate::storage::{
-    create_channel, load_node_description, save_received_story, upsert_peer_alias,
+    self, create_channel, get_auto_subscription_count, load_node_description,
+    read_subscribed_channels, save_received_story, subscribe_to_channel, upsert_peer_alias,
 };
 use crate::types::{
-    ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListMode, ListRequest,
-    ListResponse, PeerName, PendingDirectMessage, PendingHandshakePeer, PublishedChannel,
-    PublishedStory, RelayConfirmation,
+    self, ActionResult, Channel, ChannelSubscription, DirectMessage, DirectMessageConfig,
+    EventType, Icons, ListMode, ListRequest, ListResponse, PeerName, PendingDirectMessage,
+    PendingHandshakePeer, PublishedChannel, PublishedStory, RelayConfirmation, RelayMessage, Story,
 };
+use crate::validation::ContentValidator;
 use crate::wasm_executor::{ExecutionRequest, WasmExecutionError, WasmExecutor};
+
+#[cfg(test)]
+use crate::crypto::CryptoService;
+#[cfg(test)]
+use crate::network::create_swarm;
+#[cfg(test)]
+use crate::types::RelayConfig;
 
 use bytes::Bytes;
 use libp2p::{PeerId, Swarm, request_response};
@@ -44,7 +63,7 @@ async fn handle_auto_subscription(
     ui_logger: &UILogger,
 ) -> Result<bool, String> {
     // Check if already subscribed
-    match crate::storage::read_subscribed_channels(peer_id).await {
+    match read_subscribed_channels(peer_id).await {
         Ok(subscribed) => {
             if subscribed.contains(&channel_name.to_string()) {
                 // Already subscribed - this is normal, not an error
@@ -57,7 +76,7 @@ async fn handle_auto_subscription(
     }
 
     // Check subscription count against limit
-    match crate::storage::get_auto_subscription_count(peer_id).await {
+    match get_auto_subscription_count(peer_id).await {
         Ok(current_count) => {
             if current_count >= max_auto_subs {
                 ui_logger.log(format!(
@@ -72,7 +91,7 @@ async fn handle_auto_subscription(
     }
 
     // Attempt to auto-subscribe
-    match crate::storage::subscribe_to_channel(peer_id, channel_name).await {
+    match subscribe_to_channel(peer_id, channel_name).await {
         Ok(_) => Ok(true),
         Err(e) => Err(format!("Failed to subscribe: {e}")),
     }
@@ -88,10 +107,10 @@ pub async fn handle_response_event(resp: ListResponse, swarm: &mut Swarm<StoryBe
 }
 
 pub async fn handle_publish_story_event(
-    story: crate::types::Story,
+    story: Story,
     swarm: &mut Swarm<StoryBehaviour>,
     error_logger: &ErrorLogger,
-    network_circuit_breakers: &crate::network_circuit_breakers::NetworkCircuitBreakers,
+    network_circuit_breakers: &NetworkCircuitBreakers,
 ) {
     debug!("Broadcasting published story: {}", story.name);
 
@@ -106,7 +125,7 @@ pub async fn handle_publish_story_event(
     }
 
     if connected_peers.is_empty() {
-        crate::log_network_error!(
+        log_network_error!(
             error_logger,
             "floodsub",
             "No connected peers available for story broadcast!"
@@ -149,12 +168,12 @@ pub async fn handle_publish_story_event(
             error_logger.log_error(&format!("Story publishing failed: {e:?}"));
             // Log the specific type of error for better debugging
             match e {
-                crate::circuit_breaker::CircuitBreakerError::CircuitOpen { circuit_name } => {
+                CircuitBreakerError::CircuitOpen { circuit_name } => {
                     error_logger.log_error(&format!(
                         "Story publishing blocked - {circuit_name} circuit breaker is open"
                     ));
                 }
-                crate::circuit_breaker::CircuitBreakerError::OperationTimeout {
+                CircuitBreakerError::OperationTimeout {
                     circuit_name,
                     timeout,
                 } => {
@@ -162,7 +181,7 @@ pub async fn handle_publish_story_event(
                         "Story publishing timed out after {timeout:?} in {circuit_name}"
                     ));
                 }
-                crate::circuit_breaker::CircuitBreakerError::OperationFailed(inner_error) => {
+                CircuitBreakerError::OperationFailed(inner_error) => {
                     error_logger
                         .log_error(&format!("Story publishing operation failed: {inner_error}"));
                 }
@@ -175,14 +194,14 @@ pub async fn handle_input_event(
     line: String,
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &HashMap<PeerId, String>,
-    story_sender: mpsc::UnboundedSender<crate::types::Story>,
+    story_sender: mpsc::UnboundedSender<Story>,
     local_peer_name: &mut Option<String>,
     sorted_peer_names_cache: &SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
-    relay_service: &mut Option<crate::relay::RelayService>,
+    relay_service: &mut Option<RelayService>,
 ) -> Option<ActionResult> {
     let line = line.trim();
     match line {
@@ -402,7 +421,7 @@ pub async fn handle_mdns_event(
                 if !swarm.is_connected(&peer) {
                     debug!("Attempting to dial peer: {peer}");
                     if let Err(e) = swarm.dial(peer) {
-                        crate::log_network_error!(
+                        log_network_error!(
                             error_logger,
                             "mdns",
                             "Failed to initiate dial to {}: {}",
@@ -442,9 +461,9 @@ pub async fn handle_floodsub_event(
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-    relay_service: &mut Option<crate::relay::RelayService>,
+    relay_service: &mut Option<RelayService>,
     verified_p2p_play_peers: &Arc<Mutex<HashMap<PeerId, String>>>,
-) -> Option<crate::types::ActionResult> {
+) -> Option<ActionResult> {
     match floodsub_event {
         libp2p::floodsub::Event::Message(msg) => {
             debug!("Message event received from {:?}", msg.source);
@@ -472,26 +491,23 @@ pub async fn handle_floodsub_event(
             } else if let Ok(published) = serde_json::from_slice::<PublishedStory>(&msg.data) {
                 if published.publisher != PEER_ID.to_string() {
                     // Check if we're subscribed to the story's channel
-                    let should_accept_story = match crate::storage::read_subscribed_channels(
-                        &PEER_ID.to_string(),
-                    )
-                    .await
-                    {
-                        Ok(subscribed_channels) => {
-                            subscribed_channels.contains(&published.story.channel)
-                                || published.story.channel == "general"
-                        }
-                        Err(e) => {
-                            crate::log_network_error!(
-                                error_logger,
-                                "floodsub",
-                                "Failed to check subscriptions for incoming story: {}",
-                                e
-                            );
-                            // Default to accepting general channel stories only
-                            published.story.channel == "general"
-                        }
-                    };
+                    let should_accept_story =
+                        match read_subscribed_channels(&PEER_ID.to_string()).await {
+                            Ok(subscribed_channels) => {
+                                subscribed_channels.contains(&published.story.channel)
+                                    || published.story.channel == "general"
+                            }
+                            Err(e) => {
+                                log_network_error!(
+                                    error_logger,
+                                    "floodsub",
+                                    "Failed to check subscriptions for incoming story: {}",
+                                    e
+                                );
+                                // Default to accepting general channel stories only
+                                published.story.channel == "general"
+                            }
+                        };
 
                     if should_accept_story {
                         debug!(
@@ -507,7 +523,7 @@ pub async fn handle_floodsub_event(
                         // Save received story to local storage synchronously to ensure TUI refresh sees it
                         if let Err(e) = save_received_story(published.story.clone()).await {
                             // Log error but continue processing
-                            crate::log_network_error!(
+                            log_network_error!(
                                 error_logger,
                                 "storage",
                                 "Failed to save received story: {}",
@@ -516,7 +532,7 @@ pub async fn handle_floodsub_event(
                             ui_logger.log(format!("Warning: Failed to save received story: {e}"));
                         } else {
                             // Signal that stories need to be refreshed only if save was successful
-                            return Some(crate::types::ActionResult::RefreshStories);
+                            return Some(ActionResult::RefreshStories);
                         }
                     } else {
                         debug!(
@@ -599,12 +615,11 @@ pub async fn handle_floodsub_event(
                     );
 
                     // Load auto-subscription config to determine behavior
-                    let auto_sub_config = match crate::storage::load_unified_network_config().await
-                    {
+                    let auto_sub_config = match storage::load_unified_network_config().await {
                         Ok(config) => config.channel_auto_subscription,
                         Err(e) => {
                             debug!("Failed to load auto-subscription config: {e}");
-                            crate::types::ChannelAutoSubscriptionConfig::new() // Use defaults
+                            types::ChannelAutoSubscriptionConfig::new() // Use defaults
                         }
                     };
 
@@ -662,7 +677,7 @@ pub async fn handle_floodsub_event(
                                 true // Channel exists, can proceed with subscription
                             }
                             Err(e) => {
-                                crate::log_network_error!(
+                                log_network_error!(
                                     error_logger,
                                     "storage",
                                     "Failed to save received published channel '{}': {}",
@@ -702,11 +717,11 @@ pub async fn handle_floodsub_event(
                                 }
                             }
 
-                            return Some(crate::types::ActionResult::RefreshChannels);
+                            return Some(ActionResult::RefreshChannels);
                         }
                     }
                 }
-            } else if let Ok(channel) = serde_json::from_slice::<crate::types::Channel>(&msg.data) {
+            } else if let Ok(channel) = serde_json::from_slice::<Channel>(&msg.data) {
                 debug!(
                     "Received channel '{}' - {} from {}",
                     channel.name, channel.description, msg.source
@@ -728,14 +743,14 @@ pub async fn handle_floodsub_event(
                                 "📺 Channel '{}' added to your available channels",
                                 channel.name
                             ));
-                            return Some(crate::types::ActionResult::RefreshChannels);
+                            return Some(ActionResult::RefreshChannels);
                         }
                         Err(e) if e.to_string().contains("UNIQUE constraint") => {
                             debug!("Channel '{}' already exists", channel.name);
-                            return Some(crate::types::ActionResult::RefreshChannels);
+                            return Some(ActionResult::RefreshChannels);
                         }
                         Err(e) => {
-                            crate::log_network_error!(
+                            log_network_error!(
                                 error_logger,
                                 "storage",
                                 "Failed to save received channel '{}': {}",
@@ -745,9 +760,7 @@ pub async fn handle_floodsub_event(
                         }
                     }
                 }
-            } else if let Ok(relay_msg) =
-                serde_json::from_slice::<crate::types::RelayMessage>(&msg.data)
-            {
+            } else if let Ok(relay_msg) = serde_json::from_slice::<RelayMessage>(&msg.data) {
                 debug!(
                     "Received relay message from {}: {}",
                     msg.source, relay_msg.message_id
@@ -772,7 +785,7 @@ pub async fn handle_floodsub_event(
                                 message_id: relay_msg.message_id.clone(),
                                 delivered_to: relay_msg.target_peer_id.clone(),
                                 relay_path_length: relay_msg.hop_count,
-                                delivery_timestamp: crate::current_unix_timestamp(),
+                                delivery_timestamp: current_unix_timestamp(),
                             };
                             return Some(ActionResult::BroadcastRelayConfirmation(Box::new(
                                 confirmation,
@@ -814,7 +827,7 @@ pub async fn handle_floodsub_event(
                     ));
                 }
             } else if let Ok(relay_confirmation) =
-                serde_json::from_slice::<crate::types::RelayConfirmation>(&msg.data)
+                serde_json::from_slice::<RelayConfirmation>(&msg.data)
             {
                 debug!(
                     "Received relay confirmation from {}: {}",
@@ -861,7 +874,7 @@ pub async fn handle_dht_bootstrap(
     swarm: &mut Swarm<StoryBehaviour>,
     ui_logger: &UILogger,
 ) {
-    crate::handlers::handle_dht_bootstrap(cmd, swarm, ui_logger).await;
+    handlers::handle_dht_bootstrap(cmd, swarm, ui_logger).await;
 }
 
 pub async fn handle_dht_get_peers(
@@ -869,7 +882,7 @@ pub async fn handle_dht_get_peers(
     swarm: &mut Swarm<StoryBehaviour>,
     ui_logger: &UILogger,
 ) {
-    crate::handlers::handle_dht_get_peers(cmd, swarm, ui_logger).await;
+    handlers::handle_dht_get_peers(cmd, swarm, ui_logger).await;
 }
 
 pub async fn handle_kad_event(
@@ -877,7 +890,7 @@ pub async fn handle_kad_event(
     _swarm: &mut Swarm<StoryBehaviour>,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-    bootstrap_logger: &crate::bootstrap_logger::BootstrapLogger,
+    bootstrap_logger: &BootstrapLogger,
 ) {
     match kad_event {
         libp2p::kad::Event::OutboundQueryProgressed { result, .. } => match result {
@@ -892,12 +905,7 @@ pub async fn handle_kad_event(
                 ));
             }
             libp2p::kad::QueryResult::Bootstrap(Err(e)) => {
-                crate::log_network_error!(
-                    error_logger,
-                    "kad",
-                    "Kademlia bootstrap failed: {:?}",
-                    e
-                );
+                log_network_error!(error_logger, "kad", "Kademlia bootstrap failed: {:?}", e);
                 // DHT bootstrap errors are logged to error file only, not shown in UI
             }
             libp2p::kad::QueryResult::GetClosestPeers(Ok(get_closest_peers_ok)) => {
@@ -910,12 +918,7 @@ pub async fn handle_kad_event(
                 }
             }
             libp2p::kad::QueryResult::GetClosestPeers(Err(e)) => {
-                crate::log_network_error!(
-                    error_logger,
-                    "kad",
-                    "Failed to get closest peers: {:?}",
-                    e
-                );
+                log_network_error!(error_logger, "kad", "Failed to get closest peers: {:?}", e);
             }
             _ => {
                 debug!("Other Kademlia query result: {result:?}");
@@ -966,7 +969,7 @@ pub async fn handle_ping_event(ping_event: libp2p::ping::Event, error_logger: &E
             result: Err(failure),
             ..
         } => {
-            crate::log_network_error!(error_logger, "ping", "Ping to {} failed: {}", peer, failure);
+            log_network_error!(error_logger, "ping", "Ping to {} failed: {}", peer, failure);
         }
     }
 }
@@ -997,7 +1000,7 @@ pub async fn handle_request_response_event(
                 } => {
                     // Validate sender identity to prevent spoofing
                     if request.from_peer_id != peer.to_string() {
-                        crate::log_network_error!(
+                        log_network_error!(
                             error_logger,
                             "direct_message",
                             "Direct message sender identity mismatch: claimed {} but actual connection from {}",
@@ -1008,7 +1011,7 @@ pub async fn handle_request_response_event(
                         // Send response indicating rejection due to identity mismatch
                         let response = DirectMessageResponse {
                             received: false,
-                            timestamp: crate::current_unix_timestamp(),
+                            timestamp: current_unix_timestamp(),
                         };
 
                         if let Err(e) = swarm
@@ -1016,7 +1019,7 @@ pub async fn handle_request_response_event(
                             .request_response
                             .send_response(channel, response)
                         {
-                            crate::log_network_error!(
+                            log_network_error!(
                                 error_logger,
                                 "direct_message",
                                 "Failed to send rejection response to {}: {:?}",
@@ -1037,12 +1040,10 @@ pub async fn handle_request_response_event(
                     // Validate incoming message content
                     if should_process {
                         let validation_result =
-                            crate::validation::ContentValidator::validate_direct_message(
-                                &request.message,
-                            );
+                            ContentValidator::validate_direct_message(&request.message);
 
                         if let Err(validation_error) = validation_result {
-                            crate::log_network_error!(
+                            log_network_error!(
                                 error_logger,
                                 "direct_message",
                                 "Rejecting incoming direct message from {}: {}",
@@ -1052,7 +1053,7 @@ pub async fn handle_request_response_event(
 
                             let response = DirectMessageResponse {
                                 received: false,
-                                timestamp: crate::current_unix_timestamp(),
+                                timestamp: current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1060,7 +1061,7 @@ pub async fn handle_request_response_event(
                                 .request_response
                                 .send_response(channel, response)
                             {
-                                crate::log_network_error!(
+                                log_network_error!(
                                     error_logger,
                                     "direct_message",
                                     "Failed to send rejection response to {}: {:?}",
@@ -1089,7 +1090,7 @@ pub async fn handle_request_response_event(
                     // Send response acknowledging receipt
                     let response = DirectMessageResponse {
                         received: should_process,
-                        timestamp: crate::current_unix_timestamp(),
+                        timestamp: current_unix_timestamp(),
                     };
 
                     // Send the response using the channel
@@ -1117,7 +1118,7 @@ pub async fn handle_request_response_event(
                             if let Some(pending_msg) =
                                 queue.iter().find(|msg| msg.target_peer_id == peer)
                             {
-                                let outgoing_message = crate::types::DirectMessage {
+                                let outgoing_message = DirectMessage {
                                     from_peer_id: pending_msg.message.from_peer_id.clone(),
                                     from_name: pending_msg.message.from_name.clone(),
                                     to_peer_id: peer.to_string(),
@@ -1127,13 +1128,13 @@ pub async fn handle_request_response_event(
                                     is_outgoing: true,
                                 };
 
-                                if let Err(e) = crate::storage::save_direct_message(
+                                if let Err(e) = storage::save_direct_message(
                                     &outgoing_message,
                                     Some(peer_names),
                                 )
                                 .await
                                 {
-                                    crate::log_network_error!(
+                                    log_network_error!(
                                         error_logger,
                                         "direct_message",
                                         "Failed to save outgoing direct message: {}",
@@ -1148,7 +1149,7 @@ pub async fn handle_request_response_event(
 
                         ui_logger.log(format!("{} Message delivered to {}", Icons::check(), peer));
                     } else {
-                        crate::log_network_error!(
+                        log_network_error!(
                             error_logger,
                             "direct_message",
                             "Direct message was rejected by peer {}",
@@ -1201,14 +1202,14 @@ pub async fn handle_direct_message_event(direct_msg: DirectMessage) {
     );
 }
 
-pub async fn handle_channel_event(channel: crate::types::Channel) {
+pub async fn handle_channel_event(channel: Channel) {
     debug!(
         "Received Channel event: {} - {}",
         channel.name, channel.description
     );
 }
 
-pub async fn handle_channel_subscription_event(subscription: crate::types::ChannelSubscription) {
+pub async fn handle_channel_subscription_event(subscription: ChannelSubscription) {
     debug!(
         "Received ChannelSubscription event: {} subscribed to {}",
         subscription.peer_id, subscription.channel_name
@@ -1264,7 +1265,7 @@ pub async fn handle_node_description_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                timestamp: crate::current_unix_timestamp(),
+                                timestamp: current_unix_timestamp(),
                             };
 
                             // Send the response
@@ -1273,7 +1274,7 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                crate::log_network_error!(
+                                log_network_error!(
                                     error_logger,
                                     "node_description",
                                     "Failed to send node description response to {}: {:?}",
@@ -1291,7 +1292,7 @@ pub async fn handle_node_description_event(
                             }
                         }
                         Err(e) => {
-                            crate::log_network_error!(
+                            log_network_error!(
                                 error_logger,
                                 "node_description",
                                 "Failed to load description: {}",
@@ -1306,7 +1307,7 @@ pub async fn handle_node_description_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                timestamp: crate::current_unix_timestamp(),
+                                timestamp: current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1314,7 +1315,7 @@ pub async fn handle_node_description_event(
                                 .node_description
                                 .send_response(channel, response)
                             {
-                                crate::log_network_error!(
+                                log_network_error!(
                                     error_logger,
                                     "node_description",
                                     "Failed to send empty description response to {}: {:?}",
@@ -1354,7 +1355,7 @@ pub async fn handle_node_description_event(
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            crate::log_network_error!(
+            log_network_error!(
                 error_logger,
                 "node_description",
                 "Failed to send description request to {}: {:?}",
@@ -1383,7 +1384,7 @@ pub async fn handle_node_description_event(
             ui_logger.log(user_message);
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            crate::log_network_error!(
+            log_network_error!(
                 error_logger,
                 "node_description",
                 "Failed to receive description request from {}: {:?}",
@@ -1398,10 +1399,7 @@ pub async fn handle_node_description_event(
 }
 
 pub async fn handle_story_sync_event(
-    event: request_response::Event<
-        crate::network::StorySyncRequest,
-        crate::network::StorySyncResponse,
-    >,
+    event: request_response::Event<StorySyncRequest, StorySyncResponse>,
     swarm: &mut Swarm<StoryBehaviour>,
     local_peer_name: &Option<String>,
     ui_logger: &UILogger,
@@ -1420,7 +1418,7 @@ pub async fn handle_story_sync_event(
                     );
 
                     // Get local stories that match the peer's subscribed channels and are newer than last sync
-                    match crate::storage::read_local_stories_for_sync(
+                    match storage::read_local_stories_for_sync(
                         request.last_sync_timestamp,
                         &request.subscribed_channels,
                     )
@@ -1439,7 +1437,7 @@ pub async fn handle_story_sync_event(
                             );
 
                             // Get ALL available channels for discovery, not just channels associated with the stories
-                            let channels = match crate::storage::read_channels().await {
+                            let channels = match storage::read_channels().await {
                                 Ok(all_channels) => {
                                     debug!(
                                         "Sending {} total channels for peer discovery during sync response",
@@ -1450,10 +1448,7 @@ pub async fn handle_story_sync_event(
                                 Err(e) => {
                                     debug!("Failed to read all channels for sync: {}", e);
                                     // Fallback to story-specific channels if reading all channels fails
-                                    match crate::storage::get_channels_for_stories(
-                                        &filtered_stories,
-                                    )
-                                    .await
+                                    match storage::get_channels_for_stories(&filtered_stories).await
                                     {
                                         Ok(story_channels) => {
                                             debug!(
@@ -1470,7 +1465,7 @@ pub async fn handle_story_sync_event(
                                 }
                             };
 
-                            let response = crate::network::StorySyncResponse {
+                            let response = StorySyncResponse {
                                 stories: filtered_stories,
                                 channels,
                                 from_peer_id: PEER_ID.to_string(),
@@ -1478,7 +1473,7 @@ pub async fn handle_story_sync_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                sync_timestamp: crate::current_unix_timestamp(),
+                                sync_timestamp: current_unix_timestamp(),
                             };
 
                             // Send the response
@@ -1487,7 +1482,7 @@ pub async fn handle_story_sync_event(
                                 .story_sync
                                 .send_response(channel, response)
                             {
-                                crate::log_network_error!(
+                                log_network_error!(
                                     error_logger,
                                     "story_sync",
                                     "Failed to send story sync response to {}: {:?}",
@@ -1505,7 +1500,7 @@ pub async fn handle_story_sync_event(
                             }
                         }
                         Err(e) => {
-                            crate::log_network_error!(
+                            log_network_error!(
                                 error_logger,
                                 "story_sync",
                                 "Failed to load stories for sync: {}",
@@ -1513,7 +1508,7 @@ pub async fn handle_story_sync_event(
                             );
 
                             // Send empty response to indicate error
-                            let response = crate::network::StorySyncResponse {
+                            let response = StorySyncResponse {
                                 stories: Vec::new(),
                                 channels: Vec::new(), // No stories means no channels to share
                                 from_peer_id: PEER_ID.to_string(),
@@ -1521,7 +1516,7 @@ pub async fn handle_story_sync_event(
                                     .as_deref()
                                     .unwrap_or("Unknown")
                                     .to_string(),
-                                sync_timestamp: crate::current_unix_timestamp(),
+                                sync_timestamp: current_unix_timestamp(),
                             };
 
                             if let Err(e) = swarm
@@ -1529,7 +1524,7 @@ pub async fn handle_story_sync_event(
                                 .story_sync
                                 .send_response(channel, response)
                             {
-                                crate::log_network_error!(
+                                log_network_error!(
                                     error_logger,
                                     "story_sync",
                                     "Failed to send empty story sync response to {}: {:?}",
@@ -1565,7 +1560,7 @@ pub async fn handle_story_sync_event(
                     );
 
                     if !response.channels.is_empty() {
-                        match crate::storage::process_discovered_channels(
+                        match storage::process_discovered_channels(
                             &response.channels,
                             &response.from_name,
                         )
@@ -1586,7 +1581,7 @@ pub async fn handle_story_sync_event(
                                 }
                             }
                             Err(e) => {
-                                crate::log_network_error!(
+                                log_network_error!(
                                     error_logger,
                                     "story_sync",
                                     "Failed to process discovered channels from {}: {}",
@@ -1599,7 +1594,7 @@ pub async fn handle_story_sync_event(
 
                     // Save received stories (with deduplication handled by save_received_story)
                     for story in response.stories {
-                        match crate::storage::save_received_story(story.clone()).await {
+                        match storage::save_received_story(story.clone()).await {
                             Ok(_) => {
                                 debug!("Saved story: {}", story.name);
                             }
@@ -1607,7 +1602,7 @@ pub async fn handle_story_sync_event(
                                 debug!("Failed to save story '{}': {}", story.name, e);
                                 // Don't log to UI for duplicates - this is expected
                                 if !e.to_string().contains("already exists") {
-                                    crate::log_network_error!(
+                                    log_network_error!(
                                         error_logger,
                                         "story_sync",
                                         "Failed to save story '{}': {}",
@@ -1622,7 +1617,7 @@ pub async fn handle_story_sync_event(
             }
         }
         request_response::Event::OutboundFailure { peer, error, .. } => {
-            crate::log_network_error!(
+            log_network_error!(
                 error_logger,
                 "story_sync",
                 "Failed to send story sync request to {}: {:?}",
@@ -1651,7 +1646,7 @@ pub async fn handle_story_sync_event(
             ui_logger.log(user_message);
         }
         request_response::Event::InboundFailure { peer, error, .. } => {
-            crate::log_network_error!(
+            log_network_error!(
                 error_logger,
                 "story_sync",
                 "Failed to receive story sync request from {}: {:?}",
@@ -1673,28 +1668,27 @@ pub async fn initiate_story_sync_with_peer(
     debug!("Initiating story sync with peer {peer_id}");
 
     // Load auto-share configuration to determine sync timeframe
-    let sync_days = match crate::storage::load_unified_network_config().await {
+    let sync_days = match storage::load_unified_network_config().await {
         Ok(config) => config.auto_share.sync_days,
         Err(_) => 30, // Default to 30 days if config can't be loaded
     };
 
     // Calculate last_sync_timestamp based on sync_days configuration
-    let now = crate::current_unix_timestamp();
+    let now = current_unix_timestamp();
     let sync_timeframe_seconds = (sync_days as u64) * 24 * 60 * 60; // Convert days to seconds
     let last_sync_timestamp = now.saturating_sub(sync_timeframe_seconds);
 
     // Get our subscribed channels to send in the sync request
-    let subscribed_channels =
-        match crate::storage::read_subscribed_channels(&PEER_ID.to_string()).await {
-            Ok(channels) => channels,
-            Err(e) => {
-                debug!("Failed to read subscribed channels for sync: {e}");
-                Vec::new() // Send empty list as fallback
-            }
-        };
+    let subscribed_channels = match storage::read_subscribed_channels(&PEER_ID.to_string()).await {
+        Ok(channels) => channels,
+        Err(e) => {
+            debug!("Failed to read subscribed channels for sync: {e}");
+            Vec::new() // Send empty list as fallback
+        }
+    };
 
     // Create sync request with calculated timestamp based on sync_days configuration
-    let request = crate::network::StorySyncRequest {
+    let request = StorySyncRequest {
         from_peer_id: PEER_ID.to_string(),
         from_name: local_peer_name.as_deref().unwrap_or("Unknown").to_string(),
         last_sync_timestamp, // Use calculated timestamp based on sync_days
@@ -1807,7 +1801,7 @@ pub async fn handle_handshake_event(
                         .handshake
                         .send_response(channel, response)
                     {
-                        crate::log_network_error!(
+                        log_network_error!(
                             error_logger,
                             "handshake",
                             "Failed to send handshake response to {}: {:?}",
@@ -1918,16 +1912,16 @@ pub async fn handle_event(
     swarm: &mut Swarm<StoryBehaviour>,
     peer_names: &mut HashMap<PeerId, String>,
     response_sender: mpsc::UnboundedSender<ListResponse>,
-    story_sender: mpsc::UnboundedSender<crate::types::Story>,
+    story_sender: mpsc::UnboundedSender<Story>,
     local_peer_name: &mut Option<String>,
     sorted_peer_names_cache: &mut SortedPeerNamesCache,
     ui_logger: &UILogger,
     error_logger: &ErrorLogger,
-    bootstrap_logger: &crate::bootstrap_logger::BootstrapLogger,
+    bootstrap_logger: &BootstrapLogger,
     dm_config: &DirectMessageConfig,
     pending_messages: &Arc<Mutex<Vec<PendingDirectMessage>>>,
-    relay_service: &mut Option<crate::relay::RelayService>,
-    network_circuit_breakers: &crate::network_circuit_breakers::NetworkCircuitBreakers,
+    relay_service: &mut Option<RelayService>,
+    network_circuit_breakers: &NetworkCircuitBreakers,
     pending_handshake_peers: &Arc<Mutex<HashMap<PeerId, PendingHandshakePeer>>>,
     verified_p2p_play_peers: &Arc<Mutex<HashMap<PeerId, String>>>,
 ) -> Option<ActionResult> {
@@ -1973,20 +1967,20 @@ pub async fn handle_event(
             .await
             {
                 match action_result {
-                    crate::types::ActionResult::RefreshStories => {
+                    ActionResult::RefreshStories => {
                         return Some(ActionResult::RefreshStories);
                     }
-                    crate::types::ActionResult::RefreshChannels => {
+                    ActionResult::RefreshChannels => {
                         return Some(ActionResult::RefreshChannels);
                     }
-                    crate::types::ActionResult::RebroadcastRelayMessage(relay_msg) => {
+                    ActionResult::RebroadcastRelayMessage(relay_msg) => {
                         // Rebroadcast the relay message via floodsub
                         if let Err(e) = broadcast_relay_message(swarm, &relay_msg).await {
                             error_logger
                                 .log_error(&format!("Failed to rebroadcast relay message: {e}"));
                         }
                     }
-                    crate::types::ActionResult::BroadcastRelayConfirmation(confirmation) => {
+                    ActionResult::BroadcastRelayConfirmation(confirmation) => {
                         // Broadcast delivery confirmation via floodsub
                         if let Err(e) = broadcast_relay_confirmation(swarm, &confirmation).await {
                             error_logger
@@ -2109,7 +2103,7 @@ pub async fn handle_wasm_capabilities_event(
                     );
 
                     // Load local WASM offerings from storage
-                    let offerings = match crate::storage::read_enabled_wasm_offerings().await {
+                    let offerings = match storage::read_enabled_wasm_offerings().await {
                         Ok(offerings) => offerings,
                         Err(e) => {
                             error_logger.log_error(&format!(
@@ -2120,7 +2114,7 @@ pub async fn handle_wasm_capabilities_event(
                     };
 
                     // Check if WASM execution is enabled
-                    let wasm_enabled = match crate::storage::load_unified_network_config().await {
+                    let wasm_enabled = match storage::load_unified_network_config().await {
                         Ok(config) => config.wasm.capability.allow_remote_execution,
                         Err(_) => false,
                     };
@@ -2134,7 +2128,7 @@ pub async fn handle_wasm_capabilities_event(
                         peer_name: from_name,
                         wasm_enabled,
                         offerings,
-                        timestamp: crate::current_unix_timestamp(),
+                        timestamp: current_unix_timestamp(),
                     };
 
                     if let Err(e) = swarm
@@ -2165,11 +2159,9 @@ pub async fn handle_wasm_capabilities_event(
 
                     // Cache discovered offerings
                     for offering in &response.offerings {
-                        if let Err(e) = crate::storage::cache_discovered_wasm_offering(
-                            &response.peer_id,
-                            offering,
-                        )
-                        .await
+                        if let Err(e) =
+                            storage::cache_discovered_wasm_offering(&response.peer_id, offering)
+                                .await
                         {
                             error_logger.log_error(&format!(
                                 "Failed to cache WASM offering '{}' from {}: {e}",
@@ -2229,7 +2221,7 @@ pub async fn handle_wasm_execution_event(
                     );
 
                     // Check if remote execution is enabled
-                    let config = match crate::storage::load_unified_network_config().await {
+                    let config = match storage::load_unified_network_config().await {
                         Ok(config) => config,
                         Err(e) => {
                             error_logger.log_error(&format!(
@@ -2242,7 +2234,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: 0,
                                 exit_code: -1,
                                 error: Some("Internal configuration error".to_string()),
-                                timestamp: crate::current_unix_timestamp(),
+                                timestamp: current_unix_timestamp(),
                             };
                             let _ = swarm
                                 .behaviour_mut()
@@ -2267,7 +2259,7 @@ pub async fn handle_wasm_execution_event(
                             error: Some(
                                 "Remote WASM execution is disabled on this node".to_string(),
                             ),
-                            timestamp: crate::current_unix_timestamp(),
+                            timestamp: current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2277,52 +2269,52 @@ pub async fn handle_wasm_execution_event(
                     }
 
                     // Verify the offering exists and is enabled
-                    let offering =
-                        match crate::storage::get_wasm_offering_by_id(&request.offering_id).await {
-                            Ok(Some(offering)) => offering,
-                            Ok(None) => {
-                                ui_logger.log(format!(
-                                    "{} WASM execution request for unknown offering: {}",
-                                    Icons::cross(),
+                    let offering = match storage::get_wasm_offering_by_id(&request.offering_id)
+                        .await
+                    {
+                        Ok(Some(offering)) => offering,
+                        Ok(None) => {
+                            ui_logger.log(format!(
+                                "{} WASM execution request for unknown offering: {}",
+                                Icons::cross(),
+                                request.offering_id
+                            ));
+                            let response = WasmExecutionResponse {
+                                success: false,
+                                stdout: Vec::new(),
+                                stderr: Vec::new(),
+                                fuel_consumed: 0,
+                                exit_code: -1,
+                                error: Some(format!(
+                                    "Offering '{}' not found",
                                     request.offering_id
-                                ));
-                                let response = WasmExecutionResponse {
-                                    success: false,
-                                    stdout: Vec::new(),
-                                    stderr: Vec::new(),
-                                    fuel_consumed: 0,
-                                    exit_code: -1,
-                                    error: Some(format!(
-                                        "Offering '{}' not found",
-                                        request.offering_id
-                                    )),
-                                    timestamp: crate::current_unix_timestamp(),
-                                };
-                                let _ = swarm
-                                    .behaviour_mut()
-                                    .wasm_execution
-                                    .send_response(channel, response);
-                                return;
-                            }
-                            Err(e) => {
-                                error_logger
-                                    .log_error(&format!("Failed to lookup WASM offering: {e}"));
-                                let response = WasmExecutionResponse {
-                                    success: false,
-                                    stdout: Vec::new(),
-                                    stderr: Vec::new(),
-                                    fuel_consumed: 0,
-                                    exit_code: -1,
-                                    error: Some("Internal error looking up offering".to_string()),
-                                    timestamp: crate::current_unix_timestamp(),
-                                };
-                                let _ = swarm
-                                    .behaviour_mut()
-                                    .wasm_execution
-                                    .send_response(channel, response);
-                                return;
-                            }
-                        };
+                                )),
+                                timestamp: current_unix_timestamp(),
+                            };
+                            let _ = swarm
+                                .behaviour_mut()
+                                .wasm_execution
+                                .send_response(channel, response);
+                            return;
+                        }
+                        Err(e) => {
+                            error_logger.log_error(&format!("Failed to lookup WASM offering: {e}"));
+                            let response = WasmExecutionResponse {
+                                success: false,
+                                stdout: Vec::new(),
+                                stderr: Vec::new(),
+                                fuel_consumed: 0,
+                                exit_code: -1,
+                                error: Some("Internal error looking up offering".to_string()),
+                                timestamp: current_unix_timestamp(),
+                            };
+                            let _ = swarm
+                                .behaviour_mut()
+                                .wasm_execution
+                                .send_response(channel, response);
+                            return;
+                        }
+                    };
 
                     // Verify CID matches
                     if offering.ipfs_cid != request.ipfs_cid {
@@ -2340,7 +2332,7 @@ pub async fn handle_wasm_execution_event(
                             fuel_consumed: 0,
                             exit_code: -1,
                             error: Some("CID verification failed".to_string()),
-                            timestamp: crate::current_unix_timestamp(),
+                            timestamp: current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2358,7 +2350,7 @@ pub async fn handle_wasm_execution_event(
                             fuel_consumed: 0,
                             exit_code: -1,
                             error: Some("Offering is currently disabled".to_string()),
-                            timestamp: crate::current_unix_timestamp(),
+                            timestamp: current_unix_timestamp(),
                         };
                         let _ = swarm
                             .behaviour_mut()
@@ -2398,7 +2390,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: 0,
                                 exit_code: -1,
                                 error: Some(format!("Failed to initialize WASM executor: {e}")),
-                                timestamp: crate::current_unix_timestamp(),
+                                timestamp: current_unix_timestamp(),
                             };
                             let _ = swarm
                                 .behaviour_mut()
@@ -2438,7 +2430,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed: result.fuel_consumed,
                                 exit_code: result.exit_code,
                                 error: None,
-                                timestamp: crate::current_unix_timestamp(),
+                                timestamp: current_unix_timestamp(),
                             }
                         }
                         Err(e) => {
@@ -2460,7 +2452,7 @@ pub async fn handle_wasm_execution_event(
                                 fuel_consumed,
                                 exit_code: -1,
                                 error: Some(error_msg),
-                                timestamp: crate::current_unix_timestamp(),
+                                timestamp: current_unix_timestamp(),
                             }
                         }
                     };
@@ -2614,13 +2606,7 @@ pub async fn maintain_connections(swarm: &mut Swarm<StoryBehaviour>, error_logge
             if should_attempt {
                 debug!("Reconnecting to discovered peer: {peer}");
                 if let Err(e) = swarm.dial(peer) {
-                    crate::log_network_error!(
-                        error_logger,
-                        "mdns",
-                        "Failed to dial peer {}: {}",
-                        peer,
-                        e
-                    );
+                    log_network_error!(error_logger, "mdns", "Failed to dial peer {}: {}", peer, e);
                 }
             }
         }
@@ -2645,12 +2631,12 @@ pub async fn trigger_immediate_connection_maintenance(
 // Helper function that needs to be accessible - copied from main.rs
 pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, receiver: String) {
     tokio::spawn(async move {
-        let error_logger = ErrorLogger::new(&crate::data_dir::get_data_path("errors.log"));
+        let error_logger = ErrorLogger::new(&get_data_path("errors.log"));
         // Read stories and subscriptions separately to avoid Send issues
-        let stories = match crate::storage::read_local_stories().await {
+        let stories = match storage::read_local_stories().await {
             Ok(stories) => stories,
             Err(e) => {
-                crate::log_network_error!(
+                log_network_error!(
                     error_logger,
                     "storage",
                     "error fetching local stories to answer ALL request, {}",
@@ -2660,10 +2646,10 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             }
         };
 
-        let subscribed_channels = match crate::storage::read_subscribed_channels(&receiver).await {
+        let subscribed_channels = match storage::read_subscribed_channels(&receiver).await {
             Ok(channels) => channels,
             Err(e) => {
-                crate::log_network_error!(
+                log_network_error!(
                     error_logger,
                     "storage",
                     "error fetching subscribed channels for {}: {}",
@@ -2697,7 +2683,7 @@ pub fn respond_with_public_stories(sender: mpsc::UnboundedSender<ListResponse>, 
             data: filtered_stories,
         };
         if let Err(e) = sender.send(resp) {
-            crate::log_network_error!(
+            log_network_error!(
                 error_logger,
                 "channel",
                 "error sending response via channel, {}",
@@ -2860,7 +2846,7 @@ pub async fn retry_messages_for_peer(
 
 pub async fn broadcast_relay_message(
     swarm: &mut Swarm<StoryBehaviour>,
-    relay_msg: &crate::types::RelayMessage,
+    relay_msg: &RelayMessage,
 ) -> Result<(), String> {
     let json = serde_json::to_string(relay_msg)
         .map_err(|e| format!("Failed to serialize relay message: {e}"))?;
@@ -2869,7 +2855,7 @@ pub async fn broadcast_relay_message(
     swarm
         .behaviour_mut()
         .floodsub
-        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
+        .publish(RELAY_TOPIC.clone(), json_bytes);
 
     debug!(
         "Broadcasted relay message with ID: {}",
@@ -2880,7 +2866,7 @@ pub async fn broadcast_relay_message(
 
 pub async fn broadcast_relay_confirmation(
     swarm: &mut Swarm<StoryBehaviour>,
-    confirmation: &crate::types::RelayConfirmation,
+    confirmation: &RelayConfirmation,
 ) -> Result<(), String> {
     let json = serde_json::to_string(confirmation)
         .map_err(|e| format!("Failed to serialize relay confirmation: {e}"))?;
@@ -2889,7 +2875,7 @@ pub async fn broadcast_relay_confirmation(
     swarm
         .behaviour_mut()
         .floodsub
-        .publish(crate::network::RELAY_TOPIC.clone(), json_bytes);
+        .publish(RELAY_TOPIC.clone(), json_bytes);
 
     debug!(
         "Broadcasted relay confirmation for message ID: {}",
@@ -2901,7 +2887,6 @@ pub async fn broadcast_relay_confirmation(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::network::DirectMessageRequest;
     use libp2p::PeerId;
     use tokio::sync::mpsc;
 
@@ -3076,7 +3061,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_channel_event() {
-        let channel = crate::types::Channel::new(
+        let channel = Channel::new(
             "test_channel".to_string(),
             "Test channel description".to_string(),
             "peer123".to_string(),
@@ -3088,10 +3073,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_handle_channel_subscription_event() {
-        let subscription = crate::types::ChannelSubscription::new(
-            "peer123".to_string(),
-            "test_channel".to_string(),
-        );
+        let subscription =
+            ChannelSubscription::new("peer123".to_string(), "test_channel".to_string());
 
         // This function doesn't return a value, so we just test it doesn't panic
         handle_channel_subscription_event(subscription).await;
@@ -3162,10 +3145,10 @@ mod tests {
     #[tokio::test]
     async fn test_maintain_connections() {
         // Create a mock swarm for testing
-        let ping_config = crate::types::PingConfig::new();
-        let network_config = crate::types::NetworkConfig::new();
-        let mut swarm = crate::network::create_swarm(&ping_config, &network_config)
-            .expect("Failed to create test swarm");
+        let ping_config = types::PingConfig::new();
+        let network_config = types::NetworkConfig::new();
+        let mut swarm =
+            create_swarm(&ping_config, &network_config).expect("Failed to create test swarm");
 
         // This is hard to test properly without a full network setup,
         // but we can at least verify the function doesn't panic
@@ -3231,12 +3214,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_story_publishing_non_blocking() {
-        use crate::network::create_swarm;
-        use crate::types::Story;
         use std::time::Instant;
 
-        let ping_config = crate::types::PingConfig::new();
-        let network_config = crate::types::NetworkConfig::new();
+        let ping_config = types::PingConfig::new();
+        let network_config = types::NetworkConfig::new();
         let mut swarm =
             create_swarm(&ping_config, &network_config).expect("Failed to create swarm");
         let story = Story {
@@ -3255,12 +3236,11 @@ mod tests {
         let error_logger = ErrorLogger::new("test_errors.log");
 
         // Create disabled circuit breakers for testing
-        let cb_config = crate::types::NetworkCircuitBreakerConfig {
+        let cb_config = types::NetworkCircuitBreakerConfig {
             enabled: false,
             ..Default::default()
         };
-        let network_circuit_breakers =
-            crate::network_circuit_breakers::NetworkCircuitBreakers::new(&cb_config);
+        let network_circuit_breakers = NetworkCircuitBreakers::new(&cb_config);
 
         handle_publish_story_event(story, &mut swarm, &error_logger, &network_circuit_breakers)
             .await;
@@ -3276,7 +3256,6 @@ mod tests {
 
     #[test]
     fn test_ui_logger_cloneable() {
-        use crate::handlers::UILogger;
         use tokio::sync::mpsc;
 
         let (sender, _receiver) = mpsc::unbounded_channel::<String>();
@@ -3311,8 +3290,6 @@ mod tests {
 
     #[test]
     fn test_list_mode_one_validation() {
-        use crate::types::{ListMode, ListRequest};
-
         // Test ListMode::One with valid peer ID format
         let list_request = ListRequest {
             mode: ListMode::One("valid_peer_id".to_string()),
@@ -3330,9 +3307,6 @@ mod tests {
 
     #[test]
     fn test_pending_direct_message_retry_logic() {
-        use crate::network::DirectMessageRequest;
-        use crate::types::{DirectMessageConfig, PendingDirectMessage};
-
         let config = DirectMessageConfig::new();
         let peer_id = PeerId::random();
         let request = DirectMessageRequest {
@@ -3371,8 +3345,6 @@ mod tests {
 
     #[test]
     fn test_direct_message_config_defaults() {
-        use crate::types::DirectMessageConfig;
-
         let config = DirectMessageConfig::new();
         assert_eq!(config.max_retry_attempts, 3);
         assert_eq!(config.retry_interval_seconds, 30);
@@ -3391,9 +3363,6 @@ mod tests {
     /// `BroadcastRelayConfirmation` action containing the original message ID.
     #[tokio::test]
     async fn test_handle_floodsub_relay_deliver_locally_returns_confirmation() {
-        use crate::crypto::CryptoService;
-        use crate::relay::RelayService;
-        use crate::types::{ActionResult, DirectMessage, RelayConfig, RelayConfirmation};
         use libp2p::floodsub::{FloodsubMessage, Topic};
         use libp2p::identity::Keypair;
         use std::collections::HashMap;
@@ -3423,7 +3392,7 @@ mod tests {
             to_peer_id: bob_peer_id.to_string(),
             to_name: "Bob".to_string(),
             message: "relay test".to_string(),
-            timestamp: crate::current_unix_timestamp(),
+            timestamp: current_unix_timestamp(),
             is_outgoing: true,
         };
         let relay_msg = alice_relay
@@ -3457,7 +3426,7 @@ mod tests {
         let ui_logger = UILogger::new(ui_sender);
         let error_logger = ErrorLogger::new("test_relay_confirmation.log");
         let mut peer_names: HashMap<libp2p::PeerId, String> = HashMap::new();
-        let mut sorted_cache = crate::handlers::SortedPeerNamesCache::new();
+        let mut sorted_cache = SortedPeerNamesCache::new();
 
         let result = handle_floodsub_event(
             floodsub_event,

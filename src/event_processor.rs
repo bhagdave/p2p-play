@@ -10,13 +10,12 @@ use crate::network::{HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEv
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
-use crate::storage::mark_story_as_read;
+use crate::storage::{mark_conversation_messages_as_read, mark_story_as_read, save_direct_message};
 use crate::types::{
-    ActionResult, DirectMessageConfig, EventType, NetworkConfig, PendingDirectMessage,
-    PendingHandshakePeer,
+    ActionResult, DirectMessageConfig, EventType, Icons, ListResponse, NetworkConfig,
+    PendingDirectMessage, PendingHandshakePeer, Story,
 };
-use crate::ui::{App, AppEvent, handle_ui_events};
-
+use crate::ui::{App, AppEvent, InputMode, handle_ui_events};
 use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -27,11 +26,11 @@ use tokio::time::{Duration, interval};
 pub struct EventProcessor {
     ui_rcv: mpsc::UnboundedReceiver<AppEvent>,
     ui_log_rcv: mpsc::UnboundedReceiver<String>,
-    response_rcv: mpsc::UnboundedReceiver<crate::types::ListResponse>,
-    story_rcv: mpsc::UnboundedReceiver<crate::types::Story>,
+    response_rcv: mpsc::UnboundedReceiver<ListResponse>,
+    story_rcv: mpsc::UnboundedReceiver<Story>,
 
-    response_sender: mpsc::UnboundedSender<crate::types::ListResponse>,
-    story_sender: mpsc::UnboundedSender<crate::types::Story>,
+    response_sender: mpsc::UnboundedSender<ListResponse>,
+    story_sender: mpsc::UnboundedSender<Story>,
 
     ui_sender: mpsc::UnboundedSender<AppEvent>,
 
@@ -69,10 +68,10 @@ impl EventProcessor {
     pub fn new(
         ui_rcv: mpsc::UnboundedReceiver<AppEvent>,
         ui_log_rcv: mpsc::UnboundedReceiver<String>,
-        response_rcv: mpsc::UnboundedReceiver<crate::types::ListResponse>,
-        story_rcv: mpsc::UnboundedReceiver<crate::types::Story>,
-        response_sender: mpsc::UnboundedSender<crate::types::ListResponse>,
-        story_sender: mpsc::UnboundedSender<crate::types::Story>,
+        response_rcv: mpsc::UnboundedReceiver<ListResponse>,
+        story_rcv: mpsc::UnboundedReceiver<Story>,
+        response_sender: mpsc::UnboundedSender<ListResponse>,
+        story_sender: mpsc::UnboundedSender<Story>,
         ui_sender: mpsc::UnboundedSender<AppEvent>,
         network_config: &NetworkConfig,
         dm_config: DirectMessageConfig,
@@ -209,17 +208,17 @@ impl EventProcessor {
                             None
                         }
                         AppEvent::EnterMessageComposition { target_peer } => {
-                            app.input_mode = crate::ui::InputMode::MessageComposition {
+                            app.input_mode = InputMode::MessageComposition {
                                 target_peer,
                                 lines: Vec::new(),
                                 current_line: String::new(),
                             };
                             app.input.clear();
-                            app.add_to_log(format!("{} Entered message composition mode", crate::types::Icons::memo()));
+                            app.add_to_log(format!("{} Entered message composition mode", Icons::memo()));
                             None
                         }
                         AppEvent::ConversationViewed { peer_id } => {
-                            if let Err(e) = crate::storage::mark_conversation_messages_as_read(&peer_id).await {
+                            if let Err(e) = mark_conversation_messages_as_read(&peer_id).await {
                                 self.error_logger.log_error(&format!("Failed to mark messages as read: {e}"));
                             }
                             app.display_conversation(&peer_id).await;
@@ -697,7 +696,7 @@ impl EventProcessor {
             ActionResult::BroadcastRelayConfirmation(_) => {}
             ActionResult::DirectMessageReceived(direct_message) => {
                 if let Err(e) =
-                    crate::storage::save_direct_message(&direct_message, Some(peer_names)).await
+                    save_direct_message(&direct_message, Some(peer_names)).await
                 {
                     self.error_logger
                         .log_error(&format!("Failed to save received direct message: {e}"));
