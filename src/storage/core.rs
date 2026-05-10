@@ -481,6 +481,28 @@ pub async fn mark_peer_disconnected(peer_id: &str) -> StorageResult<()> {
     Ok(())
 }
 
+pub async fn get_all_peer_aliases() -> StorageResult<HashMap<String, String>> {
+    let conn_arc = get_db_connection().await?;
+    let conn = conn_arc.lock().await;
+
+    let mut stmt = conn.prepare(
+        "SELECT peer_id, alias FROM peers WHERE alias IS NOT NULL AND TRIM(alias) != ''",
+    )?;
+    let alias_rows = stmt.query_map([], |row| {
+        let peer_id: String = row.get(0)?;
+        let alias: String = row.get(1)?;
+        Ok((peer_id, alias))
+    })?;
+
+    let mut aliases = HashMap::new();
+    for alias_row in alias_rows {
+        let (peer_id, alias) = alias_row?;
+        aliases.insert(peer_id, alias);
+    }
+
+    Ok(aliases)
+}
+
 pub async fn get_outbound_peers(limit: usize) -> StorageResult<Vec<String>> {
     let limit = i64::try_from(limit).map_err(|_| {
         rusqlite::Error::InvalidParameterName("limit exceeds i64 range".to_string())
@@ -2052,6 +2074,47 @@ mod peers_tests {
         assert_eq!(stored_alias.as_deref(), Some("eve"));
         // New row inserted with is_connected = false (conservative default)
         assert_eq!(is_connected, 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_peer_aliases_returns_only_peers_with_aliases() {
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let db_path = temp_dir.path().join("test_get_all_peer_aliases.db");
+        unsafe {
+            env::set_var("TEST_DATABASE_PATH", db_path.to_str().unwrap());
+        }
+
+        reset_db_connection_for_testing()
+            .await
+            .expect("Failed to reset connection");
+        ensure_stories_file_exists()
+            .await
+            .expect("Failed to initialize storage");
+
+        upsert_peer(
+            "12D3KooWAliasPeer",
+            Some("alice"),
+            Some("/ip4/127.0.0.1/tcp/4999"),
+            true,
+        )
+        .await
+        .expect("upsert alias peer");
+
+        upsert_peer(
+            "12D3KooWNoAliasPeer",
+            None,
+            Some("/ip4/127.0.0.1/tcp/5000"),
+            true,
+        )
+        .await
+        .expect("upsert non-alias peer");
+
+        let aliases = get_all_peer_aliases()
+            .await
+            .expect("get_all_peer_aliases should succeed");
+
+        assert_eq!(aliases.get("12D3KooWAliasPeer"), Some(&"alice".to_string()));
+        assert!(!aliases.contains_key("12D3KooWNoAliasPeer"));
     }
 
     #[tokio::test]

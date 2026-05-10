@@ -4,6 +4,12 @@ All changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Linux aarch64 release build**: The release workflow now publishes a `p2p-play-linux-aarch64` asset so Raspberry Pi and other ARM64 Linux systems can download a prebuilt binary instead of building locally.
+
+### Fixed
+- **`wasm ls` remote peer display now uses saved aliases**: Remote offerings now show saved peer aliases for disconnected peers instead of raw Peer IDs.
+
 ## [0.12.0] - 2026-06-15
 
 ### Added
