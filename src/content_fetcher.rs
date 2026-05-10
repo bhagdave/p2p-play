@@ -1,3 +1,4 @@
+use crate::constants::{HTTP_HEADER_END, HTTP_READ_BUF_SIZE, MAX_HEADER_BYTES};
 use crate::errors::FetchError;
 use std::time::Duration;
 
@@ -133,10 +134,28 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             if let Ok((mut socket, _)) = listener.accept().await {
+                use tokio::io::AsyncReadExt;
+                let mut accumulated = Vec::new();
+                let mut buf = [0u8; HTTP_READ_BUF_SIZE];
+                loop {
+                    if accumulated.len() >= MAX_HEADER_BYTES {
+                        break;
+                    }
+                    match socket.read(&mut buf).await {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            accumulated.extend_from_slice(&buf[..n]);
+                            if accumulated.windows(HTTP_HEADER_END.len()).any(|w| w == HTTP_HEADER_END) {
+                                break;
+                            }
+                        }
+                    }
+                }
                 let response = format!(
                     "HTTP/1.1 {status_line}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                 );
                 let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
             }
         });
         format!("http://{addr}")
