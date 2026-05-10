@@ -8,8 +8,7 @@ pub const BYTES_PER_MB: usize = 1024 * 1024;
 pub const MAX_HEADER_BYTES: usize = 8 * 1024;
 pub const HTTP_READ_BUF_SIZE: usize = 4096;
 pub const HTTP_HEADER_END: &[u8] = b"\r\n\r\n";
-/// Default async fiber stack size for Wasmtime (8 MiB).
-pub const DEFAULT_ASYNC_STACK_SIZE: usize = 8 * 1024 * 1024;
+pub const DEFAULT_ASYNC_STACK_SIZE: usize = 16 * 1024 * 1024;
 pub const WASM_PARAM_TYPES: &[&str] = &["string", "bytes", "json", "int", "float", "bool", "file"];
 
 pub const UNIFIED_CONFIG_FILE: &str = "unified_network_config.json";
@@ -44,7 +43,6 @@ pub const TCP_TTL: u32 = 64;
 pub const YAMUX_MAX_STREAMS: usize = 512;
 pub const SWARM_IDLE_CONNECTION_TIMEOUT_SECS: u64 = 60;
 pub const SWARM_DIAL_CONCURRENCY_FALLBACK: u8 = 8;
-// Security constants
 pub const ENCRYPTION_CONTEXT: &[u8] = b"p2p-play-encryption";
 pub const MAX_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB limit
 pub const REPLAY_PROTECTION_WINDOW_SECS: u64 = 300; // 5 minutes
