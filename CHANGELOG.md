@@ -11,6 +11,7 @@ All changes to this project will be documented in this file.
 - **`wasm ls` remote peer display now uses saved aliases**: Remote offerings now show saved peer aliases for disconnected peers instead of raw Peer IDs.
 - **Windows build: `test_fetch_returns_not_found_on_404` connection abort**: The mock HTTP server used in content-fetcher tests now reads the incoming request headers before sending its response. On Windows, closing the socket while the client was still sending the request triggered a TCP RST (WSAECONNABORTED / error 10053), causing the client to see a connection error instead of the expected 404 response.
 - **Windows build: `test_execute_fuel_exhaustion` stack buffer overrun**: The default Wasmtime async fiber stack size has been increased from 2 MiB to 8 MiB (configurable via `WasmExecutorConfig::async_stack_size`). The smaller default was insufficient on Windows debug builds when propagating fuel-exhaustion traps through the fiber-switching mechanism, causing `STATUS_STACK_BUFFER_OVERRUN` (exit code 0xC0000409).
+- **Too many open file descriptors on macOS**: Reduced constant database connection opening to help prevent too many open file descriptor errors on macOS.
 
 ## [0.12.0] - 2026-06-15
 
