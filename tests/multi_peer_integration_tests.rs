@@ -364,10 +364,23 @@ async fn test_multi_peer_direct_messaging_chain() {
     let mut stage1_completed = false;
     let mut stage2_completed = false;
     let mut final_message_received = false;
+    // Defer the forward until Peer 1 has a confirmed connection to Peer 2
+    let mut peer1_connected_to_peer2 = false;
+    let mut pending_forward: Option<DirectMessageRequest> = None;
 
     for i in 0..1000 {
         if i % 100 == 0 {
             println!("Iteration {}", i);
+        }
+
+        // Send deferred forward once Peer 1 has a connection to Peer 2
+        if pending_forward.is_some() && peer1_connected_to_peer2 {
+            let dm2 = pending_forward.take().unwrap();
+            swarms[1]
+                .behaviour_mut()
+                .request_response
+                .send_request(&peer_ids[2], dm2);
+            println!("✅ Peer 1 forwarded message to Peer 2 (after connection confirmed)");
         }
 
         // Process Peer 1 events (receiver of first message, sender of second)
@@ -404,20 +417,16 @@ async fn test_multi_peer_direct_messaging_chain() {
                         .unwrap();
                     println!("✅ Peer 1 sent response to Peer 0");
 
-                    // Forward to Peer 2
-                    let dm2 = DirectMessageRequest {
+                    // Queue the forward; it will be sent once Peer 1's connection to Peer 2 is confirmed
+                    pending_forward = Some(DirectMessageRequest {
                         from_peer_id: peer_ids[1].to_string(),
                         from_name: "Bob".to_string(),
                         to_name: "Carol".to_string(),
                         message: "Forwarded from Alice: Hello Bob, please forward this to Carol"
                             .to_string(),
                         timestamp: current_timestamp(),
-                    };
-                    swarms[1]
-                        .behaviour_mut()
-                        .request_response
-                        .send_request(&peer_ids[2], dm2);
-                    println!("✅ Peer 1 forwarded message to Peer 2");
+                    });
+                    println!("Peer 1 queued forward to Peer 2 (waiting for connection)");
                 }
                 SwarmEvent::Behaviour(StoryBehaviourEvent::RequestResponse(req_event)) => {
                     println!(
@@ -427,6 +436,9 @@ async fn test_multi_peer_direct_messaging_chain() {
                 }
                 SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                     println!("Peer 1: Connection established with {}", peer_id);
+                    if peer_id == peer_ids[2] {
+                        peer1_connected_to_peer2 = true;
+                    }
                 }
                 SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                     println!(
