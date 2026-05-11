@@ -365,7 +365,6 @@ async fn test_multi_peer_direct_messaging_chain() {
     let mut stage2_completed = false;
     let mut final_message_received = false;
     // Defer the forward until Peer 1 has a confirmed connection to Peer 2
-    let mut peer1_connected_to_peer2 = false;
     let mut pending_forward: Option<DirectMessageRequest> = None;
 
     for i in 0..1000 {
@@ -373,8 +372,10 @@ async fn test_multi_peer_direct_messaging_chain() {
             println!("Iteration {}", i);
         }
 
-        // Send deferred forward once Peer 1 has a connection to Peer 2
-        if pending_forward.is_some() && peer1_connected_to_peer2 {
+        // Send deferred forward once Peer 1 is connected to Peer 2.
+        // Check current connection state directly because earlier loops may have already
+        // consumed ConnectionEstablished events.
+        if pending_forward.is_some() && swarms[1].is_connected(&peer_ids[2]) {
             let dm2 = pending_forward.take().unwrap();
             swarms[1]
                 .behaviour_mut()
@@ -436,9 +437,6 @@ async fn test_multi_peer_direct_messaging_chain() {
                 }
                 SwarmEvent::ConnectionEstablished { peer_id, .. } => {
                     println!("Peer 1: Connection established with {}", peer_id);
-                    if peer_id == peer_ids[2] {
-                        peer1_connected_to_peer2 = true;
-                    }
                 }
                 SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
                     println!(
