@@ -2366,16 +2366,7 @@ pub async fn handle_wasm_execution_event(
                         request.from_name
                     ));
 
-                    // Determine resource limits: use offering defaults, allow request overrides
-                    let fuel_limit = request
-                        .fuel_limit
-                        .unwrap_or(offering.resource_requirements.max_fuel);
-                    let memory_limit_mb = request
-                        .memory_limit_mb
-                        .unwrap_or(offering.resource_requirements.max_memory_mb);
-                    let timeout_secs = request
-                        .timeout_secs
-                        .or(Some(offering.resource_requirements.estimated_timeout_secs));
+                    let timeout_secs = Some(offering.resource_requirements.estimated_timeout_secs);
 
                     // Create executor with content fetcher
                     let fetcher = Arc::new(GatewayFetcher::new());
@@ -2403,8 +2394,8 @@ pub async fn handle_wasm_execution_event(
                     // Build execution request
                     let exec_request = ExecutionRequest::new(request.ipfs_cid.clone())
                         .with_input(request.input.clone())
-                        .with_fuel_limit(fuel_limit)
-                        .with_memory_limit_mb(memory_limit_mb)
+                        .with_fuel_limit(offering.resource_requirements.max_fuel)
+                        .with_memory_limit_mb(offering.resource_requirements.max_memory_mb)
                         .with_args(request.args.clone());
 
                     let exec_request = if let Some(timeout) = timeout_secs {
