@@ -90,9 +90,6 @@ pub struct WasmExecutionRequest {
     pub ipfs_cid: String,
     pub input: Vec<u8>,
     pub args: Vec<String>,
-    pub fuel_limit: Option<u64>,
-    pub memory_limit_mb: Option<u32>,
-    pub timeout_secs: Option<u64>,
     pub timestamp: u64,
 }
 

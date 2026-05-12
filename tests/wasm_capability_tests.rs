@@ -230,9 +230,6 @@ fn test_wasm_execution_request_serialization() {
         ipfs_cid: "QmTest1234567890abcdefghijklmnopqrstuvwxyz12".to_string(),
         input: b"Hello, WASM!".to_vec(),
         args: vec!["--format".to_string(), "json".to_string()],
-        fuel_limit: Some(50000),
-        memory_limit_mb: Some(64),
-        timeout_secs: Some(30),
         timestamp: current_timestamp(),
     };
 
@@ -248,7 +245,6 @@ fn test_wasm_execution_request_serialization() {
     assert_eq!(deserialized.ipfs_cid, request.ipfs_cid);
     assert_eq!(deserialized.input, b"Hello, WASM!");
     assert_eq!(deserialized.args.len(), 2);
-    assert_eq!(deserialized.fuel_limit, Some(50000));
 }
 
 #[test]
@@ -260,9 +256,6 @@ fn test_wasm_execution_request_minimal() {
         ipfs_cid: "QmMinimal123456789".to_string(),
         input: vec![],
         args: vec![],
-        fuel_limit: None,
-        memory_limit_mb: None,
-        timeout_secs: None,
         timestamp: current_timestamp(),
     };
 
@@ -272,7 +265,6 @@ fn test_wasm_execution_request_minimal() {
 
     assert!(deserialized.input.is_empty());
     assert!(deserialized.args.is_empty());
-    assert!(deserialized.fuel_limit.is_none());
 }
 
 #[test]
@@ -514,9 +506,6 @@ fn test_wasm_execution_with_binary_data() {
         ipfs_cid: "QmBinary1234567890abcdefghijklmnopqrstuvwxyz12".to_string(),
         input: binary_input.clone(),
         args: vec![],
-        fuel_limit: None,
-        memory_limit_mb: None,
-        timeout_secs: None,
         timestamp: current_timestamp(),
     };
 

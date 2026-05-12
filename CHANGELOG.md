@@ -12,6 +12,7 @@ All changes to this project will be documented in this file.
 - **Windows build: `test_fetch_returns_not_found_on_404` connection abort**: The mock HTTP server used in content-fetcher tests now reads the incoming request headers before sending its response. On Windows, closing the socket while the client was still sending the request triggered a TCP RST (WSAECONNABORTED / error 10053), causing the client to see a connection error instead of the expected 404 response.
 - **Windows build: `test_execute_fuel_exhaustion` stack buffer overrun**: The default Wasmtime async fiber stack size has been increased from 2 MiB to 8 MiB (configurable via `WasmExecutorConfig::async_stack_size`). The smaller default was insufficient on Windows debug builds when propagating fuel-exhaustion traps through the fiber-switching mechanism, causing `STATUS_STACK_BUFFER_OVERRUN` (exit code 0xC0000409).
 - **Too many open file descriptors on macOS**: Reduced constant database connection opening to help prevent too many open file descriptor errors on macOS.
+- **Removed ability to set fuel and memory limits via `wasm run` arguments**: Resource limits for remote WASM execution are now taken from the offerings resource requirements. This simplifies the command interface and ensures consistent application of limits across all executions. The `wasm run` command no longer accepts settings for fuel, memory, and timeout as command-line arguments.
 
 ## [0.12.0] - 2026-06-15
 

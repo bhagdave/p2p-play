@@ -664,9 +664,6 @@ async fn handle_wasm_run(
         ipfs_cid,
         input: Vec::new(),
         args: run_args,
-        fuel_limit: None,
-        memory_limit_mb: None,
-        timeout_secs: None,
         timestamp: current_unix_timestamp(),
     };
 
