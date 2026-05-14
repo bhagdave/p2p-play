@@ -120,12 +120,27 @@ fn main() {
         .build()
         .expect("Failed to build Tokio runtime");
 
-    rt.block_on(async {
-        if let Err(e) = run_app().await {
-            print_error_chain(&e);
-            std::process::exit(1);
+    let exit_code = rt.block_on(async {
+        match cli.command {
+            None => {
+                if let Err(e) = run_app().await {
+                    print_error_chain(&e);
+                    1
+                } else {
+                    0
+                }
+            },
+            Some(Commands::Daemon) => {
+                eprintln!("Daemon mode is not implemented in this version.");
+                1
+            },
+            Some(Commands::Ctl) => {
+                eprintln!("Control mode is not implemented in this version.");
+                1
+            }
         }
     });
+    std::process::exit(exit_code);
 }
 
 fn initialise_ui() -> AppResult<App> {
