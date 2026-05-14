@@ -4,6 +4,7 @@ mod circuit_breaker;
 mod constants;
 mod content_fetcher;
 mod crypto;
+mod daemon;
 mod data_dir;
 mod error_logger;
 mod errors;
@@ -42,18 +43,28 @@ use storage::{
 use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::App;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use data_dir::get_data_path;
 use libp2p::Swarm;
 use log::error;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 #[derive(Parser, Debug)]
-#[command(name = "p2p-play", about = "Peer-to-peer story sharing application")]
+#[command(name = "p2p-play", about = "Peer-to-peer sharing application")]
 struct Cli {
-    #[arg(long, value_name = "PATH")]
-    data_dir: Option<std::path::PathBuf>,
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[arg(long, value_name = "PATH", global = true)]
+    data_dir: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Daemon,
+    Ctl,
 }
 
 // Synchronous entry-point so that the Tokio runtime startafter*
