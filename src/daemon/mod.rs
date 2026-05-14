@@ -9,21 +9,20 @@ pub struct DaemonServer{
 
 impl DaemonServer {
     pub async fn new(socket_path: PathBuf, pid_file_path: PathBuf) -> std::io::Result<Self> {
-        // Ensure the socket file does not already exist
+        let socket_path = socket_path.to_path_buf();
+        let pid_file_path = pid_file_path.to_path_buf();
         if socket_path.exists() {
             std::fs::remove_file(&socket_path)?;
         }
 
         let listener = UnixListener::bind(&socket_path)?;
+        std::fs::write(&pid_file_path, format!("{}\n", std::process::id()))?; 
         Ok(Self { listener, socket_path, pid_file_path })
     }
 
     pub async fn run(&self) -> std::io::Result<()> {
-        // Write the PID file
-        let pid = std::process::id();
-        std::fs::write(&self.pid_file_path, pid.to_string())?;
-
-        println!("Daemon server running with PID {}. Listening on {:?}", pid, self.socket_path);
+        let socket_path = self.socket_path.clone();
+        let pid_file_path = self.pid_file_path.clone();
 
         loop {
             match self.listener.accept().await {
