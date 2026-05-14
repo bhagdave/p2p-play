@@ -67,6 +67,19 @@ enum Commands {
     Ctl,
 }
 
+#[derive(Subcommand, Debug)]
+enum CtlCommand {
+    Peers,
+    Msgs,
+    Wasm,
+}
+
+#[derive(Subcommand, Debug)]
+enum WasmCtlCommand {
+    Ls,
+    Run,
+}
+
 // Synchronous entry-point so that the Tokio runtime startafter*
 // the data dir is resolved and  env var set.
 // To ensre that the env-var write happens before  worker threads
