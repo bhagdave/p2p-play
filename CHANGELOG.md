@@ -2,7 +2,7 @@
 
 All changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.12.6] - 2026-05-14
 ### Fixed
 - **wasmtime update**: Dependabot pull request to upgrade to 36.0.8 caused build failures so needed to change code to get them to work.
 
