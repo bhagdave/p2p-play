@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use wasmtime::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
 use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::p2::pipe::{MemoryInputPipe, MemoryOutputPipe};
 use wasmtime_wasi::preview1;
 
 // Re-export so callers can still import WasmExecutionError from this module.
@@ -277,12 +278,12 @@ fn build_wasi_context(
     args: &[String],
 ) -> (
     wasmtime_wasi::preview1::WasiP1Ctx,
-    wasmtime_wasi::pipe::MemoryOutputPipe,
-    wasmtime_wasi::pipe::MemoryOutputPipe,
+    MemoryOutputPipe,
+    MemoryOutputPipe,
 ) {
-    let stdin_pipe = wasmtime_wasi::pipe::MemoryInputPipe::new(Bytes::from(input));
-    let stdout_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(PIPE_BUFFER_SIZE);
-    let stderr_pipe = wasmtime_wasi::pipe::MemoryOutputPipe::new(PIPE_BUFFER_SIZE);
+    let stdin_pipe = MemoryInputPipe::new(Bytes::from(input));
+    let stdout_pipe = MemoryOutputPipe::new(PIPE_BUFFER_SIZE);
+    let stderr_pipe = MemoryOutputPipe::new(PIPE_BUFFER_SIZE);
 
     // Clone before passing into the builder; both handles share the same buffer
     let stdout_reader = stdout_pipe.clone();
