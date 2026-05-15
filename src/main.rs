@@ -311,6 +311,28 @@ async fn run_daemon(pid_file_path: PathBuf) -> AppResult<()> {
     println!("Starting p2p-play in daemon mode...{}", pid_file_path.display());
     eprintln!("Daemon mode is not fully implemented in this version.");
     initialise_logging();
+    let mut app = App::new_headless().map_err(AppError::from)?; 
+    app.update_local_peer_id(PEER_ID.to_string());
+    app.refresh_conversations().await;
+
+    initialise_database(&mut app).await?;
+
+    let local_peer_name: Option<String> = match load_local_peer_name().await {
+        Ok(name) => name,
+        Err(e) => {
+            error!("Failed to load saved peer name: {e}");
+            None
+        }
+    };
+
+    let mut peer_state = PeerState::new(local_peer_name);
+    let (channels, loggers) = setup_communication_channels();
+    let unified_config = load_configuration(&mut app).await;
+    let dm_config = &unified_config.direct_message;
+
+     let mut swarm = create_swarm(&unified_config.ping, &unified_config.network)
+        .expect("Failed to create swarm");
+
     Ok(())
 }
 

@@ -388,6 +388,39 @@ impl App {
         })
     }
 
+    pub fn new_headless() -> UIResult<Self> {
+        let backend = CrosstermBackend::new(io::stdout());
+        let terminal = Terminal::new(backend)?;
+        Ok(App {
+            terminal,
+            should_quit: false,
+            input: String::new(),
+            output_log: Vec::new(),
+            peers: HashMap::new(),
+            stories: Vec::new(),
+            channels: Vec::new(),
+            unread_counts: HashMap::new(),
+            view_mode: ViewMode::Channels,
+            local_peer_name: None,
+            local_peer_id: None,
+            list_state: ListState::default(),
+            input_mode: InputMode::Normal,
+            scroll_offset: 0,
+            auto_scroll: true,
+            network_health: None,
+            bootstrap_status_display: "--".to_string(),
+            mdns_active: false,
+            conversations: Vec::new(),
+            unread_message_count: 0,
+            input_history: Vec::new(),
+            history_index: None,
+            last_message_sender: None,
+            notification_config: crate::types::MessageNotificationConfig::new(),
+            flash_active: false,
+            flash_start_time: None,
+        })
+    }
+
     pub fn cleanup(&mut self) -> UIResult<()> {
         disable_raw_mode()?;
         execute!(
