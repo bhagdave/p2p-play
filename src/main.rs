@@ -27,7 +27,7 @@ pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
-use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, UNIFIED_CONFIG_FILE};
+use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
@@ -131,8 +131,13 @@ fn main() {
                 }
             },
             Some(Commands::Daemon) => {
-                eprintln!("Daemon mode is not implemented in this version.");
-                1
+                let pid = PathBuf::from(get_data_path(PID_FILE));
+                if let Err(e) = run_daemon(pid).await {
+                    eprintln!("Daemon error: {e}");
+                    1
+                } else {
+                    0
+                }
             },
             Some(Commands::Ctl) => {
                 eprintln!("Control mode is not implemented in this version.");
@@ -299,6 +304,13 @@ async fn run_app() -> AppResult<()> {
         e
     })?;
 
+    Ok(())
+}
+
+async fn run_daemon(pid_file_path: PathBuf) -> AppResult<()> {
+    println!("Starting p2p-play in daemon mode...{}", pid_file_path.display());
+    eprintln!("Daemon mode is not fully implemented in this version.");
+    initialise_logging();
     Ok(())
 }
 
