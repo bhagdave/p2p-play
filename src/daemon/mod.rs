@@ -1,5 +1,6 @@
 use std::path::{PathBuf};
 use tokio::net::UnixListener;
+use tokio::sync::oneshot;
 
 pub struct DaemonServer{
     listener: UnixListener,
@@ -20,7 +21,7 @@ impl DaemonServer {
         Ok(Self { listener, socket_path, pid_file_path })
     }
 
-    pub async fn run(&self) -> std::io::Result<()> {
+    pub async fn run(&self, mut shutdown_rx: oneshot::Receiver<()>) {
         let socket_path = self.socket_path.clone();
         let pid_file_path = self.pid_file_path.clone();
 

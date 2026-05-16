@@ -328,10 +328,80 @@ async fn run_daemon(pid_file_path: PathBuf) -> AppResult<()> {
     let mut peer_state = PeerState::new(local_peer_name);
     let (channels, loggers) = setup_communication_channels();
     let unified_config = load_configuration(&mut app).await;
+    let network_config = &unified_config.network;
     let dm_config = &unified_config.direct_message;
 
-     let mut swarm = create_swarm(&unified_config.ping, &unified_config.network)
+    let mut swarm = create_swarm(&unified_config.ping, &unified_config.network)
         .expect("Failed to create swarm");
+
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut auto_bootstrap = AutoBootstrap::new();
+    auto_bootstrap.initialise(
+        &unified_config.bootstrap,
+        &loggers.bootstrap_logger,
+        &loggers.error_logger,
+    );
+
+    if let Err(e) = ensure_general_channel_subscription(&PEER_ID.to_string()).await {
+        error!("Failed to ensure general channel subscription: {e}");
+    }
+    if let Ok(stories) = storage::read_local_stories().await {
+        app.update_stories(stories);
+    }
+    if let Ok(channels_list) = storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
+        app.update_channels(channels_list);
+    }
+
+    #[cfg(not(windows))]
+    let listen_addr = "/ip4/0.0.0.0/tcp/0";
+    #[cfg(windows)]
+    let listen_addr = "/ip4/127.0.0.1/tcp/0";
+    Swarm::listen_on(
+        &mut swarm,
+        listen_addr.parse().expect("can get a local socket"),
+    ).expect("swarm can be started");
+
+    reconnect_stored_peers(&mut swarm, &mut app).await;
+
+    let crypto_service = CryptoService::new(KEYS.clone());
+    let network_circuit_breakers = NetworkCircuitBreakers::new(&unified_config.circuit_breaker);
+    let relay_service = if unified_config.relay.enable_relay {
+        Some(RelayService::new(
+            unified_config.relay.clone(),
+            crypto_service,
+        ))
+    } else {
+        None
+    };
+
+//    let (daemon__cmd_tx, deaon_cmd_rx) = mpsc::unbounded_channel();
+    let daemon_server = daemon::DaemonServer::new(
+        get_data_path(constants::SOCKET_FILE).into(),
+        pid_file_path.clone(),
+    ).await;
+
+    eprintln!("Daemon server listening on {} (PID: {})", get_data_path(constants::SOCKET_FILE), std::process::id());
+
+    let mut event_processor = EventProcessor::new(
+        channels.ui_rcv,
+        channels.ui_log_rcv,
+        channels.response_rcv,
+        channels.story_rcv,
+        channels.response_sender,
+        channels.story_sender,
+        channels.ui_sender,
+        network_config,
+        dm_config.clone(),
+        pending_messages,
+        loggers.ui_logger,
+        loggers.error_logger,
+        loggers.bootstrap_logger,
+        relay_service,
+        network_circuit_breakers,
+    );
+
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(daemon_server.run(shutdown_rx));
 
     Ok(())
 }
