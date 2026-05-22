@@ -63,7 +63,10 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    Daemon,
+    Daemon {
+        #[arg(long, value_name = "PATH")]
+        socket_path: Option<PathBuf>,
+    },
     Ctl,
 }
 
@@ -130,9 +133,10 @@ fn main() {
                     0
                 }
             },
-            Some(Commands::Daemon) => {
+            Some(Commands::Daemon { socket_path }) => {
+                let socket = socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
                 let pid = PathBuf::from(get_data_path(PID_FILE));
-                if let Err(e) = run_daemon(pid).await {
+                if let Err(e) = run_daemon(socket, pid).await {
                     eprintln!("Daemon error: {e}");
                     1
                 } else {
@@ -307,7 +311,7 @@ async fn run_app() -> AppResult<()> {
     Ok(())
 }
 
-async fn run_daemon(pid_file_path: PathBuf) -> AppResult<()> {
+async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<()> {
     println!("Starting p2p-play in daemon mode...{}", pid_file_path.display());
     eprintln!("Daemon mode is not fully implemented in this version.");
     initialise_logging();
@@ -374,11 +378,12 @@ async fn run_daemon(pid_file_path: PathBuf) -> AppResult<()> {
         None
     };
 
-//    let (daemon__cmd_tx, deaon_cmd_rx) = mpsc::unbounded_channel();
+    let (daemon_cmd_tx, daemon_cmd_rx) = mpsc::unbounded_channel();
     let daemon_server = daemon::DaemonServer::new(
-        get_data_path(constants::SOCKET_FILE).into(),
-        pid_file_path.clone(),
-    ).await;
+        &socket_path,
+        &pid_file_path,
+        daemon_cmd_tx,
+    ).map_err(|e| AppError::Application(format!("Failed to start daemon server: {e}")))?;
 
     eprintln!("Daemon server listening on {} (PID: {})", get_data_path(constants::SOCKET_FILE), std::process::id());
 
