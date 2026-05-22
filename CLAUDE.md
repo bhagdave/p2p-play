@@ -66,7 +66,7 @@ cargo machete
 - **main.rs**: Composition root. Resolves `--data-dir`, initialises the TUI, ensures SQLite DB and `unified_network_config.json` exist, creates the libp2p swarm, sets up loggers/channels, and hands control to `EventProcessor`.
 - **event_processor.rs**: Main application loop. Multiplexes UI events, swarm events, timers (connection maintenance, bootstrap retry, DM retry, handshake timeout, network-health), and internal channels. Routes work into `event_handlers.rs` and the `handlers/` submodules.
 - **lib.rs**: Shared library logic re-exported for tests and modules.
-- **network/mod.rs** + **network/protocol.rs**: libp2p swarm construction and behaviour wiring. Defines `StoryBehaviour` combining floodsub, mDNS, Kademlia, ping, identify, and six request-response protocols (direct messages, node descriptions, story sync, handshake verification, WASM capability discovery, WASM execution). Manages peer key persistence.
+- **network/mod.rs** + **network/protocol.rs**: libp2p swarm construction and behaviour wiring. Defines `StoryBehaviour` combining floodsub, mDNS, Kademlia, ping, and six request-response protocols (direct messages, node descriptions, story sync, handshake verification, WASM capability discovery, WASM execution). Manages peer key persistence.
 - **relay.rs**: Floodsub-based relay service for delivering direct messages to offline/unreachable peers via intermediate nodes.
 - **circuit_breaker.rs**: Generic circuit-breaker state machine (`Closed → Open → HalfOpen`) with configurable thresholds and timeouts.
 - **network_circuit_breakers.rs**: Wires circuit breakers to network operations for connection resilience.
@@ -140,7 +140,7 @@ Shared infrastructure (`UILogger`, `PeerState`, `SortedPeerNamesCache`, peer res
 - FTS5 virtual table for full-text story search
 - Migrations system (`migrations.rs`) for schema evolution; default `general` channel guaranteed
 - `TEST_DATABASE_PATH` env var for test isolation; `clear_database_for_testing()` for clean-slate tests
-- Node descriptions persisted in DB (not `node_description.txt`)
+- Local node descriptions are persisted in `node_description.txt`
 - Peer aliases persisted in `peers` table; used for WASM remote-peer display fallback
 
 ### Story and Channel Management
@@ -203,7 +203,7 @@ The application features a terminal-based user interface (TUI) with:
 
 ### Network & Bootstrap
 - `connect <multiaddr>` — connect to a specific peer
-- `dht bootstrap add/remove/list/clear/retry` — manage bootstrap peer list
+- `dht bootstrap add/remove/list/clear/retry` — manage bootstrap peer list in `bootstrap_config.json`
 - `dht bootstrap <multiaddr>` — bootstrap directly with a peer
 - `dht peers` — find closest peers in DHT
 - `reload config` — reload `unified_network_config.json` at runtime
@@ -257,7 +257,7 @@ The application uses multiple logging mechanisms:
 
 ## Dependencies
 Key dependencies from Cargo.toml:
-- **libp2p 0.56.0**: Core P2P networking with floodsub, mDNS, Kademlia, ping, identify, relay, request-response, noise, yamux, TCP, DNS
+- **libp2p 0.56.0**: Core P2P networking with floodsub, mDNS, Kademlia, ping, relay, request-response, noise, yamux, TCP, DNS
 - **tokio 1.43**: Async runtime
 - **rusqlite 0.29** + **r2d2** + **r2d2_sqlite**: SQLite with connection pooling
 - **ratatui 0.30**: Terminal UI framework
