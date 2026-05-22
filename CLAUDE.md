@@ -72,7 +72,7 @@ cargo machete
 - **network_circuit_breakers.rs**: Wires circuit breakers to network operations for connection resilience.
 - **handlers/**: Domain-split command handler submodules (see below).
 - **event_handlers.rs**: Low-level swarm event processing: floodsub messages, mDNS discovery, ping events, all six request-response event types, Kademlia events, and relay forwarding.
-- **storage/core.rs**: All SQLite operations for stories, channels, subscriptions, conversations, read state, peer aliases, node descriptions, WASM offerings, and unified config persistence.
+- **storage/core.rs**: SQLite operations for stories, channels, subscriptions, conversations, read state, peer aliases, WASM offerings, bootstrap config, and unified config persistence, plus local node-description file helpers.
 - **storage/mappers.rs**: Row-to-type mapping helpers.
 - **storage/utils.rs**: Storage utility helpers.
 - **migrations.rs**: SQLite schema migration system; guarantees default `general` channel exists.
@@ -132,7 +132,7 @@ Shared infrastructure (`UILogger`, `PeerState`, `SortedPeerNamesCache`, peer res
   6. `WasmExecution` — request remote execution of a peer's WASM module
 - Floodsub relay topic for offline DM delivery through intermediate peers
 - Persistent peer key (`peer_key`) using Ed25519 keypairs
-- `unified_network_config.json` — primary runtime config; auto-created on first run; reload at runtime with `reload config`
+- `unified_network_config.json` — primary runtime config; auto-created on first run; reload at runtime with `reload config` (note: `dht bootstrap add/remove/list/clear` currently persists peers in `bootstrap_config.json`)
 - CLI `--data-dir <path>` sets `DATA_DIR` and routes all data files through `get_data_path()`
 
 ### Data Storage
