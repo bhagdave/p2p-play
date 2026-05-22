@@ -38,8 +38,8 @@ cargo test --test conversation_tests --features test-utils -- --nocapture
 # A single named test
 cargo test --test conversation_tests --features test-utils test_message_ordering -- --nocapture
 
-# All tests (no isolation guarantees)
-cargo test
+# All tests (no isolation guarantees) with the test script
+./scripts/test_runner.sh
 ```
 
 ### Code Quality
