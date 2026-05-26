@@ -1,13 +1,11 @@
 pub mod protocol;
 
+pub use crate::constants::{PID_FILE, SOCKET_FILE};
 use protocol::{DaemonCommand, DaemonRequest, DaemonResponse};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
-
-pub const SOCKET_FILE: &str = "daemon.sock";
-pub const PID_FILE: &str = "daemon.pid";
 
 pub struct DaemonServer {
     listener: UnixListener,
