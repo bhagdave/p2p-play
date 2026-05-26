@@ -3259,7 +3259,7 @@ dependencies = [
 
 [[package]]
 name = "p2p-play"
-version = "0.12.0"
+version = "0.12.6"
 dependencies = [
  "anyhow",
  "bytes",
