@@ -1,7 +1,7 @@
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::*;
-use crate::daemon::protocol::{DaemonCommand, DaemonResponse, DaemonRequest};
+use crate::daemon::protocol::{ConversationSummary, DaemonCommand, DaemonResponse, DaemonRequest, PeerInfo};
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
@@ -311,6 +311,7 @@ impl EventProcessor {
                 None
                     
             },
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -726,7 +727,7 @@ impl EventProcessor {
                         name: name.clone(),
                     })
                     .collect();
-                let _ = tx.send(DaemonResponse::Peers { peers });
+                let _ = txt.send(DaemonResponse::Peers { peers });
             }
 
             DaemonRequest::Messages { limit } => {
@@ -742,10 +743,10 @@ impl EventProcessor {
                                 last_activity: c.last_activity,
                             })
                             .collect();
-                        let _ = tx.send(DaemonResponse::Messages { conversations });
+                        let _ = txt.send(DaemonResponse::Messages { conversations });
                     }
                     Err(e) => {
-                        let _ = tx.send(DaemonResponse::Error {
+                        let _ = txt.send(DaemonResponse::Error {
                             message: format!("Failed to load conversations: {e}"),
                         });
                     }
