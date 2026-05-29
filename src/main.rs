@@ -433,6 +433,13 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
     Ok(())
 }
 
+async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
+    let req = match command {
+        CtlCommand::Peers => DaemonRequest::Peers,
+        CtlCommand::Msgs { limit } => DaemonRequest::Messages { limit },
+    };
+}
+
 fn initialise_logging() {
     env_logger::Builder::from_default_env()
         .filter_level(log::LevelFilter::Info)
