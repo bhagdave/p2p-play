@@ -304,7 +304,13 @@ impl EventProcessor {
             event = swarm.select_next_some() => {
                 self.handle_swarm_event(event, swarm, peer_state, app, auto_bootstrap).await
             },
-        }
+            cmd = maybe_recv(self.daemon_cmd_rcv.as_mut())  => {
+                if let Some((req, txt)) = cmd {
+                    self.dispatch_daemon_command(req, txt, swarm, peer_state).await;
+                }
+                None
+                    
+            },
     }
 
     // -------------------------------------------------------------------------
@@ -703,6 +709,52 @@ impl EventProcessor {
         }
     }
 
+    async fn dispatch_daemon_command(
+        &self,
+        req: DaemonRequest,
+        txt: oneshot::Sender<DaemonResponse>,
+        swarm: &mut Swarm<StoryBehaviour>,
+        peer_state: &mut PeerState,
+    ) {
+        match req {
+            DaemonRequest::Peers => {
+                let peers = peer_state
+                    .peer_names
+                    .iter()
+                    .map(|(id, name)| PeerInfo {
+                        peer_id: id.to_string(),
+                        name: name.clone(),
+                    })
+                    .collect();
+                let _ = tx.send(DaemonResponse::Peers { peers });
+            }
+
+            DaemonRequest::Messages { limit } => {
+                match storage::get_conversations_with_status().await {
+                    Ok(convs) => {
+                        let conversations = convs
+                            .into_iter()
+                            .take(limit)
+                            .map(|c| ConversationSummary {
+                                peer_id: c.peer_id,
+                                peer_name: c.peer_name,
+                                unread_count: c.unread_count,
+                                last_activity: c.last_activity,
+                            })
+                            .collect();
+                        let _ = tx.send(DaemonResponse::Messages { conversations });
+                    }
+                    Err(e) => {
+                        let _ = tx.send(DaemonResponse::Error {
+                            message: format!("Failed to load conversations: {e}"),
+                        });
+                    }
+                }
+            }
+        }
+
+    }
+
     async fn handle_action_result(
         &self,
         action_result: ActionResult,
@@ -762,6 +814,13 @@ impl EventProcessor {
                 }
             }
         }
+    }
+}
+
+async fn maybe_recv<T>(rcv: Option<&mut mpsc::UnboundedReceiver<T>>) -> Option<T> {
+    match rcv {
+        Some(receiver) => receiver.recv().await,
+        None => std::future::pending().await,
     }
 }
 
