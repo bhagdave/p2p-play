@@ -27,8 +27,9 @@ pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
-use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, UNIFIED_CONFIG_FILE};
+use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, SOCKET_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
+use daemon::protocol::DaemonRequest;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
@@ -67,21 +68,22 @@ enum Commands {
         #[arg(long, value_name = "PATH")]
         socket_path: Option<PathBuf>,
     },
-    Ctl,
+    Ctl{
+        #[arg(long, value_name = "PATH")]
+        socket_path: Option<PathBuf>,
+        command: CtlCommand,
+    },
 }
 
 #[derive(Subcommand, Debug)]
 enum CtlCommand {
     Peers,
-    Msgs,
-    Wasm,
+    Msgs{
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
-#[derive(Subcommand, Debug)]
-enum WasmCtlCommand {
-    Ls,
-    Run,
-}
 
 // Synchronous entry-point so that the Tokio runtime startafter*
 // the data dir is resolved and  env var set.
