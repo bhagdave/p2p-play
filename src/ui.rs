@@ -282,6 +282,7 @@ pub struct App {
     pub notification_config: crate::types::MessageNotificationConfig,
     pub flash_active: bool,
     pub flash_start_time: Option<std::time::Instant>,
+    pub headless: bool, 
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -385,6 +386,7 @@ impl App {
             notification_config: crate::types::MessageNotificationConfig::new(),
             flash_active: false,
             flash_start_time: None,
+            headless: false,
         })
     }
 
@@ -418,10 +420,14 @@ impl App {
             notification_config: crate::types::MessageNotificationConfig::new(),
             flash_active: false,
             flash_start_time: None,
+            headless: true,
         })
     }
 
     pub fn cleanup(&mut self) -> UIResult<()> {
+        if self.headless {
+            return Ok(());
+        }
         disable_raw_mode()?;
         execute!(
             self.terminal.backend_mut(),
@@ -868,6 +874,9 @@ impl App {
     }
 
     pub fn add_to_log(&mut self, message: String) {
+        if self.headless {
+            eprintln!("{}", message);
+        }
         self.output_log.push(message);
         // Note: scroll position is handled automatically in draw() method
         // when auto_scroll is enabled, so no need to call scroll_to_bottom() here
@@ -1392,6 +1401,9 @@ impl App {
     }
 
     pub fn draw(&mut self) -> UIResult<()> {
+        if self.headless {
+            return Ok(()); // Skip drawing in headless mode
+        }
         self.update_flash_indicator();
         let status_text = self.build_status_text();
         let bar_color = self.status_bar_color();
@@ -1473,6 +1485,10 @@ pub async fn handle_ui_events(
     app: &mut App,
     ui_sender: mpsc::UnboundedSender<AppEvent>,
 ) -> UIResult<()> {
+    if app.headless {
+        return Ok(()); // Skip event handling in headless mode
+    }
+
     #[cfg(windows)]
     let poll_timeout = std::time::Duration::from_millis(80); // Slower polling on Windows
 
