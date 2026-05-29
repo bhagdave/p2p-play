@@ -145,9 +145,10 @@ fn main() {
                     0
                 }
             },
-            Some(Commands::Ctl) => {
+            Some(Commands::Ctl {socket_path, command}) => {
+                let socket = socket_path.unwrap_or_else(|| Pathbuf::from(get_data_path(constants::SOCKET_FILE)));
                 eprintln!("Control mode is not implemented in this version.");
-                1
+                run_ctl(socket, command).await
             }
         }
     });
@@ -389,7 +390,7 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
 
     eprintln!("Daemon server listening on {} (PID: {})", get_data_path(constants::SOCKET_FILE), std::process::id());
 
-    let mut event_processor = EventProcessor::new(
+    let mut event_processor = EventProcessor::new_with_daemon(
         channels.ui_rcv,
         channels.ui_log_rcv,
         channels.response_rcv,
@@ -405,10 +406,29 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
         loggers.bootstrap_logger,
         relay_service,
         network_circuit_breakers,
+        daemon_cmd_rx,
     );
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(daemon_server.run(shutdown_rx));
+    // SIGTERM handler
+    #[cfg(unix)]
+    {
+        let mut sigterm = tokio::signal::unix::signal(
+            tokio::signal::unix::SignalKind::terminate(),
+        )
+        .expect("Failed to register SIGTERM handler");
+
+        tokio::spawn(async move {
+            sigterm.recv().await;
+            eprintln!("[daemon] SIGTERM received, shutting down");
+            let _ = shutdown_tx.send(());
+        });
+    }
+
+    event_processor
+        .run(&mut app, &mut swarm, &mut peer_state, &mut auto_bootstrap)
+        .await;
 
     Ok(())
 }
