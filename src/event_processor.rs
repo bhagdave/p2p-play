@@ -1,12 +1,14 @@
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::*;
+use crate::daemon::protocol::{DaemonCommand, DaemonResponse, DaemonRequest};
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
 use crate::handlers::{PeerState, SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
 use crate::network::{HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent};
+use crate::network::protocol::{WasmExecutionRequest, WasmExecutionResponse};
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
@@ -16,11 +18,11 @@ use crate::types::{
     PendingDirectMessage, PendingHandshakePeer, Story,
 };
 use crate::ui::{App, AppEvent, InputMode, handle_ui_events};
-use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
+use libp2p::{PeerId, Swarm, futures::StreamExt, request_response, swarm::SwarmEvent};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, interval};
 
 pub struct EventProcessor {
@@ -61,6 +63,9 @@ pub struct EventProcessor {
     // Survives peer disconnections so that the alias is restored immediately
     // on the next connection without waiting for the peer to re-broadcast it.
     known_peer_names: HashMap<PeerId, String>,
+
+    // Daemon command stuff
+    daemon_cmd_rcv: mpsc::UnboundedReceiver<DaemonCommand>,
 }
 
 impl EventProcessor {
@@ -112,7 +117,47 @@ impl EventProcessor {
             pending_handshake_peers: Arc::new(Mutex::new(HashMap::new())),
             verified_p2p_play_peers: Arc::new(Mutex::new(HashMap::new())),
             known_peer_names: HashMap::new(),
+            daemon_cmd_rcv: None,
         }
+    }
+
+    pub fn new_with_daemon(
+        ui_rcv: mpsc::UnboundedReceiver<AppEvent>,
+        ui_log_rcv: mpsc::UnboundedReceiver<String>,
+        response_rcv: mpsc::UnboundedReceiver<ListResponse>,
+        story_rcv: mpsc::UnboundedReceiver<Story>,
+        response_sender: mpsc::UnboundedSender<ListResponse>,
+        story_sender: mpsc::UnboundedSender<Story>,
+        ui_sender: mpsc::UnboundedSender<AppEvent>,
+        network_config: &NetworkConfig,
+        dm_config: DirectMessageConfig,
+        pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>>,
+        ui_logger: UILogger,
+        error_logger: ErrorLogger,
+        bootstrap_logger: BootstrapLogger,
+        relay_service: Option<RelayService>,
+        network_circuit_breakers: NetworkCircuitBreakers,
+        daemon_cmd_rcv: mpsc::UnboundedReceiver<DaemonCommand>,
+    ) -> Self {
+        let mut processor = Self::new(
+            ui_rcv,
+            ui_log_rcv,
+            response_rcv,
+            story_rcv,
+            response_sender,
+            story_sender,
+            ui_sender,
+            network_config,
+            dm_config,
+            pending_messages,
+            ui_logger,
+            error_logger,
+            bootstrap_logger,
+            relay_service,
+            network_circuit_breakers,
+        );
+        processor.daemon_cmd_rcv = Some(daemon_cmd_rcv);
+        processor
     }
 
     /// Main event loop
