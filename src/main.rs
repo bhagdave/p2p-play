@@ -438,6 +438,12 @@ async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
         CtlCommand::Peers => DaemonRequest::Peers,
         CtlCommand::Msgs { limit } => DaemonRequest::Messages { limit },
     };
+    if let Err(e) = daemon::send_command(socket_path, req).await {
+        eprintln!("Failed to send command to daemon: {e}");
+        1
+    } else {
+        0
+    }
 }
 
 fn initialise_logging() {
