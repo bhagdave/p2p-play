@@ -65,7 +65,7 @@ pub struct EventProcessor {
     known_peer_names: HashMap<PeerId, String>,
 
     // Daemon command stuff
-    daemon_cmd_rcv: mpsc::UnboundedReceiver<DaemonCommand>,
+    daemon_cmd_rcv: Option<mpsc::UnboundedReceiver<DaemonCommand>>,
 }
 
 impl EventProcessor {
