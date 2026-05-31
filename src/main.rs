@@ -71,11 +71,12 @@ enum Commands {
     Ctl{
         #[arg(long, value_name = "PATH")]
         socket_path: Option<PathBuf>,
+        #[command(subcommand)]
         command: CtlCommand,
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 enum CtlCommand {
     Peers,
     Msgs{
@@ -146,7 +147,7 @@ fn main() {
                 }
             },
             Some(Commands::Ctl {socket_path, command}) => {
-                let socket = socket_path.unwrap_or_else(|| Pathbuf::from(get_data_path(constants::SOCKET_FILE)));
+                let socket = socket_path.unwrap_or_else(|| PathBuf::from(get_data_path(constants::SOCKET_FILE)));
                 eprintln!("Control mode is not implemented in this version.");
                 run_ctl(socket, command).await
             }
@@ -438,7 +439,7 @@ async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
         CtlCommand::Peers => DaemonRequest::Peers,
         CtlCommand::Msgs { limit } => DaemonRequest::Messages { limit },
     };
-    if let Err(e) = daemon::send_command(socket_path, req).await {
+    if let Err(e) = daemon::client::send_request(&socket_path, &req).await {
         eprintln!("Failed to send command to daemon: {e}");
         1
     } else {

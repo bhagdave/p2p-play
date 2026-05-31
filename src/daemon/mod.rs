@@ -1,3 +1,4 @@
+pub mod client;
 pub mod protocol;
 
 pub use crate::constants::{PID_FILE, SOCKET_FILE};
