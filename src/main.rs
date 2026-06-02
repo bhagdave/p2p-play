@@ -148,7 +148,6 @@ fn main() {
             },
             Some(Commands::Ctl {socket_path, command}) => {
                 let socket = socket_path.unwrap_or_else(|| PathBuf::from(get_data_path(constants::SOCKET_FILE)));
-                eprintln!("Control mode is not implemented in this version.");
                 run_ctl(socket, command).await
             }
         }
