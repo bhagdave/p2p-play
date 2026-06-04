@@ -29,7 +29,7 @@ use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
 use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, SOCKET_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
-use daemon::protocol::DaemonRequest;
+use daemon::protocol::{DaemonRequest, DaemonResponse};
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
@@ -438,11 +438,19 @@ async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
         CtlCommand::Peers => DaemonRequest::Peers,
         CtlCommand::Msgs { limit } => DaemonRequest::Messages { limit },
     };
-    if let Err(e) = daemon::client::send_request(&socket_path, &req).await {
-        eprintln!("Failed to send command to daemon: {e}");
-        1
-    } else {
-        0
+    match daemon::client::send_request(&socket_path, &req).await {
+        Ok(response) => {
+            daemon::client::print_response(&response);
+            if matches!(response, DaemonResponse::Error {..}) {
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to send command to daemon: {e}");
+            1
+        }
     }
 }
 
