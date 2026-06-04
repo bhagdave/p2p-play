@@ -2,6 +2,20 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased] - feature/daemon-mode
+
+### Added
+- **Daemon mode**: `p2p-play daemon` runs the node headlessly as a background service. On startup it writes a PID file (`p2p-play-daemon.pid`) and binds a Unix domain socket (`p2p-play-daemon.sock`) for IPC.
+- **`ctl` sub-command**: `p2p-play ctl <command>` connects to a running daemon and queries its state. Initial commands: `peers` (list connected peers with aliases) and `messages` (list conversations with unread count and last-activity timestamp).
+- **Daemon IPC protocol** (`src/daemon/protocol.rs`): JSON-over-Unix-socket request/response protocol. `DaemonRequest` (peers, messages) and `DaemonResponse` (peers list, conversation summaries, error) are serde-tagged enums for easy extension.
+- **`DaemonServer`** (`src/daemon/mod.rs`): Tokio-based Unix socket listener that accepts connections, deserializes requests, dispatches them to the event loop via an `mpsc` channel, and writes back responses with a 30-second timeout. Cleans up the socket and PID file on shutdown.
+- **Daemon client** (`src/daemon/client.rs`): Async helper `send_request` connects to the socket, sends a request, and returns the parsed response. `print_response` renders peers and conversations in a human-readable table with relative timestamps.
+- **Headless UI mode**: When running as a daemon, the TUI is skipped. A lightweight `HeadlessUi` type in `ui.rs` satisfies the UI trait contract so the rest of the event loop remains unchanged.
+- **`DaemonConfig` in `UnifiedNetworkConfig`**: Daemon-specific settings (socket path, PID file path) are now part of the unified network config, enabling runtime configuration of the IPC socket location.
+- **`SOCKET_FILE` / `PID_FILE` constants** in `src/constants.rs`: Default filenames for the daemon socket and PID file, shared between server and client.
+- **Event processor daemon command handling**: `event_processor.rs` handles `DaemonCommand` messages — `Peers` and `Messages` — and responds directly from in-memory swarm and storage state.
+- **Tokio signal handling**: Daemon mode catches `SIGTERM`/`SIGINT` via `tokio::signal` for graceful shutdown, triggering cleanup of the socket and PID file.
+
 ## [0.12.6] - 2026-05-14
 ### Fixed
 - **wasmtime update**: Dependabot pull request to upgrade to 36.0.8 caused build failures so needed to change code to get them to work.
