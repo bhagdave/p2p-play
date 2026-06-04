@@ -8,7 +8,6 @@ use crate::event_handlers::{
 };
 use crate::handlers::{PeerState, SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
 use crate::network::{HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent};
-use crate::network::protocol::{WasmExecutionRequest, WasmExecutionResponse};
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
@@ -18,7 +17,7 @@ use crate::types::{
     PendingDirectMessage, PendingHandshakePeer, Story,
 };
 use crate::ui::{App, AppEvent, InputMode, handle_ui_events};
-use libp2p::{PeerId, Swarm, futures::StreamExt, request_response, swarm::SwarmEvent};
+use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;

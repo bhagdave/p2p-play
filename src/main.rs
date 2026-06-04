@@ -79,6 +79,7 @@ enum Commands {
 #[derive(Subcommand, Debug, Clone)]
 enum CtlCommand {
     Peers,
+    #[command(name = "messages")]
     Msgs{
         #[arg(long, default_value_t = 20)]
         limit: usize,
@@ -390,6 +391,7 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
 
     eprintln!("Daemon server listening on {} (PID: {})", socket_path.display(), std::process::id());
 
+    let ui_sender_for_shutdown = channels.ui_sender.clone();
     let mut event_processor = EventProcessor::new_with_daemon(
         channels.ui_rcv,
         channels.ui_log_rcv,
