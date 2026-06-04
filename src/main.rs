@@ -388,7 +388,7 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
         daemon_cmd_tx,
     ).map_err(|e| AppError::Application(format!("Failed to start daemon server: {e}")))?;
 
-    eprintln!("Daemon server listening on {} (PID: {})", get_data_path(constants::SOCKET_FILE), std::process::id());
+    eprintln!("Daemon server listening on {} (PID: {})", socket_path.display(), std::process::id());
 
     let mut event_processor = EventProcessor::new_with_daemon(
         channels.ui_rcv,
