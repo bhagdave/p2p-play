@@ -110,8 +110,8 @@ if [ $exit_code -eq 0 ]; then
     echo "  • Circuit breakers (unit and integration)"
     echo "  • Types, handlers, peer connection, network, command integration"
     echo "  • Channel discovery, relay, bootstrap, connection pooling"
-    echo "  • Performance benchmarks
-  • Daemon mode (Unix socket IPC, protocol serialization, lifecycle)"
+    echo "  • Performance benchmarks"
+    echo "  • Daemon mode (Unix socket IPC, protocol serialization, lifecycle)"
 else
     echo "❌ Test Suite Failed"
     echo "==================="
