@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use p2p_play::daemon::client::send_request;
 use p2p_play::daemon::protocol::{
     ConversationSummary, DaemonRequest, DaemonResponse, PeerInfo,
