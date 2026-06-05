@@ -713,7 +713,7 @@ impl EventProcessor {
         &self,
         req: DaemonRequest,
         txt: oneshot::Sender<DaemonResponse>,
-        swarm: &mut Swarm<StoryBehaviour>,
+        _swarm: &mut Swarm<StoryBehaviour>,
         peer_state: &mut PeerState,
     ) {
         match req {

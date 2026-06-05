@@ -1,7 +1,6 @@
 pub mod client;
 pub mod protocol;
 
-pub use crate::constants::{PID_FILE, SOCKET_FILE};
 use protocol::{DaemonCommand, DaemonRequest, DaemonResponse};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

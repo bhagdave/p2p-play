@@ -30,15 +30,6 @@ pub struct ConversationSummary {
     pub last_activity: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OfferingSummary {
-    pub peer_id: String,
-    pub offering_id: String,
-    pub name: String,
-    pub description: String,
-    pub version: String,
-    pub local: bool,
-}
 
 pub type DaemonCommand = (DaemonRequest, oneshot::Sender<DaemonResponse>);
 

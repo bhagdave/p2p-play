@@ -27,7 +27,7 @@ pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
-use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, SOCKET_FILE, UNIFIED_CONFIG_FILE};
+use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
 use daemon::protocol::{DaemonRequest, DaemonResponse};
 use error_logger::ErrorLogger;
