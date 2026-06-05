@@ -68,7 +68,7 @@ impl DaemonServer {
         let _ = std::fs::remove_file(&pid_file_path);
     }
 }
-
+#[cfg(unix)]
 async fn handle_connection(stream: UnixStream, cmd_sender: mpsc::UnboundedSender<DaemonCommand>) {
     let (read_half, mut write_half) = stream.into_split();
     let mut reader = BufReader::new(read_half);
@@ -112,6 +112,7 @@ async fn handle_connection(stream: UnixStream, cmd_sender: mpsc::UnboundedSender
     write_response(&mut write_half, &response).await;
 }
 
+#[cfg(unix)]
 async fn write_response(
     write_half: &mut tokio::net::unix::OwnedWriteHalf,
     resp: &DaemonResponse,

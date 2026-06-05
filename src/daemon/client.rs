@@ -1,8 +1,19 @@
 use super::protocol::{DaemonRequest, DaemonResponse};
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+#[cfg(unix)]
 use tokio::net::UnixStream;
 
+
+#[cfg(not(unix))]
+pub async fn send_request(
+    _socket_path: &Path,
+    _req: &DaemonRequest,
+) -> Result<DaemonResponse, String> {
+    Err("Daemon communication is only supported on Unix systems.".to_string())
+}
+
+#[cfg(unix)]
 pub async fn send_request(
     socket_path: &Path,
     req: &DaemonRequest,
