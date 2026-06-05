@@ -5,9 +5,34 @@ pub use crate::constants::{PID_FILE, SOCKET_FILE};
 use protocol::{DaemonCommand, DaemonRequest, DaemonResponse};
 use std::path::{Path, PathBuf};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{mpsc, oneshot};
 
+#[cfg(unix)]
+use tokio::net::{UnixListener, UnixStream};
+
+#[cfg(not(unix))]
+pub struct DaemonServer;
+
+
+#[cfg(not(unix))]
+impl DaemonServer {
+    pub fn new(
+        _socket_path: impl AsRef<Path>,
+        _pid_file_path: impl AsRef<Path>,
+        _cmd_sender: mpsc::UnboundedSender<DaemonCommand>,
+    ) -> std::io::Result<Self> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Daemon is only supported on Unix-like systems",
+        ))
+    }
+
+    pub async fn run(self, _shutdown_rx: oneshot::Receiver<()>) {
+        // No-op on unsupported platforms.
+    }
+}
+
+#[cfg(unix)]
 pub struct DaemonServer {
     listener: UnixListener,
     socket_path: PathBuf,
@@ -15,6 +40,7 @@ pub struct DaemonServer {
     cmd_sender: mpsc::UnboundedSender<DaemonCommand>,
 }
 
+#[cfg(unix)]
 impl DaemonServer {
     pub fn new(
         socket_path: impl AsRef<Path>,
