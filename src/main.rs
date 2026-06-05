@@ -413,19 +413,24 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(daemon_server.run(shutdown_rx));
-    // SIGTERM handler
+    // SIGTERM && SIGINT handler
     #[cfg(unix)]
     {
         let mut sigterm = tokio::signal::unix::signal(
             tokio::signal::unix::SignalKind::terminate(),
         )
         .expect("Failed to register SIGTERM handler");
+        let ui_sender = ui_sender_for_shutdown.clone();
 
-        tokio::spawn(async move {
-            sigterm.recv().await;
-            eprintln!("[daemon] SIGTERM received, shutting down");
+        tokio::spawn(async move{
+            tokio::select! {
+                _ = sigterm.recv() => eprintln!("[daemon] SIGTERM received, shutting down"),
+                _ = tokio::signal::ctrl_c() => eprintln!("[daemon] SIGINT received, shutting down"),
+            }
+            let _ = ui_sender.send(ui::AppEvent::Quit);
             let _ = shutdown_tx.send(());
         });
+
     }
 
     event_processor
