@@ -1,10 +1,8 @@
 #![cfg(unix)]
 
-use p2p_play::daemon::client::send_request;
-use p2p_play::daemon::protocol::{
-    ConversationSummary, DaemonRequest, DaemonResponse, PeerInfo,
-};
 use p2p_play::daemon::DaemonServer;
+use p2p_play::daemon::client::send_request;
+use p2p_play::daemon::protocol::{ConversationSummary, DaemonRequest, DaemonResponse, PeerInfo};
 use std::path::PathBuf;
 use tokio::sync::{mpsc, oneshot};
 
@@ -15,7 +13,8 @@ use tokio::sync::{mpsc, oneshot};
 /// Returns a unique temporary directory for each test, avoiding socket path
 /// collisions between parallel test runs.
 fn tmp_dir(label: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("p2p_daemon_test_{}_{}", label, std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("p2p_daemon_test_{}_{}", label, std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -151,8 +150,14 @@ async fn server_creates_socket_and_pid_file_on_startup() {
 
     let server = DaemonServer::new(&socket_path, &pid_path, cmd_tx).unwrap();
 
-    assert!(socket_path.exists(), "socket file must exist after DaemonServer::new");
-    assert!(pid_path.exists(), "PID file must exist after DaemonServer::new");
+    assert!(
+        socket_path.exists(),
+        "socket file must exist after DaemonServer::new"
+    );
+    assert!(
+        pid_path.exists(),
+        "PID file must exist after DaemonServer::new"
+    );
 
     let pid_content = std::fs::read_to_string(&pid_path).unwrap();
     let written_pid: u32 = pid_content.trim().parse().unwrap();
@@ -183,8 +188,14 @@ async fn server_removes_socket_and_pid_file_on_shutdown() {
     let _ = shutdown_tx.send(());
     handle.await.unwrap();
 
-    assert!(!socket_path.exists(), "socket must be removed after shutdown");
-    assert!(!pid_path.exists(), "PID file must be removed after shutdown");
+    assert!(
+        !socket_path.exists(),
+        "socket must be removed after shutdown"
+    );
+    assert!(
+        !pid_path.exists(),
+        "PID file must be removed after shutdown"
+    );
 }
 
 #[tokio::test]
@@ -201,7 +212,10 @@ async fn server_replaces_stale_socket_on_startup() {
 
     // Should succeed even though socket file already exists.
     let result = DaemonServer::new(&socket_path, &pid_path, cmd_tx);
-    assert!(result.is_ok(), "DaemonServer::new must replace a stale socket file");
+    assert!(
+        result.is_ok(),
+        "DaemonServer::new must replace a stale socket file"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -215,15 +229,25 @@ async fn client_receives_peers_response_from_server() {
     let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
         DaemonRequest::Peers => DaemonResponse::Peers {
             peers: vec![
-                PeerInfo { peer_id: "peer1".to_string(), name: "alice".to_string() },
-                PeerInfo { peer_id: "peer2".to_string(), name: "bob".to_string() },
+                PeerInfo {
+                    peer_id: "peer1".to_string(),
+                    name: "alice".to_string(),
+                },
+                PeerInfo {
+                    peer_id: "peer2".to_string(),
+                    name: "bob".to_string(),
+                },
             ],
         },
-        _ => DaemonResponse::Error { message: "unexpected".to_string() },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
     })
     .await;
 
-    let resp = send_request(&socket_path, &DaemonRequest::Peers).await.unwrap();
+    let resp = send_request(&socket_path, &DaemonRequest::Peers)
+        .await
+        .unwrap();
 
     match resp {
         DaemonResponse::Peers { peers } => {
@@ -251,7 +275,9 @@ async fn client_receives_messages_response_from_server() {
                 last_activity: 1_700_000_000,
             }],
         },
-        _ => DaemonResponse::Error { message: "unexpected".to_string() },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
     })
     .await;
 
@@ -314,7 +340,10 @@ async fn client_gets_error_when_daemon_not_running() {
     let _ = std::fs::remove_file(&socket_path);
 
     let result = send_request(&socket_path, &DaemonRequest::Peers).await;
-    assert!(result.is_err(), "send_request must fail when socket does not exist");
+    assert!(
+        result.is_err(),
+        "send_request must fail when socket does not exist"
+    );
     let err = result.unwrap_err();
     assert!(
         err.contains("Cannot connect to daemon"),
@@ -328,12 +357,16 @@ async fn server_handles_multiple_sequential_requests() {
 
     let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
         DaemonRequest::Peers => DaemonResponse::Peers { peers: vec![] },
-        DaemonRequest::Messages { .. } => DaemonResponse::Messages { conversations: vec![] },
+        DaemonRequest::Messages { .. } => DaemonResponse::Messages {
+            conversations: vec![],
+        },
     })
     .await;
 
     for _ in 0..5 {
-        let resp = send_request(&socket_path, &DaemonRequest::Peers).await.unwrap();
+        let resp = send_request(&socket_path, &DaemonRequest::Peers)
+            .await
+            .unwrap();
         assert!(matches!(resp, DaemonResponse::Peers { .. }));
     }
 
@@ -348,7 +381,9 @@ async fn server_handles_empty_peers_list() {
     let (socket_path, shutdown_tx, handle) =
         spawn_server(&dir, |_| DaemonResponse::Peers { peers: vec![] }).await;
 
-    let resp = send_request(&socket_path, &DaemonRequest::Peers).await.unwrap();
+    let resp = send_request(&socket_path, &DaemonRequest::Peers)
+        .await
+        .unwrap();
     match resp {
         DaemonResponse::Peers { peers } => assert!(peers.is_empty()),
         other => panic!("Expected Peers, got {other:?}"),

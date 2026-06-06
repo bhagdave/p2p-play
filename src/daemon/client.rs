@@ -4,7 +4,6 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
-
 #[cfg(not(unix))]
 pub async fn send_request(
     _socket_path: &Path,

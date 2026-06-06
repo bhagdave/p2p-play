@@ -68,7 +68,7 @@ enum Commands {
         #[arg(long, value_name = "PATH")]
         socket_path: Option<PathBuf>,
     },
-    Ctl{
+    Ctl {
         #[arg(long, value_name = "PATH")]
         socket_path: Option<PathBuf>,
         #[command(subcommand)]
@@ -80,12 +80,11 @@ enum Commands {
 enum CtlCommand {
     Peers,
     #[command(name = "messages")]
-    Msgs{
+    Msgs {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
 }
-
 
 // Synchronous entry-point so that the Tokio runtime startafter*
 // the data dir is resolved and  env var set.
@@ -136,9 +135,10 @@ fn main() {
                 } else {
                     0
                 }
-            },
+            }
             Some(Commands::Daemon { socket_path }) => {
-                let socket = socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
+                let socket =
+                    socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
                 let pid = PathBuf::from(get_data_path(PID_FILE));
                 if let Err(e) = run_daemon(socket, pid).await {
                     eprintln!("Daemon error: {e}");
@@ -146,9 +146,13 @@ fn main() {
                 } else {
                     0
                 }
-            },
-            Some(Commands::Ctl {socket_path, command}) => {
-                let socket = socket_path.unwrap_or_else(|| PathBuf::from(get_data_path(constants::SOCKET_FILE)));
+            }
+            Some(Commands::Ctl {
+                socket_path,
+                command,
+            }) => {
+                let socket = socket_path
+                    .unwrap_or_else(|| PathBuf::from(get_data_path(constants::SOCKET_FILE)));
                 run_ctl(socket, command).await
             }
         }
@@ -316,10 +320,13 @@ async fn run_app() -> AppResult<()> {
 }
 
 async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<()> {
-    println!("Starting p2p-play in daemon mode...{}", pid_file_path.display());
+    println!(
+        "Starting p2p-play in daemon mode...{}",
+        pid_file_path.display()
+    );
     eprintln!("Daemon mode is not fully implemented in this version.");
     initialise_logging();
-    let mut app = App::new_headless().map_err(AppError::from)?; 
+    let mut app = App::new_headless().map_err(AppError::from)?;
     app.update_local_peer_id(PEER_ID.to_string());
     app.refresh_conversations().await;
 
@@ -356,7 +363,9 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
     if let Ok(stories) = storage::read_local_stories().await {
         app.update_stories(stories);
     }
-    if let Ok(channels_list) = storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await {
+    if let Ok(channels_list) =
+        storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await
+    {
         app.update_channels(channels_list);
     }
 
@@ -367,7 +376,8 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
     Swarm::listen_on(
         &mut swarm,
         listen_addr.parse().expect("can get a local socket"),
-    ).expect("swarm can be started");
+    )
+    .expect("swarm can be started");
 
     reconnect_stored_peers(&mut swarm, &mut app).await;
 
@@ -383,13 +393,14 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
     };
 
     let (daemon_cmd_tx, daemon_cmd_rx) = mpsc::unbounded_channel();
-    let daemon_server = daemon::DaemonServer::new(
-        &socket_path,
-        &pid_file_path,
-        daemon_cmd_tx,
-    ).map_err(|e| AppError::Application(format!("Failed to start daemon server: {e}")))?;
+    let daemon_server = daemon::DaemonServer::new(&socket_path, &pid_file_path, daemon_cmd_tx)
+        .map_err(|e| AppError::Application(format!("Failed to start daemon server: {e}")))?;
 
-    eprintln!("Daemon server listening on {} (PID: {})", socket_path.display(), std::process::id());
+    eprintln!(
+        "Daemon server listening on {} (PID: {})",
+        socket_path.display(),
+        std::process::id()
+    );
 
     let ui_sender_for_shutdown = channels.ui_sender.clone();
     let mut event_processor = EventProcessor::new_with_daemon(
@@ -416,13 +427,11 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
     // SIGTERM && SIGINT handler
     #[cfg(unix)]
     {
-        let mut sigterm = tokio::signal::unix::signal(
-            tokio::signal::unix::SignalKind::terminate(),
-        )
-        .expect("Failed to register SIGTERM handler");
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to register SIGTERM handler");
         let ui_sender = ui_sender_for_shutdown.clone();
 
-        tokio::spawn(async move{
+        tokio::spawn(async move {
             tokio::select! {
                 _ = sigterm.recv() => eprintln!("[daemon] SIGTERM received, shutting down"),
                 _ = tokio::signal::ctrl_c() => eprintln!("[daemon] SIGINT received, shutting down"),
@@ -430,7 +439,6 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<(
             let _ = ui_sender.send(ui::AppEvent::Quit);
             let _ = shutdown_tx.send(());
         });
-
     }
 
     event_processor
@@ -448,7 +456,7 @@ async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
     match daemon::client::send_request(&socket_path, &req).await {
         Ok(response) => {
             daemon::client::print_response(&response);
-            if matches!(response, DaemonResponse::Error {..}) {
+            if matches!(response, DaemonResponse::Error { .. }) {
                 1
             } else {
                 0

@@ -12,7 +12,6 @@ use tokio::net::{UnixListener, UnixStream};
 #[cfg(not(unix))]
 pub struct DaemonServer;
 
-
 #[cfg(not(unix))]
 impl DaemonServer {
     pub fn new(
@@ -138,10 +137,7 @@ async fn handle_connection(stream: UnixStream, cmd_sender: mpsc::UnboundedSender
 }
 
 #[cfg(unix)]
-async fn write_response(
-    write_half: &mut tokio::net::unix::OwnedWriteHalf,
-    resp: &DaemonResponse,
-) {
+async fn write_response(write_half: &mut tokio::net::unix::OwnedWriteHalf, resp: &DaemonResponse) {
     match serde_json::to_string(resp) {
         Ok(mut json) => {
             json.push('\n');

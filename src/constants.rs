@@ -53,5 +53,5 @@ pub const BOOTSTRAP_STATUS_LOG_INTERVAL_SECS: u64 = 60;
 pub const DM_RETRY_INTERVAL_SECS: u64 = 10;
 pub const HANDSHAKE_TIMEOUT_SECS: u64 = 60;
 
-pub const SOCKET_FILE : &str = "p2p-play-daemon.sock";
-pub const PID_FILE : &str = "p2p-play-daemon.pid";
+pub const SOCKET_FILE: &str = "p2p-play-daemon.sock";
+pub const PID_FILE: &str = "p2p-play-daemon.pid";

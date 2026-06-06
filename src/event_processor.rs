@@ -1,7 +1,9 @@
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::*;
-use crate::daemon::protocol::{ConversationSummary, DaemonCommand, DaemonResponse, DaemonRequest, PeerInfo};
+use crate::daemon::protocol::{
+    ConversationSummary, DaemonCommand, DaemonRequest, DaemonResponse, PeerInfo,
+};
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
@@ -308,7 +310,7 @@ impl EventProcessor {
                     self.dispatch_daemon_command(req, txt, swarm, peer_state).await;
                 }
                 None
-                    
+
             },
         }
     }
@@ -752,7 +754,6 @@ impl EventProcessor {
                 }
             }
         }
-
     }
 
     async fn handle_action_result(
@@ -792,9 +793,7 @@ impl EventProcessor {
             ActionResult::RebroadcastRelayMessage(_) => {}
             ActionResult::BroadcastRelayConfirmation(_) => {}
             ActionResult::DirectMessageReceived(direct_message) => {
-                if let Err(e) =
-                    save_direct_message(&direct_message, Some(peer_names)).await
-                {
+                if let Err(e) = save_direct_message(&direct_message, Some(peer_names)).await {
                     self.error_logger
                         .log_error(&format!("Failed to save received direct message: {e}"));
                 }

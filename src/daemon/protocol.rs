@@ -11,9 +11,15 @@ pub enum DaemonRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum DaemonResponse {
-    Peers { peers: Vec<PeerInfo> },
-    Messages { conversations: Vec<ConversationSummary> },
-    Error { message: String },
+    Peers {
+        peers: Vec<PeerInfo>,
+    },
+    Messages {
+        conversations: Vec<ConversationSummary>,
+    },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +36,4 @@ pub struct ConversationSummary {
     pub last_activity: u64,
 }
 
-
 pub type DaemonCommand = (DaemonRequest, oneshot::Sender<DaemonResponse>);
-

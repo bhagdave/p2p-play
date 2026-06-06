@@ -4,6 +4,7 @@ pub mod circuit_breaker;
 pub mod constants;
 pub mod content_fetcher;
 pub mod crypto;
+pub mod daemon;
 pub mod data_dir;
 pub mod error_logger;
 pub mod errors;
@@ -21,7 +22,6 @@ pub mod types;
 pub mod ui;
 pub mod validation;
 pub mod wasm_executor;
-pub mod daemon;
 
 pub use crypto::*;
 pub use errors::*;

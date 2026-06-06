@@ -282,7 +282,7 @@ pub struct App {
     pub notification_config: crate::types::MessageNotificationConfig,
     pub flash_active: bool,
     pub flash_start_time: Option<std::time::Instant>,
-    pub headless: bool, 
+    pub headless: bool,
 }
 
 #[derive(PartialEq, Debug, Clone)]
