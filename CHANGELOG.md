@@ -10,7 +10,7 @@ All changes to this project will be documented in this file.
 - **Daemon IPC protocol** (`src/daemon/protocol.rs`): JSON-over-Unix-socket request/response protocol. `DaemonRequest` (peers, messages) and `DaemonResponse` (peers list, conversation summaries, error) are serde-tagged enums for easy extension.
 - **`DaemonServer`** (`src/daemon/mod.rs`): Tokio-based Unix socket listener that accepts connections, deserializes requests, dispatches them to the event loop via an `mpsc` channel, and writes back responses with a 30-second timeout. Cleans up the socket and PID file on shutdown.
 - **Daemon client** (`src/daemon/client.rs`): Async helper `send_request` connects to the socket, sends a request, and returns the parsed response. `print_response` renders peers and conversations in a human-readable table with relative timestamps.
-- **Headless UI mode**: When running as a daemon, the TUI is skipped. A lightweight `HeadlessUi` type in `ui.rs` satisfies the UI trait contract so the rest of the event loop remains unchanged.
+- **Headless UI mode**: When running as a daemon, the TUI is skipped. `App::new_headless()` sets `headless = true` to bypass drawing and input polling
 - **`DaemonConfig` in `UnifiedNetworkConfig`**: Daemon-specific settings (socket path, PID file path) are now part of the unified network config, enabling runtime configuration of the IPC socket location.
 - **`SOCKET_FILE` / `PID_FILE` constants** in `src/constants.rs`: Default filenames for the daemon socket and PID file, shared between server and client.
 - **Event processor daemon command handling**: `event_processor.rs` handles `DaemonCommand` messages — `Peers` and `Messages` — and responds directly from in-memory swarm and storage state.
