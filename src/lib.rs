@@ -4,6 +4,7 @@ pub mod circuit_breaker;
 pub mod constants;
 pub mod content_fetcher;
 pub mod crypto;
+pub mod daemon;
 pub mod data_dir;
 pub mod error_logger;
 pub mod errors;

@@ -1,6 +1,9 @@
 use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::*;
+use crate::daemon::protocol::{
+    ConversationSummary, DaemonCommand, DaemonRequest, DaemonResponse, PeerInfo,
+};
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
@@ -20,7 +23,7 @@ use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Duration, interval};
 
 pub struct EventProcessor {
@@ -61,6 +64,9 @@ pub struct EventProcessor {
     // Survives peer disconnections so that the alias is restored immediately
     // on the next connection without waiting for the peer to re-broadcast it.
     known_peer_names: HashMap<PeerId, String>,
+
+    // Daemon command stuff
+    daemon_cmd_rcv: Option<mpsc::UnboundedReceiver<DaemonCommand>>,
 }
 
 impl EventProcessor {
@@ -112,7 +118,47 @@ impl EventProcessor {
             pending_handshake_peers: Arc::new(Mutex::new(HashMap::new())),
             verified_p2p_play_peers: Arc::new(Mutex::new(HashMap::new())),
             known_peer_names: HashMap::new(),
+            daemon_cmd_rcv: None,
         }
+    }
+
+    pub fn new_with_daemon(
+        ui_rcv: mpsc::UnboundedReceiver<AppEvent>,
+        ui_log_rcv: mpsc::UnboundedReceiver<String>,
+        response_rcv: mpsc::UnboundedReceiver<ListResponse>,
+        story_rcv: mpsc::UnboundedReceiver<Story>,
+        response_sender: mpsc::UnboundedSender<ListResponse>,
+        story_sender: mpsc::UnboundedSender<Story>,
+        ui_sender: mpsc::UnboundedSender<AppEvent>,
+        network_config: &NetworkConfig,
+        dm_config: DirectMessageConfig,
+        pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>>,
+        ui_logger: UILogger,
+        error_logger: ErrorLogger,
+        bootstrap_logger: BootstrapLogger,
+        relay_service: Option<RelayService>,
+        network_circuit_breakers: NetworkCircuitBreakers,
+        daemon_cmd_rcv: mpsc::UnboundedReceiver<DaemonCommand>,
+    ) -> Self {
+        let mut processor = Self::new(
+            ui_rcv,
+            ui_log_rcv,
+            response_rcv,
+            story_rcv,
+            response_sender,
+            story_sender,
+            ui_sender,
+            network_config,
+            dm_config,
+            pending_messages,
+            ui_logger,
+            error_logger,
+            bootstrap_logger,
+            relay_service,
+            network_circuit_breakers,
+        );
+        processor.daemon_cmd_rcv = Some(daemon_cmd_rcv);
+        processor
     }
 
     /// Main event loop
@@ -258,6 +304,13 @@ impl EventProcessor {
             },
             event = swarm.select_next_some() => {
                 self.handle_swarm_event(event, swarm, peer_state, app, auto_bootstrap).await
+            },
+            cmd = maybe_recv(self.daemon_cmd_rcv.as_mut())  => {
+                if let Some((req, txt)) = cmd {
+                    self.dispatch_daemon_command(req, txt, swarm, peer_state).await;
+                }
+                None
+
             },
         }
     }
@@ -658,6 +711,51 @@ impl EventProcessor {
         }
     }
 
+    async fn dispatch_daemon_command(
+        &self,
+        req: DaemonRequest,
+        txt: oneshot::Sender<DaemonResponse>,
+        _swarm: &mut Swarm<StoryBehaviour>,
+        peer_state: &mut PeerState,
+    ) {
+        match req {
+            DaemonRequest::Peers => {
+                let peers = peer_state
+                    .peer_names
+                    .iter()
+                    .map(|(id, name)| PeerInfo {
+                        peer_id: id.to_string(),
+                        name: name.clone(),
+                    })
+                    .collect();
+                let _ = txt.send(DaemonResponse::Peers { peers });
+            }
+
+            DaemonRequest::Messages { limit } => {
+                match storage::get_conversations_with_status().await {
+                    Ok(convs) => {
+                        let conversations = convs
+                            .into_iter()
+                            .take(limit)
+                            .map(|c| ConversationSummary {
+                                peer_id: c.peer_id,
+                                peer_name: c.peer_name,
+                                unread_count: c.unread_count,
+                                last_activity: c.last_activity,
+                            })
+                            .collect();
+                        let _ = txt.send(DaemonResponse::Messages { conversations });
+                    }
+                    Err(e) => {
+                        let _ = txt.send(DaemonResponse::Error {
+                            message: format!("Failed to load conversations: {e}"),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     async fn handle_action_result(
         &self,
         action_result: ActionResult,
@@ -695,9 +793,7 @@ impl EventProcessor {
             ActionResult::RebroadcastRelayMessage(_) => {}
             ActionResult::BroadcastRelayConfirmation(_) => {}
             ActionResult::DirectMessageReceived(direct_message) => {
-                if let Err(e) =
-                    save_direct_message(&direct_message, Some(peer_names)).await
-                {
+                if let Err(e) = save_direct_message(&direct_message, Some(peer_names)).await {
                     self.error_logger
                         .log_error(&format!("Failed to save received direct message: {e}"));
                 }
@@ -717,6 +813,13 @@ impl EventProcessor {
                 }
             }
         }
+    }
+}
+
+async fn maybe_recv<T>(rcv: Option<&mut mpsc::UnboundedReceiver<T>>) -> Option<T> {
+    match rcv {
+        Some(receiver) => receiver.recv().await,
+        None => std::future::pending().await,
     }
 }
 

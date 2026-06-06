@@ -86,6 +86,7 @@ run_test_suite "Running Connection Pooling Tests..." "cargo test --test connecti
 run_test_suite "Running Network Tests..." "cargo test --test network_tests --features test-utils" "1"
 run_test_suite "Running Command Integration Tests..." "cargo test --test command_integration_tests --features test-utils" "1"
 run_test_suite "Running Performance Benchmark Tests..." "cargo test --test performance_benchmark --features test-utils" "1"
+run_test_suite "Running Daemon Tests..." "cargo test --test daemon_tests --features test-utils" "4"
 
 # Clean up test database after tests
 rm -f ./test_stories.db
@@ -110,6 +111,7 @@ if [ $exit_code -eq 0 ]; then
     echo "  • Types, handlers, peer connection, network, command integration"
     echo "  • Channel discovery, relay, bootstrap, connection pooling"
     echo "  • Performance benchmarks"
+    echo "  • Daemon mode (Unix socket IPC, protocol serialization, lifecycle)"
 else
     echo "❌ Test Suite Failed"
     echo "==================="

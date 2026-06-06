@@ -343,6 +343,23 @@ pub struct UnifiedNetworkConfig {
     pub circuit_breaker: NetworkCircuitBreakerConfig,
     #[serde(default)]
     pub wasm: WasmConfig,
+    #[serde(default)]
+    pub daemon: DaemonConfig,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DaemonConfig {
+    pub socket_path: Option<String>,
+    pub pid_file_path: Option<String>,
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            socket_path: None,
+            pid_file_path: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1227,6 +1244,7 @@ impl UnifiedNetworkConfig {
             auto_share: AutoShareConfig::new(),
             circuit_breaker: NetworkCircuitBreakerConfig::new(),
             wasm: WasmConfig::new(),
+            daemon: DaemonConfig::default(),
         }
     }
 

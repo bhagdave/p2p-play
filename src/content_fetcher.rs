@@ -145,7 +145,10 @@ mod tests {
                         Ok(0) | Err(_) => break,
                         Ok(n) => {
                             accumulated.extend_from_slice(&buf[..n]);
-                            if accumulated.windows(HTTP_HEADER_END.len()).any(|w| w == HTTP_HEADER_END) {
+                            if accumulated
+                                .windows(HTTP_HEADER_END.len())
+                                .any(|w| w == HTTP_HEADER_END)
+                            {
                                 break;
                             }
                         }

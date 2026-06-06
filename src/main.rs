@@ -4,6 +4,7 @@ mod circuit_breaker;
 mod constants;
 mod content_fetcher;
 mod crypto;
+mod daemon;
 mod data_dir;
 mod error_logger;
 mod errors;
@@ -26,8 +27,9 @@ pub(crate) use time::current_unix_timestamp;
 
 use bootstrap::AutoBootstrap;
 use bootstrap_logger::BootstrapLogger;
-use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, UNIFIED_CONFIG_FILE};
+use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
+use daemon::protocol::{DaemonRequest, DaemonResponse};
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
@@ -42,18 +44,46 @@ use storage::{
 use types::{CommunicationChannels, Loggers, PendingDirectMessage, UnifiedNetworkConfig};
 use ui::App;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use data_dir::get_data_path;
 use libp2p::Swarm;
 use log::error;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 #[derive(Parser, Debug)]
-#[command(name = "p2p-play", about = "Peer-to-peer story sharing application")]
+#[command(name = "p2p-play", about = "Peer-to-peer sharing application")]
 struct Cli {
-    #[arg(long, value_name = "PATH")]
-    data_dir: Option<std::path::PathBuf>,
+    #[command(subcommand)]
+    command: Option<Commands>,
+
+    #[arg(long, value_name = "PATH", global = true)]
+    data_dir: Option<PathBuf>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Daemon {
+        #[arg(long, value_name = "PATH")]
+        socket_path: Option<PathBuf>,
+    },
+    Ctl {
+        #[arg(long, value_name = "PATH")]
+        socket_path: Option<PathBuf>,
+        #[command(subcommand)]
+        command: CtlCommand,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum CtlCommand {
+    Peers,
+    #[command(name = "messages")]
+    Msgs {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 // Synchronous entry-point so that the Tokio runtime startafter*
@@ -96,12 +126,38 @@ fn main() {
         .build()
         .expect("Failed to build Tokio runtime");
 
-    rt.block_on(async {
-        if let Err(e) = run_app().await {
-            print_error_chain(&e);
-            std::process::exit(1);
+    let exit_code = rt.block_on(async {
+        match cli.command {
+            None => {
+                if let Err(e) = run_app().await {
+                    print_error_chain(&e);
+                    1
+                } else {
+                    0
+                }
+            }
+            Some(Commands::Daemon { socket_path }) => {
+                let socket =
+                    socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
+                let pid = PathBuf::from(get_data_path(PID_FILE));
+                if let Err(e) = run_daemon(socket, pid).await {
+                    eprintln!("Daemon error: {e}");
+                    1
+                } else {
+                    0
+                }
+            }
+            Some(Commands::Ctl {
+                socket_path,
+                command,
+            }) => {
+                let socket = socket_path
+                    .unwrap_or_else(|| PathBuf::from(get_data_path(constants::SOCKET_FILE)));
+                run_ctl(socket, command).await
+            }
         }
     });
+    std::process::exit(exit_code);
 }
 
 fn initialise_ui() -> AppResult<App> {
@@ -261,6 +317,156 @@ async fn run_app() -> AppResult<()> {
     })?;
 
     Ok(())
+}
+
+async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<()> {
+    println!(
+        "Starting p2p-play in daemon mode...{}",
+        pid_file_path.display()
+    );
+    eprintln!("Daemon mode is not fully implemented in this version.");
+    initialise_logging();
+    let mut app = App::new_headless().map_err(AppError::from)?;
+    app.update_local_peer_id(PEER_ID.to_string());
+    app.refresh_conversations().await;
+
+    initialise_database(&mut app).await?;
+
+    let local_peer_name: Option<String> = match load_local_peer_name().await {
+        Ok(name) => name,
+        Err(e) => {
+            error!("Failed to load saved peer name: {e}");
+            None
+        }
+    };
+
+    let mut peer_state = PeerState::new(local_peer_name);
+    let (channels, loggers) = setup_communication_channels();
+    let unified_config = load_configuration(&mut app).await;
+    let network_config = &unified_config.network;
+    let dm_config = &unified_config.direct_message;
+
+    let mut swarm = create_swarm(&unified_config.ping, &unified_config.network)
+        .expect("Failed to create swarm");
+
+    let pending_messages: Arc<Mutex<Vec<PendingDirectMessage>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut auto_bootstrap = AutoBootstrap::new();
+    auto_bootstrap.initialise(
+        &unified_config.bootstrap,
+        &loggers.bootstrap_logger,
+        &loggers.error_logger,
+    );
+
+    if let Err(e) = ensure_general_channel_subscription(&PEER_ID.to_string()).await {
+        error!("Failed to ensure general channel subscription: {e}");
+    }
+    if let Ok(stories) = storage::read_local_stories().await {
+        app.update_stories(stories);
+    }
+    if let Ok(channels_list) =
+        storage::read_subscribed_channels_with_details(&PEER_ID.to_string()).await
+    {
+        app.update_channels(channels_list);
+    }
+
+    #[cfg(not(windows))]
+    let listen_addr = "/ip4/0.0.0.0/tcp/0";
+    #[cfg(windows)]
+    let listen_addr = "/ip4/127.0.0.1/tcp/0";
+    Swarm::listen_on(
+        &mut swarm,
+        listen_addr.parse().expect("can get a local socket"),
+    )
+    .expect("swarm can be started");
+
+    reconnect_stored_peers(&mut swarm, &mut app).await;
+
+    let crypto_service = CryptoService::new(KEYS.clone());
+    let network_circuit_breakers = NetworkCircuitBreakers::new(&unified_config.circuit_breaker);
+    let relay_service = if unified_config.relay.enable_relay {
+        Some(RelayService::new(
+            unified_config.relay.clone(),
+            crypto_service,
+        ))
+    } else {
+        None
+    };
+
+    let (daemon_cmd_tx, daemon_cmd_rx) = mpsc::unbounded_channel();
+    let daemon_server = daemon::DaemonServer::new(&socket_path, &pid_file_path, daemon_cmd_tx)
+        .map_err(|e| AppError::Application(format!("Failed to start daemon server: {e}")))?;
+
+    eprintln!(
+        "Daemon server listening on {} (PID: {})",
+        socket_path.display(),
+        std::process::id()
+    );
+
+    let ui_sender_for_shutdown = channels.ui_sender.clone();
+    let mut event_processor = EventProcessor::new_with_daemon(
+        channels.ui_rcv,
+        channels.ui_log_rcv,
+        channels.response_rcv,
+        channels.story_rcv,
+        channels.response_sender,
+        channels.story_sender,
+        channels.ui_sender,
+        network_config,
+        dm_config.clone(),
+        pending_messages,
+        loggers.ui_logger,
+        loggers.error_logger,
+        loggers.bootstrap_logger,
+        relay_service,
+        network_circuit_breakers,
+        daemon_cmd_rx,
+    );
+
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(daemon_server.run(shutdown_rx));
+    // SIGTERM && SIGINT handler
+    #[cfg(unix)]
+    {
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to register SIGTERM handler");
+        let ui_sender = ui_sender_for_shutdown.clone();
+
+        tokio::spawn(async move {
+            tokio::select! {
+                _ = sigterm.recv() => eprintln!("[daemon] SIGTERM received, shutting down"),
+                _ = tokio::signal::ctrl_c() => eprintln!("[daemon] SIGINT received, shutting down"),
+            }
+            let _ = ui_sender.send(ui::AppEvent::Quit);
+            let _ = shutdown_tx.send(());
+        });
+    }
+
+    event_processor
+        .run(&mut app, &mut swarm, &mut peer_state, &mut auto_bootstrap)
+        .await;
+
+    Ok(())
+}
+
+async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
+    let req = match command {
+        CtlCommand::Peers => DaemonRequest::Peers,
+        CtlCommand::Msgs { limit } => DaemonRequest::Messages { limit },
+    };
+    match daemon::client::send_request(&socket_path, &req).await {
+        Ok(response) => {
+            daemon::client::print_response(&response);
+            if matches!(response, DaemonResponse::Error { .. }) {
+                1
+            } else {
+                0
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to send command to daemon: {e}");
+            1
+        }
+    }
 }
 
 fn initialise_logging() {
