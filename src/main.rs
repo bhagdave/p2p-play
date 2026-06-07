@@ -30,6 +30,7 @@ use bootstrap_logger::BootstrapLogger;
 use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
 use daemon::protocol::{DaemonRequest, DaemonResponse};
+use daemonize::Daemonize;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
@@ -48,6 +49,7 @@ use clap::{Parser, Subcommand};
 use data_dir::get_data_path;
 use libp2p::Swarm;
 use log::error;
+use std::fs::File;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -320,10 +322,29 @@ async fn run_app() -> AppResult<()> {
 }
 
 async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<()> {
+    let stdout = File::create("/tmp/p2p-play-daemon.out").expect("Failed to create stdout log file");
+    let stderr = File::create("/tmp/p2p-play-daemon.err").expect("Failed to create stderr log file");
+
     println!(
         "Starting p2p-play in daemon mode...{}",
         pid_file_path.display()
     );
+
+    let daemonize = Daemonize::new()
+        .pid_file(&pid_file_path)
+        .chown_pid_file(true)
+        .working_directory("/tmp")
+        .stdout(stdout)
+        .stderr(stderr);
+
+    match daemonize.start() {
+        Ok(_) => println!("Daemon started successfully with PID file at {}", pid_file_path.display()),
+        Err(e) => {
+            eprintln!("Error starting daemon: {e}");
+            return Err(AppError::Application(format!("Failed to start daemon: {e}")));
+        }
+    }
+
     eprintln!("Daemon mode is not fully implemented in this version.");
     initialise_logging();
     let mut app = App::new_headless().map_err(AppError::from)?;
