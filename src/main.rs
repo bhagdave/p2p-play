@@ -122,7 +122,46 @@ fn main() {
         }
     }
 
-    // Build the Tokio runtime manually
+    // Daemon must fork before the Tokio runtime starts any threads.
+    // On macOS, fork() inside a multithreaded process causes an ObjC crash.
+    if let Some(Commands::Daemon { socket_path }) = cli.command {
+        let socket = socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
+        let pid = PathBuf::from(get_data_path(PID_FILE));
+        println!("Starting p2p-play in daemon mode with PID file at {}...", pid.display());
+        let stdout = File::create("/tmp/p2p-play-daemon.out").expect("Failed to create stdout log file");
+        let stderr = File::create("/tmp/p2p-play-daemon.err").expect("Failed to create stderr log file");
+
+        let daemonize = Daemonize::new()
+            .pid_file(&pid)
+            .chown_pid_file(true)
+            .working_directory(data_dir::get_data_path(""))
+            .stdout(stdout)
+            .stderr(stderr);
+
+        match daemonize.start() {
+            Ok(_) => {
+                // Child process: now safe to start Tokio
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to build Tokio runtime");
+                let exit_code = rt.block_on(async {
+                    run_daemon(socket, &pid).await.unwrap_or_else(|e| {
+                        eprintln!("Daemon error: {e}");
+                        std::process::exit(1);
+                    });
+                    0
+                });
+                std::process::exit(exit_code);
+            }
+            Err(e) => {
+                eprintln!("Error starting daemon: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Build the Tokio runtime for non-daemon commands
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -138,34 +177,6 @@ fn main() {
                     0
                 }
             }
-            Some(Commands::Daemon { socket_path }) => {
-                let socket =socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
-                let pid = PathBuf::from(get_data_path(PID_FILE));
-                let stdout = File::create("/tmp/p2p-play-daemon.out").expect("Failed to create stdout log file");
-                let stderr = File::create("/tmp/p2p-play-daemon.err").expect("Failed to create stderr log file");
-
-                let daemonize = Daemonize::new()
-                    .pid_file(&pid)
-                    .chown_pid_file(true)
-                    .working_directory("/tmp")
-                    .stdout(stdout)
-                    .stderr(stderr);
-                match daemonize.start() {
-                    Ok(_) => {
-                        if let Err(e) =  run_daemon(socket, &pid).await {
-                            eprintln!("Daemon error: {e}");
-                            1
-                        } else {
-                            println!("Daemon started successfully with PID file at {}", pid.display());
-                            0
-                        }
-                    },
-                    Err(e) => {
-                        eprintln!("Error starting daemon: {e}");
-                        1
-                    }
-                }
-            }
             Some(Commands::Ctl {
                 socket_path,
                 command,
@@ -174,6 +185,7 @@ fn main() {
                     .unwrap_or_else(|| PathBuf::from(get_data_path(constants::SOCKET_FILE)));
                 run_ctl(socket, command).await
             }
+            Some(Commands::Daemon { .. }) => unreachable!("handled above"),
         }
     });
     std::process::exit(exit_code);
