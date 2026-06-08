@@ -35,7 +35,10 @@ wasmtime = "36.0"
 wasmtime-wasi = "36.0"
 lru = "0.7"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+
+[target.'cfg(unix)'.dependencies]
 daemonize = "0.5.0"
+
 
 [features]
 test-utils = []

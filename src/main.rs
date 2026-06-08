@@ -30,6 +30,7 @@ use bootstrap_logger::BootstrapLogger;
 use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
 use daemon::protocol::{DaemonRequest, DaemonResponse};
+#[cfg(unix)]
 use daemonize::Daemonize;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
@@ -125,16 +126,21 @@ fn main() {
     // Daemon must fork before the Tokio runtime starts any threads.
     // On macOS, fork() inside a multithreaded process causes an ObjC crash.
     if let Some(Commands::Daemon { socket_path }) = cli.command {
+        #[cfg(not(unix))]
+        {
+            eprintln!("Daemon mode is only supported on Unix-like systems in this version.");
+            std::process::exit(1);
+        }
         let socket = socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
         let pid = PathBuf::from(get_data_path(PID_FILE));
         println!("Starting p2p-play in daemon mode with PID file at {}...", pid.display());
-        let stdout = File::create("/tmp/p2p-play-daemon.out").expect("Failed to create stdout log file");
-        let stderr = File::create("/tmp/p2p-play-daemon.err").expect("Failed to create stderr log file");
+        let stdout = File::create(PathBuf::from(get_data_path("p2p-play-daemon.out"))).expect("Failed to create stdout log file");
+        let stderr = File::create(PathBuf::from(get_data_path("p2p-play-daemon.err"))).expect("Failed to create stderr log file");
 
         let daemonize = Daemonize::new()
             .pid_file(&pid)
             .chown_pid_file(true)
-            .working_directory(data_dir::get_data_path(""))
+            .working_directory(std::env::var("DATA_DIR").unwrap_or_else(|_| ".".to_string()))
             .stdout(stdout)
             .stderr(stderr);
 
