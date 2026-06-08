@@ -139,14 +139,31 @@ fn main() {
                 }
             }
             Some(Commands::Daemon { socket_path }) => {
-                let socket =
-                    socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
+                let socket =socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
                 let pid = PathBuf::from(get_data_path(PID_FILE));
-                if let Err(e) = run_daemon(socket, pid).await {
-                    eprintln!("Daemon error: {e}");
-                    1
-                } else {
-                    0
+                let stdout = File::create("/tmp/p2p-play-daemon.out").expect("Failed to create stdout log file");
+                let stderr = File::create("/tmp/p2p-play-daemon.err").expect("Failed to create stderr log file");
+
+                let daemonize = Daemonize::new()
+                    .pid_file(&pid)
+                    .chown_pid_file(true)
+                    .working_directory("/tmp")
+                    .stdout(stdout)
+                    .stderr(stderr);
+                match daemonize.start() {
+                    Ok(_) => {
+                        if let Err(e) =  run_daemon(socket, &pid).await {
+                            eprintln!("Daemon error: {e}");
+                            1
+                        } else {
+                            println!("Daemon started successfully with PID file at {}", pid.display());
+                            0
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("Error starting daemon: {e}");
+                        1
+                    }
                 }
             }
             Some(Commands::Ctl {
@@ -321,29 +338,13 @@ async fn run_app() -> AppResult<()> {
     Ok(())
 }
 
-async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<()> {
-    let stdout = File::create("/tmp/p2p-play-daemon.out").expect("Failed to create stdout log file");
-    let stderr = File::create("/tmp/p2p-play-daemon.err").expect("Failed to create stderr log file");
+async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<()> {
 
     println!(
         "Starting p2p-play in daemon mode...{}",
         pid_file_path.display()
     );
 
-    let daemonize = Daemonize::new()
-        .pid_file(&pid_file_path)
-        .chown_pid_file(true)
-        .working_directory("/tmp")
-        .stdout(stdout)
-        .stderr(stderr);
-
-    match daemonize.start() {
-        Ok(_) => println!("Daemon started successfully with PID file at {}", pid_file_path.display()),
-        Err(e) => {
-            eprintln!("Error starting daemon: {e}");
-            return Err(AppError::Application(format!("Failed to start daemon: {e}")));
-        }
-    }
 
     eprintln!("Daemon mode is not fully implemented in this version.");
     initialise_logging();
