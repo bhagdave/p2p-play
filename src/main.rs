@@ -30,6 +30,8 @@ use bootstrap_logger::BootstrapLogger;
 use constants::{BOOTSTRAP_LOG_FILE, ERRORS_LOG_FILE, PID_FILE, UNIFIED_CONFIG_FILE};
 use crypto::CryptoService;
 use daemon::protocol::{DaemonRequest, DaemonResponse};
+#[cfg(unix)]
+use daemonize::Daemonize;
 use error_logger::ErrorLogger;
 use errors::{AppError, AppResult, print_error_chain};
 use event_processor::EventProcessor;
@@ -48,6 +50,7 @@ use clap::{Parser, Subcommand};
 use data_dir::get_data_path;
 use libp2p::Swarm;
 use log::error;
+use std::fs::File;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -120,7 +123,51 @@ fn main() {
         }
     }
 
-    // Build the Tokio runtime manually
+    // Daemon must fork before the Tokio runtime starts any threads.
+    // On macOS, fork() inside a multithreaded process causes an ObjC crash.
+    if let Some(Commands::Daemon { socket_path }) = cli.command {
+        #[cfg(not(unix))]
+        {
+            eprintln!("Daemon mode is only supported on Unix-like systems in this version.");
+            std::process::exit(1);
+        }
+        let socket = socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
+        let pid = PathBuf::from(get_data_path(PID_FILE));
+        println!("Starting p2p-play in daemon mode with PID file at {}...", pid.display());
+        let stdout = File::create(PathBuf::from(get_data_path("p2p-play-daemon.out"))).expect("Failed to create stdout log file");
+        let stderr = File::create(PathBuf::from(get_data_path("p2p-play-daemon.err"))).expect("Failed to create stderr log file");
+
+        let daemonize = Daemonize::new()
+            .pid_file(&pid)
+            .chown_pid_file(true)
+            .working_directory(std::env::var("DATA_DIR").unwrap_or_else(|_| ".".to_string()))
+            .stdout(stdout)
+            .stderr(stderr);
+
+        match daemonize.start() {
+            Ok(_) => {
+                // Child process: now safe to start Tokio
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to build Tokio runtime");
+                let exit_code = rt.block_on(async {
+                    run_daemon(socket, &pid).await.unwrap_or_else(|e| {
+                        eprintln!("Daemon error: {e}");
+                        std::process::exit(1);
+                    });
+                    0
+                });
+                std::process::exit(exit_code);
+            }
+            Err(e) => {
+                eprintln!("Error starting daemon: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Build the Tokio runtime for non-daemon commands
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -136,17 +183,6 @@ fn main() {
                     0
                 }
             }
-            Some(Commands::Daemon { socket_path }) => {
-                let socket =
-                    socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
-                let pid = PathBuf::from(get_data_path(PID_FILE));
-                if let Err(e) = run_daemon(socket, pid).await {
-                    eprintln!("Daemon error: {e}");
-                    1
-                } else {
-                    0
-                }
-            }
             Some(Commands::Ctl {
                 socket_path,
                 command,
@@ -155,6 +191,7 @@ fn main() {
                     .unwrap_or_else(|| PathBuf::from(get_data_path(constants::SOCKET_FILE)));
                 run_ctl(socket, command).await
             }
+            Some(Commands::Daemon { .. }) => unreachable!("handled above"),
         }
     });
     std::process::exit(exit_code);
@@ -319,11 +356,14 @@ async fn run_app() -> AppResult<()> {
     Ok(())
 }
 
-async fn run_daemon(socket_path: PathBuf, pid_file_path: PathBuf) -> AppResult<()> {
+async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<()> {
+
     println!(
         "Starting p2p-play in daemon mode...{}",
         pid_file_path.display()
     );
+
+
     eprintln!("Daemon mode is not fully implemented in this version.");
     initialise_logging();
     let mut app = App::new_headless().map_err(AppError::from)?;
