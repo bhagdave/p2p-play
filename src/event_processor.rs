@@ -731,7 +731,7 @@ impl EventProcessor {
                 let _ = txt.send(DaemonResponse::Peers { peers });
             }
 
-            DaemonRequest::Messages { limit } => {
+            DaemonRequest::Conversations { limit } => {
                 match storage::get_conversations_with_status().await {
                     Ok(convs) => {
                         let conversations = convs
@@ -744,7 +744,7 @@ impl EventProcessor {
                                 last_activity: c.last_activity,
                             })
                             .collect();
-                        let _ = txt.send(DaemonResponse::Messages { conversations });
+                        let _ = txt.send(DaemonResponse::Conversations { conversations });
                     }
                     Err(e) => {
                         let _ = txt.send(DaemonResponse::Error {

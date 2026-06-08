@@ -57,7 +57,7 @@ pub fn print_response(resp: &DaemonResponse) {
             }
         }
 
-        DaemonResponse::Messages { conversations } => {
+        DaemonResponse::Conversations { conversations } => {
             if conversations.is_empty() {
                 println!("No conversations.");
             } else {

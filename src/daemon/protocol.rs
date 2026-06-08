@@ -5,7 +5,7 @@ use tokio::sync::oneshot;
 #[serde(tag = "command", rename_all = "snake_case")]
 pub enum DaemonRequest {
     Peers,
-    Messages { limit: usize },
+    Conversations { limit: usize },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,7 +14,7 @@ pub enum DaemonResponse {
     Peers {
         peers: Vec<PeerInfo>,
     },
-    Messages {
+    Conversations {
         conversations: Vec<ConversationSummary>,
     },
     Error {
