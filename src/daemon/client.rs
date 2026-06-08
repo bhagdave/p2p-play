@@ -70,6 +70,21 @@ pub fn print_response(resp: &DaemonResponse) {
             }
         }
 
+        DaemonResponse::Unread { messages } => {
+            if messages.is_empty() {
+                println!("No unread messages.");
+            } else {
+                for m in messages {
+                    println!("Peer: {} ({})", m.peer_name, m.peer_id);
+                    for msg in &m.messages {
+                        let ts = format_timestamp(msg.timestamp);
+                        println!("  - [{}] {}", ts, msg.content);
+                    }
+                    println!();
+                }
+            }
+        }
+
         DaemonResponse::Error { message } => {
             eprintln!("Error: {message}");
         }

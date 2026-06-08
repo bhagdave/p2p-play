@@ -711,6 +711,27 @@ fn create_or_find_conversation(
     }
 }
 
+pub async fn get_unread_messages() -> StorageResult<Vec<crate::types::DirectMessage>> {
+    let conn = get_db_connection().await?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_peer_id, to_peer_id, message, timestamp, is_outgoing FROM direct_messages WHERE is_read = 0 ORDER BY timestamp ASC",
+    )?;
+    let message_iter = stmt.query_map([peer_id], |row| {
+        Ok(crate::types::DirectMessage {
+            from_peer_id: row.get(1)?,
+            to_peer_id: row.get(2)?,
+            message: row.get(3)?,
+            timestamp: row.get::<_, i64>(4)? as u64,
+            is_outgoing: row.get::<_, i64>(5)? != 0,
+        })
+    })?;
+
+    let messages = utils::collect_rows(message_iter)?;
+
+    Ok(messages)
+}
+
 pub async fn save_node_description(description: &str) -> StorageResult<()> {
     if description.len() > 1024 {
         return Err("Description exceeds 1024 bytes limit".into());

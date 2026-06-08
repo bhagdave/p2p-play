@@ -753,6 +753,19 @@ impl EventProcessor {
                     }
                 }
             }
+
+            DaemonRequest::Unread { limit } => {
+                match storage::get_unread_messages(limit).await {
+                    Ok(messages) => {
+                        let _ = txt.send(DaemonResponse::Unread { messages });
+                    }
+                    Err(e) => {
+                        let _ = txt.send(DaemonResponse::Error {
+                            message: format!("Failed to load unread messages: {e}"),
+                        });
+                    }
+                }
+            }
         }
     }
 
