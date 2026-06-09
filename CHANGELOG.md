@@ -2,18 +2,26 @@
 
 All changes to this project will be documented in this file.
 
+## [Unreleased] - bugfix/issue-365
+
+### Added
+- **`ctl unread` command**: `p2p-play ctl unread [--limit N]` queries the running daemon for unread direct messages, grouped by sender peer, with timestamps. Default limit is 50.
+- **`get_unread_messages(limit)` storage function** (`src/storage/core.rs`): Fetches unread incoming direct messages ordered by timestamp ascending, with a SQL-level `LIMIT` for efficiency.
+- **`MessageInfo` / `MessagesSummary` protocol types** (`src/daemon/protocol.rs`): New serde types for the `Unread` response — `MessagesSummary` groups messages per peer, `MessageInfo` carries content and timestamp.
+- **`DaemonRequest::Unread` / `DaemonResponse::Unread`** (`src/daemon/protocol.rs`): New IPC variants for the unread-messages query, following the existing JSON-tagged enum pattern.
+
 ## [Unreleased] - feature/daemon-mode
 
 ### Added
 - **Daemon mode**: `p2p-play daemon` runs the node headlessly as a background service. On startup it writes a PID file (`p2p-play-daemon.pid`) and binds a Unix domain socket (`p2p-play-daemon.sock`) for IPC.
-- **`ctl` sub-command**: `p2p-play ctl <command>` connects to a running daemon and queries its state. Initial commands: `peers` (list connected peers with aliases) and `messages` (list conversations with unread count and last-activity timestamp).
-- **Daemon IPC protocol** (`src/daemon/protocol.rs`): JSON-over-Unix-socket request/response protocol. `DaemonRequest` (peers, messages) and `DaemonResponse` (peers list, conversation summaries, error) are serde-tagged enums for easy extension.
+- **`ctl` sub-command**: `p2p-play ctl <command>` connects to a running daemon and queries its state. Commands: `peers` (list connected peers with aliases), `conversations` (list conversations with unread count and last-activity timestamp), `unread` (list unread direct messages grouped by sender).
+- **Daemon IPC protocol** (`src/daemon/protocol.rs`): JSON-over-Unix-socket request/response protocol. `DaemonRequest` (peers, conversations, unread) and `DaemonResponse` (peers list, conversation summaries, unread message groups, error) are serde-tagged enums for easy extension.
 - **`DaemonServer`** (`src/daemon/mod.rs`): Tokio-based Unix socket listener that accepts connections, deserializes requests, dispatches them to the event loop via an `mpsc` channel, and writes back responses with a 30-second timeout. Cleans up the socket and PID file on shutdown.
-- **Daemon client** (`src/daemon/client.rs`): Async helper `send_request` connects to the socket, sends a request, and returns the parsed response. `print_response` renders peers and conversations in a human-readable table with relative timestamps.
+- **Daemon client** (`src/daemon/client.rs`): Async helper `send_request` connects to the socket, sends a request, and returns the parsed response. `print_response` renders peers, conversations, and unread messages in human-readable tables with relative timestamps.
 - **Headless UI mode**: When running as a daemon, the TUI is skipped. `App::new_headless()` sets `headless = true` to bypass drawing and input polling
 - **`DaemonConfig` in `UnifiedNetworkConfig`**: Daemon-specific settings (socket path, PID file path) are now part of the unified network config, enabling runtime configuration of the IPC socket location.
 - **`SOCKET_FILE` / `PID_FILE` constants** in `src/constants.rs`: Default filenames for the daemon socket and PID file, shared between server and client.
-- **Event processor daemon command handling**: `event_processor.rs` handles `DaemonCommand` messages — `Peers` and `Messages` — and responds directly from in-memory swarm and storage state.
+- **Event processor daemon command handling**: `event_processor.rs` handles `DaemonCommand` messages — `Peers`, `Conversations`, and `Unread` — and responds directly from in-memory swarm and storage state.
 - **Tokio signal handling**: Daemon mode catches `SIGTERM`/`SIGINT` via `tokio::signal` for graceful shutdown, triggering cleanup of the socket and PID file.
 
 ## [0.12.6] - 2026-05-14

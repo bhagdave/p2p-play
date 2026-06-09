@@ -82,9 +82,12 @@ enum Commands {
 #[derive(Subcommand, Debug, Clone)]
 enum CtlCommand {
     Peers,
-    #[command(name = "messages")]
-    Msgs {
+    Conversations {
         #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    Unread {
+        #[arg(long, default_value_t = 50)]
         limit: usize,
     },
 }
@@ -491,7 +494,8 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
 async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
     let req = match command {
         CtlCommand::Peers => DaemonRequest::Peers,
-        CtlCommand::Msgs { limit } => DaemonRequest::Messages { limit },
+        CtlCommand::Conversations { limit } => DaemonRequest::Conversations { limit },
+        CtlCommand::Unread { limit } => DaemonRequest::Unread { limit },
     };
     match daemon::client::send_request(&socket_path, &req).await {
         Ok(response) => {

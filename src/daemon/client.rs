@@ -57,7 +57,7 @@ pub fn print_response(resp: &DaemonResponse) {
             }
         }
 
-        DaemonResponse::Messages { conversations } => {
+        DaemonResponse::Conversations { conversations } => {
             if conversations.is_empty() {
                 println!("No conversations.");
             } else {
@@ -66,6 +66,21 @@ pub fn print_response(resp: &DaemonResponse) {
                 for c in conversations {
                     let ts = format_timestamp(c.last_activity);
                     println!("{:<20} {:>7} {}", c.peer_name, c.unread_count, ts);
+                }
+            }
+        }
+
+        DaemonResponse::Unread { messages } => {
+            if messages.is_empty() {
+                println!("No unread messages.");
+            } else {
+                for m in messages {
+                    println!("Peer: {} ({})", m.peer_name, m.peer_id);
+                    for msg in &m.messages {
+                        let ts = format_timestamp(msg.timestamp);
+                        println!("  - [{}] {}", ts, msg.content);
+                    }
+                    println!();
                 }
             }
         }

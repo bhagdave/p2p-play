@@ -1,6 +1,8 @@
 use crate::errors::StorageResult;
 use crate::storage::{mappers, utils};
-use crate::types::{BootstrapConfig, Channel, Channels, Stories, Story, UnifiedNetworkConfig};
+use crate::types::{
+    BootstrapConfig, Channel, Channels, DirectMessage, Stories, Story, UnifiedNetworkConfig,
+};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
@@ -709,6 +711,28 @@ fn create_or_find_conversation(
         }
         Err(e) => Err(e.into()),
     }
+}
+
+pub async fn get_unread_messages(limit: usize) -> StorageResult<Vec<DirectMessage>> {
+    let conn = get_db_connection().await?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, remote_peer_id, to_peer_id, message, timestamp, is_outgoing \
+         FROM direct_messages WHERE is_read = 0 ORDER BY timestamp ASC LIMIT ?1",
+    )?;
+    let message_iter = stmt.query_map([limit as i64], |row| {
+        Ok(DirectMessage {
+            from_peer_id: row.get(1)?,
+            from_name: String::new(),
+            to_peer_id: row.get(2)?,
+            to_name: String::new(),
+            message: row.get(3)?,
+            timestamp: row.get::<_, i64>(4)? as u64,
+            is_outgoing: row.get::<_, bool>(5)?,
+        })
+    })?;
+
+    utils::collect_rows(message_iter)
 }
 
 pub async fn save_node_description(description: &str) -> StorageResult<()> {
