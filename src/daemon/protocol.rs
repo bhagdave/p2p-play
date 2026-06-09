@@ -47,4 +47,10 @@ pub struct MessagesSummary {
     pub messages: Vec<MessageInfo>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageInfo {
+    pub content: String,
+    pub timestamp: u64,
+}
+
 pub type DaemonCommand = (DaemonRequest, oneshot::Sender<DaemonResponse>);

@@ -2,7 +2,8 @@ use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::*;
 use crate::daemon::protocol::{
-    ConversationSummary, DaemonCommand, DaemonRequest, DaemonResponse, PeerInfo,
+    ConversationSummary, DaemonCommand, DaemonRequest, DaemonResponse, MessageInfo, MessagesSummary,
+    PeerInfo,
 };
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
@@ -756,8 +757,24 @@ impl EventProcessor {
 
             DaemonRequest::Unread { limit } => {
                 match storage::get_unread_messages(limit).await {
-                    Ok(messages) => {
-                        let _ = txt.send(DaemonResponse::Unread { messages });
+                    Ok(dms) => {
+                        let mut grouped: HashMap<String, MessagesSummary> = HashMap::new();
+                        for dm in dms {
+                            let entry =
+                                grouped.entry(dm.from_peer_id.clone()).or_insert_with(|| {
+                                    MessagesSummary {
+                                        peer_id: dm.from_peer_id.clone(),
+                                        peer_name: dm.from_name.clone(),
+                                        messages: Vec::new(),
+                                    }
+                                });
+                            entry.messages.push(MessageInfo {
+                                content: dm.message.clone(),
+                                timestamp: dm.timestamp,
+                            });
+                        }
+                        let summaries: Vec<MessagesSummary> = grouped.into_values().collect();
+                        let _ = txt.send(DaemonResponse::Unread { messages: summaries });
                     }
                     Err(e) => {
                         let _ = txt.send(DaemonResponse::Error {
