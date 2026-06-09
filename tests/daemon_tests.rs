@@ -2,7 +2,9 @@
 
 use p2p_play::daemon::DaemonServer;
 use p2p_play::daemon::client::send_request;
-use p2p_play::daemon::protocol::{ConversationSummary, DaemonRequest, DaemonResponse, PeerInfo};
+use p2p_play::daemon::protocol::{
+    ConversationSummary, DaemonRequest, DaemonResponse, MessageInfo, MessagesSummary, PeerInfo,
+};
 use std::path::PathBuf;
 use tokio::sync::{mpsc, oneshot};
 
@@ -60,11 +62,19 @@ fn daemon_request_peers_serializes_correctly() {
 }
 
 #[test]
-fn daemon_request_messages_serializes_with_limit() {
-    let req = DaemonRequest::Messages { limit: 20 };
+fn daemon_request_conversations_serializes_with_limit() {
+    let req = DaemonRequest::Conversations { limit: 20 };
     let json = serde_json::to_string(&req).unwrap();
-    assert!(json.contains("\"command\":\"messages\""), "got: {json}");
+    assert!(json.contains("\"command\":\"conversations\""), "got: {json}");
     assert!(json.contains("\"limit\":20"), "got: {json}");
+}
+
+#[test]
+fn daemon_request_unread_serializes_with_limit() {
+    let req = DaemonRequest::Unread { limit: 50 };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("\"command\":\"unread\""), "got: {json}");
+    assert!(json.contains("\"limit\":50"), "got: {json}");
 }
 
 #[test]
@@ -88,8 +98,8 @@ fn daemon_response_peers_roundtrips() {
 }
 
 #[test]
-fn daemon_response_messages_roundtrips() {
-    let resp = DaemonResponse::Messages {
+fn daemon_response_conversations_roundtrips() {
+    let resp = DaemonResponse::Conversations {
         conversations: vec![ConversationSummary {
             peer_id: "abc".to_string(),
             peer_name: "bob".to_string(),
@@ -100,11 +110,44 @@ fn daemon_response_messages_roundtrips() {
     let json = serde_json::to_string(&resp).unwrap();
     let back: DaemonResponse = serde_json::from_str(&json).unwrap();
     match back {
-        DaemonResponse::Messages { conversations } => {
+        DaemonResponse::Conversations { conversations } => {
             assert_eq!(conversations.len(), 1);
             assert_eq!(conversations[0].unread_count, 3);
         }
-        other => panic!("Expected Messages, got {other:?}"),
+        other => panic!("Expected Conversations, got {other:?}"),
+    }
+}
+
+#[test]
+fn daemon_response_unread_roundtrips() {
+    let resp = DaemonResponse::Unread {
+        messages: vec![MessagesSummary {
+            peer_id: "peer1".to_string(),
+            peer_name: "alice".to_string(),
+            messages: vec![
+                MessageInfo {
+                    content: "hello".to_string(),
+                    timestamp: 1_700_000_001,
+                },
+                MessageInfo {
+                    content: "world".to_string(),
+                    timestamp: 1_700_000_002,
+                },
+            ],
+        }],
+    };
+    let json = serde_json::to_string(&resp).unwrap();
+    let back: DaemonResponse = serde_json::from_str(&json).unwrap();
+    match back {
+        DaemonResponse::Unread { messages } => {
+            assert_eq!(messages.len(), 1);
+            assert_eq!(messages[0].peer_id, "peer1");
+            assert_eq!(messages[0].peer_name, "alice");
+            assert_eq!(messages[0].messages.len(), 2);
+            assert_eq!(messages[0].messages[0].content, "hello");
+            assert_eq!(messages[0].messages[1].timestamp, 1_700_000_002);
+        }
+        other => panic!("Expected Unread, got {other:?}"),
     }
 }
 
@@ -129,10 +172,17 @@ fn daemon_request_deserializes_peers_from_json() {
 }
 
 #[test]
-fn daemon_request_deserializes_messages_from_json() {
-    let json = r#"{"command":"messages","limit":5}"#;
+fn daemon_request_deserializes_conversations_from_json() {
+    let json = r#"{"command":"conversations","limit":5}"#;
     let req: DaemonRequest = serde_json::from_str(json).unwrap();
-    assert!(matches!(req, DaemonRequest::Messages { limit: 5 }));
+    assert!(matches!(req, DaemonRequest::Conversations { limit: 5 }));
+}
+
+#[test]
+fn daemon_request_deserializes_unread_from_json() {
+    let json = r#"{"command":"unread","limit":10}"#;
+    let req: DaemonRequest = serde_json::from_str(json).unwrap();
+    assert!(matches!(req, DaemonRequest::Unread { limit: 10 }));
 }
 
 // ---------------------------------------------------------------------------
@@ -263,11 +313,11 @@ async fn client_receives_peers_response_from_server() {
 }
 
 #[tokio::test]
-async fn client_receives_messages_response_from_server() {
-    let dir = tmp_dir("client_messages");
+async fn client_receives_conversations_response_from_server() {
+    let dir = tmp_dir("client_conversations");
 
     let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
-        DaemonRequest::Messages { .. } => DaemonResponse::Messages {
+        DaemonRequest::Conversations { .. } => DaemonResponse::Conversations {
             conversations: vec![ConversationSummary {
                 peer_id: "p1".to_string(),
                 peer_name: "carol".to_string(),
@@ -281,17 +331,88 @@ async fn client_receives_messages_response_from_server() {
     })
     .await;
 
-    let resp = send_request(&socket_path, &DaemonRequest::Messages { limit: 10 })
+    let resp = send_request(&socket_path, &DaemonRequest::Conversations { limit: 10 })
         .await
         .unwrap();
 
     match resp {
-        DaemonResponse::Messages { conversations } => {
+        DaemonResponse::Conversations { conversations } => {
             assert_eq!(conversations.len(), 1);
             assert_eq!(conversations[0].peer_name, "carol");
             assert_eq!(conversations[0].unread_count, 7);
         }
-        other => panic!("Expected Messages response, got {other:?}"),
+        other => panic!("Expected Conversations response, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn client_receives_unread_response_from_server() {
+    let dir = tmp_dir("client_unread");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::Unread { .. } => DaemonResponse::Unread {
+            messages: vec![MessagesSummary {
+                peer_id: "peerX".to_string(),
+                peer_name: "dave".to_string(),
+                messages: vec![
+                    MessageInfo {
+                        content: "hey there".to_string(),
+                        timestamp: 1_700_000_010,
+                    },
+                    MessageInfo {
+                        content: "ping?".to_string(),
+                        timestamp: 1_700_000_020,
+                    },
+                ],
+            }],
+        },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(&socket_path, &DaemonRequest::Unread { limit: 50 })
+        .await
+        .unwrap();
+
+    match resp {
+        DaemonResponse::Unread { messages } => {
+            assert_eq!(messages.len(), 1);
+            assert_eq!(messages[0].peer_id, "peerX");
+            assert_eq!(messages[0].peer_name, "dave");
+            assert_eq!(messages[0].messages.len(), 2);
+            assert_eq!(messages[0].messages[0].content, "hey there");
+        }
+        other => panic!("Expected Unread response, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn client_receives_empty_unread_when_no_messages() {
+    let dir = tmp_dir("client_unread_empty");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::Unread { .. } => DaemonResponse::Unread { messages: vec![] },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(&socket_path, &DaemonRequest::Unread { limit: 50 })
+        .await
+        .unwrap();
+
+    match resp {
+        DaemonResponse::Unread { messages } => assert!(messages.is_empty()),
+        other => panic!("Expected Unread response, got {other:?}"),
     }
 
     let _ = shutdown_tx.send(());
@@ -357,9 +478,10 @@ async fn server_handles_multiple_sequential_requests() {
 
     let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
         DaemonRequest::Peers => DaemonResponse::Peers { peers: vec![] },
-        DaemonRequest::Messages { .. } => DaemonResponse::Messages {
+        DaemonRequest::Conversations { .. } => DaemonResponse::Conversations {
             conversations: vec![],
         },
+        DaemonRequest::Unread { .. } => DaemonResponse::Unread { messages: vec![] },
     })
     .await;
 
