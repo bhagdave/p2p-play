@@ -748,7 +748,6 @@ pub async fn get_unread_messages(limit: usize) -> StorageResult<Vec<DirectMessag
     utils::collect_rows(message_iter)
 }
 
-/// Returns incoming direct messages for a conversation selected by peer alias.
 pub async fn get_incoming_messages_from_peer_alias(
     peer_alias: &str,
 ) -> StorageResult<Vec<DirectMessage>> {
