@@ -4,7 +4,7 @@ use p2p_play::daemon::DaemonServer;
 use p2p_play::daemon::client::send_request;
 use p2p_play::daemon::protocol::{
     ChannelInfo, ConversationSummary, DaemonRequest, DaemonResponse, MessageInfo, MessagesSummary,
-    PeerInfo,
+    PeerInfo, StoryInfo,
 };
 use std::path::PathBuf;
 use tokio::sync::{mpsc, oneshot};
@@ -81,6 +81,16 @@ fn daemon_request_channels_serializes_correctly() {
 }
 
 #[test]
+fn daemon_request_stories_serializes_with_channel() {
+    let req = DaemonRequest::Stories {
+        channel: "general".to_string(),
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("\"command\":\"stories\""), "got: {json}");
+    assert!(json.contains("\"channel\":\"general\""), "got: {json}");
+}
+
+#[test]
 fn daemon_request_unread_serializes_with_limit() {
     let req = DaemonRequest::Unread { limit: 50 };
     let json = serde_json::to_string(&req).unwrap();
@@ -150,6 +160,30 @@ fn daemon_response_channels_roundtrips() {
 }
 
 #[test]
+fn daemon_response_stories_roundtrips() {
+    let resp = DaemonResponse::Stories {
+        channel: "general".to_string(),
+        stories: vec![StoryInfo {
+            id: 7,
+            name: "Hello World".to_string(),
+            public: true,
+        }],
+    };
+    let json = serde_json::to_string(&resp).unwrap();
+    let back: DaemonResponse = serde_json::from_str(&json).unwrap();
+    match back {
+        DaemonResponse::Stories { channel, stories } => {
+            assert_eq!(channel, "general");
+            assert_eq!(stories.len(), 1);
+            assert_eq!(stories[0].id, 7);
+            assert_eq!(stories[0].name, "Hello World");
+            assert!(stories[0].public);
+        }
+        other => panic!("Expected Stories, got {other:?}"),
+    }
+}
+
+#[test]
 fn daemon_response_unread_roundtrips() {
     let resp = DaemonResponse::Unread {
         messages: vec![MessagesSummary {
@@ -214,6 +248,16 @@ fn daemon_request_deserializes_channels_from_json() {
     let json = r#"{"command":"channels"}"#;
     let req: DaemonRequest = serde_json::from_str(json).unwrap();
     assert!(matches!(req, DaemonRequest::Channels));
+}
+
+#[test]
+fn daemon_request_deserializes_stories_from_json() {
+    let json = r#"{"command":"stories","channel":"general"}"#;
+    let req: DaemonRequest = serde_json::from_str(json).unwrap();
+    assert!(matches!(
+        req,
+        DaemonRequest::Stories { channel } if channel == "general"
+    ));
 }
 
 #[test]
@@ -421,6 +465,49 @@ async fn client_receives_channels_response_from_server() {
 }
 
 #[tokio::test]
+async fn client_receives_stories_response_from_server() {
+    let dir = tmp_dir("client_stories");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::Stories { channel } => DaemonResponse::Stories {
+            channel,
+            stories: vec![StoryInfo {
+                id: 3,
+                name: "A Channel Story".to_string(),
+                public: true,
+            }],
+        },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(
+        &socket_path,
+        &DaemonRequest::Stories {
+            channel: "general".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    match resp {
+        DaemonResponse::Stories { channel, stories } => {
+            assert_eq!(channel, "general");
+            assert_eq!(stories.len(), 1);
+            assert_eq!(stories[0].id, 3);
+            assert_eq!(stories[0].name, "A Channel Story");
+            assert!(stories[0].public);
+        }
+        other => panic!("Expected Stories response, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+#[tokio::test]
 async fn client_receives_unread_response_from_server() {
     let dir = tmp_dir("client_unread");
 
@@ -551,6 +638,10 @@ async fn server_handles_multiple_sequential_requests() {
     let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
         DaemonRequest::Peers => DaemonResponse::Peers { peers: vec![] },
         DaemonRequest::Channels => DaemonResponse::Channels { channels: vec![] },
+        DaemonRequest::Stories { channel } => DaemonResponse::Stories {
+            channel,
+            stories: vec![],
+        },
         DaemonRequest::Conversations { .. } => DaemonResponse::Conversations {
             conversations: vec![],
         },

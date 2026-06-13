@@ -83,6 +83,9 @@ enum Commands {
 enum CtlCommand {
     Peers,
     Channels,
+    Stories {
+        channel: String,
+    },
     Conversations {
         #[arg(long, default_value_t = 20)]
         limit: usize,
@@ -499,6 +502,7 @@ async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
     let req = match command {
         CtlCommand::Peers => DaemonRequest::Peers,
         CtlCommand::Channels => DaemonRequest::Channels,
+        CtlCommand::Stories { channel } => DaemonRequest::Stories { channel },
         CtlCommand::Conversations { limit } => DaemonRequest::Conversations { limit },
         CtlCommand::Unread { limit } => DaemonRequest::Unread { limit },
     };

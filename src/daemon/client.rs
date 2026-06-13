@@ -3,6 +3,7 @@ use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(unix)]
 use tokio::net::UnixStream;
+use crate::validation::ContentSanitizer;
 
 #[cfg(not(unix))]
 pub async fn send_request(
@@ -65,6 +66,22 @@ pub fn print_response(resp: &DaemonResponse) {
                 println!("{}", "-".repeat(72));
                 for channel in channels {
                     println!("{:<20} {}", channel.name, channel.description);
+                }
+            }
+        }
+
+        DaemonResponse::Stories { channel, stories } => {
+            let channel_display = ContentSanitizer::sanitize_for_display(channel);
+            if stories.is_empty() {
+                println!("No stories found in channel '{channel_display}'.");
+            } else {
+                println!("Stories in channel '{channel_display}':");
+                println!("{:>4} {:<10} NAME", "ID", "VISIBILITY");
+                println!("{}", "-".repeat(72));
+                for story in stories {
+                    let visibility = if story.public { "public" } else { "private" };
+                    let story_name_display = ContentSanitizer::sanitize_for_display(&story.name);
+                    println!("{:>4} {:<10} {}", story.id, visibility, story_name_display);
                 }
             }
         }
