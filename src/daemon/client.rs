@@ -1,9 +1,9 @@
 use super::protocol::{DaemonRequest, DaemonResponse};
+use crate::validation::ContentSanitizer;
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(unix)]
 use tokio::net::UnixStream;
-use crate::validation::ContentSanitizer;
 
 #[cfg(not(unix))]
 pub async fn send_request(

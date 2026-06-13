@@ -6,6 +6,8 @@ use p2p_play::daemon::protocol::{
     ChannelInfo, ConversationSummary, DaemonRequest, DaemonResponse, MessageInfo, MessagesSummary,
     PeerInfo, StoryDetail, StoryInfo,
 };
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use tokio::sync::{mpsc, oneshot};
 
@@ -16,8 +18,13 @@ use tokio::sync::{mpsc, oneshot};
 /// Returns a unique temporary directory for each test, avoiding socket path
 /// collisions between parallel test runs.
 fn tmp_dir(label: &str) -> PathBuf {
-    let dir =
-        std::env::temp_dir().join(format!("p2p_daemon_test_{}_{}", label, std::process::id()));
+    let mut hasher = DefaultHasher::new();
+    label.hash(&mut hasher);
+    let dir = PathBuf::from("/tmp").join(format!(
+        "p2pd_{:x}_{:x}",
+        std::process::id(),
+        hasher.finish()
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     dir
 }
@@ -615,7 +622,7 @@ async fn client_receives_error_on_invalid_json_request() {
 
 #[tokio::test]
 async fn client_gets_error_when_daemon_not_running() {
-    let socket_path = std::env::temp_dir().join("p2p_play_nonexistent.sock");
+    let socket_path = tmp_dir("daemon_missing").join("missing.sock");
     // Ensure it doesn't exist.
     let _ = std::fs::remove_file(&socket_path);
 
