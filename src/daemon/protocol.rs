@@ -7,6 +7,7 @@ pub enum DaemonRequest {
     Peers,
     Channels,
     Stories { channel: String },
+    GetStory { id: usize },
     Conversations { limit: usize },
     Unread { limit: usize },
 }
@@ -23,6 +24,9 @@ pub enum DaemonResponse {
     Stories {
         channel: String,
         stories: Vec<StoryInfo>,
+    },
+    Story {
+        story: StoryDetail,
     },
     Conversations {
         conversations: Vec<ConversationSummary>,
@@ -52,6 +56,17 @@ pub struct StoryInfo {
     pub id: usize,
     pub name: String,
     pub public: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryDetail {
+    pub id: usize,
+    pub name: String,
+    pub header: String,
+    pub body: String,
+    pub public: bool,
+    pub channel: String,
+    pub created_at: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

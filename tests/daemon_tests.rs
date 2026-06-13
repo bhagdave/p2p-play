@@ -4,7 +4,7 @@ use p2p_play::daemon::DaemonServer;
 use p2p_play::daemon::client::send_request;
 use p2p_play::daemon::protocol::{
     ChannelInfo, ConversationSummary, DaemonRequest, DaemonResponse, MessageInfo, MessagesSummary,
-    PeerInfo, StoryInfo,
+    PeerInfo, StoryDetail, StoryInfo,
 };
 use std::path::PathBuf;
 use tokio::sync::{mpsc, oneshot};
@@ -645,6 +645,9 @@ async fn server_handles_multiple_sequential_requests() {
         DaemonRequest::Conversations { .. } => DaemonResponse::Conversations {
             conversations: vec![],
         },
+        DaemonRequest::GetStory { id } => DaemonResponse::Error {
+            message: format!("Story with id {id} not found"),
+        },
         DaemonRequest::Unread { .. } => DaemonResponse::Unread { messages: vec![] },
     })
     .await;
@@ -673,6 +676,126 @@ async fn server_handles_empty_peers_list() {
     match resp {
         DaemonResponse::Peers { peers } => assert!(peers.is_empty()),
         other => panic!("Expected Peers, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// GetStory tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn daemon_request_get_story_serializes_correctly() {
+    let req = DaemonRequest::GetStory { id: 42 };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("\"command\":\"get_story\""), "got: {json}");
+    assert!(json.contains("\"id\":42"), "got: {json}");
+}
+
+#[test]
+fn daemon_request_get_story_deserializes_from_json() {
+    let json = r#"{"command":"get_story","id":7}"#;
+    let req: DaemonRequest = serde_json::from_str(json).unwrap();
+    assert!(matches!(req, DaemonRequest::GetStory { id: 7 }));
+}
+
+#[test]
+fn daemon_response_story_roundtrips() {
+    let resp = DaemonResponse::Story {
+        story: StoryDetail {
+            id: 3,
+            name: "Test Story".to_string(),
+            header: "A header".to_string(),
+            body: "The body text".to_string(),
+            public: true,
+            channel: "general".to_string(),
+            created_at: 1_700_000_000,
+        },
+    };
+    let json = serde_json::to_string(&resp).unwrap();
+    let back: DaemonResponse = serde_json::from_str(&json).unwrap();
+    match back {
+        DaemonResponse::Story { story } => {
+            assert_eq!(story.id, 3);
+            assert_eq!(story.name, "Test Story");
+            assert_eq!(story.header, "A header");
+            assert_eq!(story.body, "The body text");
+            assert!(story.public);
+            assert_eq!(story.channel, "general");
+            assert_eq!(story.created_at, 1_700_000_000);
+        }
+        other => panic!("Expected Story, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn client_receives_story_response_from_server() {
+    let dir = tmp_dir("client_get_story");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::GetStory { id: 5 } => DaemonResponse::Story {
+            story: StoryDetail {
+                id: 5,
+                name: "My Story".to_string(),
+                header: "Intro".to_string(),
+                body: "Once upon a time...".to_string(),
+                public: true,
+                channel: "general".to_string(),
+                created_at: 1_700_000_000,
+            },
+        },
+        _ => DaemonResponse::Error {
+            message: "unexpected request".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(&socket_path, &DaemonRequest::GetStory { id: 5 })
+        .await
+        .unwrap();
+
+    match resp {
+        DaemonResponse::Story { story } => {
+            assert_eq!(story.id, 5);
+            assert_eq!(story.name, "My Story");
+            assert_eq!(story.channel, "general");
+            assert!(story.public);
+        }
+        other => panic!("Expected Story response, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn client_receives_error_for_missing_story() {
+    let dir = tmp_dir("client_get_story_missing");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::GetStory { id } => DaemonResponse::Error {
+            message: format!("Story with id {id} not found"),
+        },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(&socket_path, &DaemonRequest::GetStory { id: 999 })
+        .await
+        .unwrap();
+
+    match resp {
+        DaemonResponse::Error { message } => {
+            assert!(
+                message.contains("999"),
+                "Error should mention the story id, got: {message}"
+            );
+        }
+        other => panic!("Expected Error response, got {other:?}"),
     }
 
     let _ = shutdown_tx.send(());

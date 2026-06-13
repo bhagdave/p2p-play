@@ -139,6 +139,17 @@ pub async fn read_local_stories() -> StorageResult<Stories> {
     Ok(stories)
 }
 
+pub async fn read_story_by_id(id: usize) -> StorageResult<Option<Story>> {
+    let conn = get_db_connection().await?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?1",
+    )?;
+    let mut story_iter = stmt.query_map([id as i64], mappers::map_row_to_story)?;
+
+    Ok(story_iter.next().transpose()?)
+}
+
 pub async fn read_local_stories_for_sync(
     last_sync_timestamp: u64,
     subscribed_channels: &[String],
