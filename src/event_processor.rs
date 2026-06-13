@@ -837,7 +837,7 @@ impl EventProcessor {
                     }
                     Err(e) => {
                         let _ = txt.send(DaemonResponse::Error {
-                            message: format!("Failed to load messages for peer alias: {e}"),
+                            message: format!("Failed to load messages for peer alias '{peer_alias}': {e}"),
                         });
                     }
                 }

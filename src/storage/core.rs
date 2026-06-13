@@ -757,7 +757,7 @@ pub async fn get_incoming_messages_from_peer_alias(
         "SELECT dm.remote_peer_id, dm.to_peer_id, c.peer_name, dm.message, dm.timestamp, dm.is_outgoing
          FROM direct_messages dm
          JOIN conversations c ON dm.conversation_id = c.id
-         WHERE LOWER(c.peer_name) = LOWER(?1) AND dm.is_outgoing = 0
+         WHERE c.peer_name = ?1 COLLATE NOCASE AND dm.is_outgoing = 0
          ORDER BY dm.timestamp ASC",
     )?;
 
