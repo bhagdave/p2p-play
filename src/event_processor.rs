@@ -3,7 +3,7 @@ use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::*;
 use crate::daemon::protocol::{
     ChannelInfo, ConversationSummary, DaemonCommand, DaemonRequest, DaemonResponse, MessageInfo,
-    MessagesSummary, PeerInfo,
+    MessagesSummary, PeerInfo, StoryInfo,
 };
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
@@ -749,6 +749,27 @@ impl EventProcessor {
                     });
                 }
             },
+
+            DaemonRequest::Stories { channel } => {
+                match storage::filter_stories_by_channel(&channel).await {
+                    Ok(stories) => {
+                        let stories = stories
+                            .into_iter()
+                            .map(|story| StoryInfo {
+                                id: story.id,
+                                name: story.name,
+                                public: story.public,
+                            })
+                            .collect();
+                        let _ = txt.send(DaemonResponse::Stories { channel, stories });
+                    }
+                    Err(e) => {
+                        let _ = txt.send(DaemonResponse::Error {
+                            message: format!("Failed to load stories for channel: {e}"),
+                        });
+                    }
+                }
+            }
 
             DaemonRequest::Conversations { limit } => {
                 match storage::get_conversations_with_status().await {

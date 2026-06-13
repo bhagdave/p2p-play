@@ -6,6 +6,7 @@ use tokio::sync::oneshot;
 pub enum DaemonRequest {
     Peers,
     Channels,
+    Stories { channel: String },
     Conversations { limit: usize },
     Unread { limit: usize },
 }
@@ -18,6 +19,10 @@ pub enum DaemonResponse {
     },
     Channels {
         channels: Vec<ChannelInfo>,
+    },
+    Stories {
+        channel: String,
+        stories: Vec<StoryInfo>,
     },
     Conversations {
         conversations: Vec<ConversationSummary>,
@@ -40,6 +45,13 @@ pub struct PeerInfo {
 pub struct ChannelInfo {
     pub name: String,
     pub description: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryInfo {
+    pub id: usize,
+    pub name: String,
+    pub public: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

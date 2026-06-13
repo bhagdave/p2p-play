@@ -69,6 +69,20 @@ pub fn print_response(resp: &DaemonResponse) {
             }
         }
 
+        DaemonResponse::Stories { channel, stories } => {
+            if stories.is_empty() {
+                println!("No stories found in channel '{channel}'.");
+            } else {
+                println!("Stories in channel '{channel}':");
+                println!("{:>4} {:<10} NAME", "ID", "VISIBILITY");
+                println!("{}", "-".repeat(72));
+                for story in stories {
+                    let visibility = if story.public { "public" } else { "private" };
+                    println!("{:>4} {:<10} {}", story.id, visibility, story.name);
+                }
+            }
+        }
+
         DaemonResponse::Conversations { conversations } => {
             if conversations.is_empty() {
                 println!("No conversations.");
