@@ -82,6 +82,7 @@ enum Commands {
 #[derive(Subcommand, Debug, Clone)]
 enum CtlCommand {
     Peers,
+    Channels,
     Conversations {
         #[arg(long, default_value_t = 20)]
         limit: usize,
@@ -136,9 +137,14 @@ fn main() {
         }
         let socket = socket_path.unwrap_or_else(|| get_data_path(constants::SOCKET_FILE).into());
         let pid = PathBuf::from(get_data_path(PID_FILE));
-        println!("Starting p2p-play in daemon mode with PID file at {}...", pid.display());
-        let stdout = File::create(PathBuf::from(get_data_path("p2p-play-daemon.out"))).expect("Failed to create stdout log file");
-        let stderr = File::create(PathBuf::from(get_data_path("p2p-play-daemon.err"))).expect("Failed to create stderr log file");
+        println!(
+            "Starting p2p-play in daemon mode with PID file at {}...",
+            pid.display()
+        );
+        let stdout = File::create(PathBuf::from(get_data_path("p2p-play-daemon.out")))
+            .expect("Failed to create stdout log file");
+        let stderr = File::create(PathBuf::from(get_data_path("p2p-play-daemon.err")))
+            .expect("Failed to create stderr log file");
 
         let daemonize = Daemonize::new()
             .pid_file(&pid)
@@ -360,12 +366,10 @@ async fn run_app() -> AppResult<()> {
 }
 
 async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<()> {
-
     println!(
         "Starting p2p-play in daemon mode...{}",
         pid_file_path.display()
     );
-
 
     eprintln!("Daemon mode is not fully implemented in this version.");
     initialise_logging();
@@ -494,6 +498,7 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
 async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
     let req = match command {
         CtlCommand::Peers => DaemonRequest::Peers,
+        CtlCommand::Channels => DaemonRequest::Channels,
         CtlCommand::Conversations { limit } => DaemonRequest::Conversations { limit },
         CtlCommand::Unread { limit } => DaemonRequest::Unread { limit },
     };
