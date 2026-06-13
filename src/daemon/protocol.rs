@@ -10,6 +10,7 @@ pub enum DaemonRequest {
     GetStory { id: usize },
     Conversations { limit: usize },
     Unread { limit: usize },
+    Messages { peer_alias: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,6 +34,10 @@ pub enum DaemonResponse {
     },
     Unread {
         messages: Vec<MessagesSummary>,
+    },
+    Messages {
+        peer_alias: String,
+        messages: Vec<MessageInfo>,
     },
     Error {
         message: String,

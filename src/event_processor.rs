@@ -820,6 +820,29 @@ impl EventProcessor {
                 }
             }
 
+            DaemonRequest::Messages { peer_alias } => {
+                match storage::get_incoming_messages_from_peer_alias(&peer_alias).await {
+                    Ok(messages) => {
+                        let message_summaries = messages
+                            .into_iter()
+                            .map(|dm| MessageInfo {
+                                content: dm.message,
+                                timestamp: dm.timestamp,
+                            })
+                            .collect();
+                        let _ = txt.send(DaemonResponse::Messages {
+                            peer_alias,
+                            messages: message_summaries,
+                        });
+                    }
+                    Err(e) => {
+                        let _ = txt.send(DaemonResponse::Error {
+                            message: format!("Failed to load messages for peer alias '{peer_alias}': {e}"),
+                        });
+                    }
+                }
+            }
+
             DaemonRequest::Unread { limit } => match storage::get_unread_messages(limit).await {
                 Ok(dms) => {
                     let mut grouped: HashMap<String, MessagesSummary> = HashMap::new();

@@ -97,6 +97,9 @@ enum CtlCommand {
         #[arg(long, default_value_t = 50)]
         limit: usize,
     },
+    Messages {
+        peer_alias: String,
+    },
 }
 
 // Synchronous entry-point so that the Tokio runtime startafter*
@@ -509,6 +512,7 @@ async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
         CtlCommand::GetStory { id } => DaemonRequest::GetStory { id },
         CtlCommand::Conversations { limit } => DaemonRequest::Conversations { limit },
         CtlCommand::Unread { limit } => DaemonRequest::Unread { limit },
+        CtlCommand::Messages { peer_alias } => DaemonRequest::Messages { peer_alias },
     };
     match daemon::client::send_request(&socket_path, &req).await {
         Ok(response) => {

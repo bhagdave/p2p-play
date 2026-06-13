@@ -186,3 +186,64 @@ async fn test_get_unread_messages_multiple_peers() {
 
     cleanup_test_db(&db_path).await;
 }
+
+#[tokio::test]
+async fn test_get_messages_from_peer_alias_returns_only_matching_incoming_messages() {
+    let db_path = setup_test_db().await.unwrap();
+
+    let peer1 = PeerId::random();
+    let peer2 = PeerId::random();
+    let local = "local";
+    let mut peer_names = HashMap::new();
+    peer_names.insert(peer1, "Alice".to_string());
+    peer_names.insert(peer2, "Bob".to_string());
+    let peer1_id = peer1.to_string();
+    let peer2_id = peer2.to_string();
+
+    save_direct_message(
+        &make_dm(&peer1_id, local, "from alice 1", 1000, false),
+        Some(&peer_names),
+    )
+    .await
+    .unwrap();
+    save_direct_message(
+        &make_dm(local, &peer1_id, "to alice", 2000, true),
+        Some(&peer_names),
+    )
+    .await
+    .unwrap();
+    save_direct_message(
+        &make_dm(&peer1_id, local, "from alice 2", 3000, false),
+        Some(&peer_names),
+    )
+    .await
+    .unwrap();
+    save_direct_message(
+        &make_dm(&peer2_id, local, "from bob", 4000, false),
+        Some(&peer_names),
+    )
+    .await
+    .unwrap();
+
+    let messages = get_incoming_messages_from_peer_alias("alice")
+        .await
+        .unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].message, "from alice 1");
+    assert_eq!(messages[1].message, "from alice 2");
+    assert!(messages.iter().all(|m| !m.is_outgoing));
+
+    cleanup_test_db(&db_path).await;
+}
+
+#[tokio::test]
+async fn test_get_messages_from_peer_alias_empty_when_alias_missing() {
+    let db_path = setup_test_db().await.unwrap();
+
+    let messages = get_incoming_messages_from_peer_alias("nobody")
+        .await
+        .unwrap();
+    assert!(messages.is_empty());
+
+    cleanup_test_db(&db_path).await;
+}

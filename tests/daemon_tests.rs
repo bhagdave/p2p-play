@@ -106,6 +106,16 @@ fn daemon_request_unread_serializes_with_limit() {
 }
 
 #[test]
+fn daemon_request_messages_serializes_with_peer_alias() {
+    let req = DaemonRequest::Messages {
+        peer_alias: "alice".to_string(),
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("\"command\":\"messages\""), "got: {json}");
+    assert!(json.contains("\"peer_alias\":\"alice\""), "got: {json}");
+}
+
+#[test]
 fn daemon_response_peers_roundtrips() {
     let resp = DaemonResponse::Peers {
         peers: vec![PeerInfo {
@@ -224,6 +234,37 @@ fn daemon_response_unread_roundtrips() {
 }
 
 #[test]
+fn daemon_response_messages_roundtrips() {
+    let resp = DaemonResponse::Messages {
+        peer_alias: "alice".to_string(),
+        messages: vec![
+            MessageInfo {
+                content: "hello".to_string(),
+                timestamp: 1_700_000_001,
+            },
+            MessageInfo {
+                content: "again".to_string(),
+                timestamp: 1_700_000_002,
+            },
+        ],
+    };
+    let json = serde_json::to_string(&resp).unwrap();
+    let back: DaemonResponse = serde_json::from_str(&json).unwrap();
+    match back {
+        DaemonResponse::Messages {
+            peer_alias,
+            messages,
+        } => {
+            assert_eq!(peer_alias, "alice");
+            assert_eq!(messages.len(), 2);
+            assert_eq!(messages[0].content, "hello");
+            assert_eq!(messages[1].timestamp, 1_700_000_002);
+        }
+        other => panic!("Expected Messages, got {other:?}"),
+    }
+}
+
+#[test]
 fn daemon_response_error_roundtrips() {
     let resp = DaemonResponse::Error {
         message: "something went wrong".to_string(),
@@ -272,6 +313,16 @@ fn daemon_request_deserializes_unread_from_json() {
     let json = r#"{"command":"unread","limit":10}"#;
     let req: DaemonRequest = serde_json::from_str(json).unwrap();
     assert!(matches!(req, DaemonRequest::Unread { limit: 10 }));
+}
+
+#[test]
+fn daemon_request_deserializes_messages_from_json() {
+    let json = r#"{"command":"messages","peer_alias":"alice"}"#;
+    let req: DaemonRequest = serde_json::from_str(json).unwrap();
+    assert!(matches!(
+        req,
+        DaemonRequest::Messages { peer_alias } if peer_alias == "alice"
+    ));
 }
 
 // ---------------------------------------------------------------------------
@@ -561,6 +612,55 @@ async fn client_receives_unread_response_from_server() {
 }
 
 #[tokio::test]
+async fn client_receives_messages_response_from_server() {
+    let dir = tmp_dir("client_messages");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::Messages { peer_alias } => DaemonResponse::Messages {
+            peer_alias,
+            messages: vec![
+                MessageInfo {
+                    content: "hey there".to_string(),
+                    timestamp: 1_700_000_010,
+                },
+                MessageInfo {
+                    content: "ping?".to_string(),
+                    timestamp: 1_700_000_020,
+                },
+            ],
+        },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(
+        &socket_path,
+        &DaemonRequest::Messages {
+            peer_alias: "alice".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    match resp {
+        DaemonResponse::Messages {
+            peer_alias,
+            messages,
+        } => {
+            assert_eq!(peer_alias, "alice");
+            assert_eq!(messages.len(), 2);
+            assert_eq!(messages[0].content, "hey there");
+        }
+        other => panic!("Expected Messages response, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+#[tokio::test]
 async fn client_receives_empty_unread_when_no_messages() {
     let dir = tmp_dir("client_unread_empty");
 
@@ -656,6 +756,10 @@ async fn server_handles_multiple_sequential_requests() {
             message: format!("Story with id {id} not found"),
         },
         DaemonRequest::Unread { .. } => DaemonResponse::Unread { messages: vec![] },
+        DaemonRequest::Messages { .. } => DaemonResponse::Messages {
+            peer_alias: "alice".to_string(),
+            messages: vec![],
+        },
     })
     .await;
 
