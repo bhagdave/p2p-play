@@ -1,9 +1,9 @@
 use super::protocol::{DaemonRequest, DaemonResponse};
+use crate::validation::ContentSanitizer;
 use std::path::Path;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(unix)]
 use tokio::net::UnixStream;
-use crate::validation::ContentSanitizer;
 
 #[cfg(not(unix))]
 pub async fn send_request(
@@ -112,6 +112,26 @@ pub fn print_response(resp: &DaemonResponse) {
                     println!();
                 }
             }
+        }
+
+        DaemonResponse::Story { story } => {
+            let id_display = story.id;
+            let name_display = ContentSanitizer::sanitize_for_display(&story.name);
+            let channel_display = ContentSanitizer::sanitize_for_display(&story.channel);
+            let header_display = ContentSanitizer::sanitize_for_display(&story.header);
+            let body_display = ContentSanitizer::sanitize_for_display(&story.body);
+            let visibility = if story.public { "public" } else { "private" };
+            let created = format_timestamp(story.created_at);
+            println!("{}", "-".repeat(72));
+            println!("ID:         {id_display}");
+            println!("Name:       {name_display}");
+            println!("Channel:    {channel_display}");
+            println!("Visibility: {visibility}");
+            println!("Created:    {created}");
+            println!("{}", "-".repeat(72));
+            println!("Header: {header_display}");
+            println!();
+            println!("{body_display}");
         }
 
         DaemonResponse::Error { message } => {

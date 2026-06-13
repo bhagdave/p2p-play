@@ -1,4 +1,4 @@
-use crate::errors::StorageResult;
+use crate::errors::{StorageError, StorageResult};
 use crate::storage::{mappers, utils};
 use crate::types::{
     BootstrapConfig, Channel, Channels, DirectMessage, Stories, Story, UnifiedNetworkConfig,
@@ -137,6 +137,19 @@ pub async fn read_local_stories() -> StorageResult<Stories> {
     let stories = utils::collect_rows(story_iter)?;
 
     Ok(stories)
+}
+
+pub async fn read_story_by_id(id: usize) -> StorageResult<Option<Story>> {
+    let conn = get_db_connection().await?;
+
+    let mut stmt = conn.prepare(
+        "SELECT id, name, header, body, public, channel, created_at FROM stories WHERE id = ?1",
+    )?;
+    let id_i64 = i64::try_from(id)
+        .map_err(|_| StorageError::invalid_data(format!("Story id out of range: {id}")))?;
+    let mut story_iter = stmt.query_map([id_i64], mappers::map_row_to_story)?;
+
+    Ok(story_iter.next().transpose()?)
 }
 
 pub async fn read_local_stories_for_sync(
