@@ -5,6 +5,7 @@ All changes to this project will be documented in this file.
 ## [Unreleased] - bugfix/issue-365
 
 ### Added
+- **`ctl channels` command**: `p2p-play ctl channels` queries the running daemon and lists all available channels with their descriptions.
 - **`ctl unread` command**: `p2p-play ctl unread [--limit N]` queries the running daemon for unread direct messages, grouped by sender peer, with timestamps. Default limit is 50.
 - **`get_unread_messages(limit)` storage function** (`src/storage/core.rs`): Fetches unread incoming direct messages ordered by timestamp ascending, with a SQL-level `LIMIT` for efficiency.
 - **`MessageInfo` / `MessagesSummary` protocol types** (`src/daemon/protocol.rs`): New serde types for the `Unread` response — `MessagesSummary` groups messages per peer, `MessageInfo` carries content and timestamp.

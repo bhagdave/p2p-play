@@ -2,8 +2,8 @@ use crate::bootstrap::{AutoBootstrap, run_auto_bootstrap_with_retry};
 use crate::bootstrap_logger::BootstrapLogger;
 use crate::constants::*;
 use crate::daemon::protocol::{
-    ConversationSummary, DaemonCommand, DaemonRequest, DaemonResponse, MessageInfo, MessagesSummary,
-    PeerInfo,
+    ChannelInfo, ConversationSummary, DaemonCommand, DaemonRequest, DaemonResponse, MessageInfo,
+    MessagesSummary, PeerInfo,
 };
 use crate::error_logger::ErrorLogger;
 use crate::event_handlers::{
@@ -732,6 +732,24 @@ impl EventProcessor {
                 let _ = txt.send(DaemonResponse::Peers { peers });
             }
 
+            DaemonRequest::Channels => match storage::read_channels().await {
+                Ok(channels) => {
+                    let channels = channels
+                        .into_iter()
+                        .map(|channel| ChannelInfo {
+                            name: channel.name,
+                            description: channel.description,
+                        })
+                        .collect();
+                    let _ = txt.send(DaemonResponse::Channels { channels });
+                }
+                Err(e) => {
+                    let _ = txt.send(DaemonResponse::Error {
+                        message: format!("Failed to load channels: {e}"),
+                    });
+                }
+            },
+
             DaemonRequest::Conversations { limit } => {
                 match storage::get_conversations_with_status().await {
                     Ok(convs) => {
@@ -755,34 +773,33 @@ impl EventProcessor {
                 }
             }
 
-            DaemonRequest::Unread { limit } => {
-                match storage::get_unread_messages(limit).await {
-                    Ok(dms) => {
-                        let mut grouped: HashMap<String, MessagesSummary> = HashMap::new();
-                        for dm in dms {
-                            let entry =
-                                grouped.entry(dm.from_peer_id.clone()).or_insert_with(|| {
-                                    MessagesSummary {
-                                        peer_id: dm.from_peer_id.clone(),
-                                        peer_name: dm.from_name.clone(),
-                                        messages: Vec::new(),
-                                    }
-                                });
-                            entry.messages.push(MessageInfo {
-                                content: dm.message.clone(),
-                                timestamp: dm.timestamp,
-                            });
-                        }
-                        let summaries: Vec<MessagesSummary> = grouped.into_values().collect();
-                        let _ = txt.send(DaemonResponse::Unread { messages: summaries });
-                    }
-                    Err(e) => {
-                        let _ = txt.send(DaemonResponse::Error {
-                            message: format!("Failed to load unread messages: {e}"),
+            DaemonRequest::Unread { limit } => match storage::get_unread_messages(limit).await {
+                Ok(dms) => {
+                    let mut grouped: HashMap<String, MessagesSummary> = HashMap::new();
+                    for dm in dms {
+                        let entry = grouped.entry(dm.from_peer_id.clone()).or_insert_with(|| {
+                            MessagesSummary {
+                                peer_id: dm.from_peer_id.clone(),
+                                peer_name: dm.from_name.clone(),
+                                messages: Vec::new(),
+                            }
+                        });
+                        entry.messages.push(MessageInfo {
+                            content: dm.message.clone(),
+                            timestamp: dm.timestamp,
                         });
                     }
+                    let summaries: Vec<MessagesSummary> = grouped.into_values().collect();
+                    let _ = txt.send(DaemonResponse::Unread {
+                        messages: summaries,
+                    });
                 }
-            }
+                Err(e) => {
+                    let _ = txt.send(DaemonResponse::Error {
+                        message: format!("Failed to load unread messages: {e}"),
+                    });
+                }
+            },
         }
     }
 

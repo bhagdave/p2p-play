@@ -57,6 +57,18 @@ pub fn print_response(resp: &DaemonResponse) {
             }
         }
 
+        DaemonResponse::Channels { channels } => {
+            if channels.is_empty() {
+                println!("No channels found.");
+            } else {
+                println!("{:<20} DESCRIPTION", "CHANNEL");
+                println!("{}", "-".repeat(72));
+                for channel in channels {
+                    println!("{:<20} {}", channel.name, channel.description);
+                }
+            }
+        }
+
         DaemonResponse::Conversations { conversations } => {
             if conversations.is_empty() {
                 println!("No conversations.");
