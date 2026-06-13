@@ -10,14 +10,15 @@ use crate::event_handlers::{
     self, handle_event, track_successful_connection, trigger_immediate_connection_maintenance,
 };
 use crate::handlers::{PeerState, SortedPeerNamesCache, UILogger, refresh_unread_counts_for_ui};
+use crate::network::DirectMessageRequest;
 use crate::network::{HandshakeRequest, PEER_ID, StoryBehaviour, StoryBehaviourEvent};
 use crate::network_circuit_breakers::NetworkCircuitBreakers;
 use crate::relay::RelayService;
 use crate::storage;
 use crate::storage::{mark_conversation_messages_as_read, mark_story_as_read, save_direct_message};
 use crate::types::{
-    ActionResult, DirectMessageConfig, EventType, Icons, ListResponse, NetworkConfig,
-    PendingDirectMessage, PendingHandshakePeer, Story,
+    ActionResult, DirectMessage, DirectMessageConfig, EventType, Icons, ListResponse,
+    NetworkConfig, PendingDirectMessage, PendingHandshakePeer, Story,
 };
 use crate::ui::{App, AppEvent, InputMode, handle_ui_events};
 use libp2p::{PeerId, Swarm, futures::StreamExt, swarm::SwarmEvent};
@@ -716,7 +717,7 @@ impl EventProcessor {
         &self,
         req: DaemonRequest,
         txt: oneshot::Sender<DaemonResponse>,
-        _swarm: &mut Swarm<StoryBehaviour>,
+        swarm: &mut Swarm<StoryBehaviour>,
         peer_state: &mut PeerState,
     ) {
         match req {
@@ -837,7 +838,9 @@ impl EventProcessor {
                     }
                     Err(e) => {
                         let _ = txt.send(DaemonResponse::Error {
-                            message: format!("Failed to load messages for peer alias '{peer_alias}': {e}"),
+                            message: format!(
+                                "Failed to load messages for peer alias '{peer_alias}': {e}"
+                            ),
                         });
                     }
                 }
@@ -870,6 +873,90 @@ impl EventProcessor {
                     });
                 }
             },
+
+            DaemonRequest::SendMessage {
+                peer_alias,
+                message,
+            } => {
+                if let Err(e) =
+                    crate::validation::ContentValidator::validate_direct_message(&message)
+                {
+                    let _ = txt.send(DaemonResponse::Error {
+                        message: format!("Invalid message: {e}"),
+                    });
+                    return;
+                }
+
+                let target_peer_id = peer_state
+                    .peer_names
+                    .iter()
+                    .find(|(_, name)| name.to_lowercase() == peer_alias.to_lowercase())
+                    .map(|(id, _)| *id);
+
+                match target_peer_id {
+                    None => {
+                        let _ = txt.send(DaemonResponse::Error {
+                            message: format!(
+                                "Peer alias '{peer_alias}' not found. Is the peer connected?"
+                            ),
+                        });
+                    }
+                    Some(target_peer_id) => {
+                        let from_name = peer_state
+                            .local_peer_name
+                            .clone()
+                            .unwrap_or_else(|| PEER_ID.to_string());
+
+                        let timestamp = crate::current_unix_timestamp();
+                        let direct_msg_request = DirectMessageRequest {
+                            from_peer_id: PEER_ID.to_string(),
+                            from_name: from_name.clone(),
+                            to_name: peer_alias.clone(),
+                            message: message.clone(),
+                            timestamp,
+                        };
+
+                        // `send_request` enqueues the message in libp2p's internal
+                        // request-response state machine and always succeeds at the
+                        // call site.  Any network-level failure (e.g., the peer
+                        // disconnected between the alias lookup above and the actual
+                        // delivery) surfaces asynchronously as an outbound-failure
+                        // event handled elsewhere in the event loop.
+                        let _request_id = swarm
+                            .behaviour_mut()
+                            .request_response
+                            .send_request(&target_peer_id, direct_msg_request);
+
+                        let outgoing_message = DirectMessage {
+                            from_peer_id: PEER_ID.to_string(),
+                            from_name,
+                            to_peer_id: target_peer_id.to_string(),
+                            to_name: peer_alias.clone(),
+                            message,
+                            timestamp,
+                            is_outgoing: true,
+                        };
+
+                        match save_direct_message(&outgoing_message, Some(&peer_state.peer_names))
+                            .await
+                        {
+                            Ok(()) => {
+                                let _ = txt.send(DaemonResponse::MessageSent { peer_alias });
+                            }
+                            Err(e) => {
+                                // The message has already been dispatched to the
+                                // network; this error only means it could not be
+                                // persisted in the local database.
+                                let _ = txt.send(DaemonResponse::Error {
+                                    message: format!(
+                                        "Message sent to '{peer_alias}' but could not be saved locally: {e}"
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
