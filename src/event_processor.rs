@@ -765,7 +765,7 @@ impl EventProcessor {
                     }
                     Err(e) => {
                         let _ = txt.send(DaemonResponse::Error {
-                            message: format!("Failed to load stories for channel: {e}"),
+                            message: format!("Failed to load stories for channel {channel}: {e}"),
                         });
                     }
                 }
