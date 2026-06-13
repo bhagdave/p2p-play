@@ -114,6 +114,23 @@ pub fn print_response(resp: &DaemonResponse) {
             }
         }
 
+        DaemonResponse::Messages {
+            peer_alias,
+            messages,
+        } => {
+            let peer_alias_display = ContentSanitizer::sanitize_for_display(peer_alias);
+            if messages.is_empty() {
+                println!("No messages found for peer '{peer_alias_display}'.");
+            } else {
+                println!("Messages from '{peer_alias_display}':");
+                for msg in messages {
+                    let ts = format_timestamp(msg.timestamp);
+                    let content_display = ContentSanitizer::sanitize_for_display(&msg.content);
+                    println!("  - [{}] {}", ts, content_display);
+                }
+            }
+        }
+
         DaemonResponse::Story { story } => {
             let id_display = story.id;
             let name_display = ContentSanitizer::sanitize_for_display(&story.name);

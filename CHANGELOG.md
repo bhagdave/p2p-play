@@ -5,6 +5,7 @@ All changes to this project will be documented in this file.
 ## [Unreleased] - bugfix/issue-365
 
 ### Added
+- **`ctl messages <peer_alias>` command**: `p2p-play ctl messages <peer_alias>` queries the daemon for all incoming direct messages from the specified peer alias and prints them in timestamp order.
 - **`ctl get-story <id>` command**: `p2p-play ctl get-story <id>` queries the running daemon and displays the full details of the story with the given ID — name, channel, visibility, header, body, and creation time. Output is sanitized to prevent injection attacks. Returns an error message if the story is not found.
 - **`DaemonRequest::GetStory` / `DaemonResponse::Story`** (`src/daemon/protocol.rs`): New IPC variants for the single-story query. `StoryDetail` carries all story fields (id, name, header, body, public, channel, created_at).
 - **`ctl channels` command**: `p2p-play ctl channels` queries the running daemon and lists all available channels with their descriptions.

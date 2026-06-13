@@ -748,6 +748,35 @@ pub async fn get_unread_messages(limit: usize) -> StorageResult<Vec<DirectMessag
     utils::collect_rows(message_iter)
 }
 
+/// Returns incoming direct messages for a conversation selected by peer alias.
+pub async fn get_incoming_messages_from_peer_alias(
+    peer_alias: &str,
+) -> StorageResult<Vec<DirectMessage>> {
+    let conn = get_db_connection().await?;
+
+    let mut stmt = conn.prepare(
+        "SELECT dm.remote_peer_id, dm.to_peer_id, c.peer_name, dm.message, dm.timestamp, dm.is_outgoing
+         FROM direct_messages dm
+         JOIN conversations c ON dm.conversation_id = c.id
+         WHERE LOWER(c.peer_name) = LOWER(?1) AND dm.is_outgoing = 0
+         ORDER BY dm.timestamp ASC",
+    )?;
+
+    let message_iter = stmt.query_map([peer_alias], |row| {
+        Ok(DirectMessage {
+            from_peer_id: row.get(0)?,
+            from_name: row.get(2)?,
+            to_peer_id: row.get(1)?,
+            to_name: String::new(),
+            message: row.get(3)?,
+            timestamp: row.get::<_, i64>(4)? as u64,
+            is_outgoing: row.get::<_, bool>(5)?,
+        })
+    })?;
+
+    utils::collect_rows(message_iter)
+}
+
 pub async fn save_node_description(description: &str) -> StorageResult<()> {
     if description.len() > 1024 {
         return Err("Description exceeds 1024 bytes limit".into());
