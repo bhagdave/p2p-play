@@ -887,10 +887,11 @@ impl EventProcessor {
                     return;
                 }
 
+                let peer_alias_lc = peer_alias.to_lowercase();
                 let target_peer_id = peer_state
                     .peer_names
                     .iter()
-                    .find(|(_, name)| name.to_lowercase() == peer_alias.to_lowercase())
+                    .find(|(_, name)| name.to_lowercase() == peer_alias_lc)
                     .map(|(id, _)| *id);
 
                 match target_peer_id {
@@ -911,7 +912,11 @@ impl EventProcessor {
                         let direct_msg_request = DirectMessageRequest {
                             from_peer_id: PEER_ID.to_string(),
                             from_name: from_name.clone(),
-                            to_name: peer_alias.clone(),
+                            to_name: peer_state
+                                .peer_names
+                                .get(&target_peer_id)
+                                .cloned()
+                                .unwrap_or_else(|| peer_alias.clone()),
                             message: message.clone(),
                             timestamp,
                         };
