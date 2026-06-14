@@ -916,12 +916,6 @@ impl EventProcessor {
                             timestamp,
                         };
 
-                        // `send_request` enqueues the message in libp2p's internal
-                        // request-response state machine and always succeeds at the
-                        // call site.  Any network-level failure (e.g., the peer
-                        // disconnected between the alias lookup above and the actual
-                        // delivery) surfaces asynchronously as an outbound-failure
-                        // event handled elsewhere in the event loop.
                         let _request_id = swarm
                             .behaviour_mut()
                             .request_response
@@ -944,9 +938,6 @@ impl EventProcessor {
                                 let _ = txt.send(DaemonResponse::MessageSent { peer_alias });
                             }
                             Err(e) => {
-                                // The message has already been dispatched to the
-                                // network; this error only means it could not be
-                                // persisted in the local database.
                                 let _ = txt.send(DaemonResponse::Error {
                                     message: format!(
                                         "Message sent to '{peer_alias}' but could not be saved locally: {e}"
