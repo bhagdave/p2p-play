@@ -8,6 +8,7 @@ pub enum DaemonRequest {
     Channels,
     Stories { channel: String },
     GetStory { id: usize },
+    Stop,
     Conversations { limit: usize },
     Unread { limit: usize },
     Messages { peer_alias: String },
@@ -30,6 +31,7 @@ pub enum DaemonResponse {
     Story {
         story: StoryDetail,
     },
+    Stopping,
     Conversations {
         conversations: Vec<ConversationSummary>,
     },
