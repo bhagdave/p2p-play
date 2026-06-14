@@ -486,7 +486,7 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
         daemon_cmd_rx,
         daemon_shutdown_tx.clone(),
     );
-    tokio::spawn(daemon_server.run(shutdown_rx));
+    let shutdown_future = tokio::spawn(daemon_server.run(shutdown_rx));
     // SIGTERM && SIGINT handler
     #[cfg(unix)]
     {
@@ -509,6 +509,7 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
             }
         });
     }
+    shutdown_future.await.expect("Daemon server task panicked");
 
     event_processor
         .run(&mut app, &mut swarm, &mut peer_state, &mut auto_bootstrap)
