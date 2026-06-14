@@ -89,6 +89,7 @@ enum CtlCommand {
     GetStory {
         id: usize,
     },
+    Stop,
     Conversations {
         #[arg(long, default_value_t = 20)]
         limit: usize,
@@ -462,6 +463,9 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
         std::process::id()
     );
 
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let daemon_shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+
     let ui_sender_for_shutdown = channels.ui_sender.clone();
     let mut event_processor = EventProcessor::new_with_daemon(
         channels.ui_rcv,
@@ -480,9 +484,8 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
         relay_service,
         network_circuit_breakers,
         daemon_cmd_rx,
+        daemon_shutdown_tx.clone(),
     );
-
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(daemon_server.run(shutdown_rx));
     // SIGTERM && SIGINT handler
     #[cfg(unix)]
@@ -490,6 +493,7 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("Failed to register SIGTERM handler");
         let ui_sender = ui_sender_for_shutdown.clone();
+        let daemon_shutdown_tx = daemon_shutdown_tx.clone();
 
         tokio::spawn(async move {
             tokio::select! {
@@ -497,7 +501,12 @@ async fn run_daemon(socket_path: PathBuf, pid_file_path: &PathBuf) -> AppResult<
                 _ = tokio::signal::ctrl_c() => eprintln!("[daemon] SIGINT received, shutting down"),
             }
             let _ = ui_sender.send(ui::AppEvent::Quit);
-            let _ = shutdown_tx.send(());
+            if let Ok(mut guard) = daemon_shutdown_tx.lock()
+                && let Some(shutdown_tx) = guard.take()
+                && shutdown_tx.send(()).is_err()
+            {
+                eprintln!("[daemon] shutdown signal receiver already dropped");
+            }
         });
     }
 
@@ -514,6 +523,7 @@ async fn run_ctl(socket_path: PathBuf, command: CtlCommand) -> i32 {
         CtlCommand::Channels => DaemonRequest::Channels,
         CtlCommand::Stories { channel } => DaemonRequest::Stories { channel },
         CtlCommand::GetStory { id } => DaemonRequest::GetStory { id },
+        CtlCommand::Stop => DaemonRequest::Stop,
         CtlCommand::Conversations { limit } => DaemonRequest::Conversations { limit },
         CtlCommand::Unread { limit } => DaemonRequest::Unread { limit },
         CtlCommand::Messages { peer_alias } => DaemonRequest::Messages { peer_alias },

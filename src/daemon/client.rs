@@ -151,6 +151,10 @@ pub fn print_response(resp: &DaemonResponse) {
             println!("{body_display}");
         }
 
+        DaemonResponse::Stopping => {
+            println!("Daemon shutdown requested. Stopping gracefully...");
+        }
+
         DaemonResponse::MessageSent { peer_alias } => {
             let peer_alias_display = ContentSanitizer::sanitize_for_display(peer_alias);
             println!("Message sent to '{peer_alias_display}'.");

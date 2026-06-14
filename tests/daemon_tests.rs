@@ -755,6 +755,7 @@ async fn server_handles_multiple_sequential_requests() {
         DaemonRequest::GetStory { id } => DaemonResponse::Error {
             message: format!("Story with id {id} not found"),
         },
+        DaemonRequest::Stop => DaemonResponse::Stopping,
         DaemonRequest::Unread { .. } => DaemonResponse::Unread { messages: vec![] },
         DaemonRequest::Messages { .. } => DaemonResponse::Messages {
             peer_alias: "alice".to_string(),
@@ -811,6 +812,20 @@ fn daemon_request_get_story_deserializes_from_json() {
     let json = r#"{"command":"get_story","id":7}"#;
     let req: DaemonRequest = serde_json::from_str(json).unwrap();
     assert!(matches!(req, DaemonRequest::GetStory { id: 7 }));
+}
+
+#[test]
+fn daemon_request_stop_serializes_correctly() {
+    let req = DaemonRequest::Stop;
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("\"command\":\"stop\""), "got: {json}");
+}
+
+#[test]
+fn daemon_request_stop_deserializes_from_json() {
+    let json = r#"{"command":"stop"}"#;
+    let req: DaemonRequest = serde_json::from_str(json).unwrap();
+    assert!(matches!(req, DaemonRequest::Stop));
 }
 
 #[test]
@@ -961,6 +976,14 @@ fn daemon_response_message_sent_roundtrips() {
     }
 }
 
+#[test]
+fn daemon_response_stopping_roundtrips() {
+    let resp = DaemonResponse::Stopping;
+    let json = serde_json::to_string(&resp).unwrap();
+    let back: DaemonResponse = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, DaemonResponse::Stopping));
+}
+
 #[tokio::test]
 async fn client_receives_message_sent_response_from_server() {
     let dir = tmp_dir("client_send_message");
@@ -989,6 +1012,27 @@ async fn client_receives_message_sent_response_from_server() {
         }
         other => panic!("Expected MessageSent response, got {other:?}"),
     }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn client_receives_stopping_response_from_server() {
+    let dir = tmp_dir("client_stop");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::Stop => DaemonResponse::Stopping,
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(&socket_path, &DaemonRequest::Stop)
+        .await
+        .unwrap();
+    assert!(matches!(resp, DaemonResponse::Stopping));
 
     let _ = shutdown_tx.send(());
     handle.await.unwrap();

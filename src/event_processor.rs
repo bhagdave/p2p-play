@@ -69,6 +69,7 @@ pub struct EventProcessor {
 
     // Daemon command stuff
     daemon_cmd_rcv: Option<mpsc::UnboundedReceiver<DaemonCommand>>,
+    daemon_shutdown_tx: Option<Arc<Mutex<Option<oneshot::Sender<()>>>>>,
 }
 
 impl EventProcessor {
@@ -121,6 +122,7 @@ impl EventProcessor {
             verified_p2p_play_peers: Arc::new(Mutex::new(HashMap::new())),
             known_peer_names: HashMap::new(),
             daemon_cmd_rcv: None,
+            daemon_shutdown_tx: None,
         }
     }
 
@@ -141,6 +143,7 @@ impl EventProcessor {
         relay_service: Option<RelayService>,
         network_circuit_breakers: NetworkCircuitBreakers,
         daemon_cmd_rcv: mpsc::UnboundedReceiver<DaemonCommand>,
+        daemon_shutdown_tx: Arc<Mutex<Option<oneshot::Sender<()>>>>,
     ) -> Self {
         let mut processor = Self::new(
             ui_rcv,
@@ -160,6 +163,7 @@ impl EventProcessor {
             network_circuit_breakers,
         );
         processor.daemon_cmd_rcv = Some(daemon_cmd_rcv);
+        processor.daemon_shutdown_tx = Some(daemon_shutdown_tx);
         processor
     }
 
@@ -797,6 +801,25 @@ impl EventProcessor {
                     });
                 }
             },
+
+            DaemonRequest::Stop => {
+                if txt.send(DaemonResponse::Stopping).is_err() {
+                    self.error_logger
+                        .log_error("Failed to send daemon stop confirmation to ctl client");
+                }
+                if self.ui_sender.send(AppEvent::Quit).is_err() {
+                    self.error_logger
+                        .log_error("Failed to signal app quit during daemon stop");
+                }
+                if let Some(daemon_shutdown_tx) = &self.daemon_shutdown_tx
+                    && let Ok(mut guard) = daemon_shutdown_tx.lock()
+                    && let Some(shutdown_tx) = guard.take()
+                    && shutdown_tx.send(()).is_err()
+                {
+                    self.error_logger
+                        .log_error("Failed to signal daemon server shutdown");
+                }
+            }
 
             DaemonRequest::Conversations { limit } => {
                 match storage::get_conversations_with_status().await {

@@ -5,6 +5,7 @@ All changes to this project will be documented in this file.
 ## [Unreleased] - bugfix/issue-365
 
 ### Added
+- **`ctl stop` command for graceful daemon shutdown**: `p2p-play ctl stop` now asks a running daemon to shut down cleanly. The daemon exits its event loop, triggers server shutdown cleanup, and removes its socket/PID files without requiring an external kill signal.
 - **`ctl send <peer_alias> <message>` command**: `p2p-play ctl send <peer_alias> <message>` sends a direct message to a connected peer identified by their alias. The message is validated, dispatched via the libp2p request-response protocol, and saved to local storage. Returns an error if the peer alias is not found or the message is invalid.
 - **`DaemonRequest::SendMessage` / `DaemonResponse::MessageSent`** (`src/daemon/protocol.rs`): New IPC variants for the send-message command. `SendMessage` carries `peer_alias` and `message`; `MessageSent` confirms delivery with the resolved `peer_alias`.
 - **`ctl messages <peer_alias>` command**: `p2p-play ctl messages <peer_alias>` queries the daemon for all incoming direct messages from the specified peer alias and prints them in timestamp order.
