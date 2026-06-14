@@ -811,13 +811,19 @@ impl EventProcessor {
                     self.error_logger
                         .log_error("Failed to signal app quit during daemon stop");
                 }
-                if let Some(daemon_shutdown_tx) = &self.daemon_shutdown_tx
-                    && let Ok(mut guard) = daemon_shutdown_tx.lock()
-                    && let Some(shutdown_tx) = guard.take()
-                    && shutdown_tx.send(()).is_err()
+                if let Some(daemon_shutdown_tx) = &self.daemon_shutdown_tx {
                 {
-                    self.error_logger
-                        .log_error("Failed to signal daemon server shutdown");
+                    match daemon_shutdown_tx.lock() {
+                        Ok(mut guard) => {
+                            if let Some(shutdown_tx) = guard.take() {
+                                let _ = shutdown_tx.send(());
+                            }
+                        }
+                        Err(e) => {
+                            self.error_logger
+                                .log_error(&format!("Failed to acquire daemon shutdown lock: {e}"));
+                        }
+                    }
                 }
             }
 
