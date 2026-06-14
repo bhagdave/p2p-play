@@ -5,6 +5,8 @@ All changes to this project will be documented in this file.
 ## [Unreleased] - bugfix/issue-365
 
 ### Added
+- **`ctl send <peer_alias> <message>` command**: `p2p-play ctl send <peer_alias> <message>` sends a direct message to a connected peer identified by their alias. The message is validated, dispatched via the libp2p request-response protocol, and saved to local storage. Returns an error if the peer alias is not found or the message is invalid.
+- **`DaemonRequest::SendMessage` / `DaemonResponse::MessageSent`** (`src/daemon/protocol.rs`): New IPC variants for the send-message command. `SendMessage` carries `peer_alias` and `message`; `MessageSent` confirms delivery with the resolved `peer_alias`.
 - **`ctl messages <peer_alias>` command**: `p2p-play ctl messages <peer_alias>` queries the daemon for all incoming direct messages from the specified peer alias and prints them in timestamp order.
 - **`ctl get-story <id>` command**: `p2p-play ctl get-story <id>` queries the running daemon and displays the full details of the story with the given ID — name, channel, visibility, header, body, and creation time. Output is sanitized to prevent injection attacks. Returns an error message if the story is not found.
 - **`DaemonRequest::GetStory` / `DaemonResponse::Story`** (`src/daemon/protocol.rs`): New IPC variants for the single-story query. `StoryDetail` carries all story fields (id, name, header, body, public, channel, created_at).

@@ -11,6 +11,7 @@ pub enum DaemonRequest {
     Conversations { limit: usize },
     Unread { limit: usize },
     Messages { peer_alias: String },
+    SendMessage { peer_alias: String, message: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -38,6 +39,9 @@ pub enum DaemonResponse {
     Messages {
         peer_alias: String,
         messages: Vec<MessageInfo>,
+    },
+    MessageSent {
+        peer_alias: String,
     },
     Error {
         message: String,

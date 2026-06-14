@@ -151,6 +151,11 @@ pub fn print_response(resp: &DaemonResponse) {
             println!("{body_display}");
         }
 
+        DaemonResponse::MessageSent { peer_alias } => {
+            let peer_alias_display = ContentSanitizer::sanitize_for_display(peer_alias);
+            println!("Message sent to '{peer_alias_display}'.");
+        }
+
         DaemonResponse::Error { message } => {
             eprintln!("Error: {message}");
         }

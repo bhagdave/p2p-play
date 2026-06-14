@@ -760,6 +760,7 @@ async fn server_handles_multiple_sequential_requests() {
             peer_alias: "alice".to_string(),
             messages: vec![],
         },
+        DaemonRequest::SendMessage { peer_alias, .. } => DaemonResponse::MessageSent { peer_alias },
     })
     .await;
 
@@ -904,6 +905,124 @@ async fn client_receives_error_for_missing_story() {
             assert!(
                 message.contains("999"),
                 "Error should mention the story id, got: {message}"
+            );
+        }
+        other => panic!("Expected Error response, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// SendMessage tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn daemon_request_send_message_serializes_correctly() {
+    let req = DaemonRequest::SendMessage {
+        peer_alias: "alice".to_string(),
+        message: "hello there".to_string(),
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("\"command\":\"send_message\""), "got: {json}");
+    assert!(json.contains("\"peer_alias\":\"alice\""), "got: {json}");
+    assert!(json.contains("\"message\":\"hello there\""), "got: {json}");
+}
+
+#[test]
+fn daemon_request_send_message_deserializes_from_json() {
+    let json = r#"{"command":"send_message","peer_alias":"bob","message":"greetings"}"#;
+    let req: DaemonRequest = serde_json::from_str(json).unwrap();
+    match req {
+        DaemonRequest::SendMessage {
+            peer_alias,
+            message,
+        } => {
+            assert_eq!(peer_alias, "bob");
+            assert_eq!(message, "greetings");
+        }
+        other => panic!("Expected SendMessage, got {other:?}"),
+    }
+}
+
+#[test]
+fn daemon_response_message_sent_roundtrips() {
+    let resp = DaemonResponse::MessageSent {
+        peer_alias: "carol".to_string(),
+    };
+    let json = serde_json::to_string(&resp).unwrap();
+    let back: DaemonResponse = serde_json::from_str(&json).unwrap();
+    match back {
+        DaemonResponse::MessageSent { peer_alias } => {
+            assert_eq!(peer_alias, "carol");
+        }
+        other => panic!("Expected MessageSent, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn client_receives_message_sent_response_from_server() {
+    let dir = tmp_dir("client_send_message");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::SendMessage { peer_alias, .. } => DaemonResponse::MessageSent { peer_alias },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(
+        &socket_path,
+        &DaemonRequest::SendMessage {
+            peer_alias: "alice".to_string(),
+            message: "hello!".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    match resp {
+        DaemonResponse::MessageSent { peer_alias } => {
+            assert_eq!(peer_alias, "alice");
+        }
+        other => panic!("Expected MessageSent response, got {other:?}"),
+    }
+
+    let _ = shutdown_tx.send(());
+    handle.await.unwrap();
+}
+
+#[tokio::test]
+async fn client_receives_error_when_peer_not_found_for_send() {
+    let dir = tmp_dir("client_send_not_found");
+
+    let (socket_path, shutdown_tx, handle) = spawn_server(&dir, |req| match req {
+        DaemonRequest::SendMessage { peer_alias, .. } => DaemonResponse::Error {
+            message: format!("Peer alias '{peer_alias}' not found. Is the peer connected?"),
+        },
+        _ => DaemonResponse::Error {
+            message: "unexpected".to_string(),
+        },
+    })
+    .await;
+
+    let resp = send_request(
+        &socket_path,
+        &DaemonRequest::SendMessage {
+            peer_alias: "unknown_peer".to_string(),
+            message: "hello".to_string(),
+        },
+    )
+    .await
+    .unwrap();
+
+    match resp {
+        DaemonResponse::Error { message } => {
+            assert!(
+                message.contains("unknown_peer"),
+                "Error should mention the peer alias, got: {message}"
             );
         }
         other => panic!("Expected Error response, got {other:?}"),
