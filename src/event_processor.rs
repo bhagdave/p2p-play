@@ -811,7 +811,7 @@ impl EventProcessor {
                     self.error_logger
                         .log_error("Failed to signal app quit during daemon stop");
                 }
-                if let Some(daemon_shutdown_tx) = &self.daemon_shutdown_tx {
+                if let Some(daemon_shutdown_tx) = &self.daemon_shutdown_tx 
                 {
                     match daemon_shutdown_tx.lock() {
                         Ok(mut guard) => {
